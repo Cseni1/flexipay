@@ -1,13 +1,10 @@
 {
-  "name": "@stellar-scaffold/ui",
+  "name": "flexipay",
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "npm start",
-    "start": "concurrently -k -n api,app -c cyan,green \"npm run demo-api\" \"npm run start:app\"",
-    "start:app": "npm start --workspace app",
-    "build": "npm run build --workspace app",
-    "demo-api": "node --env-file=app/.env scripts/demo-api.mjs",
+    "dev": "npm run dev --workspace @flexipay/web",
+    "build": "npm run build --workspace @flexipay/web",
     "lint": "npm run lint --workspaces --if-present",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
@@ -16,11 +13,9 @@
     "test:domain": "npm test --workspace @flexipay/domain"
   },
   "workspaces": [
-    "app",
-    "app-lib",
-    "app-lib/clients/*",
-    "e2e",
-    "packages/*"
+    "apps/*",
+    "packages/*",
+    "tests/e2e-ui"
   ],
   "dependencies": {
     "@stellar/stellar-sdk": "^16.1.0"
