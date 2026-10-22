@@ -1,0 +1,13 @@
+{
+  "name": "@flexipay/ui-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Playwright UI flows for the FlexiPay web app (DF2 to DF5).",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}
