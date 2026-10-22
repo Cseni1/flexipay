@@ -46,3 +46,40 @@ export function applyBps(m: Money, bps: number): Money {
   if (!Number.isInteger(bps) || bps < 0) throw new Error(`bps must be a non-negative integer, got ${bps}`);
   return money((toMinor(m) * BigInt(bps)) / 10_000n, m.currency);
 }
+
+// ---- conversion (CCR-4) ----
+
+/** Minor-unit exponents. Test USDC has 7 decimals like USDC on Stellar (RULES.md). */
+export const CURRENCY_DECIMALS: Readonly<Record<string, number>> = {
+  USD: 2,
+  PHP: 2,
+  BRL: 2,
+  ZAR: 2,
+  USDC: 7,
+};
+
+const RATE_SCALE = 7;
+
+export const RateString = z.string().regex(/^[0-9]+(\.[0-9]{1,7})?$/, "decimal rate with up to 7 decimals");
+
+function decimalsOf(currency: string): number {
+  const d = CURRENCY_DECIMALS[currency];
+  if (d === undefined) throw new Error(`unknown currency decimals for ${currency}`);
+  return d;
+}
+
+function scaledRate(rate: string): bigint {
+  RateString.parse(rate);
+  const [whole, frac = ""] = rate.split(".");
+  return BigInt(whole + frac.padEnd(RATE_SCALE, "0"));
+}
+
+/**
+ * Converts at `rate` (major units of `from` to major units of `to`), rounding down. Integer
+ * arithmetic only: out = in * rate * 10^toDecimals / (10^7 * 10^fromDecimals).
+ */
+export function convertMoney(m: Money, rate: string, toCurrency: string): Money {
+  const num = toMinor(m) * scaledRate(rate) * 10n ** BigInt(decimalsOf(toCurrency));
+  const den = 10n ** BigInt(RATE_SCALE) * 10n ** BigInt(decimalsOf(m.currency));
+  return money(num / den, toCurrency);
+}

@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { z } from "zod";
 import { isCryptoEndpoint, RECIPIENT_KINDS, type LegKind } from "../enums.ts";
-import { compareMoney } from "../money.ts";
+import { CURRENCY_DECIMALS, compareMoney } from "../money.ts";
 import {
   CorridorsFileSchema,
   FeesFileSchema,
@@ -53,6 +53,7 @@ export function validateConfig(raw: RawConfig): ConfigResult {
     corridors: corridorsFile.data.corridors,
     providers: providersFile.data.providers,
     settlementRails: providersFile.data.settlementRails,
+    fxRates: providersFile.data.fxRates,
     fees: feesFile.data,
   };
   issues.push(...crossRules(config));
@@ -93,6 +94,17 @@ function crossRules(config: FlexiPayConfig): ConfigIssue[] {
     rails.add(r.id);
   });
 
+  const rates = new Set<string>();
+  config.fxRates.forEach((r, i) => {
+    const key = `${r.from}>${r.to}`;
+    if (rates.has(key)) add("providers.json", `fxRates.${i}`, `duplicate rate ${key}`);
+    rates.add(key);
+    for (const c of [r.from, r.to]) {
+      if (!(c in CURRENCY_DECIMALS)) add("providers.json", `fxRates.${i}`, `no minor-unit decimals known for ${c}`);
+    }
+    if (Number(r.rate) === 0) add("providers.json", `fxRates.${i}.rate`, "rate must be above zero");
+  });
+
   const seen = new Set<string>();
   config.corridors.forEach((c, i) => {
     const at = (field: string) => `corridors.${i}.${field}`;
@@ -123,6 +135,19 @@ function crossRules(config: FlexiPayConfig): ConfigIssue[] {
       if (!c.legsAvailable.collect.includes(c.domesticRail) || !c.legsAvailable.payout.includes(c.domesticRail)) {
         flag("domesticRail", "domesticRail must be both a collect and a payout provider");
       }
+    }
+    // every conversion the route can need has a rate: from -> USDC -> to on a stablecoin route
+    const needed: [string, string][] = [];
+    if (c.legsAvailable.convert.length > 0) {
+      if (c.legsAvailable.settle.length > 0) {
+        const asset = config.settlementRails.find((r) => c.legsAvailable.settle.includes(r.id))?.asset;
+        if (asset) needed.push([c.from.currency, asset], [asset, c.to.currency]);
+      } else {
+        needed.push([c.from.currency, c.to.currency]);
+      }
+    }
+    for (const [from, to] of needed) {
+      if (!rates.has(`${from}>${to}`)) flag("legsAvailable.convert", `missing fx rate ${from} > ${to}`);
     }
     if (c.from.currency === c.to.currency && c.legsAvailable.convert.length > 0) {
       flag("legsAvailable.convert", "same currency needs no conversion");
