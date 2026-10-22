@@ -6,112 +6,98 @@ only after the CC0 configuration schema and loader are merged.
 
 **Sources (re-read 22 Oct 2026, current copies):** ARCHITECTURE v3 §6.4 (quote
 `validUntil`), §6.5 (payment profiles), §8 (the vault's fixed fee for vault-settled
-routes), §12 (`tip_pool`: "tips with no fee"), §16 (open decisions: FlexiPay fee shown,
-quote validity); the SF0-prep task card.
+routes), §12 (`payout_vault` fee fixed at deployment; `tip_pool` "tips with no fee"), §16
+(open decisions); DEV_PLAN v3 §4; the owner instruction of 22 Oct 2026 that the 1 percent
+fee is the vault's fixed deployment fee.
 
-**Confirmed vs unresolved:** the percentages below are source-defined defaults. Anything a
-source leaves open is `TBD` and listed in the blockers section; it is not an approved
-value. Every number that is present is a **draft placeholder**, including the zeros — not
-an approved price, not a business model and not a real provider quote. The demo must show
-the "Simulated" label wherever a fee is displayed.
+**Confirmed vs unresolved:** the fee structure below is source-defined and owner-confirmed.
+Where a source is silent, nothing is invented; the open questions are listed at the end.
+Every number that is a configurable placeholder is labelled as one. No real price, no real
+money and no secrets belong in config.
 
-## Standard FlexiPay fee
+## The vault fee is the contract's fixed fee, not configuration
 
-One standard placeholder, applied to every non-tips profile:
+- For routes that settle through the vault, FlexiPay charges the **vault's fixed fee, read
+  from the contract `config()`**. The owner specifies **1 percent = 100 bps**, fixed at
+  deployment in `payout_vault`.
+- It is **not** a `fees.json` placeholder, **not** an extra fee on top of anything, and must
+  never be duplicated in configuration: one value, on-chain, so the quote cannot disagree
+  with what is charged.
+- ARCHITECTURE §8 states the same rule: "the FlexiPay fee is the vault's fixed fee, read
+  from the contract (`config()`), so it cannot differ from what is charged on-chain;
+  `fees.json` sets the fee only for legs outside the vault."
 
-**1.0 percent = 100 bps** (placeholder)
+## Configurable fees — outside-vault legs only
 
-ARCHITECTURE §16: "FlexiPay fee shown — 1.0 percent placeholder from `fees.json`". There is
-no profile-specific pricing and no monthly-plan amount in this task.
+The only configurable fee values in these drafts are the per-leg charges of legs that do
+not settle through the vault:
 
-**Scope of this value (§8).** For routes that settle through the vault, the FlexiPay fee
-is the vault's fixed fee, read from the contract `config()`, so it cannot differ from what
-is charged on-chain; `fees.json` sets the fee only for legs outside the vault. This file
-therefore records the standard placeholder for the non-vault case only. Whether the two
-must be equal is not stated by the sources and is not decided here.
+- the US domestic rail `sim_bank_us_ach`;
+- the FX conversion leg `sim_fx`;
+- the simulated bank and e-wallet payout providers.
 
-## Conventions
+They are recorded **once**, in `providers.md`, as labelled placeholders (`feeFixed`,
+`feeBps`, `fxSpreadBps`). This file does not restate them, does not scale them and does not
+add a FlexiPay margin on top: no source defines such a margin, so none is written. A leg is
+charged by one party, never twice.
 
-- Percentages are **integer basis points**: 100 bps = 1.0 percent. No fractional bps.
-- Money is an **integer in minor units, in double quotes, with an explicit currency**:
-  `"1000" USD` is 1000 minor units (10.00 USD). No floats anywhere.
-- `percentLabel` is a human-readable display string, never a value to compute with. The
-  basis-point column is the only source of truth.
-- `(placeholder)` in a column header marks every value in that column as an unapproved
-  draft placeholder.
-- Sums are done with integer arithmetic in the future code path (BigInt where a
-  comparison or a multiplication by bps is involved); no floating-point maths.
-- **`TBD`** means unresolved: blocked on an integrator answer, never a guess.
+| leg | who charges | where the value lives |
+|---|---|---|
+| settle through the vault | the contract's fixed fee, set at deployment | `payout_vault` `config()`, owner-specified 1 percent |
+| US domestic rail | the simulated provider | `providers.md`, `sim_bank_us_ach` |
+| conversion | the simulated FX provider | `providers.md`, `sim_fx` |
+| payout | the simulated bank or e-wallet provider | `providers.md`, `sim_bank_*` and `sim_ewallet_ph` |
 
-## Table F1 — FlexiPay fee per profile
+## Tips
 
-The six profiles are exactly the §6.5 `payment.profile` values. `tips` is the
-source-defined exception at 0 bps.
+Tips carry no per-tip FlexiPay fee: **0 bps** (placeholder). Sources: ARCHITECTURE §12
+(`tip_pool`: tips with no fee) and §6.5 (the `tips` profile). The tips module is a stretch
+goal and its plan price is out of scope for this task, so no amount is stated.
 
-| profile | flexipayFeeBps (placeholder) | percentLabel | placeholder | simulated | source |
-|---|---|---|---|---|---|
-| small | 100 | 1.0 percent | true | true | ARCHITECTURE §16 standard fee placeholder |
-| batch | 100 | 1.0 percent | true | true | ARCHITECTURE §16 standard fee placeholder |
-| invoice | 100 | 1.0 percent | true | true | ARCHITECTURE §16 standard fee placeholder |
-| tips | 0 | 0.0 percent | true | true | ARCHITECTURE §6.5 and §12: tips carry no FlexiPay fee |
-| domestic | 100 | 1.0 percent | true | true | ARCHITECTURE §16 standard fee placeholder |
-| one_off | 100 | 1.0 percent | true | true | ARCHITECTURE §16 standard fee placeholder |
-
-Notes:
-
-- The tips exception is 0 bps: the tip pool charges the tips module's own plan, not a
-  per-tip FlexiPay fee (§12). The tips plan amount is out of scope for this task and is
-  not stated here.
-- No profile is priced differently from the standard placeholder. If a differential tier
-  is wanted later, it is an owner decision and a change to this table only.
-
-## Quote validity (source default, not implemented)
+## Quote validity (not a fee)
 
 `quoteValiditySeconds` = 120 (placeholder) — ARCHITECTURE §6.4 (`validUntil`, "Default 120
 seconds in the demo") and §16 ("Quote validity — 120 seconds; sender bears price movement
-and re-quotes on expiry").
+and re-quotes on expiry"). Recorded only; expiry, countdowns and re-quoting belong to the
+quote and orchestrator tasks.
 
-This task only records the default. Expiry behaviour, countdowns and re-quote handling
-belong to the quote and orchestrator tasks and are not implemented here.
+## Money representation
 
-## Table F2 — money representation example (illustrative)
+When a monetary value is written in these config drafts, it is an **integer in minor units,
+in double quotes, with an explicit currency**: the quoted integer is the minor-unit amount
+and the following code is the ISO currency. Percentages are **integer basis points**
+(100 bps = 1.0 percent). No floats, no decimal points and no floating-point arithmetic.
+This file deliberately writes no monetary value at all, so there is nothing here to
+restate or duplicate.
 
-A worked example showing the required money representation. It is illustrative only and
-establishes no price. The fee is exact in integer arithmetic:
-`"100000" USD` x 100 bps / 10000 = `"1000" USD`, with no remainder.
+## Withdrawn from the previous draft
 
-| key | value | placeholder | note |
-|---|---|---|---|
-| exampleSendAmount | "100000" USD | true | illustrative only, 100000 minor units = 1000.00 USD |
-| exampleFlexiPayFeeBps | 100 | true | the standard fee from Table F1 |
-| exampleFlexiPayFee | "1000" USD | true | 100000 x 100 / 10000, exact integer result |
-| exampleExpectedReceiveIndicator | TBD | true | unresolved: which side the fee is charged on is not stated, so no receive amount is published (Q9) |
-
-The send amount, the bps and the fee are exact integer arithmetic. The receive figure is
-deliberately absent: publishing one would decide whether the fee is deducted from the send
-or the receive side, and would also need FX rates and leg fees, which are CC0 and CC1
-interface work.
-
-## Blockers — unresolved cells (not approved configuration)
-
-| cells | why unresolved | question | decided by |
-|---|---|---|---|
-| exampleExpectedReceiveIndicator | the side the FlexiPay fee is charged on is not stated, so no receive amount can be computed | Q9 | integrator |
-| every non-exact fee calculation | no source defines how a fee whose amount x bps is not divisible by 10000 is rounded | Q8 | integrator |
+- **The per-profile 100 bps table is removed** (`small`, `batch`, `invoice`, `domestic`,
+  `one_off`). It presented the owner's 1 percent as configured pricing, which contradicts
+  §8 and the owner instruction: the 1 percent is the vault's fixed deployment fee, and
+  outside-vault legs carry provider charges, not a FlexiPay percentage.
+- **The worked 100000 → 1000 example is removed** for the same reason. It also implied
+  which side the fee is taken from, which no source states.
+- No replacement pricing is introduced anywhere. The provider placeholders in
+  `providers.md` are unchanged.
 
 ## Not in scope
 
-- No monthly-plan amount and no tips-plan price.
-- No profile-specific pricing beyond the single standard placeholder.
-- No provider fees or FX spreads here; those live in `providers.md` and are placeholders
-  too.
+- No monthly plan amount and no tips plan price.
+- No profile-specific pricing and no FlexiPay margin for outside-vault legs.
+- No restatement of provider fees or FX spreads; those live in `providers.md`.
 - No JSON file, no loader, no zod schema and no fee calculation code.
 
-## Open questions (for the integrator; `docs/CONTRACT_CHANGES.md` is not edited here)
+## Open questions
 
-- **Q8 — rounding rule.** Affected: fee calculation, quote `fees` breakdown (§6.4), invoice
-  and batch totals. Until it is defined, this draft only uses an exact example and must not
-  be read as a rounding policy.
-- **Q9 — whether the FlexiPay fee is charged on the send side or the receive side.**
-  Affected: quote `expectedReceive`, dashboard display, claim page amount, and whether the
-  `fees.json` placeholder and the vault's fixed fee must match.
+- **C-1 — source conflict, reported not edited.** ARCHITECTURE §16 lists "FlexiPay fee
+  shown | 1.0 percent placeholder from `fees.json`", which contradicts §8 and the owner
+  instruction that the 1 percent is the contract's fixed deployment fee. This draft follows
+  §8 and the owner. `ARCHITECTURE.md` is not edited by this task.
+- **Q-fee-side.** Which side the fixed vault fee is deducted from, for display purposes, is
+  not stated. No receive amount is published.
+- **Q-rounding.** How the contract rounds a fee that is not an exact division is a contract
+  matter. `contracts/payout_vault/RULES.md` is the spec (ARCHITECTURE §12) and is not in
+  this working copy, so no rounding rule is assumed here.
+- **Q-margin.** Whether `fees.json` should carry any FlexiPay margin for outside-vault legs
+  is not specified; none is written until it is.

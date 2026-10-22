@@ -41,10 +41,10 @@ demo data (`simulated: true`).
 
 | from | to | allowedDestinationTypes | recipientKinds | cryptoLegAllowed.individual | cryptoLegAllowed.company | limits.individual.min (placeholder) | limits.individual.max (placeholder) | limits.company.min (placeholder) | limits.company.max (placeholder) | legsAvailable | domesticRail | regulationNote | simulated |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| US USD | US USD | bank_account | individual, company | false | false | TBD | TBD | TBD | TBD | collect: TBD; convert: TBD; settle: none; payout: sim_bank_us_ach | sim_bank_us_ach | Domestic USD, same country and currency. Bank account only; no crypto route in this corridor. | true |
+| US USD | US USD | bank_account | individual, company | false | false | TBD | TBD | TBD | TBD | collect: TBD; convert: TBD; settle: none; payout: TBD | sim_bank_us_ach | Domestic USD, same country and currency. Bank account only; no crypto route in this corridor. | true |
 | US USD | PH PHP | bank_account, ewallet | individual, company | TBD | TBD | TBD | TBD | TBD | TBD | collect: sim_bank_us_ach; convert: sim_fx; settle: stellar_usdc; payout: sim_bank_ph_instapay, sim_ewallet_ph | none | Cross-border USD to PHP. Bank account and e-wallet destinations; simulated rails only. | true |
 | US USD | BR BRL | bank_account | individual, company | TBD | TBD | TBD | TBD | TBD | TBD | collect: sim_bank_us_ach; convert: sim_fx; settle: stellar_usdc; payout: sim_bank_br_pix | none | Cross-border USD to BRL. Bank account only. Baseline Latin American country: see the Latin American demo country decision section below. | true |
-| US USD | ZA ZAR | bank_account | individual, company | false | false | TBD | TBD | TBD | TBD | collect: TBD; convert: TBD; settle: none; payout: sim_bank_za_eft | none | Bank rails only. Draft cross-border crypto rules of 3 Aug 2026 are being rewritten with no timeline; demo policy, not legal advice. | true |
+| US USD | ZA ZAR | bank_account | individual, company | false | false | TBD | TBD | TBD | TBD | collect: TBD; convert: TBD; settle: none; payout: TBD | none | Bank rails only. Draft cross-border crypto rules of 3 Aug 2026 are being rewritten with no timeline; demo policy, not legal advice. | true |
 
 Exactly the four baseline corridors in ARCHITECTURE §6.8: US to US, US to Philippines,
 US to Brazil and US to South Africa. EU, UK and Mexico are configuration to add after the
@@ -81,7 +81,8 @@ values drop in unchanged once the answer is recorded.
 - The corridor allows `bank_account` only: no `crypto_wallet` and no `crypto_custodial`
   destination endpoint type.
 - `legsAvailable` contains **no** `settle` provider and never references `stellar_usdc`
-  (`settle: none` is a confirmed absence, not a placeholder).
+  (`settle: none` is a confirmed absence, not a placeholder). The rest of the ZA leg
+  mapping is unresolved (CC-1) and is written `TBD`, not guessed.
 - Draft cross-border crypto rules of 3 Aug 2026 would stop companies sending or
   receiving crypto across the border; on 21 Oct 2026 the finance minister said they will
   be rewritten, with no timeline. Until final rules exist, this build routes South Africa
@@ -99,16 +100,17 @@ values drop in unchanged once the answer is recorded.
   providers. §8's sequence is collect, convert, settle, convert, payout, so the single
   `convert` entry serves both conversion legs — §6.8 maps ids "per leg kind", not per leg
   position.
-- **US domestic:** the payout rail `sim_bank_us_ach` is confirmed by §6.8 (`domesticRail`)
-  and the task card, and `settle: none` follows from "no crypto route". **`collect` and
-  `convert` are `TBD` (CC-2):** §8 calls the domestic route "the domestic rail" without
-  naming its leg kind, so whether it is one `payout` leg or a collect plus payout is not
-  specified and is not guessed here.
-- **South Africa bank-only cross-border:** `payout: sim_bank_za_eft` and `settle: none` are
-  confirmed (bank-only corridor, ZA EFT is the installed provider). **`collect` and
-  `convert` are `TBD` (CC-1):** §8 defines only a domestic route, a route that settles on
-  Stellar, and the anchor route, so a cross-border route with no `settle` leg has no
-  specified leg sequence.
+- **US domestic:** `domesticRail: sim_bank_us_ach` is confirmed by §6.8 and the task card,
+  and `settle: none` follows from "no crypto route". **The whole leg mapping is `TBD`
+  (CC-2):** §8 calls the domestic route "the domestic rail" without naming its leg kind,
+  so writing the provider under any leg kind would assert the mapping that is itself
+  unresolved. `sim_bank_us_ach` is documented as a `collect`/`payout` provider in
+  `providers.md`; the corridor mapping waits for CC-2.
+- **South Africa bank-only cross-border:** `settle: none` is confirmed (no crypto leg).
+  **The leg mapping is otherwise `TBD` (CC-1):** §8 defines only a domestic route, a route
+  that settles on Stellar, and the anchor route, so a cross-border bank-only route has no
+  specified leg sequence. `sim_bank_za_eft` is documented as the ZA `payout` provider in
+  `providers.md`, but the corridor mapping is not asserted until CC-1 is answered.
 - **Conversion:** `sim_fx` on every cross-border corridor.
 
 No new leg kind is invented, and South Africa is not routed through crypto.
@@ -136,8 +138,8 @@ This subsection is the **only** place that records the Latin American demo count
 |---|---|---|---|
 | cryptoLegAllowed.individual and cryptoLegAllowed.company on US to PH and US to BR | no source states per-kind crypto permission for these corridors | Q4 | integrator |
 | limits.individual.min, limits.individual.max, limits.company.min, limits.company.max on all four corridors | §6.8 does not say whether the per-payment limit is the send side or the receive side, and an amount needs a currency | Q3 | integrator |
-| collect and convert on US to US | §8 names the domestic rail without naming its leg kind | CC-2 | integrator |
-| collect and convert on US to ZA | §8 has no cross-border route without a settle leg | CC-1 | integrator |
+| legsAvailable on US to US (every leg kind except settle) | §8 names the domestic rail without naming its leg kind | CC-2 | integrator |
+| legsAvailable on US to ZA (collect, convert, payout) | §8 has no cross-border route without a settle leg | CC-1 | integrator |
 
 ## Contract-change requests and open questions
 
