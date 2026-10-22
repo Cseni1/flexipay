@@ -30,9 +30,11 @@ fn setup<'a>(fee_bps: u32) -> Setup<'a> {
     let payer = Address::generate(&env);
     asset.mint(&payer, &(10_000 * UNIT));
 
-    let vault_id = env.register(PayoutVault, ());
+    let vault_id = env.register(
+        PayoutVault,
+        PayoutVaultArgs::__constructor(&token_addr, &treasury, &fee_bps),
+    );
     let vault = PayoutVaultClient::new(&env, &vault_id);
-    vault.init(&token_addr, &treasury, &fee_bps);
 
     Setup {
         env,
@@ -229,19 +231,20 @@ fn insufficient_balance_blocks_payout() {
 }
 
 #[test]
-fn init_twice_and_fee_cap() {
+fn constructor_sets_config_at_deployment() {
     let s = setup(150);
-    let t = Address::generate(&s.env);
     assert_eq!(
-        s.vault.try_init(&t, &t, &100),
-        Err(Ok(Error::AlreadyInitialized))
+        s.vault.config(),
+        (s.token.address.clone(), s.treasury.clone(), 150)
     );
+}
 
+#[test]
+#[should_panic(expected = "Error(Contract, #4)")]
+fn fee_cap_is_enforced_at_deployment() {
     let env = Env::default();
-    let id = env.register(PayoutVault, ());
-    let c = PayoutVaultClient::new(&env, &id);
     let a = Address::generate(&env);
-    assert_eq!(c.try_init(&a, &a, &1_001), Err(Ok(Error::FeeTooHigh)));
+    env.register(PayoutVault, PayoutVaultArgs::__constructor(&a, &a, &1_001));
 }
 
 fn lock(s: &Setup, n: u8, amount: i128) -> (u64, Bytes) {

@@ -10,7 +10,7 @@
 #
 # Requires Stellar CLI 28 and the Rust toolchain from rust-toolchain.toml.
 # Env overrides: FP_VAULT_FEE_BPS (default 100 = 1.0 %), FP_DEMO_MINT (stroops, default 10,000 USDC),
-#                FP_REDEPLOY_VAULT=1 to deploy a new vault even if one exists.
+#                FP_REDEPLOY_VAULT=1 to deploy a new vault even if one exists (the vault id changes).
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
@@ -78,15 +78,23 @@ stellar contract build --package payout-vault >/dev/null
 WASM=target/wasm32v1-none/release/payout_vault.wasm
 VAULT_ID=$(stellar contract alias show fp-payout-vault --network "$NET" 2>/dev/null || true)
 if [ -z "$VAULT_ID" ] || [ "${FP_REDEPLOY_VAULT:-0}" = 1 ]; then
+	# setup runs in the constructor, in the same transaction as the deployment
 	VAULT_ID=$(stellar contract deploy --wasm "$WASM" --source-account fp-deployer --network "$NET" \
-		--alias fp-payout-vault)
-	# init has no caller check; run it right after deploy and verify the config below
-	stellar contract invoke --id "$VAULT_ID" --source-account fp-deployer --network "$NET" -- \
-		init --token "$USDC_ID" --treasury "$TREASURY" --fee_bps "$FEE_BPS" >/dev/null
+		--alias fp-payout-vault -- \
+		--token "$USDC_ID" --treasury "$TREASURY" --fee_bps "$FEE_BPS")
 fi
 echo "fp-payout-vault $VAULT_ID"
 
-log "Verify vault config"
+# warn when the deployed vault runs different code than this checkout
+DEPLOYED_WASM=$(mktemp)
+stellar contract fetch --id "$VAULT_ID" --network "$NET" --out-file "$DEPLOYED_WASM" >/dev/null 2>&1 || true
+if ! cmp -s "$DEPLOYED_WASM" "$WASM"; then
+	echo "WARNING: the deployed vault runs different code than this checkout." >&2
+	echo "         Re-run with FP_REDEPLOY_VAULT=1 to deploy it (the vault id changes)." >&2
+fi
+rm -f "$DEPLOYED_WASM"
+
+log "Verify vault config (second safeguard after the constructor)"
 CONFIG=$(stellar contract invoke --id "$VAULT_ID" --source-account fp-deployer --network "$NET" --send no -- config)
 echo "$CONFIG"
 case "$CONFIG" in
