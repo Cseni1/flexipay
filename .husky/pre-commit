@@ -1,1 +1,19 @@
-npx lint-staged
+#!/usr/bin/env sh
+# FlexiPay guards. Activated by core.hooksPath=.husky (set in the FlexiPay-only git config).
+
+# 1. Never commit under the other product's identity.
+email=$(git config user.email || true)
+case "$(printf '%s' "$email" | tr '[:upper:]' '[:lower:]')" in
+*flexi[w]ork*)
+	echo "Refusing to commit: user.email is '$email'. Use the FlexiPay identity (see ~/.gitconfig-flexipay)." >&2
+	exit 1
+	;;
+esac
+
+# 2. Keep the other product's name out of real-code folders.
+bash scripts/check-separation.sh --staged || exit 1
+
+# Existing qualifier step, run only when lint-staged is installed.
+if [ -x node_modules/.bin/lint-staged ]; then
+	npx --no-install lint-staged
+fi

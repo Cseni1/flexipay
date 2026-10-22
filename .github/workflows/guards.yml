@@ -1,0 +1,13 @@
+name: Guards
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  separation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Product name stays out of real-code folders
+        run: bash scripts/check-separation.sh

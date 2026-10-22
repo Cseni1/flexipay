@@ -52,6 +52,4 @@ app-lib/clients/*
 # TypeScript incremental build info
 *.tsbuildinfo
 
-# Scaffold CI not used for hackathon deploy
-.github/
 
