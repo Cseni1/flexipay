@@ -107,6 +107,41 @@ describe("sandbox controls", () => {
 		})
 	})
 
+	it("lets down and forced failure win over failNext without consuming it", async () => {
+		const adapter = adapterOf(sim, US)
+		sim.controls.failNext(US, 1)
+		sim.controls.setHealth(US, "down")
+		const down = await adapter.execute(collectLeg(money("100000", "USD")))
+		expect(await adapter.status(down.externalRef)).toMatchObject({
+			error: { code: "provider_down" },
+		})
+
+		sim.controls.setHealth(US, "up")
+		sim.controls.setForcedFailure(US, true)
+		const forced = await adapter.execute(
+			collectLeg(money("100000", "USD"), { legId: "leg_2", attempt: 1 }),
+		)
+		expect(await adapter.status(forced.externalRef)).toMatchObject({
+			error: { code: "sandbox_forced_failure" },
+		})
+
+		// the one queued failure is still waiting, and a replay never consumes it
+		sim.controls.setForcedFailure(US, false)
+		await adapter.execute(collectLeg(money("100000", "USD")))
+		const queued = await adapter.execute(
+			collectLeg(money("100000", "USD"), { legId: "leg_3", attempt: 1 }),
+		)
+		expect(await adapter.status(queued.externalRef)).toMatchObject({
+			status: "failed",
+		})
+		const after = await adapter.execute(
+			collectLeg(money("100000", "USD"), { legId: "leg_4", attempt: 1 }),
+		)
+		expect(await adapter.status(after.externalRef)).toMatchObject({
+			status: "succeeded",
+		})
+	})
+
 	it("clears every override on reset", async () => {
 		const adapter = adapterOf(sim, US)
 		sim.controls.failNext(US, 5)
