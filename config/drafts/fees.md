@@ -4,13 +4,16 @@
 implemented in this task. This is the reviewable content for `config/fees.json`, written
 only after the CC0 configuration schema and loader are merged.
 
-**Sources:** ARCHITECTURE v3 §6.4 (quote `validUntil` default), §6.5 (payment profiles),
-§12 (`tip_pool`: "tips with no fee"), §16 (open decisions: FlexiPay fee shown, quote
-validity); the SF0-prep task card.
+**Sources (re-read 22 Oct 2026, current copies):** ARCHITECTURE v3 §6.4 (quote
+`validUntil`), §6.5 (payment profiles), §8 (the vault's fixed fee for vault-settled
+routes), §12 (`tip_pool`: "tips with no fee"), §16 (open decisions: FlexiPay fee shown,
+quote validity); the SF0-prep task card.
 
-**Placeholders:** every number in this file is a **draft placeholder**, including the
-zeros. These are not approved prices, not a business model and not a real provider quote.
-The demo must show the "Simulated" label wherever a fee is displayed.
+**Confirmed vs unresolved:** the percentages below are source-defined defaults. Anything a
+source leaves open is `TBD` and listed in the blockers section; it is not an approved
+value. Every number that is present is a **draft placeholder**, including the zeros — not
+an approved price, not a business model and not a real provider quote. The demo must show
+the "Simulated" label wherever a fee is displayed.
 
 ## Standard FlexiPay fee
 
@@ -20,6 +23,12 @@ One standard placeholder, applied to every non-tips profile:
 
 ARCHITECTURE §16: "FlexiPay fee shown — 1.0 percent placeholder from `fees.json`". There is
 no profile-specific pricing and no monthly-plan amount in this task.
+
+**Scope of this value (§8).** For routes that settle through the vault, the FlexiPay fee
+is the vault's fixed fee, read from the contract `config()`, so it cannot differ from what
+is charged on-chain; `fees.json` sets the fee only for legs outside the vault. This file
+therefore records the standard placeholder for the non-vault case only. Whether the two
+must be equal is not stated by the sources and is not decided here.
 
 ## Conventions
 
@@ -32,6 +41,7 @@ no profile-specific pricing and no monthly-plan amount in this task.
   draft placeholder.
 - Sums are done with integer arithmetic in the future code path (BigInt where a
   comparison or a multiplication by bps is involved); no floating-point maths.
+- **`TBD`** means unresolved: blocked on an integrator answer, never a guess.
 
 ## Table F1 — FlexiPay fee per profile
 
@@ -75,11 +85,19 @@ establishes no price. The fee is exact in integer arithmetic:
 | exampleSendAmount | "100000" USD | true | illustrative only, 100000 minor units = 1000.00 USD |
 | exampleFlexiPayFeeBps | 100 | true | the standard fee from Table F1 |
 | exampleFlexiPayFee | "1000" USD | true | 100000 x 100 / 10000, exact integer result |
-| exampleExpectedReceiveIndicator | "99000" USD | true | same currency only; no FX, no leg fees applied |
+| exampleExpectedReceiveIndicator | TBD | true | unresolved: which side the fee is charged on is not stated, so no receive amount is published (Q9) |
 
-The last row is a same-currency indicator only. Cross-currency receive amounts need FX
-rates and leg fees, which are CC0 and CC1 interface work; this draft does not compute
-them and does not publish a rate.
+The send amount, the bps and the fee are exact integer arithmetic. The receive figure is
+deliberately absent: publishing one would decide whether the fee is deducted from the send
+or the receive side, and would also need FX rates and leg fees, which are CC0 and CC1
+interface work.
+
+## Blockers — unresolved cells (not approved configuration)
+
+| cells | why unresolved | question | decided by |
+|---|---|---|---|
+| exampleExpectedReceiveIndicator | the side the FlexiPay fee is charged on is not stated, so no receive amount can be computed | Q9 | integrator |
+| every non-exact fee calculation | no source defines how a fee whose amount x bps is not divisible by 10000 is rounded | Q8 | integrator |
 
 ## Not in scope
 
@@ -91,10 +109,9 @@ them and does not publish a rate.
 
 ## Open questions (for the integrator; `docs/CONTRACT_CHANGES.md` is not edited here)
 
-- **Q8 — rounding rule.** The sources do not say how a non-exact fee (amount x bps not
-  divisible by 10000) is rounded. Affected: fee calculation, quote `fees` breakdown (§6.4),
-  invoice and batch totals. Until it is defined, this draft only uses an exact example and
-  must not be read as a rounding policy.
+- **Q8 — rounding rule.** Affected: fee calculation, quote `fees` breakdown (§6.4), invoice
+  and batch totals. Until it is defined, this draft only uses an exact example and must not
+  be read as a rounding policy.
 - **Q9 — whether the FlexiPay fee is charged on the send side or the receive side.**
-  §6.4 lists a fee breakdown without naming the side. Affected: quote `expectedReceive`,
-  dashboard display, claim page amount. Not decided here.
+  Affected: quote `expectedReceive`, dashboard display, claim page amount, and whether the
+  `fees.json` placeholder and the vault's fixed fee must match.

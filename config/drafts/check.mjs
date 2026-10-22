@@ -3,15 +3,29 @@
  * SF0-prep draft checker (dependency-free, no writes, no network).
  *
  * Reads the three draft tables next to this script (corridors.md, providers.md,
- * fees.md) and checks that they are complete and internally consistent enough for
- * review. It relies on the simple, fixed table format described in those files; it is
- * not a general markdown parser.
+ * fees.md) and checks that they are internally consistent and that every value is
+ * either confirmed by a source or explicitly marked unresolved.
  *
- * Scope: this validates the DRAFT CONTENT only. It is not a validator for the future
- * CC0 configuration schema (config/corridors.json, providers.json, fees.json) and does
- * not load, generate or typecheck any JSON config.
+ * TWO KINDS OF RESULT
+ * - A failing check is a contradiction or a missing required value: exit code 1.
+ * - `TBD` is a first-class unresolved state. It is never treated as a passing value:
+ *   the script lists every unresolved cell as a blocker and says in the final line that
+ *   those cells are NOT approved configuration. Nothing about them is validated as
+ *   policy, because no source states them.
  *
- * Prints PASS and exits 0 only when every implemented check passes.
+ * The three assumption classes this guards are the ones review asked to keep
+ * unresolved rather than decided:
+ * - per-kind crypto eligibility for PH and BR (Q4),
+ * - the corridor limit values and their send/receive side (Q3),
+ * - the bank-only cross-border leg sequence and the domestic rail leg kind (CC-1, CC-2),
+ * plus the FX limit side (Q6) and the fee side (Q9).
+ *
+ * Scope: the DRAFT CONTENT only. This is not a validator for the future CC0
+ * configuration schema (config/corridors.json, providers.json, fees.json) and does not
+ * load, generate or typecheck any JSON config.
+ *
+ * It relies on the simple, fixed table format described in those files; it is not a
+ * general markdown parser.
  */
 
 import { readFileSync } from 'node:fs';
@@ -33,6 +47,8 @@ for (const [key, name] of Object.entries(FILES)) {
 }
 
 /* ------------------------------------------------------------------ constants */
+
+const TBD = 'TBD';
 
 const CORRIDOR_COLUMNS = [
   'from',
@@ -105,7 +121,26 @@ const REQUIRED_PROVIDERS = [
 
 const SETTLEMENT_RAIL_ID = 'stellar_usdc';
 
-const SECRET_MARKERS = [/sk_(?:live|test)_[A-Za-z0-9]/, /gh[pousr]_[A-Za-z0-9]{10,}/, /AKIA[0-9A-Z]{16}/, /-----BEGIN/, /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/];
+// Columns where an unresolved value is allowed. Everywhere else a TBD is a failure:
+// confirmed rules must be written out.
+const TBD_ALLOWED_COLUMNS = new Set([
+  'cryptoLegAllowed.individual',
+  'cryptoLegAllowed.company',
+  ...LIMIT_COLUMNS,
+  'legsAvailable',
+  'feeFixed (placeholder)',
+  'min (placeholder)',
+  'max (placeholder)',
+  'value',
+]);
+
+const SECRET_MARKERS = [
+  /sk_(?:live|test)_[A-Za-z0-9]/,
+  /gh[pousr]_[A-Za-z0-9]{10,}/,
+  /AKIA[0-9A-Z]{16}/,
+  /-----BEGIN/,
+  /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/,
+];
 
 /* ------------------------------------------------------------------- parsing */
 
@@ -115,7 +150,7 @@ function splitRow(line) {
     .replace(/^\|/, '')
     .replace(/\|$/, '')
     .split('|')
-    .map((cell) => cell.trim());
+    .map((entry) => entry.trim());
 }
 
 function isTableRow(line) {
@@ -185,19 +220,67 @@ loadTable('example', 'fees', EXAMPLE_COLUMNS, 'fees.md');
 
 function table(key, label) {
   if (!T[key]) {
-    const recorded = tableErrors.find((message) => message.startsWith(label.split(' ')[0]));
+    const prefix = label.split(' ')[0];
+    const recorded = tableErrors.find((message) => message.startsWith(prefix));
     throw new Error(recorded || `${label}: table not found`);
   }
   return T[key];
 }
 
-function cell(tbl, row, column, label) {
-  const index = tbl.header.indexOf(column);
-  if (index < 0) throw new Error(`${label}: missing column ${column}`);
-  const value = row[index];
-  if (value === undefined || value === '') throw new Error(`${label}: empty value in column ${column}`);
+/** Wraps a data row with the file:line its values come from. */
+function rowRefs(tableKey, fileKey) {
+  const tbl = table(tableKey, `${fileKey}.md`);
+  return tbl.rows.map((row, index) => ({
+    row,
+    tbl,
+    where: `${fileKey}.md:${tbl.line + 2 + index}`,
+  }));
+}
+
+function cell(r, column) {
+  const index = r.tbl.header.indexOf(column);
+  if (index < 0) throw new Error(`${r.where}: missing column ${column}`);
+  const value = r.row[index];
+  if (value === undefined || value === '') throw new Error(`${r.where}: empty value in column ${column}`);
   return value;
 }
+
+function isTbd(value) {
+  return value.trim() === TBD;
+}
+
+/* ----------------------------------------------------------------- blockers */
+
+const blockers = new Map();
+
+function blockerKey(where, column) {
+  return `${where}|${column}`;
+}
+
+function block(r, column, reason) {
+  blockers.set(blockerKey(r.where, column), { where: r.where, column, reason });
+}
+
+/** A confirmed value: TBD is a failure here. */
+function confirmed(r, column) {
+  const value = cell(r, column);
+  if (isTbd(value)) {
+    throw new Error(`${r.where} ${column}: TBD is not allowed here; this value is fixed by the sources`);
+  }
+  return value;
+}
+
+/** A value that may be unresolved: TBD registers a blocker instead of passing. */
+function maybeMoney(r, column, reason) {
+  const value = cell(r, column);
+  if (isTbd(value)) {
+    block(r, column, reason);
+    return null;
+  }
+  return money(value, `${r.where} ${column}`);
+}
+
+/* -------------------------------------------------------------- value parsers */
 
 const MONEY = /^"(\d+)" ([A-Z]{3})$/;
 const INTEGER = /^\d+$/;
@@ -231,28 +314,32 @@ function csv(value) {
     .filter(Boolean);
 }
 
-/** "collect: a, b; convert: none; ..." -> Map<legKind, string[]> with 'none' -> [] */
-function parseLegs(value, label) {
+/** "collect: a, b; convert: none; ..." -> Map<legKind, { tbd, ids }> */
+function parseLegs(value, r) {
   const legs = new Map();
   for (const part of value.split(';')) {
     const entry = part.trim();
-    if (!entry) throw new Error(`${label}: empty leg entry`);
+    if (!entry) throw new Error(`${r.where} legsAvailable: empty leg entry`);
     const match = /^([a-z_]+): (.+)$/.exec(entry);
-    if (!match) throw new Error(`${label}: leg entry ${JSON.stringify(entry)} must look like "collect: id, id"`);
+    if (!match) throw new Error(`${r.where} legsAvailable: leg entry ${JSON.stringify(entry)} must look like "collect: id, id"`);
     const kind = match[1];
-    if (!LEG_KINDS.includes(kind)) throw new Error(`${label}: unknown leg kind ${kind}`);
-    if (legs.has(kind)) throw new Error(`${label}: leg kind ${kind} listed twice`);
-    const ids = csv(match[2]);
-    if (ids.length === 0) throw new Error(`${label}: leg kind ${kind} has no value (use "none")`);
-    if (ids.length === 1 && ids[0] === 'none') {
-      legs.set(kind, []);
-    } else {
-      if (ids.includes('none')) throw new Error(`${label}: leg ${kind} mixes "none" with provider ids`);
-      legs.set(kind, ids);
+    if (!LEG_KINDS.includes(kind)) throw new Error(`${r.where} legsAvailable: unknown leg kind ${kind}`);
+    if (legs.has(kind)) throw new Error(`${r.where} legsAvailable: leg kind ${kind} listed twice`);
+    const raw = match[2].trim();
+    if (raw === TBD) {
+      legs.set(kind, { tbd: true, ids: [] });
+      continue;
     }
+    const ids = csv(raw);
+    if (ids.length === 1 && ids[0] === 'none') {
+      legs.set(kind, { tbd: false, ids: [] });
+      continue;
+    }
+    if (ids.includes('none')) throw new Error(`${r.where} legsAvailable: leg ${kind} mixes "none" with provider ids`);
+    legs.set(kind, { tbd: false, ids });
   }
   for (const kind of LEG_KINDS) {
-    if (!legs.has(kind)) throw new Error(`${label}: leg kind ${kind} is not listed (use "none" when absent)`);
+    if (!legs.has(kind)) throw new Error(`${r.where} legsAvailable: leg kind ${kind} is not listed (use "none" or TBD)`);
   }
   return legs;
 }
@@ -271,34 +358,32 @@ function check(name, fn) {
 }
 
 function corridorRows() {
-  const tbl = table('corridors', 'corridors.md corridor table');
-  return tbl.rows.map((row, index) => ({ row, tbl, label: `corridors.md:${tbl.line + 2 + index} ${cell(tbl, row, 'from', 'corridors.md').toString()}` }));
+  return rowRefs('corridors', 'corridors');
 }
 
 function providerRows() {
-  const tbl = table('providers', 'providers.md provider table');
-  return tbl.rows.map((row, idx) => ({ row, tbl, label: `providers.md:${tbl.line + 2 + idx} ${cell(tbl, row, 'id', 'providers.md')}` }));
+  return rowRefs('providers', 'providers');
 }
 
 /** Provider/rail ids documented in providers.md, mapped to their legKinds. */
 function documentedProviders() {
   const map = new Map();
-  for (const { row, tbl, label } of providerRows()) {
-    const id = cell(tbl, row, 'id', label);
-    if (map.has(id)) throw new Error(`${label}: provider id ${id} documented twice`);
+  for (const r of providerRows()) {
+    const id = cell(r, 'id');
+    if (map.has(id)) throw new Error(`${r.where}: provider id ${id} documented twice`);
     map.set(id, {
-      simulated: boolean(cell(tbl, row, 'simulated', label), `${label} simulated`),
-      legKinds: csv(cell(tbl, row, 'legKinds', label)),
+      simulated: boolean(cell(r, 'simulated'), `${r.where} simulated`),
+      legKinds: csv(cell(r, 'legKinds')),
     });
   }
   const settlement = table('settlement', 'providers.md settlement rail table');
-  for (const row of settlement.rows) {
-    const id = cell(settlement, row, 'id', 'providers.md settlement rail');
-    const label = `providers.md settlement rail ${id}`;
-    if (map.has(id)) throw new Error(`${label}: id documented twice`);
+  for (const [index, row] of settlement.rows.entries()) {
+    const r = { row, tbl: settlement, where: `providers.md:${settlement.line + 2 + index}` };
+    const id = cell(r, 'id');
+    if (map.has(id)) throw new Error(`${r.where}: id ${id} documented twice`);
     map.set(id, {
-      simulated: boolean(cell(settlement, row, 'simulated', label), `${label} simulated`),
-      legKinds: csv(cell(settlement, row, 'legKinds', label)),
+      simulated: boolean(cell(r, 'simulated'), `${r.where} simulated`),
+      legKinds: csv(cell(r, 'legKinds')),
     });
   }
   return map;
@@ -310,17 +395,15 @@ check('corridors.md: corridor table carries every §6.8 column', () => {
   table('corridors', 'corridors.md');
 });
 
-check('corridors.md: exactly the four required corridors, no duplicates', () => {
+check('corridors.md: exactly the four baseline corridors, no duplicates', () => {
   const rows = corridorRows();
   if (rows.length !== REQUIRED_CORRIDORS.length) {
     throw new Error(`expected ${REQUIRED_CORRIDORS.length} corridor rows, found ${rows.length}`);
   }
   const seen = new Set();
-  for (const { row, tbl, label } of rows) {
-    const from = cell(tbl, row, 'from', label);
-    const to = cell(tbl, row, 'to', label);
-    const pair = `${from} -> ${to}`;
-    if (seen.has(pair)) throw new Error(`${label}: corridor ${pair} listed twice`);
+  for (const r of rows) {
+    const pair = `${cell(r, 'from')} -> ${cell(r, 'to')}`;
+    if (seen.has(pair)) throw new Error(`${r.where}: corridor ${pair} listed twice`);
     seen.add(pair);
   }
   for (const required of REQUIRED_CORRIDORS) {
@@ -332,179 +415,238 @@ check('corridors.md: exactly the four required corridors, no duplicates', () => 
 });
 
 check('corridors.md: every corridor is marked simulated: true', () => {
-  for (const { row, tbl, label } of corridorRows()) {
-    const value = boolean(cell(tbl, row, 'simulated', label), `${label} simulated`);
-    if (!value) throw new Error(`${label}: simulated must be true`);
+  for (const r of corridorRows()) {
+    if (!boolean(confirmed(r, 'simulated'), `${r.where} simulated`)) {
+      throw new Error(`${r.where}: simulated must be true`);
+    }
   }
 });
 
 check('corridors.md: destination endpoint types are source-defined (§6.3)', () => {
   let sawCryptoDestination = false;
-  for (const { row, tbl, label } of corridorRows()) {
-    const types = csv(cell(tbl, row, 'allowedDestinationTypes', label));
-    if (types.length === 0) throw new Error(`${label}: no destination endpoint type`);
+  for (const r of corridorRows()) {
+    const types = csv(confirmed(r, 'allowedDestinationTypes'));
+    if (types.length === 0) throw new Error(`${r.where}: no destination endpoint type`);
     for (const type of types) {
-      if (!ENDPOINT_TYPES.includes(type)) throw new Error(`${label}: ${type} is not a §6.3 endpoint type`);
+      if (!ENDPOINT_TYPES.includes(type)) throw new Error(`${r.where}: ${type} is not a §6.3 endpoint type`);
       if (type === 'crypto_wallet' || type === 'crypto_custodial') sawCryptoDestination = true;
     }
   }
   if (sawCryptoDestination) {
-    throw new Error('a corridor allows a crypto destination endpoint; no corridor in this draft should');
+    throw new Error('a corridor allows a crypto destination endpoint; no baseline corridor in this draft should');
   }
 });
 
 check('corridors.md: recipient kinds are individual and company', () => {
-  for (const { row, tbl, label } of corridorRows()) {
-    const kinds = csv(cell(tbl, row, 'recipientKinds', label));
-    if (!kinds.includes('individual') || !kinds.includes('company')) {
-      throw new Error(`${label}: recipientKinds must contain individual and company, found ${kinds.join(', ')}`);
-    }
+  for (const r of corridorRows()) {
+    const kinds = csv(confirmed(r, 'recipientKinds'));
     for (const kind of kinds) {
-      if (kind !== 'individual' && kind !== 'company') throw new Error(`${label}: unknown recipient kind ${kind}`);
+      if (kind !== 'individual' && kind !== 'company') throw new Error(`${r.where}: unknown recipient kind ${kind}`);
+    }
+    if (!kinds.includes('individual') || !kinds.includes('company')) {
+      throw new Error(`${r.where}: recipientKinds must contain individual and company, found ${kinds.join(', ')}`);
     }
   }
 });
 
-check('corridors.md: cryptoLegAllowed is an explicit boolean per recipient kind', () => {
-  for (const { row, tbl, label } of corridorRows()) {
+check('corridors.md: US and ZA are confirmed crypto:false for both recipient kinds', () => {
+  let checked = 0;
+  for (const r of corridorRows()) {
+    const to = cell(r, 'to');
+    if (to !== 'US USD' && to !== 'ZA ZAR') continue;
     for (const kind of ['individual', 'company']) {
-      boolean(cell(tbl, row, `cryptoLegAllowed.${kind}`, label), `${label} cryptoLegAllowed.${kind}`);
+      const value = confirmed(r, `cryptoLegAllowed.${kind}`);
+      checked += 1;
+      if (boolean(value, `${r.where} cryptoLegAllowed.${kind}`)) {
+        throw new Error(`${r.where}: cryptoLegAllowed.${kind} must be false for ${to}`);
+      }
+    }
+  }
+  if (checked !== 4) throw new Error(`expected US and ZA crypto rules to be checked 4 times, checked ${checked}`);
+});
+
+check('corridors.md: PH and BR crypto policy is unresolved (TBD), never asserted', () => {
+  let checked = 0;
+  for (const r of corridorRows()) {
+    const to = cell(r, 'to');
+    if (to !== 'PH PHP' && to !== 'BR BRL') continue;
+    for (const kind of ['individual', 'company']) {
+      const value = cell(r, `cryptoLegAllowed.${kind}`);
+      checked += 1;
+      if (!isTbd(value)) {
+        throw new Error(`${r.where} cryptoLegAllowed.${kind}: no source states per-kind crypto permission for ${to}, so this must stay TBD (Q4) rather than assert a policy`);
+      }
+      block(r, `cryptoLegAllowed.${kind}`, 'Q4: per-kind crypto policy for this corridor is not stated by any source; when the integrator records the answer, update this table and this check together');
+    }
+  }
+  if (checked !== 4) throw new Error(`expected PH and BR crypto flags to be checked 4 times, checked ${checked}`);
+});
+
+check('corridors.md: each limit pair is both unresolved or both resolved', () => {
+  for (const r of corridorRows()) {
+    for (const kind of ['individual', 'company']) {
+      const min = cell(r, `limits.${kind}.min (placeholder)`);
+      const max = cell(r, `limits.${kind}.max (placeholder)`);
+      if (isTbd(min) !== isTbd(max)) {
+        throw new Error(`${r.where}: limits.${kind} has one bound unresolved and one written; record both or neither`);
+      }
     }
   }
 });
 
-check('corridors.md: limits are quoted integer minor units with explicit currency', () => {
-  for (const { row, tbl, label } of corridorRows()) {
-    for (const column of LIMIT_COLUMNS) money(cell(tbl, row, column, label), `${label} ${column}`);
+check('corridors.md: limits are quoted integer minor units, or TBD (Q3)', () => {
+  for (const r of corridorRows()) {
+    for (const column of LIMIT_COLUMNS) {
+      maybeMoney(r, column, 'Q3: §6.8 does not state whether a per-payment limit is the send side or the receive side, and an amount needs a currency');
+    }
   }
 });
 
-check('corridors.md: each limit min is less than its matching max (BigInt)', () => {
-  for (const { row, tbl, label } of corridorRows()) {
+check('corridors.md: each resolved limit min is less than its max (BigInt)', () => {
+  for (const r of corridorRows()) {
     for (const kind of ['individual', 'company']) {
-      const min = money(cell(tbl, row, `limits.${kind}.min (placeholder)`, label), `${label} limits.${kind}.min`);
-      const max = money(cell(tbl, row, `limits.${kind}.max (placeholder)`, label), `${label} limits.${kind}.max`);
+      const min = maybeMoney(r, `limits.${kind}.min (placeholder)`, 'Q3: limit side unresolved');
+      const max = maybeMoney(r, `limits.${kind}.max (placeholder)`, 'Q3: limit side unresolved');
+      if (min === null || max === null) continue;
       if (min.currency !== max.currency) {
-        throw new Error(`${label}: limits.${kind} min currency ${min.currency} does not match max currency ${max.currency}`);
+        throw new Error(`${r.where}: limits.${kind} min currency ${min.currency} does not match max currency ${max.currency}`);
       }
       if (!(min.minor < max.minor)) {
-        throw new Error(`${label}: limits.${kind} min ${min.minor} is not less than max ${max.minor}`);
+        throw new Error(`${r.where}: limits.${kind} min ${min.minor} is not less than max ${max.minor}`);
       }
-      if (min.minor === 0n) throw new Error(`${label}: limits.${kind} min is zero`);
+      if (min.minor === 0n) throw new Error(`${r.where}: limits.${kind} min is zero`);
     }
   }
 });
 
-check('corridors.md: limit currency matches the corridor receive currency', () => {
-  for (const { row, tbl, label } of corridorRows()) {
-    const to = cell(tbl, row, 'to', label);
-    const [, receiveCurrency] = to.split(' ');
-    if (!receiveCurrency) throw new Error(`${label}: "to" must be "<country> <currency>"`);
+check('corridors.md: each resolved limit uses the corridor receive currency', () => {
+  for (const r of corridorRows()) {
+    const [, receiveCurrency] = cell(r, 'to').split(' ');
+    if (!receiveCurrency) throw new Error(`${r.where}: "to" must be "<country> <currency>"`);
     for (const kind of ['individual', 'company']) {
       for (const bound of ['min', 'max']) {
-        const amount = money(cell(tbl, row, `limits.${kind}.${bound} (placeholder)`, label), label);
+        const amount = money2(r, `limits.${kind}.${bound} (placeholder)`);
+        if (amount === null) continue;
         if (amount.currency !== receiveCurrency) {
-          throw new Error(`${label}: limits.${kind}.${bound} is ${amount.currency} but the corridor receive currency is ${receiveCurrency}`);
+          throw new Error(`${r.where}: limits.${kind}.${bound} is ${amount.currency} but the corridor receive currency is ${receiveCurrency}`);
         }
       }
     }
   }
 });
 
-check('corridors.md: legsAvailable maps lists under all four leg kinds', () => {
-  for (const { row, tbl, label } of corridorRows()) {
-    const legs = parseLegs(cell(tbl, row, 'legsAvailable', label), label);
-    let total = 0;
-    for (const [kind, ids] of legs) {
-      for (const id of ids) {
-        total += 1;
-        if (!/^[a-z][a-z0-9_]+$/.test(id)) throw new Error(`${label}: leg ${kind} id ${id} is not a plain id`);
+function money2(r, column) {
+  const value = cell(r, column);
+  return isTbd(value) ? null : money(value, `${r.where} ${column}`);
+}
+
+check('corridors.md: legsAvailable maps all four leg kinds as lists, none or TBD', () => {
+  for (const r of corridorRows()) {
+    const legs = parseLegs(cell(r, 'legsAvailable'), r);
+    for (const [kind, entry] of legs) {
+      for (const id of entry.ids) {
+        if (!/^[a-z][a-z0-9_]+$/.test(id)) throw new Error(`${r.where}: leg ${kind} id ${id} is not a plain id`);
       }
     }
-    if (total === 0) throw new Error(`${label}: legsAvailable lists no provider at all`);
+    const resolved = [...legs.values()].filter((entry) => !entry.tbd && entry.ids.length > 0).length;
+    if (resolved === 0) throw new Error(`${r.where}: legsAvailable names no provider at all`);
   }
 });
 
-check('corridors.md: US domestic uses sim_bank_us_ach and excludes crypto', () => {
-  const domestic = corridorRows().find(({ row, tbl }) => {
-    const from = cell(tbl, row, 'from', 'corridors.md');
-    const to = cell(tbl, row, 'to', 'corridors.md');
-    return from === 'US USD' && to === 'US USD';
-  });
+check('corridors.md: US domestic uses sim_bank_us_ach, settle none, no crypto', () => {
+  const domestic = corridorRows().find((r) => cell(r, 'to') === 'US USD' && cell(r, 'from') === 'US USD');
   if (!domestic) throw new Error('US to US corridor row not found');
-  const { row, tbl, label } = domestic;
-  const types = csv(cell(tbl, row, 'allowedDestinationTypes', label));
+  const r = domestic;
+  const types = csv(confirmed(r, 'allowedDestinationTypes'));
   if (types.length !== 1 || types[0] !== 'bank_account') {
-    throw new Error(`${label}: US domestic must allow bank_account only, found ${types.join(', ')}`);
+    throw new Error(`${r.where}: US domestic must allow bank_account only, found ${types.join(', ')}`);
   }
   for (const kind of ['individual', 'company']) {
-    if (boolean(cell(tbl, row, `cryptoLegAllowed.${kind}`, label), label)) {
-      throw new Error(`${label}: US domestic must not allow a crypto leg for ${kind}`);
+    if (boolean(confirmed(r, `cryptoLegAllowed.${kind}`), r.where)) {
+      throw new Error(`${r.where}: US domestic must not allow a crypto leg for ${kind}`);
     }
   }
-  const legs = parseLegs(cell(tbl, row, 'legsAvailable', label), label);
-  for (const kind of ['collect', 'convert', 'settle']) {
-    if (legs.get(kind).length !== 0) throw new Error(`${label}: US domestic must not list a ${kind} provider`);
+  if (cell(r, 'legsAvailable').includes(SETTLEMENT_RAIL_ID)) {
+    throw new Error(`${r.where}: US domestic must not reference ${SETTLEMENT_RAIL_ID}`);
   }
-  const payouts = legs.get('payout');
-  if (!payouts.includes('sim_bank_us_ach')) throw new Error(`${label}: US domestic payout must include sim_bank_us_ach`);
-  const rail = cell(tbl, row, 'domesticRail', label);
-  if (rail !== 'sim_bank_us_ach') throw new Error(`${label}: domesticRail must be sim_bank_us_ach, found ${rail}`);
-  if (cell(tbl, row, 'legsAvailable', label).includes(SETTLEMENT_RAIL_ID)) {
-    throw new Error(`${label}: US domestic must not reference ${SETTLEMENT_RAIL_ID}`);
+  const legs = parseLegs(cell(r, 'legsAvailable'), r);
+  const settle = legs.get('settle');
+  if (settle.tbd || settle.ids.length !== 0) throw new Error(`${r.where}: US domestic settle leg must be "none"`);
+  const payout = legs.get('payout');
+  if (payout.tbd || !payout.ids.includes('sim_bank_us_ach')) {
+    throw new Error(`${r.where}: US domestic payout must include sim_bank_us_ach`);
+  }
+  if (confirmed(r, 'domesticRail') !== 'sim_bank_us_ach') {
+    throw new Error(`${r.where}: domesticRail must be sim_bank_us_ach`);
+  }
+  for (const kind of ['collect', 'convert']) {
+    const entry = legs.get(kind);
+    if (!entry.tbd) {
+      throw new Error(`${r.where}: the ${kind} leg of the domestic route is not specified by §8 (CC-2) and must stay TBD rather than assert a route shape`);
+    }
+    block(r, `legsAvailable.${kind}`, 'CC-2: §8 names the domestic rail without naming its leg kind; when the integrator answers, update this table and this check together');
   }
 });
 
-check('corridors.md: PH allows bank and e-wallet, BR and ZA are bank only', () => {
+check('corridors.md: PH allows bank and e-wallet; BR and ZA are bank only', () => {
   const byTo = new Map();
-  for (const entry of corridorRows()) {
-    byTo.set(cell(entry.tbl, entry.row, 'to', entry.label), entry);
-  }
+  for (const r of corridorRows()) byTo.set(cell(r, 'to'), r);
   const ph = byTo.get('PH PHP');
   if (!ph) throw new Error('US to PH corridor row not found');
-  const phTypes = csv(cell(ph.tbl, ph.row, 'allowedDestinationTypes', ph.label));
+  const phTypes = csv(confirmed(ph, 'allowedDestinationTypes'));
   for (const required of ['bank_account', 'ewallet']) {
-    if (!phTypes.includes(required)) throw new Error(`${ph.label}: allowedDestinationTypes must include ${required}`);
+    if (!phTypes.includes(required)) throw new Error(`${ph.where}: allowedDestinationTypes must include ${required}`);
   }
   for (const to of ['BR BRL', 'ZA ZAR']) {
-    const entry = byTo.get(to);
-    if (!entry) throw new Error(`corridor ${to} not found`);
-    const types = csv(cell(entry.tbl, entry.row, 'allowedDestinationTypes', entry.label));
+    const r = byTo.get(to);
+    if (!r) throw new Error(`corridor ${to} not found`);
+    const types = csv(confirmed(r, 'allowedDestinationTypes'));
     if (types.length !== 1 || types[0] !== 'bank_account') {
-      throw new Error(`${entry.label}: must allow bank_account only, found ${types.join(', ')}`);
+      throw new Error(`${r.where}: must allow bank_account only, found ${types.join(', ')}`);
     }
   }
 });
 
 check('corridors.md: ZA excludes crypto for both kinds and has no crypto leg', () => {
-  const za = corridorRows().find(({ row, tbl }) => cell(tbl, row, 'to', 'corridors.md') === 'ZA ZAR');
+  const za = corridorRows().find((r) => cell(r, 'to') === 'ZA ZAR');
   if (!za) throw new Error('US to ZA corridor row not found');
-  const { row, tbl, label } = za;
+  const r = za;
   for (const kind of ['individual', 'company']) {
-    if (boolean(cell(tbl, row, `cryptoLegAllowed.${kind}`, label), label)) {
-      throw new Error(`${label}: cryptoLegAllowed.${kind} must be false`);
+    if (boolean(confirmed(r, `cryptoLegAllowed.${kind}`), r.where)) {
+      throw new Error(`${r.where}: cryptoLegAllowed.${kind} must be false`);
     }
   }
-  const legsCell = cell(tbl, row, 'legsAvailable', label);
-  if (legsCell.includes(SETTLEMENT_RAIL_ID)) throw new Error(`${label}: legsAvailable must not reference ${SETTLEMENT_RAIL_ID}`);
-  const legs = parseLegs(legsCell, label);
-  if (legs.get('settle').length !== 0) {
-    throw new Error(`${label}: ZA must have no settle leg, found ${legs.get('settle').join(', ')}`);
+  const legsCell = cell(r, 'legsAvailable');
+  if (legsCell.includes(SETTLEMENT_RAIL_ID)) throw new Error(`${r.where}: legsAvailable must not reference ${SETTLEMENT_RAIL_ID}`);
+  const legs = parseLegs(legsCell, r);
+  const settle = legs.get('settle');
+  if (settle.tbd || settle.ids.length !== 0) {
+    throw new Error(`${r.where}: ZA must have no settle leg; found ${settle.tbd ? TBD : settle.ids.join(', ')}`);
   }
-  const note = cell(tbl, row, 'regulationNote', label);
-  if (!/3 Aug 2026/.test(note)) throw new Error(`${label}: regulationNote must name the 3 Aug 2026 draft rules`);
-  if (!/rewritten/.test(note)) throw new Error(`${label}: regulationNote must say the rules are being rewritten`);
-  if (!/not legal advice/i.test(note)) throw new Error(`${label}: regulationNote must state that this is not legal advice`);
+  const payout = legs.get('payout');
+  if (payout.tbd || !payout.ids.includes('sim_bank_za_eft')) {
+    throw new Error(`${r.where}: ZA payout must include sim_bank_za_eft`);
+  }
+  const note = confirmed(r, 'regulationNote');
+  if (!/3 Aug 2026/.test(note)) throw new Error(`${r.where}: regulationNote must name the 3 Aug 2026 draft rules`);
+  if (!/rewritten/.test(note)) throw new Error(`${r.where}: regulationNote must say the rules are being rewritten`);
+  if (!/not legal advice/i.test(note)) throw new Error(`${r.where}: regulationNote must state that this is not legal advice`);
+  for (const kind of ['collect', 'convert']) {
+    const entry = legs.get(kind);
+    if (!entry.tbd) {
+      throw new Error(`${r.where}: the ${kind} leg of the bank-only route is not specified by §8 (CC-1) and must stay TBD rather than assert a route shape`);
+    }
+    block(r, `legsAvailable.${kind}`, 'CC-1: §8 has no cross-border route without a settle leg; when the integrator answers, update this table and this check together');
+  }
 });
 
-check('providers.md: every provider/rail id used by a corridor is documented', () => {
+check('providers.md: every resolved provider/rail id used by a corridor is documented', () => {
   const documented = documentedProviders();
-  for (const { row, tbl, label } of corridorRows()) {
-    const legs = parseLegs(cell(tbl, row, 'legsAvailable', label), label);
-    for (const [kind, ids] of legs) {
-      for (const id of ids) {
-        if (id === 'none') continue;
-        if (!documented.has(id)) throw new Error(`${label}: leg ${kind} uses undocumented id ${id}`);
+  for (const r of corridorRows()) {
+    const legs = parseLegs(cell(r, 'legsAvailable'), r);
+    for (const [kind, entry] of legs) {
+      for (const id of entry.ids) {
+        if (!documented.has(id)) throw new Error(`${r.where}: leg ${kind} uses undocumented id ${id}`);
       }
     }
   }
@@ -512,31 +654,29 @@ check('providers.md: every provider/rail id used by a corridor is documented', (
 
 check('corridors.md: domesticRail is a documented id, or none for cross-border', () => {
   const documented = documentedProviders();
-  for (const { row, tbl, label } of corridorRows()) {
-    const rail = cell(tbl, row, 'domesticRail', label);
-    const from = cell(tbl, row, 'from', label);
-    const to = cell(tbl, row, 'to', label);
-    const sameCountry = from.split(' ')[0] === to.split(' ')[0];
+  for (const r of corridorRows()) {
+    const rail = confirmed(r, 'domesticRail');
+    const sameCountry = cell(r, 'from').split(' ')[0] === cell(r, 'to').split(' ')[0];
     if (rail === 'none') {
-      if (sameCountry) throw new Error(`${label}: domesticRail is none but from and to are the same country`);
+      if (sameCountry) throw new Error(`${r.where}: domesticRail is none but from and to are the same country`);
       continue;
     }
-    if (!sameCountry) throw new Error(`${label}: domesticRail ${rail} set for a cross-border corridor`);
-    if (!documented.has(rail)) throw new Error(`${label}: domesticRail ${rail} is not documented in providers.md`);
+    if (!sameCountry) throw new Error(`${r.where}: domesticRail ${rail} set for a cross-border corridor`);
+    if (!documented.has(rail)) throw new Error(`${r.where}: domesticRail ${rail} is not documented in providers.md`);
   }
 });
 
-check('corridors.md: each referenced id supports the leg kind it is used for', () => {
+check('corridors.md: each resolved id supports the leg kind it is used for', () => {
   const documented = documentedProviders();
-  for (const { row, tbl, label } of corridorRows()) {
-    const legs = parseLegs(cell(tbl, row, 'legsAvailable', label), label);
-    for (const [kind, ids] of legs) {
-      for (const id of ids) {
-        if (id === 'none') continue;
+  for (const r of corridorRows()) {
+    const legs = parseLegs(cell(r, 'legsAvailable'), r);
+    for (const [kind, entry] of legs) {
+      if (entry.tbd) continue;
+      for (const id of entry.ids) {
         const doc = documented.get(id);
-        if (!doc) throw new Error(`${label}: undocumented id ${id}`);
+        if (!doc) throw new Error(`${r.where}: undocumented id ${id}`);
         if (!doc.legKinds.includes(kind)) {
-          throw new Error(`${label}: ${id} is used on a ${kind} leg but documents legKinds ${doc.legKinds.join(', ')}`);
+          throw new Error(`${r.where}: ${id} is used on a ${kind} leg but documents legKinds ${doc.legKinds.join(', ')}`);
         }
       }
     }
@@ -549,20 +689,20 @@ check('corridors.md: the Latin American demo country decision sits in one place'
     throw new Error(`expected exactly one "Latin American demo country decision" heading, found ${headings.length}`);
   }
   const start = text.corridors.search(/^#+.*latin american demo country decision.*$/im);
-  const section = text.corridors.slice(start, start + 1400);
-  if (!/brazil/i.test(section)) throw new Error('the decision section must name Brazil as the default');
+  const section = text.corridors.slice(start, start + 1600);
+  if (!/brazil/i.test(section)) throw new Error('the decision section must name Brazil as the baseline');
   if (!/mexico/i.test(section)) throw new Error('the decision section must name Mexico as the possible replacement');
-  const br = corridorRows().find(({ row, tbl }) => cell(tbl, row, 'to', 'corridors.md') === 'BR BRL');
+  const br = corridorRows().find((r) => cell(r, 'to') === 'BR BRL');
   if (!br) throw new Error('US to BR corridor row not found');
-  if (!/latin american demo country decision/i.test(cell(br.tbl, br.row, 'regulationNote', br.label))) {
-    throw new Error(`${br.label}: regulationNote must point at the single decision section`);
+  if (!/latin american demo country decision/i.test(confirmed(br, 'regulationNote'))) {
+    throw new Error(`${br.where}: regulationNote must point at the single decision section`);
   }
 });
 
 /* providers.md ---------------------------------------------------------------- */
 
 check('providers.md: exactly the six required simulated providers, no extras', () => {
-  const ids = providerRows().map(({ row, tbl, label }) => cell(tbl, row, 'id', label));
+  const ids = providerRows().map((r) => cell(r, 'id'));
   for (const required of REQUIRED_PROVIDERS) {
     if (!ids.includes(required)) throw new Error(`missing required provider ${required}`);
   }
@@ -575,91 +715,102 @@ check('providers.md: exactly the six required simulated providers, no extras', (
 check('providers.md: every simulated provider row is marked simulated: true', () => {
   const rows = providerRows();
   if (rows.length === 0) throw new Error('no provider rows');
-  for (const { row, tbl, label } of rows) {
-    if (!boolean(cell(tbl, row, 'simulated', label), `${label} simulated`)) {
-      throw new Error(`${label}: simulated must be true`);
+  for (const r of rows) {
+    if (!boolean(confirmed(r, 'simulated'), `${r.where} simulated`)) {
+      throw new Error(`${r.where}: simulated must be true`);
     }
   }
 });
 
 check('providers.md: provider kinds, endpoint types and leg kinds are source-defined', () => {
-  for (const { row, tbl, label } of providerRows()) {
-    const kind = cell(tbl, row, 'kind', label);
-    if (!PROVIDER_KINDS.includes(kind)) throw new Error(`${label}: kind ${kind} is not a §11.1 provider kind (no anchor in this task)`);
-    for (const type of csv(cell(tbl, row, 'endpointTypes', label))) {
-      if (type !== 'none' && !ENDPOINT_TYPES.includes(type)) throw new Error(`${label}: ${type} is not a §6.3 endpoint type`);
+  for (const r of providerRows()) {
+    const kind = confirmed(r, 'kind');
+    if (!PROVIDER_KINDS.includes(kind)) throw new Error(`${r.where}: kind ${kind} is not a §11.1 provider kind (no anchor in this task)`);
+    for (const type of csv(confirmed(r, 'endpointTypes'))) {
+      if (type !== 'none' && !ENDPOINT_TYPES.includes(type)) throw new Error(`${r.where}: ${type} is not a §6.3 endpoint type`);
     }
-    for (const legKind of csv(cell(tbl, row, 'legKinds', label))) {
-      if (!LEG_KINDS.includes(legKind)) throw new Error(`${label}: ${legKind} is not a §6.6 leg kind`);
+    for (const legKind of csv(confirmed(r, 'legKinds'))) {
+      if (!LEG_KINDS.includes(legKind)) throw new Error(`${r.where}: ${legKind} is not a §6.6 leg kind`);
     }
-    if (cell(tbl, row, 'countries', label) === 'none') throw new Error(`${label}: countries must be listed`);
-    if (cell(tbl, row, 'currenciesOrAsset', label) === 'none') throw new Error(`${label}: currencies must be listed`);
+    if (confirmed(r, 'countries') === 'none') throw new Error(`${r.where}: countries must be listed`);
+    if (confirmed(r, 'currenciesOrAsset') === 'none') throw new Error(`${r.where}: currencies must be listed`);
   }
 });
 
-check('providers.md: fee and spread columns are integer bps, feeFixed is money', () => {
-  for (const { row, tbl, label } of providerRows()) {
-    money(cell(tbl, row, 'feeFixed (placeholder)', label), `${label} feeFixed`);
+check('providers.md: fee columns are integer bps and feeFixed is money or TBD', () => {
+  for (const r of providerRows()) {
+    const fee = maybeMoney(r, 'feeFixed (placeholder)', 'Q6: the currency a conversion provider charges its fixed fee in is not stated by §11.1');
+    if (fee !== null && fee.minor < 0n) throw new Error(`${r.where}: feeFixed must not be negative`);
     for (const column of ['feeBps (placeholder)', 'fxSpreadBps (placeholder)']) {
-      const bps = integer(cell(tbl, row, column, label), `${label} ${column}`);
-      if (bps > 10000n) throw new Error(`${label}: ${column} ${bps} exceeds 10000 bps (100 percent)`);
+      const bps = integer(confirmed(r, column), `${r.where} ${column}`);
+      if (bps > 10000n) throw new Error(`${r.where}: ${column} ${bps} exceeds 10000 bps (100 percent)`);
     }
+  }
+});
+
+check('providers.md: the FX provider fee and limits stay unresolved (Q6)', () => {
+  const fx = providerRows().filter((r) => cell(r, 'id') === 'sim_fx');
+  if (fx.length !== 1) throw new Error(`expected exactly one sim_fx row, found ${fx.length}`);
+  const r = fx[0];
+  for (const column of ['feeFixed (placeholder)', 'min (placeholder)', 'max (placeholder)']) {
+    if (!isTbd(cell(r, column))) {
+      throw new Error(`${r.where} ${column}: §11.1 does not say which side a conversion provider's limit or fee applies to, so this must stay TBD (Q6)`);
+    }
+    block(r, column, 'Q6: the side and currency a conversion provider limit or fee applies to is not stated by §11.1; when the integrator answers, update this table and this check together');
   }
 });
 
 check('providers.md: estimated time is a positive integer number of seconds', () => {
-  for (const { row, tbl, label } of providerRows()) {
-    const seconds = integer(cell(tbl, row, 'estimatedTimeSeconds (placeholder)', label), `${label} estimatedTimeSeconds`);
-    if (seconds <= 0n) throw new Error(`${label}: estimatedTimeSeconds must be greater than zero`);
+  for (const r of providerRows()) {
+    const seconds = integer(confirmed(r, 'estimatedTimeSeconds (placeholder)'), `${r.where} estimatedTimeSeconds`);
+    if (seconds <= 0n) throw new Error(`${r.where}: estimatedTimeSeconds must be greater than zero`);
   }
 });
 
-check('providers.md: min and max are quoted integers with one currency, min less than max', () => {
-  for (const { row, tbl, label } of providerRows()) {
-    const min = money(cell(tbl, row, 'min (placeholder)', label), `${label} min`);
-    const max = money(cell(tbl, row, 'max (placeholder)', label), `${label} max`);
+check('providers.md: min and max are money or TBD, one currency, min less than max', () => {
+  for (const r of providerRows()) {
+    const min = maybeMoney(r, 'min (placeholder)', 'Q6: conversion provider limit side unresolved');
+    const max = maybeMoney(r, 'max (placeholder)', 'Q6: conversion provider limit side unresolved');
+    if (min === null || max === null) continue;
     if (min.currency !== max.currency) {
-      throw new Error(`${label}: min currency ${min.currency} does not match max currency ${max.currency}`);
+      throw new Error(`${r.where}: min currency ${min.currency} does not match max currency ${max.currency}`);
     }
-    if (!(min.minor < max.minor)) throw new Error(`${label}: min ${min.minor} is not less than max ${max.minor}`);
-    const fee = money(cell(tbl, row, 'feeFixed (placeholder)', label), `${label} feeFixed`);
-    if (fee.minor < 0n) throw new Error(`${label}: feeFixed must not be negative`);
+    if (!(min.minor < max.minor)) throw new Error(`${r.where}: min ${min.minor} is not less than max ${max.minor}`);
   }
 });
 
 check('providers.md: the settlement rail is not simulated and is listed separately', () => {
   const tbl = table('settlement', 'providers.md settlement rail table');
   if (tbl.rows.length !== 1) throw new Error(`expected exactly one settlement rail row, found ${tbl.rows.length}`);
-  const row = tbl.rows[0];
-  const label = 'providers.md settlement rail';
-  const id = cell(tbl, row, 'id', label);
-  if (id !== SETTLEMENT_RAIL_ID) throw new Error(`${label}: id must be ${SETTLEMENT_RAIL_ID}, found ${id}`);
-  if (cell(tbl, row, 'kind', label) !== 'settlement_rail') throw new Error(`${label}: kind must be settlement_rail`);
-  if (cell(tbl, row, 'network', label) !== 'stellar') throw new Error(`${label}: network must be stellar`);
-  if (boolean(cell(tbl, row, 'simulated', label), `${label} simulated`)) {
-    throw new Error(`${label}: the testnet settlement rail must not be marked simulated`);
+  const r = { row: tbl.rows[0], tbl, where: `providers.md:${tbl.line + 2}` };
+  const id = confirmed(r, 'id');
+  if (id !== SETTLEMENT_RAIL_ID) throw new Error(`${r.where}: id must be ${SETTLEMENT_RAIL_ID}, found ${id}`);
+  if (confirmed(r, 'kind') !== 'settlement_rail') throw new Error(`${r.where}: kind must be settlement_rail`);
+  if (confirmed(r, 'network') !== 'stellar') throw new Error(`${r.where}: network must be stellar`);
+  if (boolean(confirmed(r, 'simulated'), `${r.where} simulated`)) {
+    throw new Error(`${r.where}: the testnet settlement rail must not be marked simulated`);
   }
-  const legs = csv(cell(tbl, row, 'legKinds', label));
-  if (!legs.includes('settle')) throw new Error(`${label}: legKinds must include settle`);
+  const legs = csv(confirmed(r, 'legKinds'));
+  if (!legs.includes('settle')) throw new Error(`${r.where}: legKinds must include settle`);
   if (tbl.header.includes('endpointTypes')) {
-    throw new Error(`${label}: the settlement rail is not an endpoint provider and must not carry endpoint types`);
+    throw new Error(`${r.where}: the settlement rail is not an endpoint provider and must not carry endpoint types`);
   }
-  const providerIds = providerRows().map(({ row: r, tbl: t, label: l }) => cell(t, r, 'id', l));
+  const providerIds = providerRows().map((p) => cell(p, 'id'));
   if (providerIds.includes(SETTLEMENT_RAIL_ID)) {
-    throw new Error(`${label}: ${SETTLEMENT_RAIL_ID} must not be listed among the six simulated providers`);
+    throw new Error(`${r.where}: ${SETTLEMENT_RAIL_ID} must not be listed among the six simulated providers`);
   }
-  if (!/NOT specified/i.test(cell(tbl, row, 'metadataStatus', label))) {
-    throw new Error(`${label}: metadataStatus must record the unspecified metadata gap instead of inventing values`);
+  if (!/NOT specified/i.test(confirmed(r, 'metadataStatus'))) {
+    throw new Error(`${r.where}: metadataStatus must record the unspecified metadata gap instead of inventing values`);
   }
 });
 
 check('providers.md: simulated providers use the sim_ id namespace, the rail does not', () => {
-  for (const { row, tbl, label } of providerRows()) {
-    const id = cell(tbl, row, 'id', label);
-    if (!id.startsWith('sim_')) throw new Error(`${label}: a simulated provider id must start with sim_, found ${id}`);
+  for (const r of providerRows()) {
+    const id = cell(r, 'id');
+    if (!id.startsWith('sim_')) throw new Error(`${r.where}: a simulated provider id must start with sim_, found ${id}`);
   }
   const settlement = table('settlement', 'providers.md settlement rail table');
-  const railId = cell(settlement, settlement.rows[0], 'id', 'providers.md settlement rail');
+  const railId = cell({ row: settlement.rows[0], tbl: settlement, where: 'providers.md settlement rail' }, 'id');
   if (railId.startsWith('sim_')) throw new Error('the settlement rail must not sit in the simulated provider namespace');
 });
 
@@ -667,7 +818,7 @@ check('providers.md: simulated providers use the sim_ id namespace, the rail doe
 
 check('fees.md: fee table has exactly the six §6.5 profiles', () => {
   const tbl = table('fees', 'fees.md fee table');
-  const profiles = tbl.rows.map((row, idx) => cell(tbl, row, 'profile', `fees.md:${tbl.line + 2 + idx}`));
+  const profiles = tbl.rows.map((row, index) => cell({ row, tbl, where: `fees.md:${tbl.line + 2 + index}` }, 'profile'));
   for (const required of PROFILES) {
     if (!profiles.includes(required)) throw new Error(`missing profile ${required}`);
   }
@@ -680,25 +831,25 @@ check('fees.md: fee table has exactly the six §6.5 profiles', () => {
 check('fees.md: standard fee is 100 bps and tips is 0 bps', () => {
   const tbl = table('fees', 'fees.md fee table');
   if (!/1\.0 percent = 100 bps/.test(text.fees)) throw new Error('the standard fee statement "1.0 percent = 100 bps" is missing');
-  for (const [idx, row] of tbl.rows.entries()) {
-    const label = `fees.md:${tbl.line + 2 + idx}`;
-    const profile = cell(tbl, row, 'profile', label);
-    const bps = integer(cell(tbl, row, 'flexipayFeeBps (placeholder)', label), `${label} flexipayFeeBps`);
+  for (const [index, row] of tbl.rows.entries()) {
+    const r = { row, tbl, where: `fees.md:${tbl.line + 2 + index}` };
+    const profile = cell(r, 'profile');
+    const bps = integer(confirmed(r, 'flexipayFeeBps (placeholder)'), `${r.where} flexipayFeeBps`);
     const expected = profile === 'tips' ? 0n : 100n;
-    if (bps !== expected) throw new Error(`${label}: profile ${profile} must be ${expected} bps, found ${bps}`);
+    if (bps !== expected) throw new Error(`${r.where}: profile ${profile} must be ${expected} bps, found ${bps}`);
+    const shown = confirmed(r, 'percentLabel');
     const expectedLabel = profile === 'tips' ? '0.0 percent' : '1.0 percent';
-    const shown = cell(tbl, row, 'percentLabel', label);
-    if (shown !== expectedLabel) throw new Error(`${label}: percentLabel must be "${expectedLabel}", found "${shown}"`);
-    if (!cell(tbl, row, 'source', label).trim()) throw new Error(`${label}: source must cite where the value comes from`);
+    if (shown !== expectedLabel) throw new Error(`${r.where}: percentLabel must be "${expectedLabel}", found "${shown}"`);
+    if (!confirmed(r, 'source').trim()) throw new Error(`${r.where}: source must cite where the value comes from`);
   }
 });
 
 check('fees.md: every fee row is a labelled placeholder and simulated', () => {
   const tbl = table('fees', 'fees.md fee table');
-  for (const [idx, row] of tbl.rows.entries()) {
-    const label = `fees.md:${tbl.line + 2 + idx}`;
-    if (cell(tbl, row, 'placeholder', label) !== 'true') throw new Error(`${label}: placeholder must be true`);
-    if (cell(tbl, row, 'simulated', label) !== 'true') throw new Error(`${label}: simulated must be true`);
+  for (const [index, row] of tbl.rows.entries()) {
+    const r = { row, tbl, where: `fees.md:${tbl.line + 2 + index}` };
+    if (confirmed(r, 'placeholder') !== 'true') throw new Error(`${r.where}: placeholder must be true`);
+    if (confirmed(r, 'simulated') !== 'true') throw new Error(`${r.where}: simulated must be true`);
   }
 });
 
@@ -710,24 +861,21 @@ check('fees.md: quote validity is the 120 second placeholder', () => {
 check('fees.md: the money example is exact integer arithmetic (BigInt)', () => {
   const tbl = table('example', 'fees.md money example table');
   const byKey = new Map();
-  for (const [idx, row] of tbl.rows.entries()) {
-    const label = `fees.md:${tbl.line + 2 + idx}`;
-    const key = cell(tbl, row, 'key', label);
-    if (byKey.has(key)) throw new Error(`${label}: duplicate key ${key}`);
-    byKey.set(key, { row, label });
+  for (const [index, row] of tbl.rows.entries()) {
+    const r = { row, tbl, where: `fees.md:${tbl.line + 2 + index}` };
+    const key = cell(r, 'key');
+    if (byKey.has(key)) throw new Error(`${r.where}: duplicate key ${key}`);
+    byKey.set(key, r);
   }
   for (const key of ['exampleSendAmount', 'exampleFlexiPayFeeBps', 'exampleFlexiPayFee']) {
     if (!byKey.has(key)) throw new Error(`money example is missing ${key}`);
   }
-  const { row: amountRow } = byKey.get('exampleSendAmount');
-  const { row: bpsRow } = byKey.get('exampleFlexiPayFeeBps');
-  const { row: feeRow } = byKey.get('exampleFlexiPayFee');
-  const amount = money(cell(tbl, amountRow, 'value', 'fees.md example amount'), 'fees.md example amount');
-  const bps = integer(cell(tbl, bpsRow, 'value', 'fees.md example bps'), 'fees.md example bps');
-  const fee = money(cell(tbl, feeRow, 'value', 'fees.md example fee'), 'fees.md example fee');
+  const amount = money(confirmed(byKey.get('exampleSendAmount'), 'value'), 'fees.md example amount');
+  const bps = integer(confirmed(byKey.get('exampleFlexiPayFeeBps'), 'value'), 'fees.md example bps');
+  const fee = money(confirmed(byKey.get('exampleFlexiPayFee'), 'value'), 'fees.md example fee');
   if (amount.currency !== fee.currency) throw new Error('the example amount and fee currencies differ');
   if ((amount.minor * bps) % 10000n !== 0n) {
-    throw new Error('the example fee is not exact in integer minor units; do not use a rounding rule that is not defined');
+    throw new Error('the example fee is not exact in integer minor units; do not rely on a rounding rule that is not defined');
   }
   const expectedFee = (amount.minor * bps) / 10000n;
   if (fee.minor !== expectedFee) {
@@ -735,40 +883,58 @@ check('fees.md: the money example is exact integer arithmetic (BigInt)', () => {
   }
 });
 
+check('fees.md: no receive-side figure is published while the fee side is unresolved', () => {
+  const tbl = table('example', 'fees.md money example table');
+  const index = tbl.rows.findIndex((candidate) => candidate[tbl.header.indexOf('key')] === 'exampleExpectedReceiveIndicator');
+  if (index < 0) throw new Error('the example table must state what it does not publish (exampleExpectedReceiveIndicator)');
+  const r = { row: tbl.rows[index], tbl, where: `fees.md:${tbl.line + 2 + index}` };
+  if (!isTbd(cell(r, 'value'))) {
+    throw new Error(`${r.where}: the side the fee is charged on is not stated (Q9), so no receive amount may be published`);
+  }
+  block(r, 'value', 'Q9: the side the FlexiPay fee is charged on is not stated; when the integrator answers, update this table and this check together');
+});
+
 /* cross-cutting --------------------------------------------------------------- */
 
 check('all drafts: every table row has one cell per header column', () => {
   for (const [sourceKey, tables] of Object.entries(parsed)) {
     for (const tbl of tables) {
-      for (const [idx, row] of tbl.rows.entries()) {
+      for (const [index, row] of tbl.rows.entries()) {
         if (row.length !== tbl.header.length) {
-          throw new Error(`${sourceKey}.md:${tbl.line + 2 + idx}: ${row.length} cells but the header has ${tbl.header.length}`);
+          throw new Error(`${sourceKey}.md:${tbl.line + 2 + index}: ${row.length} cells but the header has ${tbl.header.length}`);
         }
       }
     }
   }
 });
 
-check('all drafts: money is quoted integer minor units with explicit currency', () => {
-  const moneyColumns = new Set([
-    'feeFixed (placeholder)',
-    'min (placeholder)',
-    'max (placeholder)',
-    ...LIMIT_COLUMNS,
-    'value',
-  ]);
+check('all drafts: money columns are quoted integer minor units or TBD', () => {
+  const moneyColumns = new Set(['feeFixed (placeholder)', 'min (placeholder)', 'max (placeholder)', ...LIMIT_COLUMNS, 'value']);
   for (const [sourceKey, tables] of Object.entries(parsed)) {
     for (const tbl of tables) {
-      for (const [idx, row] of tbl.rows.entries()) {
+      for (const [index, row] of tbl.rows.entries()) {
         for (const column of tbl.header) {
           if (!moneyColumns.has(column)) continue;
-          const position = tbl.header.indexOf(column);
-          const value = (row[position] || '').trim();
-          if (!value) continue;
-          // The example table mixes money and bps in one column; only money-shaped,
-          // quoted values are checked here, and unquoted values must be integers.
+          const value = (row[tbl.header.indexOf(column)] || '').trim();
+          if (!value || isTbd(value)) continue;
           if (/^".*"$/.test(value) || /[A-Z]{3}$/.test(value)) {
-            money(value, `${sourceKey}.md:${tbl.line + 2 + idx} ${column}`);
+            money(value, `${sourceKey}.md:${tbl.line + 2 + index} ${column}`);
+          }
+        }
+      }
+    }
+  }
+});
+
+check('all drafts: TBD appears only in columns documented as unresolved', () => {
+  for (const [sourceKey, tables] of Object.entries(parsed)) {
+    for (const tbl of tables) {
+      for (const [index, row] of tbl.rows.entries()) {
+        for (const column of tbl.header) {
+          const value = (row[tbl.header.indexOf(column)] || '').trim();
+          if (!isTbd(value)) continue;
+          if (!TBD_ALLOWED_COLUMNS.has(column)) {
+            throw new Error(`${sourceKey}.md:${tbl.line + 2 + index} ${column}: TBD is not allowed in this column; the value is fixed by the sources`);
           }
         }
       }
@@ -779,12 +945,12 @@ check('all drafts: money is quoted integer minor units with explicit currency', 
 check('all drafts: no numeric value is stored as a decimal (no floats)', () => {
   for (const [sourceKey, tables] of Object.entries(parsed)) {
     for (const tbl of tables) {
-      for (const [idx, row] of tbl.rows.entries()) {
-        for (const [position, value] of row.entries()) {
-          const column = tbl.header[position];
+      for (const [index, row] of tbl.rows.entries()) {
+        for (const column of tbl.header) {
+          const value = (row[tbl.header.indexOf(column)] || '').trim();
           if (column === 'percentLabel') continue;
-          if (!/^-?\d+\.\d+$/.test(value.trim())) continue;
-          throw new Error(`${sourceKey}.md:${tbl.line + 2 + idx}: ${JSON.stringify(value)} in column ${column} is stored as a decimal; use integer minor units or integer bps`);
+          if (!/^-?\d+\.\d+$/.test(value)) continue;
+          throw new Error(`${sourceKey}.md:${tbl.line + 2 + index}: ${JSON.stringify(value)} in column ${column} is stored as a decimal; use integer minor units or integer bps`);
         }
       }
     }
@@ -800,6 +966,43 @@ check('all drafts: no secrets or real account data', () => {
   }
 });
 
+/* Every unresolved cell must be reported, and every reported blocker must exist.
+   Without this, a TBD could slip past a check silently and look like a pass. */
+check('all drafts: every TBD cell is reported as a blocker, and no blocker is stale', () => {
+  const found = new Map();
+
+  for (const [sourceKey, tables] of Object.entries(parsed)) {
+    for (const tbl of tables) {
+      for (const [index, row] of tbl.rows.entries()) {
+        const where = `${sourceKey}.md:${tbl.line + 2 + index}`;
+        for (const column of tbl.header) {
+          const value = (row[tbl.header.indexOf(column)] || '').trim();
+          if (isTbd(value)) found.set(blockerKey(where, column), { where, column });
+        }
+      }
+    }
+  }
+
+  for (const r of corridorRows()) {
+    const legs = parseLegs(cell(r, 'legsAvailable'), r);
+    for (const [kind, entry] of legs) {
+      if (entry.tbd) found.set(blockerKey(r.where, `legsAvailable.${kind}`), { where: r.where, column: `legsAvailable.${kind}` });
+    }
+  }
+
+  for (const [key, entry] of found) {
+    if (!blockers.has(key)) {
+      throw new Error(`${entry.where} ${entry.column} is TBD but no check reports it; unresolved values must never pass silently`);
+    }
+  }
+  for (const [key, entry] of blockers) {
+    if (!found.has(key)) {
+      throw new Error(`${entry.where} ${entry.column} is reported as a blocker but is no longer TBD`);
+    }
+  }
+  if (found.size === 0) throw new Error('no unresolved cells were found; if the answers are all recorded, remove the TBD handling instead of leaving it unused');
+});
+
 /* ------------------------------------------------------------------- reporting */
 
 let failed = 0;
@@ -813,12 +1016,22 @@ for (const result of results) {
   }
 }
 
+const ordered = [...blockers.values()].sort((a, b) => (a.where + a.column).localeCompare(b.where + b.column));
+
 console.log('');
-console.log(`${results.length - failed}/${results.length} checks passed — SF0-prep draft content only, not the CC0 schema.`);
+console.log(`BLOCKERS — ${ordered.length} unresolved cells (${TBD}). These are NOT approved configuration:`);
+for (const entry of ordered) {
+  console.log(`  ${entry.where} ${entry.column}`);
+  console.log(`     ${entry.reason}`);
+}
+
+console.log('');
+console.log(`${results.length - failed}/${results.length} checks passed; ${ordered.length} cells unresolved (reported above, not validated as policy).`);
+console.log('Scope: draft content only — this script does not validate the future CC0 configuration schema.');
 
 if (failed > 0) {
   console.error(`FAILED: ${failed} check(s) did not pass.`);
   process.exit(1);
 }
 
-console.log('PASS');
+console.log(`PASS — drafted content is internally consistent. The ${ordered.length} TBD cells above are unresolved and are NOT approved configuration.`);
