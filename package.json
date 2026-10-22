@@ -10,13 +10,17 @@
     "demo-api": "node --env-file=app/.env scripts/demo-api.mjs",
     "lint": "npm run lint --workspaces --if-present",
     "format": "prettier . --write",
-    "format:check": "prettier . --check"
+    "format:check": "prettier . --check",
+    "prepare": "git config core.hooksPath .husky",
+    "validate:config": "npm run validate:config --workspace @flexipay/domain",
+    "test:domain": "npm test --workspace @flexipay/domain"
   },
   "workspaces": [
     "app",
     "app-lib",
     "app-lib/clients/*",
-    "e2e"
+    "e2e",
+    "packages/*"
   ],
   "dependencies": {
     "@stellar/stellar-sdk": "^16.1.0"
