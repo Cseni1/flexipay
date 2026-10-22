@@ -1,0 +1,6 @@
+{
+	"quoteValiditySeconds": 120,
+	"priceRiskBearer": "sender",
+	"tipsFeeBps": 0,
+	"placeholder": true
+}
