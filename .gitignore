@@ -51,3 +51,8 @@ identity/
 *.tsbuildinfo
 
 
+
+# generated Prisma client (run: npm run db:generate --workspace @flexipay/api)
+apps/api/src/generated/
+# local embedded Postgres data
+apps/api/.pgdata/
