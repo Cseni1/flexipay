@@ -7,6 +7,7 @@ import {
   addMoney,
   applyBps,
   compareMoney,
+  convertMoney,
   money,
   subtractMoney,
 } from "../src/index.ts";
@@ -27,6 +28,25 @@ describe("money", () => {
   it("applies basis points rounding down, like the vault", () => {
     expect(applyBps(money("1000000000", "USDC"), 150).amount).toBe("15000000");
     expect(applyBps(money("199", "USD"), 100).amount).toBe("1");
+  });
+});
+
+describe("convertMoney (CCR-4)", () => {
+  it("converts between currencies with different minor-unit decimals", () => {
+    expect(convertMoney(money("10000", "USD"), "1.0000000", "USDC")).toEqual({ amount: "1000000000", currency: "USDC" });
+    expect(convertMoney(money("10000", "USD"), "56.0000000", "PHP")).toEqual({ amount: "560000", currency: "PHP" });
+    expect(convertMoney(money("1000000000", "USDC"), "5.5000000", "BRL")).toEqual({ amount: "55000", currency: "BRL" });
+  });
+
+  it("rounds down and handles fractional rates", () => {
+    expect(convertMoney(money("1", "USD"), "5.5555555", "BRL").amount).toBe("5");
+    expect(convertMoney(money("3", "USD"), "0.3333333", "ZAR").amount).toBe("0");
+  });
+
+  it("refuses unknown currencies and malformed rates", () => {
+    expect(() => convertMoney(money("1", "USD"), "1", "XYZ")).toThrow(/decimals/);
+    expect(() => convertMoney(money("1", "USD"), "1.12345678", "PHP")).toThrow();
+    expect(() => convertMoney(money("1", "USD"), "-1", "PHP")).toThrow();
   });
 });
 

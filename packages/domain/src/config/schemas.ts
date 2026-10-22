@@ -6,7 +6,7 @@ import {
   PROVIDER_KINDS,
   RECIPIENT_KINDS,
 } from "../enums.ts";
-import { CurrencyCode, MoneySchema } from "../money.ts";
+import { CurrencyCode, MoneySchema, RateString } from "../money.ts";
 
 // Shapes of config/corridors.json, config/providers.json and config/fees.json
 // (ARCHITECTURE §6.8, §8, §11.1; CCR-3). Countries, rails and providers are configuration,
@@ -88,12 +88,19 @@ export const SettlementRailSchema = z
   .strict();
 export type SettlementRail = z.infer<typeof SettlementRailSchema>;
 
+/** Simulated conversion rate for one direction (CCR-4). Never derived by inverting another entry. */
+export const FxRateSchema = z
+  .object({ from: CurrencyCode, to: CurrencyCode, rate: RateString, placeholder: z.boolean() })
+  .strict();
+export type FxRate = z.infer<typeof FxRateSchema>;
+
 export const CorridorsFileSchema = z.object({ corridors: z.array(CorridorSchema).min(1) }).strict();
 
 export const ProvidersFileSchema = z
   .object({
     providers: z.array(ProviderSchema).min(1),
     settlementRails: z.array(SettlementRailSchema),
+    fxRates: z.array(FxRateSchema),
   })
   .strict();
 
@@ -115,5 +122,6 @@ export interface FlexiPayConfig {
   corridors: Corridor[];
   providers: Provider[];
   settlementRails: SettlementRail[];
+  fxRates: FxRate[];
   fees: FeesConfig;
 }

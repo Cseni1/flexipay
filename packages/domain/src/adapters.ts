@@ -59,14 +59,73 @@ export interface ProviderLegState {
   error?: { code: string; message: string };
 }
 
+/**
+ * Why a provider call is refused or a leg fails (CCR-4). `execute` and `reverse` throw
+ * ProviderError only for requests that are invalid or not allowed; a leg that runs and then
+ * fails is reported through `status()` with state `failed` and one of the failure codes.
+ */
+export const PROVIDER_ERROR_CODES = [
+  "unsupported",
+  "currency_mismatch",
+  "below_min",
+  "above_max",
+  "fee_exceeds_amount",
+  "no_fx_rate",
+  "unknown_reference",
+  "not_succeeded",
+  "not_reversible",
+] as const;
+export type ProviderErrorCode = (typeof PROVIDER_ERROR_CODES)[number];
+
+/** Codes a failed leg carries in `ProviderLegState.error.code`. */
+export const LEG_FAILURE_CODES = ["sandbox_forced_failure", "provider_down"] as const;
+export type LegFailureCode = (typeof LEG_FAILURE_CODES)[number];
+
+export class ProviderError extends Error {
+  readonly code: ProviderErrorCode;
+
+  constructor(code: ProviderErrorCode, message: string) {
+    super(message);
+    this.name = "ProviderError";
+    this.code = code;
+  }
+}
+
+/**
+ * Sandbox controls behind /v1/sandbox/* (ARCHITECTURE §10). Implemented by the simulated
+ * providers; the API calls them and never reaches into a provider.
+ */
+export interface SandboxControls {
+  /** The next `count` execute() calls on this provider run and then fail (count defaults to 1). */
+  failNext(providerId: string, count?: number): void;
+  /** While on, every execute() on this provider fails until switched off (DF4: no alternative). */
+  setForcedFailure(providerId: string, on: boolean): void;
+  /**
+   * Marks a provider up or down. Routing filters a down provider out at quote time; a leg that
+   * runs on a provider marked down afterwards fails with `provider_down`.
+   */
+  setHealth(providerId: string, health: "up" | "down"): void;
+  /** Clears every failure and health override. */
+  reset(): void;
+}
+
 export interface ProviderAdapter {
   readonly id: string;
   capabilities(): ProviderCapabilities;
   quote(req: LegQuoteRequest): Promise<LegQuote>;
-  /** Starts the leg; returns the provider's external reference. */
+  /**
+   * Starts the leg; returns the provider's external reference. Idempotent per (legId, attempt):
+   * the same call returns the same reference and never changes the leg's state, including after
+   * a failure or a reversal. A retry uses attempt + 1 and gets a new reference.
+   */
   execute(leg: LegExecution): Promise<{ externalRef: string }>;
   status(externalRef: string): Promise<ProviderLegState>;
-  /** Reverses a succeeded leg where the rail allows it; returns the reversal's reference. */
+  /**
+   * Reverses a succeeded `collect` or `convert` leg and returns the reversal's reference.
+   * Idempotent: reversing the same reference again returns the same reversal reference.
+   * Throws ProviderError `not_succeeded` for a leg that has not succeeded, `not_reversible`
+   * for `payout` and `settle` legs, and `unknown_reference` for a reference it never issued.
+   */
   reverse(externalRef: string): Promise<{ externalRef: string }>;
   health(): Promise<"up" | "down">;
 }

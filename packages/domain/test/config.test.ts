@@ -68,6 +68,11 @@ function valid(): RawConfig {
         provider("sim_fx", { kind: "fx", countries: ["US", "PH", "ZA"], currencies: ["USD", "PHP", "ZAR"], endpointTypes: [], legKinds: ["convert"], limits: null }),
       ],
       settlementRails: [{ id: "test_rail", network: "stellar", asset: "USDC", simulated: false }],
+      fxRates: [
+        { from: "USD", to: "USDC", rate: "1.0000000", placeholder: true },
+        { from: "USDC", to: "PHP", rate: "56.0000000", placeholder: true },
+        { from: "USD", to: "ZAR", rate: "18.0000000", placeholder: true },
+      ],
     },
     fees: { quoteValiditySeconds: 120, priceRiskBearer: "sender", tipsFeeBps: 0, placeholder: true },
   };
@@ -143,6 +148,25 @@ describe("validateConfig", () => {
     const all = messages(raw).join();
     expect(all).toMatch(/duplicate corridor/);
     expect(all).toMatch(/duplicate id sim_bank_us/);
+  });
+
+  it("needs an fx rate for every conversion a route can use", () => {
+    const raw = valid();
+    (raw.providers as { fxRates: unknown[] }).fxRates.pop();
+    expect(messages(raw).join()).toMatch(/US-ZA: missing fx rate USD > ZAR/);
+    const raw2 = valid();
+    (raw2.providers as { fxRates: unknown[] }).fxRates.splice(1, 1);
+    expect(messages(raw2).join()).toMatch(/US-PH: missing fx rate USDC > PHP/);
+  });
+
+  it("rejects duplicate, zero and unknown-currency rates", () => {
+    const raw = valid();
+    const rates = (raw.providers as { fxRates: Record<string, unknown>[] }).fxRates;
+    rates.push({ ...rates[0] }, { from: "USD", to: "XYZ", rate: "0", placeholder: true });
+    const all = messages(raw).join();
+    expect(all).toMatch(/duplicate rate USD>USDC/);
+    expect(all).toMatch(/rate must be above zero/);
+    expect(all).toMatch(/no minor-unit decimals known for XYZ/);
   });
 
   it("keeps the vault fee out of fees.json", () => {
