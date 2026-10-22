@@ -9,7 +9,7 @@ Proposed changes to shared interfaces. Only the integrator applies them.
 - **Why:** the API (CC2, CC3) and the settlement adapter (SC2) must agree on the names before SC2 starts.
 - **Who is affected:** `apps/api` (Csaba, Claude), `packages/adapter-stellar` (Csenge, Claude).
 - **Needs:** the API owner confirms or renames these before SC2 starts.
-- **Status:** proposed.
+- **Status:** accepted by the integrator (22 Oct 2026). The `FP_` names in `.env.example` are final for SC2 and the API.
 
 ## CCR-2: separation guards (demo-data folder, hooks, CI)
 
@@ -20,7 +20,7 @@ Proposed changes to shared interfaces. Only the integrator applies them.
   3. **CI:** keep the `guards` job (`.github/workflows/guards.yml`, which runs `bash scripts/check-separation.sh`), or run the same command in CC0's CI workflow.
 - **Why:** keep the other product's name, identity and code out of FlexiPay's real code, enforced locally and in CI.
 - **Who is affected:** root `package.json` and CI (Csaba, Claude, CC0); every agent's commits.
-- **Status:** proposed.
+- **Status:** accepted (22 Oct 2026). Item 1: `scripts/seed/demo-data/` is the one demo-data folder. Item 2: applied in CC0a (root `prepare` script). Item 3: the `guards` job stays.
 
 ## CCR-3: SF0 architect decisions (approved 22 Oct 2026)
 
@@ -38,3 +38,19 @@ Proposed changes to shared interfaces. Only the integrator applies them.
 - **Answers to the open questions in `fees.md`, from `contracts/payout_vault/RULES.md`:**
   - Fee side: chosen per payout by `FeeMode` (`PayerPays` locks amount + fee; `RecipientPays` pays amount − fee).
   - Rounding: `fee = amount * fee_bps / 10_000`, rounded down (integer division).
+- **Integrator answer to the interface question (22 Oct 2026):** decision 5 lives in the **routing engine (CC1)**, not in a corridor field. CC1 builds no payout leg for a `crypto_wallet` or `crypto_custodial` destination, and the route ends at settle. The corridor schema keeps one `legsAvailable` list per leg kind. The CC0a loader checks the corridor side: fiat destination types need a payout provider; crypto destinations need a settle rail and a recipient kind with crypto allowed.
+
+## CC0a: config contracts and adapter interfaces (integrator, 22 Oct 2026)
+
+- **Package:** `packages/domain` (`@flexipay/domain`).
+- **Config schemas:** `packages/domain/src/config/schemas.ts`, for `config/corridors.json` (`{ "corridors": [...] }`), `config/providers.json` (`{ "providers": [...], "settlementRails": [...] }`) and `config/fees.json`.
+- **Loader:** `packages/domain/src/config/load.ts` (`loadConfig`, `validateConfig`), with the cross-file rules: references, leg kinds, domestic rail, the crypto and South Africa rule, payout coverage, send-side limits.
+- **Validation command:** `npm run validate:config` from the repo root (Node 24, no build step).
+- **Representation:**
+  - Money is `{ "amount": "<integer minor units>", "currency": "USD" }`.
+  - Every corridor and provider has `simulated` and `placeholder` booleans. `placeholder: true` marks all its numbers as placeholders.
+  - `limits: null` on a provider means no limit of its own.
+  - The settlement rail (`stellar_usdc`) is in `settlementRails`, with no issuer, vault id or fee.
+  - `fees.json` holds `quoteValiditySeconds`, `priceRiskBearer` and `tipsFeeBps`, plus `placeholder`. It has no vault fee field.
+- **Adapter interfaces:** `packages/domain/src/adapters.ts` (`ProviderAdapter` for SF1, `SettlementAdapter` and `SettlementError` codes for SF2 and SC2).
+
