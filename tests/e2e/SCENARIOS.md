@@ -12,9 +12,9 @@ adapter), §12 (vault), §15 (DF1 to DF5); DEV_PLAN **v4** §4 (SF3) and §10; P
 `main`; it confirms the corridor and crypto-destination decisions used below. The v4
 documents live outside the repo (`../files/`); the repo root still holds v3.
 
-**Revision after review (22 Oct 2026):** second conversion legs on fiat routes, claim-linked
-`settle` state, non-interchangeable payout providers, BR-only vault refund, success codes
-left TBD, and the scope of sandbox time. Each is marked where it applies.
+**Revision after review (22 Oct 2026):** two conversion legs on fiat routes, the claim-linked
+release state, non-interchangeable providers, BR-only vault refund, TBD success codes and
+sandbox-time scope, each marked where it applies.
 
 ## What is specified and what is not
 
@@ -86,16 +86,18 @@ Use PH or BR (both approve `crypto_wallet`). Below: PH individual.
 |---|---|---|---|---|---|
 | 1 | `POST /v1/quotes` | destination PH `crypto_wallet`, kind `individual` | 2xx (TBD) | route ends at `settle`; **no `payout` leg planned** | — |
 | 2 | `POST /v1/payments` | `delivery: claim_link`, `quoteId`, `recipientId` | 2xx (TBD) | `awaiting_funding`; claim link returned (raw token only in the link) | `payment.created`, `claim.opened` when opened |
-| 3 | `POST /v1/payments/{id}/fund` | — | 2xx (TBD) | `processing`; `collect` and `convert` succeed; **`settle` stays `pending`** — with no `payout` leg, `settle` is the leg that waits (§7) | `payment.funded` |
+| 3 | `POST /v1/payments/{id}/fund` | — | 2xx (TBD) | `processing`; `collect` and `convert` **may already be `succeeded`**; the settlement release is incomplete and the payment is not `paid`; the status of the waiting leg is **TBD (CC2)** — §7 defines only a *payout* leg waiting, and this route has none | `payment.funded` |
 | 4 | `GET /v1/claims/{token}` (public) | — | 2xx (TBD) | what is waiting: amount, corridor, allowed endpoint types | — |
-| 5 | `POST /v1/claims/{token}/accept` | chosen `crypto_wallet` endpoint (address) | 2xx (TBD) | `settle` succeeds (vault release to the address) and the payment becomes `paid`; legs are `collect`, `convert`, `settle` only — **no `payout` leg**; a Stellar testnet transaction hash is visible (field **TBD**) | `claim.accepted`, `payment.onchain`, `payment.paid` |
+| 5 | `POST /v1/claims/{token}/accept` | chosen `crypto_wallet` endpoint (address) | 2xx (TBD) | the vault release to the address completes, so the last leg succeeds and the payment becomes `paid`; legs are `collect`, `convert`, `settle` only — **no `payout` leg**; a Stellar testnet transaction hash is visible (field **TBD**) | `claim.accepted`, `payment.onchain`, `payment.paid` |
 
-Assertions: **no leg is `succeeded` and the payment is not `paid` before acceptance.** With
-no payout leg, §7's "the payout leg waits in `pending` until the recipient accepts" applies
-to `settle`, so the transaction hash appears only at claim time. The hash assertion requires
-`StellarSettlementAdapter` (§11.2); with `MockSettlementAdapter` the network is `mock` and
-the reference is simulated — record which adapter ran, and never label a real testnet hash as
-simulated.
+Assertions: before acceptance the **settlement release is incomplete and the payment is not
+`paid`**. Do **not** assert that no leg has succeeded: `collect` and `convert` may already be
+`succeeded`. §7 defines a waiting *payout* leg (`pending` until the recipient accepts) and
+this route has no payout leg, so the waiting leg's exact status is **TBD (CC2)**; only the
+no-release and no-`paid` rules are confirmed, and the transaction hash appears only at claim
+time. The hash assertion requires `StellarSettlementAdapter` (§11.2); with
+`MockSettlementAdapter` the network is `mock` and the reference is simulated — record which
+adapter ran, and never label a real testnet hash as simulated.
 
 ## DF4 — payout failure
 
@@ -179,8 +181,10 @@ No fixture file is committed: no request or response schema is known, so a fixtu
 an invented interface. Once CC0 OpenAPI lands the tests need three recipients with endpoints
 (PH `ewallet`, BR `bank_account`, US `bank_account`) plus a PH `crypto_wallet` address for
 DF3, one batch row set, one quote request per corridor, and the `fail-next` target for DF4.
-Values are neutral; no secret, key or address is committed, and the DF3 hash is produced at
-run time.
+**Every simulated fixture carries `simulated: true`** — recipients, endpoints, providers and
+corridors — and no fixture labels the real testnet rail as simulated (`stellar_usdc` stays
+`simulated: false`). Values are neutral; no secret, key or address is committed, and the DF3
+hash is produced at run time.
 
 ## Open questions and gaps
 
@@ -189,10 +193,8 @@ run time.
    and DF3 build route assertions, not the expected outcomes. Merge it before CC1 starts.
 2. **No CC0 OpenAPI**, so bodies, success codes, batch row shape, claim payload and the
    attempt timeline are **TBD**.
-3. **DF4** is blocked on all four points above: control semantics, a second eligible
-   provider, ledger-time refund, attempt exposure.
-4. **Config is not merged** (PR #1), so DF1 and DF5 cannot run yet.
-5. `tests/e2e` is the API flow location named in §15; the existing Playwright specs sit in
+3. **Config is not merged** (PR #1), so DF1 and DF5 cannot run yet.
+4. `tests/e2e` is the API flow location named in §15; the existing Playwright specs sit in
    `e2e/`, which §15 calls `tests/e2e-ui`. Moving them is CC0's restructure, not this task's.
 
 <!-- written specification; no test has been executed by this task -->
