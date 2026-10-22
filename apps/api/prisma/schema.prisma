@@ -1,0 +1,262 @@
+// FlexiPay database schema (ARCHITECTURE §6, §7, §9). Money is stored as integer minor units in
+// text columns with a currency column next to them: no floats, no precision loss. Enum-like
+// text columns are validated by the zod schemas in packages/domain, not by the database, so
+// adding a value never needs a migration. Secrets are stored only as hashes.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Organization {
+  id           String   @id
+  name         String
+  kind         String // business | individual
+  verification String   @default("not_started") // not_started | simulated_verified
+  createdAt    DateTime @default(now())
+
+  apiKeys       ApiKey[]
+  recipients    Recipient[]
+  endpoints     Endpoint[]
+  quotes        Quote[]
+  payments      Payment[]
+  batches       Batch[]
+  webhooks      WebhookSubscription[]
+  events        Event[]
+  idempotency   IdempotencyRecord[]
+}
+
+model ApiKey {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  /// First characters of the key, to recognise it in the dashboard. Not secret.
+  prefix         String
+  /// sha256 of the full key; the key itself is shown once and never stored.
+  keyHash        String       @unique
+  label          String?
+  createdAt      DateTime     @default(now())
+  revokedAt      DateTime?
+
+  @@index([organizationId])
+}
+
+model Recipient {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  kind           String // individual | company
+  country        String
+  createdAt      DateTime     @default(now())
+
+  endpoints Endpoint[]
+  payments  Payment[]
+
+  @@index([organizationId])
+}
+
+model Endpoint {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  recipientId    String?
+  recipient      Recipient?   @relation(fields: [recipientId], references: [id])
+  type           String // bank_account | ewallet | crypto_wallet | crypto_custodial
+  country        String? // empty for crypto endpoints
+  currency       String
+  network        String? // stellar, only for crypto endpoints
+  /// Account number, wallet id or address. Masked whenever it is returned or logged.
+  details        Json
+  simulated      Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@index([recipientId])
+}
+
+model Quote {
+  id               String       @id
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  source           Json // endpoint type, currency, country
+  destination      Json // endpoint type, currency, country, recipient kind
+  amountSide       String // send | receive
+  amountValue      String
+  amountCurrency   String
+  /// Planned legs, fees, alternatives and reasons, as returned to the client (zod-validated).
+  route            Json
+  fees             Json
+  fxRate           String?
+  expectedReceive  String
+  receiveCurrency  String
+  priceRiskBearer  String
+  policy           String       @default("cheapest")
+  validUntil       DateTime
+  alternatives     Json
+  reasons          Json
+  simulated        Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+
+  payments Payment[]
+
+  @@index([organizationId])
+}
+
+model Payment {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  quoteId        String
+  quote          Quote        @relation(fields: [quoteId], references: [id])
+  recipientId    String
+  recipient      Recipient    @relation(fields: [recipientId], references: [id])
+  /// The client's own id; unique per organization. It never goes on-chain (RULES.md).
+  externalId     String?
+  delivery       String // direct | claim_link
+  profile        String // small | batch | invoice | tips | domestic | one_off
+  reference      String?
+  status         String // quoted | awaiting_funding | funded | processing | paid | ...
+  batchId        String?
+  batch          Batch?       @relation(fields: [batchId], references: [id])
+  /// Current vault lock attempt, from 1. The on-chain id is sha256("<id>:<attempt>").
+  lockAttempt    Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  legs       Leg[]
+  events     Event[]
+  claimLink  ClaimLink?
+  audit      AuditRow[]
+
+  @@unique([organizationId, externalId])
+  @@index([organizationId, status])
+  @@index([batchId])
+}
+
+model Leg {
+  id          String   @id
+  paymentId   String
+  payment     Payment  @relation(fields: [paymentId], references: [id])
+  /// Position in the route; legs run strictly in this order.
+  position    Int
+  kind        String // collect | convert | settle | payout
+  rail        String // id from providers.json, e.g. sim_bank_us_ach, stellar_usdc
+  providerId  String
+  amountInValue   String
+  amountInCurrency String
+  amountOutValue  String
+  amountOutCurrency String
+  status      String   @default("pending") // pending | processing | succeeded | failed | reversing | reversed
+  /// Attempts on the current provider (a retry increments it); a re-route resets it.
+  attempt     Int      @default(1)
+  /// Provider reference, or the Stellar transaction hash for settle legs.
+  externalRef String?
+  errorCode   String?
+  errorMessage String?
+  reversalOf  String?
+  simulated   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([paymentId, position])
+}
+
+model Batch {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+
+  payments Payment[]
+
+  @@index([organizationId])
+}
+
+model ClaimLink {
+  paymentId String   @id
+  payment   Payment  @relation(fields: [paymentId], references: [id])
+  /// sha256 of the token; the raw token exists only in the link.
+  tokenHash String   @unique
+  /// sha256 hex of the claim secret locked in the vault (the secret is held by the backend).
+  expiresAt DateTime
+  status    String   @default("open") // open | accepted | expired
+  createdAt DateTime @default(now())
+}
+
+model WebhookSubscription {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  url            String
+  secret         String
+  eventTypes     String[]
+  createdAt      DateTime     @default(now())
+
+  deliveries WebhookDelivery[]
+
+  @@index([organizationId])
+}
+
+model WebhookDelivery {
+  id             String              @id
+  subscriptionId String
+  subscription   WebhookSubscription @relation(fields: [subscriptionId], references: [id])
+  eventId        String
+  attempts       Int                 @default(0)
+  lastStatus     String?
+  lastAttemptAt  DateTime?
+  nextAttemptAt  DateTime?
+
+  @@index([subscriptionId])
+  @@index([eventId])
+}
+
+model Event {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  type           String
+  paymentId      String?
+  payment        Payment?     @relation(fields: [paymentId], references: [id])
+  /// Snapshot of the payment at the time of the event (§9).
+  snapshot       Json
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([paymentId])
+}
+
+/// One row per state transition (§7: every transition writes an event and an audit row).
+model AuditRow {
+  id         String   @id
+  paymentId  String
+  payment    Payment  @relation(fields: [paymentId], references: [id])
+  entity     String // payment | leg
+  entityId   String
+  fromStatus String?
+  toStatus   String
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  @@index([paymentId])
+}
+
+/// Idempotency-Key handling for every POST (§10).
+model IdempotencyRecord {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  key            String
+  /// Hash of method, path and body: the same key with a different request is a 409.
+  requestHash    String
+  responseStatus Int
+  responseBody   Json
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, key])
+}
