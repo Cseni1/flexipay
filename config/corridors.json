@@ -1,0 +1,112 @@
+{
+	"corridors": [
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "US", "currency": "USD" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": false, "company": false },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": [],
+				"settle": [],
+				"payout": ["sim_bank_us_ach"]
+			},
+			"domesticRail": "sim_bank_us_ach",
+			"regulationNote": "Domestic USD, same country and currency. Bank account only; no crypto route in this corridor.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "PH", "currency": "PHP" },
+			"allowedDestinationTypes": ["bank_account", "ewallet", "crypto_wallet"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx"],
+				"settle": ["stellar_usdc"],
+				"payout": ["sim_bank_ph_instapay", "sim_ewallet_ph"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to PHP. Bank account, e-wallet and crypto-wallet destinations; simulated rails only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "BR", "currency": "BRL" },
+			"allowedDestinationTypes": ["bank_account", "crypto_wallet"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx"],
+				"settle": ["stellar_usdc"],
+				"payout": ["sim_bank_br_pix"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to BRL. Bank account and crypto-wallet destinations. Brazil is the baseline Latin American country; Mexico is added after the event.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "ZA", "currency": "ZAR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": false, "company": false },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx"],
+				"settle": [],
+				"payout": ["sim_bank_za_eft"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Bank rails only. Draft cross-border crypto rules of 3 Aug 2026 would stop companies sending or receiving crypto across the border; on 21 Oct 2026 the finance minister said they will be rewritten, with no timeline. Demo policy, not legal advice.",
+			"simulated": true,
+			"placeholder": true
+		}
+	]
+}

@@ -1,0 +1,111 @@
+{
+	"providers": [
+		{
+			"id": "sim_bank_us_ach",
+			"kind": "bank",
+			"countries": ["US"],
+			"currencies": ["USD"],
+			"endpointTypes": ["bank_account"],
+			"legKinds": ["collect", "payout"],
+			"fee": { "fixed": { "amount": "0", "currency": "USD" }, "bps": 0 },
+			"fxSpreadBps": 0,
+			"estimatedTimeSeconds": 60,
+			"limits": {
+				"min": { "amount": "100", "currency": "USD" },
+				"max": { "amount": "5000000", "currency": "USD" }
+			},
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"id": "sim_bank_ph_instapay",
+			"kind": "bank",
+			"countries": ["PH"],
+			"currencies": ["PHP"],
+			"endpointTypes": ["bank_account"],
+			"legKinds": ["payout"],
+			"fee": { "fixed": { "amount": "1500", "currency": "PHP" }, "bps": 50 },
+			"fxSpreadBps": 0,
+			"estimatedTimeSeconds": 120,
+			"limits": {
+				"min": { "amount": "5000", "currency": "PHP" },
+				"max": { "amount": "5000000", "currency": "PHP" }
+			},
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"id": "sim_ewallet_ph",
+			"kind": "ewallet",
+			"countries": ["PH"],
+			"currencies": ["PHP"],
+			"endpointTypes": ["ewallet"],
+			"legKinds": ["payout"],
+			"fee": { "fixed": { "amount": "1000", "currency": "PHP" }, "bps": 100 },
+			"fxSpreadBps": 0,
+			"estimatedTimeSeconds": 30,
+			"limits": {
+				"min": { "amount": "1000", "currency": "PHP" },
+				"max": { "amount": "1000000", "currency": "PHP" }
+			},
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"id": "sim_bank_br_pix",
+			"kind": "bank",
+			"countries": ["BR"],
+			"currencies": ["BRL"],
+			"endpointTypes": ["bank_account"],
+			"legKinds": ["payout"],
+			"fee": { "fixed": { "amount": "200", "currency": "BRL" }, "bps": 0 },
+			"fxSpreadBps": 0,
+			"estimatedTimeSeconds": 30,
+			"limits": {
+				"min": { "amount": "500", "currency": "BRL" },
+				"max": { "amount": "2000000", "currency": "BRL" }
+			},
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"id": "sim_bank_za_eft",
+			"kind": "bank",
+			"countries": ["ZA"],
+			"currencies": ["ZAR"],
+			"endpointTypes": ["bank_account"],
+			"legKinds": ["payout"],
+			"fee": { "fixed": { "amount": "500", "currency": "ZAR" }, "bps": 80 },
+			"fxSpreadBps": 0,
+			"estimatedTimeSeconds": 1800,
+			"limits": {
+				"min": { "amount": "10000", "currency": "ZAR" },
+				"max": { "amount": "5000000", "currency": "ZAR" }
+			},
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"id": "sim_fx",
+			"kind": "fx",
+			"countries": ["US", "PH", "BR", "ZA"],
+			"currencies": ["USD", "PHP", "BRL", "ZAR"],
+			"endpointTypes": [],
+			"legKinds": ["convert"],
+			"fee": { "fixed": { "amount": "0", "currency": "USD" }, "bps": 25 },
+			"fxSpreadBps": 50,
+			"estimatedTimeSeconds": 5,
+			"limits": null,
+			"simulated": true,
+			"placeholder": true
+		}
+	],
+	"settlementRails": [
+		{
+			"id": "stellar_usdc",
+			"network": "stellar",
+			"asset": "USDC",
+			"simulated": false
+		}
+	]
+}
