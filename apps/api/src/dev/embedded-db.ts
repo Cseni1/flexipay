@@ -1,0 +1,70 @@
+// Real Postgres for local work and tests, from the embedded-postgres npm package (no system
+// install, no Docker). Production uses a managed Postgres; this is the same engine.
+import { execFile } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import EmbeddedPostgres from "embedded-postgres";
+
+const run = promisify(execFile);
+const apiDir = fileURLToPath(new URL("../..", import.meta.url));
+
+export interface EmbeddedDb {
+  url: string;
+  stop(): Promise<void>;
+}
+
+async function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const s = createServer();
+    s.once("error", reject);
+    s.listen(0, "127.0.0.1", () => {
+      const { port } = s.address() as { port: number };
+      s.close(() => resolve(port));
+    });
+  });
+}
+
+/** Starts Postgres. `dir` keeps data between runs; without it the database is temporary. */
+export async function startEmbeddedDb(opts: { dir?: string; port?: number; name?: string } = {}): Promise<EmbeddedDb> {
+  const temporary = opts.dir === undefined;
+  const databaseDir = opts.dir ?? (await mkdtemp(join(tmpdir(), "flexipay-pg-")));
+  const port = opts.port ?? (await freePort());
+  const name = opts.name ?? "flexipay";
+  const pg = new EmbeddedPostgres({
+    databaseDir,
+    user: "fp",
+    password: "fp",
+    port,
+    persistent: !temporary,
+    onLog: () => {},
+    onError: () => {},
+  });
+  await pg.initialise().catch((err: unknown) => {
+    // an existing data directory is fine
+    if (!String(err).includes("exists")) throw err;
+  });
+  await pg.start();
+  await pg.createDatabase(name).catch(() => {});
+  return {
+    url: `postgresql://fp:fp@127.0.0.1:${port}/${name}`,
+    async stop() {
+      await pg.stop();
+      if (temporary) await rm(databaseDir, { recursive: true, force: true });
+    },
+  };
+}
+
+/** Runs the Prisma CLI in apps/api against `url`. */
+export async function prisma(url: string, ...args: string[]): Promise<string> {
+  const { stdout, stderr } = await run("npx", ["prisma", ...args], {
+    cwd: apiDir,
+    env: { ...process.env, DATABASE_URL: url },
+  });
+  return stdout + stderr;
+}
+
+export const migrateDeploy = (url: string) => prisma(url, "migrate", "deploy");

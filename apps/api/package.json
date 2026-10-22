@@ -1,0 +1,34 @@
+{
+  "name": "@flexipay/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "FlexiPay REST API (v1), orchestrator and sandbox controls",
+  "scripts": {
+    "db:generate": "prisma generate",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:dev": "node scripts/dev-db.ts migrate",
+    "dev": "node scripts/dev-db.ts serve",
+    "start": "node src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "openapi": "node src/openapi/write.ts"
+  },
+  "dependencies": {
+    "@flexipay/domain": "*",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "express": "^5.3.0",
+    "pg": "^8.13.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.11.0",
+    "embedded-postgres": "^18.4.0-beta.17",
+    "prisma": "^7.10.1",
+    "typescript": "^6.0.2",
+    "vitest": "^5.0.5"
+  }
+}
