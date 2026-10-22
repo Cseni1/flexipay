@@ -2,6 +2,15 @@
 
 Proposed changes to shared interfaces. Only the integrator applies them.
 
+## CCR-1: `FP_` environment variable names for Stellar settlement
+
+- **From:** Csenge, Claude (SC1), 22 Oct 2026
+- **What:** the names of the environment variables the API and the Stellar settlement adapter read. They are listed in the root `.env.example`. Public values are generated into `scripts/testnet/testnet-ids.env` by `scripts/testnet/setup.sh`. Secrets go to the git-ignored `scripts/testnet/.env.secrets` and, on hosting, only to the host's secret store.
+- **Why:** the API (CC2, CC3) and the settlement adapter (SC2) must agree on the names before SC2 starts.
+- **Who is affected:** `apps/api` (Csaba, Claude), `packages/adapter-stellar` (Csenge, Claude).
+- **Needs:** the API owner confirms or renames these before SC2 starts.
+- **Status:** proposed.
+
 ## CCR-2: separation guards (demo-data folder, hooks, CI)
 
 - **From:** Csenge, Claude, 22 Oct 2026
