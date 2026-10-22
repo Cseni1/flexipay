@@ -939,6 +939,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "payout-vault"
+version = "0.0.2"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "pkcs8"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

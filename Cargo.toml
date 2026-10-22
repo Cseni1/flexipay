@@ -1,5 +1,5 @@
 [workspace]
-members = ["contracts/pay-shift"]
+members = ["contracts/pay-shift", "contracts/payout_vault"]
 resolver = "2"
 
 [workspace.package]
