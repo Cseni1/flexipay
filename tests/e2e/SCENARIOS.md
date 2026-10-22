@@ -10,7 +10,8 @@ adapter), §12 (vault), §15 (DF1 to DF5); DEV_PLAN **v4** §4 (SF3) and §10; P
 `contracts/payout_vault/RULES.md` at `40c2e9d`; `docs/CONTRACT_CHANGES.md` at `40c2e9d`.
 **CCR-3** (approved) is on `csenge-freebuff/SF0-config-draft` at `b985c8b`, not yet on
 `main`; it confirms the corridor and crypto-destination decisions used below. The v4
-documents live outside the repo (`../files/`); the repo root still holds v3.
+documents are not in the repo yet; the team's authoritative copies stay outside it until
+CC0 adds them to `docs/`.
 
 **Revision after review (22 Oct 2026):** two conversion legs on fiat routes, the claim-linked
 release state, non-interchangeable providers, BR-only vault refund, TBD success codes and
@@ -86,16 +87,17 @@ Use PH or BR (both approve `crypto_wallet`). Below: PH individual.
 |---|---|---|---|---|---|
 | 1 | `POST /v1/quotes` | destination PH `crypto_wallet`, kind `individual` | 2xx (TBD) | route ends at `settle`; **no `payout` leg planned** | — |
 | 2 | `POST /v1/payments` | `delivery: claim_link`, `quoteId`, `recipientId` | 2xx (TBD) | `awaiting_funding`; claim link returned (raw token only in the link) | `payment.created`, `claim.opened` when opened |
-| 3 | `POST /v1/payments/{id}/fund` | — | 2xx (TBD) | `processing`; `collect` and `convert` **may already be `succeeded`**; the settlement release is incomplete and the payment is not `paid`; the status of the waiting leg is **TBD (CC2)** — §7 defines only a *payout* leg waiting, and this route has none | `payment.funded` |
+| 3 | `POST /v1/payments/{id}/fund` | — | 2xx (TBD) | `processing`; `collect` and `convert` **may already be `succeeded`**; the vault lock may already exist with its own **lock** transaction hash; the settlement release is incomplete and the payment is not `paid`; the status of the waiting leg is **TBD (CC2)** — §7 defines only a *payout* leg waiting, and this route has none | `payment.funded` |
 | 4 | `GET /v1/claims/{token}` (public) | — | 2xx (TBD) | what is waiting: amount, corridor, allowed endpoint types | — |
-| 5 | `POST /v1/claims/{token}/accept` | chosen `crypto_wallet` endpoint (address) | 2xx (TBD) | the vault release to the address completes, so the last leg succeeds and the payment becomes `paid`; legs are `collect`, `convert`, `settle` only — **no `payout` leg**; a Stellar testnet transaction hash is visible (field **TBD**) | `claim.accepted`, `payment.onchain`, `payment.paid` |
+| 5 | `POST /v1/claims/{token}/accept` | chosen `crypto_wallet` endpoint (address) | 2xx (TBD) | the vault release to the address completes, so the last leg succeeds and the payment becomes `paid`; legs are `collect`, `convert`, `settle` only — **no `payout` leg**; the **release** (claim) transaction hash on Stellar testnet is visible (field **TBD**) | `claim.accepted`, `payment.onchain`, `payment.paid` |
 
 Assertions: before acceptance the **settlement release is incomplete and the payment is not
 `paid`**. Do **not** assert that no leg has succeeded: `collect` and `convert` may already be
 `succeeded`. §7 defines a waiting *payout* leg (`pending` until the recipient accepts) and
 this route has no payout leg, so the waiting leg's exact status is **TBD (CC2)**; only the
-no-release and no-`paid` rules are confirmed, and the transaction hash appears only at claim
-time. The hash assertion requires `StellarSettlementAdapter` (§11.2); with
+no-release and no-`paid` rules are confirmed. The **release** (claim) transaction hash
+appears only at claim time; an earlier **lock** transaction hash from funding
+(`create_payout`) may already exist and must not be asserted absent. The hash assertion requires `StellarSettlementAdapter` (§11.2); with
 `MockSettlementAdapter` the network is `mock` and the reference is simulated — record which
 adapter ran, and never label a real testnet hash as simulated.
 
@@ -113,7 +115,7 @@ vault lock to refund.
 | Branch | Control | Expected |
 |---|---|---|
 | **(a) retry succeeds** | `POST /v1/sandbox/fail-next` targeting `sim_bank_br_pix` | first payout attempt `failed`, retry once on the **same** provider `succeeded`; payment `paid`; two payout attempts in the timeline; **no vault refund and therefore no new lock attempt** |
-| **(b) re-route after a failed retry** | would need a second eligible provider for the same endpoint type | **not producible** with the baseline providers — recorded as a gap below, not asserted |
+| **(b) re-route after a failed retry** | would need a second eligible provider for the same endpoint type | **blocked**: not producible with the baseline providers and no second provider is authorised — recorded as a gap below, not asserted |
 | **(c) no alternative, refund** | `sim_bank_br_pix` failing with no alternative | vault refund and reversal of earlier legs; payout leg stays `failed`, collect leg `reversing` → `reversed`; payment `refunded`; events `leg.failed`, `payment.refunded` |
 
 **Gaps that block the automated run** (recorded, not worked around — no provider, endpoint or
@@ -124,9 +126,11 @@ control is added by this task):
    Re-invoking between attempts is racy. **Needed:** a count, or a per-provider `down` state
    the orchestrator observes *after* funding (`/v1/sandbox/provider-health` marks a provider
    down, but one already down at quote time is filtered out and yields no payment).
-2. **No second payout provider.** Branch (b) needs another provider serving the *same*
-   endpoint type. None exists, and adding one is SF1 work, not this task. Until then (b) is
-   unexercisable and the other two do not prove re-route.
+2. **No second payout provider, and none is authorised.** Branch (b) needs another provider
+   serving the *same* endpoint type. None exists, and adding one is **not** automatically SF1
+   scope: SF1's approved list is the six providers. Branch (b) stays **blocked** until an
+   approved fixture strategy or scope decision; until then the other two branches do not
+   prove re-route.
 3. **Refund timing is on-chain, not sandbox time.** `RULES.md` refunds only when the ledger's
    `now >= expires_at`; before that only `cancel` (payer-authorised) returns the lock.
    `advance-time` moves the API's **quote and claim** expiry (§10), not ledger time, so it
@@ -185,6 +189,20 @@ DF3, one batch row set, one quote request per corridor, and the `fail-next` targ
 corridors — and no fixture labels the real testnet rail as simulated (`stellar_usdc` stays
 `simulated: false`). Values are neutral; no secret, key or address is committed, and the DF3
 hash is produced at run time.
+
+## Dependencies (explicit, not completed acceptance tests)
+
+These flows are specified, not passing. They depend on:
+
+- **CC2 (orchestrator):** the waiting status of a claim-link route that has no payout leg
+  (DF3); refund and expiry behaviour, including whether a refund uses a short lock
+  `expires_at` or `cancel` (DF4 branch c, N3).
+- **CC0 and CC3 (schemas, OpenAPI, API):** request and response shapes and success codes
+  throughout; deterministic sandbox failure controls (a failure count or a persistent
+  `down` state observed after funding) for DF4.
+- **Config and CCR-3** (PR #1) on `main` before DF1 and DF5 can run.
+- **DF4 branch (b):** an approved fixture strategy or scope decision for a second payout
+  provider (see gap 2).
 
 ## Open questions and gaps
 
