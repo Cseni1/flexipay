@@ -3,7 +3,8 @@
 //! Trust model
 //! - FlexiPay never holds payer money. A payer deposits into its own balance inside this
 //!   contract and can always withdraw whatever is not locked in a pending payout.
-//! - There is no admin key. Token, treasury and fee are fixed at `init` and cannot change.
+//! - There is no admin key. Token, treasury and fee are set by the constructor at deployment and
+//!   cannot change. Nobody can initialise the contract between deploy and setup.
 //! - A payout is claimed with a secret (claim link). Whoever holds the secret chooses the
 //!   receiving address, so the recipient does not need a wallet when the payout is created.
 //! - Unclaimed payouts return to the payer's balance after expiry (permissionless refund).
@@ -14,7 +15,7 @@
 
 use soroban_sdk::{
     Address, Bytes, BytesN, Env, contract, contracterror, contractevent, contractimpl,
-    contracttype, token,
+    contracttype, panic_with_error, token,
 };
 
 const MAX_FEE_BPS: u32 = 1_000; // 10 %
@@ -28,6 +29,7 @@ const TTL_BUMP: u32 = 60 * DAY_LEDGERS;
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum Error {
+    /// Reserved: `init` was replaced by the constructor. Kept so the codes below do not move.
     AlreadyInitialized = 1,
     NotInitialized = 2,
     InvalidAmount = 3,
@@ -180,20 +182,17 @@ fn write_payout(env: &Env, p: &Payout) {
 
 #[contractimpl]
 impl PayoutVault {
-    /// One-time setup. After this call nothing about token, treasury or fee can change.
-    pub fn init(env: Env, token: Address, treasury: Address, fee_bps: u32) -> Result<(), Error> {
-        if env.storage().instance().has(&DataKey::Token) {
-            return Err(Error::AlreadyInitialized);
-        }
+    /// Runs once, as part of deployment. After it nothing about token, treasury or fee can change.
+    /// Fails the deployment with `FeeTooHigh` if `fee_bps` is above 10 %.
+    pub fn __constructor(env: Env, token: Address, treasury: Address, fee_bps: u32) {
         if fee_bps > MAX_FEE_BPS {
-            return Err(Error::FeeTooHigh);
+            panic_with_error!(&env, Error::FeeTooHigh);
         }
         env.storage().instance().set(&DataKey::Token, &token);
         env.storage().instance().set(&DataKey::Treasury, &treasury);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
         env.storage().instance().set(&DataKey::NextId, &1u64);
         bump_instance(&env);
-        Ok(())
     }
 
     /// Payer adds funds to its own balance in the vault.

@@ -45,6 +45,15 @@ SECRET=$(openssl rand -hex 32)
 CLAIM_HASH=$(printf '%s' "$SECRET" | xxd -r -p | shasum -a 256 | cut -c1-64)
 EXPIRES_AT=$(($(date +%s) + 3600))
 
+# setup happens only in the constructor: the deployed vault must export create_payout but no init
+FUNCTIONS=$(stellar contract invoke --id "$FP_PAYOUT_VAULT_ID" --source-account fp-deployer --network "$NET" --send no -- \
+	--help 2>&1 | sed -n '/Commands:/,/Options:/p' | awk '{print $1}' || true)
+if ! grep -qx create_payout <<<"$FUNCTIONS" || grep -qx init <<<"$FUNCTIONS"; then
+	echo "FAIL: unexpected vault interface: $(echo $FUNCTIONS)" >&2
+	exit 1
+fi
+echo "init          absent (constructor only)"
+
 echo "payment id:  $PAYMENT_ID (attempt 1)"
 echo "external id: $EXTERNAL_ID"
 RECIPIENT_BEFORE=$(usdc_balance "$FP_RECIPIENT_A_ADDRESS")

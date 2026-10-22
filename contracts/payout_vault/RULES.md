@@ -6,10 +6,11 @@ The zip's `reference-only/mock-chain-rules.js` predates the external id and the 
 
 ## Setup
 
-- `init(token, treasury, fee_bps)` runs once. A second call fails with `AlreadyInitialized`.
-- `fee_bps` is at most 1000 (10%), otherwise `FeeTooHigh`.
-- There is no admin key. The token, treasury and fee never change after `init`.
-- The token is set at `init`, so the same code can run a second vault on another asset (for example the test anchor's USDC at the event).
+- Setup runs in the constructor, `__constructor(token, treasury, fee_bps)`, as part of deployment. There is no `init` function, so nobody can set up the contract between deploy and setup.
+- `fee_bps` is at most 1000 (10%). Otherwise deployment fails with `FeeTooHigh` (#4).
+- There is no admin key. The token, treasury and fee never change after deployment. To change them, deploy a new vault.
+- The token is a constructor argument, so the same code can run a second vault on another asset (for example the test anchor's USDC at the event).
+- For routes that settle through the vault, the FlexiPay fee is this fixed fee. The quote reads it from `config()`. The settlement adapter checks the token, treasury and fee at startup and stops on a mismatch.
 
 ## Amounts
 
@@ -65,10 +66,12 @@ The mock emits the same three events in the same situations.
 
 ## Error codes
 
+The Stellar settlement adapter and the mock settlement adapter map these numbers and names identically.
+
 | Code | Name |
 |---|---|
-| 1 | AlreadyInitialized |
-| 2 | NotInitialized |
+| 1 | AlreadyInitialized (reserved, no longer raised since setup moved to the constructor) |
+| 2 | NotInitialized (cannot happen after a successful deployment) |
 | 3 | InvalidAmount |
 | 4 | FeeTooHigh |
 | 5 | InsufficientBalance |
