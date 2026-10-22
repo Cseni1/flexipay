@@ -8,6 +8,8 @@ implementation or OpenAPI document yet, so nothing here is executed by this task
 §8 (routing, retry, refund), §9 (events), §10 (API v1 and error codes), §11.2 (settlement
 adapter), §12 (vault), §15 (DF1 to DF5); DEV_PLAN **v4** §4 (SF3) and §10; PRODUCT v3 §7;
 `contracts/payout_vault/RULES.md` at `40c2e9d`; `docs/CONTRACT_CHANGES.md` at `40c2e9d`.
+**CCR-3** (approved) is on `csenge-freebuff/SF0-config-draft` at `b985c8b`, not yet on
+`main`; it confirms the corridor, crypto-destination, limit and fee decisions used below.
 The v4 documents live outside the repo (`../files/`); the repo root still holds v3.
 
 ## What is specified and what is not
@@ -163,6 +165,9 @@ Assertion: the exclusion is explained, not silent. The reason must name the reci
   quoted fee equals the contract value at quote time. Fees for legs outside the vault are
   the labelled placeholders in `providers.json`; assert attribution and the simulated label,
   not a fixed price.
+- **Which side pays** is the payout's `FeeMode`: `PayerPays` locks amount + fee and
+  `RecipientPays` pays amount − fee (`RULES.md`, confirmed by CCR-3), so DF3 asserts the
+  claimed amount equals the quoted `net`, not the gross.
 - **Not observable through the API** (do not invent response fields for them — they are
   SF2/integration or contract coverage): `payout_by_external` recovery after a lost
   transaction response, duplicate-lock rejection at the contract, `balance(payer)`, and the
@@ -175,23 +180,20 @@ an invented interface. Once CC0 OpenAPI lands, the tests need: three recipients 
 endpoints (PH `ewallet`, BR `bank_account`, US `bank_account`) plus a PH `crypto_wallet`
 address for DF3; one batch row set (DF1) and one quote request per corridor; a claim-accept
 payload naming the crypto endpoint; and the `fail-next` provider targets for DF4. Values are
-neutral, money is integer minor-unit strings, and no secret, key or address is committed —
-DF3 asserts the testnet hash produced at run time, never a stored one.
+neutral, and no secret, key or address is committed: the DF3 hash is produced at run time.
 
 ## Open questions and gaps
 
-1. **CCR-3 is absent.** `docs/CONTRACT_CHANGES.md` on `origin/main` contains only CCR-1 and
-   CCR-2, both `proposed`; there is no CCR-3. Details that were expected from it (crypto
-   destination route shape, any API field it changes) are **not** asserted here beyond
-   what §7/§8 already state. The integrator must land CCR-3 before these scenarios are
-   treated as final.
+1. **CCR-3 is approved but not on `main`.** It sits on the SF0 branch at `b985c8b` and
+   confirms decisions 1 to 7 used here. Its one open item — whether the "no payout for crypto
+   destinations" rule lives in CC1 or becomes a CC0 corridor field — affects how DF1 and DF3
+   build their route assertions, not the expected outcomes. Merge it before CC1 starts.
 2. **No CC0 OpenAPI.** Request/response bodies, batch row shape, claim acceptance payload,
    the batch fund action and the leg-attempt timeline are all **TBD (CC0 OpenAPI)**.
 3. **DF4 controls** — see the two gaps above (consecutive failures, refund before expiry).
 4. **Config is not merged.** The corridor and provider ids above come from the SF0 draft
    (PR #1). Until it lands, DF1 and DF5 cannot run.
-5. `tests/e2e` is the API flow location named in §15; the repo's existing Playwright specs
-   sit in `e2e/`, which §15 calls `tests/e2e-ui`. The move is CC0's restructure, not this
-   task's.
+5. `tests/e2e` is the API flow location named in §15; the existing Playwright specs sit in
+   `e2e/`, which §15 calls `tests/e2e-ui`. Moving them is CC0's restructure, not this task's.
 
 <!-- written specification; no test has been executed by this task -->
