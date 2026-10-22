@@ -42,8 +42,6 @@ identity/
 .DS_Store
 
 # generated contract bindings + clients
-app-lib/clients/*
-!app-lib/clients/.gitkeep
 
 # Agent/editor scratch
 .claude/

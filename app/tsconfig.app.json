@@ -1,5 +1,0 @@
-{
-	"extends": "@theahaco/ts-config/typescript",
-	"include": ["src/App.tsx", "src/main.tsx", "src/components/FlexiPay.tsx", "src/vite-env.d.ts", "reset.d.ts"],
-	"exclude": ["src/pages/**", "src/providers/**", "src/hooks/**", "src/components/ConnectAccount.tsx", "src/components/FundAccountButton.tsx", "src/components/GuessTheNumber.tsx", "src/components/NetworkPill.tsx", "src/components/WalletButton.tsx"]
-}
