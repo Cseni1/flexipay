@@ -4,7 +4,7 @@ What existed before HackMeridian hacking begins, versus what is reserved for
 the event. Tags: **`qualifier-v1`** exists. **`arrival`** and **`submission`**
 are **not** created yet — do not mint them early.
 
-Integrated tip for the pre-event demo handoff: **`975d959`**.
+Pre-event demo handoff started from **`975d959`**; CCR-11/FX follow-up merges afterward — see `docs/LOCAL_DEMO.md` for the current tip after integration.
 
 ## On arrival (disclosed baseline)
 
@@ -20,10 +20,12 @@ Integrated tip for the pre-event demo handoff: **`975d959`**.
 Evidence for D1/D2 on this tip:
 `scripts/demo/evidence/2026-10-23-d1-d2-final-acceptance.md`.
 
-## Not complete on this tip (do not over-claim)
+## Remaining gaps on the arrival baseline (do not over-claim)
 
-- **CCR-11 Stellar restart** — Freebuff in progress; mock restart release failed.
-- **Stellar fee-drift recovery** — mock PASS only.
+- **Stellar fee-drift / orphan recovery** — **NOT VERIFIED** (mock CCR-15 PASS only).
+- **Different-seal-key negative control** — **NOT RUN**.
+- **Mock vault** loses state across process restart (Stellar CCR-11 restart **PASS**).
+- **Local Vite proxy** is not deployed authentication.
 - Deployed public Preview / production hosts — account steps; not required to
   run the local demo.
 - Event features below.

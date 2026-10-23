@@ -59,9 +59,19 @@ Anchor cash-out (SEP-10 / SEP-38 / SEP-24) and passkey smart-wallet claim are
 requirements under published rules (Scale is a standalone builder track;
 thematic tracks are Genesis-only). Fee sponsorship remains a stretch.
 
+## CCR-11 restart
+
+**PASS** on Stellar testnet (same persistent DB + seal key): original payout id
+**39** and lock survived API restart; UI accept in a new browser context;
+RPC-verified `claim` to Worker A; one fund / one lock. Evidence:
+`scripts/demo/evidence/2026-10-23-ccr11-restart-stellar.md`. Acceptance code
+recorded as **`939a2f9`**.
+
 ## Gaps
 
-- CCR-11 **Stellar** claim restart: Freebuff-owned; mock restart release failed
-  (in-memory vault). Do not declare baseline complete until that result is in.
 - Stellar fee-drift / CCR-15 recovery: **NOT VERIFIED** on testnet (mock PASS).
-- Independent RPC decode in the recorded run: DF3 and DF4 only.
+- Different-seal-key negative control: **NOT RUN**.
+- Mock vault loses payout state across process restart (use Stellar for restart proof).
+- Local Vite proxy is not deployed authentication.
+- Independent RPC decode in the D1/D2 recorded run: DF3 and DF4 only (CCR-11
+  restart also decoded lock/release).

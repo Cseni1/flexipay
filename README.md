@@ -41,11 +41,12 @@ Stellar testnet. Offline demo is always mock settlement.
 
 ## Tested tip
 
-Pre-event handoff commit: **`975d959`**. D1/D2 evidence:
+Pre-event handoff commit: **`e3f788c`**. D1/D2 evidence:
 `scripts/demo/evidence/2026-10-23-d1-d2-final-acceptance.md`.
 
-**Baseline not closed** until Freebuff’s **CCR-11 Stellar restart** result is
-reviewed and integrated. Stellar fee-drift recovery remains **NOT VERIFIED**.
+CCR-11 Stellar restart is **PASS** (evidence on main after integration). Remaining:
+Stellar fee-drift recovery **NOT VERIFIED**; different-seal-key control **NOT RUN**;
+mock vault is not restart-safe; Vite proxy is not deployed auth.
 
 ## Entry (published rules)
 

@@ -1,23 +1,22 @@
 # Local demo runbook
 
-Operator notes for `main` **`975d959`**. Existing scripts only
+Operator notes for `main` **`e3f788c`**. Existing scripts only
 (`scripts/demo/offline.ts`, `scripts/seed/seed.ts`, DF scripts, Vite CCR-19
 proxy). No new launcher. Never print or commit secrets.
 
 Lane-D detail: `scripts/demo/README.md`, `scripts/seed/README.md`. Stellar
 overview: `docs/STELLAR.md`. Prior-work disclosure: `docs/PRIOR_WORK.md`.
 
-**Baseline status:** D1/D2 mock + Stellar flows and browser DF2/DF3/DF5 are
-evidenced on this tip (see below). **CCR-11 Stellar restart** is owned by
-Freebuff and was still in flight when this runbook was written — do not treat
-the arrival baseline as complete until that result is integrated. Do not
-duplicate that run.
+**Baseline status:** D1/D2 mock + Stellar flows, browser DF2/DF3/DF5, and
+**CCR-11 Stellar restart** are evidenced (see below). Stellar fee-drift recovery
+and the different-seal-key negative control remain open — see gaps. Do not
+duplicate the successful CCR-11 chain run.
 
 ## Prerequisites
 
 | Item | Value |
 | --- | --- |
-| Git tip | `975d959` (`origin/main`) |
+| Git tip | `e3f788c` (`origin/main`) |
 | Node | **v24** (verified `v24.21.0`) |
 | Install | repo root: `npm install` |
 | Prisma | `npm run db:generate --workspace=@flexipay/api` |
@@ -101,7 +100,7 @@ node scripts/seed/seed.ts reset   # POST /v1/sandbox/reset
 node scripts/seed/seed.ts         # reset + recipients + endpoints
 ```
 
-On **`975d959`**: reset, recipients, endpoints and batches are mounted. Seed and
+On **`e3f788c`**: reset, recipients, endpoints and batches are mounted. Seed and
 replay **PASS** in
 `scripts/demo/evidence/2026-10-23-d1-d2-final-acceptance.md`.
 
@@ -153,27 +152,31 @@ linked below.
 
 | Item | Value |
 | --- | --- |
-| Integrated tip | **`975d959`** (includes D1/D2 lane-D commits `528b89b` + `939a2f9`) |
+| Integrated tip | **`e3f788c`** (D1/D2 + CCR-11 evidence + FX fix; includes `ab0e60a`) |
 | Acceptance write-up | [`scripts/demo/evidence/2026-10-23-d1-d2-final-acceptance.md`](../scripts/demo/evidence/2026-10-23-d1-d2-final-acceptance.md) |
 | CCR-15 mock recovery | [`scripts/demo/evidence/2026-10-23-ccr15-recovery-c859c92.md`](../scripts/demo/evidence/2026-10-23-ccr15-recovery-c859c92.md) |
+| CCR-11 Stellar restart | [`scripts/demo/evidence/2026-10-23-ccr11-restart-stellar.md`](../scripts/demo/evidence/2026-10-23-ccr11-restart-stellar.md) (code `939a2f9`) |
 
 D1 DF1–DF5 **PASS** on mock and Stellar; D2 seed/replay/offline **PASS**; browser
-DF2/DF3/DF5 **PASS** (mock offline). Scripts originally recorded HEAD `b48bfe3`
-plus an uncommitted patch whose `*.ts` hash is preserved in those commits.
+DF2/DF3/DF5 **PASS** (mock offline); CCR-11 Stellar restart **PASS**. Earlier D1/D2
+and browser evidence is preserved. Scripts originally recorded HEAD `b48bfe3`
+plus an uncommitted patch whose `*.ts` hash is preserved in the D1/D2 commits.
 
 ## Remaining verification gaps (honest)
 
 | Gap | Status |
 | --- | --- |
-| **CCR-11 claim restart (Stellar)** | **In progress (Freebuff)** — mock restart accept failed (`502 release_failed` / `PayoutNotFound`, in-memory vault). Stellar restart must not be duplicated here. |
+| **CCR-11 claim restart (Stellar)** | **PASS** — payout 39 + lock survived API restart (same DB/seal); UI accept; RPC-verified release to Worker A; no second fund/lock. Evidence: `scripts/demo/evidence/2026-10-23-ccr11-restart-stellar.md`. Tested code **`939a2f9`**. Different-seal-key negative control **NOT RUN**. |
+| **CCR-11 claim restart (mock)** | Still fails release after restart (in-memory mock vault). Not required once Stellar restart PASS is recorded. |
 | **Stellar fee-drift / CCR-15** | Mock **PASS**; testnet recovery **NOT VERIFIED** |
+| **Local Vite proxy** | Dev-only sandbox Bearer injection — **not** deployed authentication |
 | Independent RPC decode | DF3/DF4 only in the recorded run; DF1/DF2 rely on API/events |
 | Settle-leg status after vault refund | Undefined; DF4 does not assert it |
 | DF5 refusal code | No stable code; meaning asserted from `reasons[]` |
 | Event features (anchor, passkey) | **Not started** before Sun 25 Oct 11:30 — planned event work, not Scale entry requirements |
 | Tags `arrival` / `submission` | **Not created yet** — only `qualifier-v1` exists; do not mint early |
 
-## Mounted routes (`975d959`)
+## Mounted routes (`e3f788c`)
 
 `healthz`, corridors, recipients, endpoints, batches, quotes, payments
 (list/get/fund/cancel), events, claims get/accept, sandbox fail-next /
