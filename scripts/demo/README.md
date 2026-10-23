@@ -7,25 +7,25 @@ and Worker A to Worker D (Worker D is the ZA company that DF5 needs).
 
 ## Status (23 Oct 2026)
 
-**Prepared, not yet executed end to end.** At the tested commit `8aa2290` the
-API mounts only `healthz`, `corridors` and `recipients`; A0 schemas exist but
-the quote/payment/batch/claim/endpoint/sandbox handlers are not mounted. A run
-therefore ends as **BLOCKED** with the missing item and its owner, never as
-PASS. See `scripts/demo/evidence/2026-10-23-d1.md` for the recorded blocker,
-`2026-10-23-d1-review.md` for the review fixes and `2026-10-23-d2.md` for the
-seed/offline work. Per-run JSON evidence is written to the same folder and
-git-ignored.
+**Prepared and exercised, not yet passing end to end.** Tested commit: `05739cc`
+on `main` `0f7ca41`. The API still mounts only `healthz`, `corridors` and
+`recipients`; A0 schemas exist but the quote/payment/batch/claim/endpoint/sandbox
+handlers are not mounted. A run therefore ends as **BLOCKED** with the missing
+item and its owner, never as PASS. See
+`scripts/demo/evidence/2026-10-23-d3-acceptance.md` for the latest run and
+blockers. Per-run JSON evidence is written to the same folder and git-ignored.
 
 DF1 takes the domestic explanation from `Quote.reasons` (no batch-row reason
-field is invented). DF4 still needs the endpoint route and a defined way to read
-payout attempts, the `leg.failed` cardinality and the settle leg's status after
-a refund; the runner blocks instead of guessing those shapes.
+field is invented). DF4 reads payout attempts from the published
+`Event.snapshot` legs, not from the fixture's fail count; a snapshot without
+legs or an `externalRef` remains BLOCKED. The settle leg's status after a refund
+is still not asserted.
 
 | Flow                   | Script              | Mock    | Stellar                |
 | ---------------------- | ------------------- | ------- | ---------------------- |
 | DF1 three-worker batch | `df1-batch.ts`      | BLOCKED | —                      |
 | DF2 quote to paid      | `df2-one-off.ts`    | BLOCKED | —                      |
-| DF3 claim link         | `df3-claim.ts`      | BLOCKED | BLOCKED (SC2 + wiring) |
+| DF3 claim link         | `df3-claim.ts`      | BLOCKED | BLOCKED (routes + chain inputs) |
 | DF4 retry then refund  | `df4-failure.ts`    | BLOCKED | —                      |
 | DF5 ZA company         | `df5-za-company.ts` | BLOCKED | —                      |
 
@@ -33,6 +33,8 @@ a refund; the runner blocks instead of guessing those shapes.
 
 ```bash
 # offline: embedded Postgres + API + web, mock settlement, loopback only
+npm run demo:offline -- --no-seed
+# or, without the root script:
 node scripts/demo/offline.ts --no-seed
 
 # one flow
@@ -109,21 +111,28 @@ passed.
   funding every leg succeeds in order and the paid route equals the quote.
 - **DF3** — funding locks but does not release; the claim view is public;
   accepting releases, the payment becomes paid, the route has no payout leg. The
-  release reference is the settle leg's `externalRef`. Mock mode requires a
-  labelled mock reference; Stellar mode verifies the hash through the testnet
-  RPC (`getNetwork` passphrase + `getTransaction` SUCCESS + ledger). A 64-hex
-  string alone is never treated as proof, and `--mode` only says what was
+  lock and release references are the settle leg's `externalRef` before and
+  after acceptance. Mock mode requires a labelled mock reference; Stellar mode
+  verifies both hashes through the configured testnet RPC: the lock must be
+  `create_payout` on `FP_PAYOUT_VAULT_ID` with `sha256("<payment id>:1")` and a
+  claim hash, the release must be `claim` of that payout id to
+  `FP_RECIPIENT_A_ADDRESS`, and the release secret must hash to the lock's claim
+  hash. Both must be successful, distinct and in non-decreasing ledger order. A
+  64-hex string alone is never treated as proof, and `--mode` only says what was
   requested.
 - **DF4** — `fail-next` makes the first payout and its retry fail; the payout
   stays failed, collect and convert reverse, and the payment is refunded. The
-  flow then blocks: neither A0 nor SCENARIOS.md defines how attempts are exposed
-  (repeated legs, an attempts array, or one leg), the `leg.failed` cardinality,
-  or the settle leg's status after a vault refund.
+  two attempts are proven from two `leg.failed` snapshots with exactly two
+  distinct failed payout `externalRef` values on the routed provider, followed
+  by one `payment.refunded`; a third attempt, a successful payout, a reused ref
+  or a refund before the failures fails the flow. Missing snapshot legs or refs
+  remain BLOCKED.
 - **DF5** — ZA company quote takes `collect → convert → payout` on
-  `sim_bank_za_eft` with no settle leg and a non-empty exclusion reason, and a
-  crypto quote is refused with 422 and a non-empty reason. The exact prose and
-  the recipient-kind wording are not asserted; no stable reason code exists yet.
-  The paid payment has no on-chain event.
+  `sim_bank_za_eft` with no settle leg, and a crypto quote is refused with 422.
+  In both cases one reason must name crypto, the company recipient kind and an
+  exclusion phrase; fragmented reasons or non-empty generic prose fail. Exact
+  prose remains free and no stable reason code exists yet. The paid payment has
+  no on-chain event.
 
 ## Structure
 
@@ -149,9 +158,10 @@ passed.
    CCR-5 §5).
 5. `FP_API_URL` and `FP_API_KEY` names in the root `.env.example`.
 6. SC2's adapter and `FP_SETTLEMENT` wiring for DF3 on Stellar.
-7. A0 answers for the blocked evidence: the batch-row route/reason field, how
-   payout attempts are exposed (and `leg.failed` cardinality), the settle leg's
-   status after a vault refund, and whether lock and release references are
-   separate fields.
-8. A stable refusal-reason code if DF5 must prove the recipient-kind wording
-   rather than only a non-empty explanation.
+7. Event snapshots must carry the payment's legs (including each failed payout's
+   `externalRef`), and the pre-accept settle `externalRef` must be visible for
+   DF3. These are published contract fields; no new API field is needed.
+8. The settle leg's status after a vault refund is still not defined; DF4 does
+   not assert it.
+9. No stable refusal-reason code exists; DF5 asserts a single explanatory
+   reason instead of a code.
