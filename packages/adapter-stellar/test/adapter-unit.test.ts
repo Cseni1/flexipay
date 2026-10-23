@@ -6,7 +6,7 @@ import {
 	UnknownDemoWalletError,
 	parseEnvFile,
 	settlementModeFromEnv,
-} from "../src/index.js";
+} from "../src/index.ts";
 
 describe("settlementModeFromEnv", () => {
 	it("defaults to mock", () => {

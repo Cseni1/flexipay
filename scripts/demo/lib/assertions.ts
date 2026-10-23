@@ -154,10 +154,9 @@ function expectMoneyEqual(
 }
 
 /**
- * CCR-12: settle.externalRef is the contract payoutId, never a transaction hash. CCR-12 documents
- * the payoutId as a decimal string, and the Stellar adapter returns `receipt.result.toString()`
- * from the contract's u64; the positive id therefore stays decimal. Lock/release hashes are
- * separate fields and are verified by `lib/stellar-proof.ts`.
+ * CCR-12: settle.externalRef is the contract payoutId, never a transaction hash. CCR-12
+ * documents a decimal string; the Stellar adapter returns `receipt.result.toString()` from the
+ * vault u64. This check mirrors that wire format — it does not invent a separate id scheme.
  */
 export function expectPayoutId(ref: string | undefined, where: string): string {
 	if (ref === undefined) fail(`${where}: no settle payoutId`)
@@ -168,15 +167,23 @@ export function expectPayoutId(ref: string | undefined, where: string): string {
 }
 
 /**
- * CCR-13: PayerPays must size the principal from the available settle amount
- * `P = floor(A * 10000 / (10000 + bps))`, so `P + f(P) <= A` and the remainder is real. The
- * vault fee rate is not on the quote, so this needs the published vault fee bps.
+ * CCR-13: PayerPays must size `P = floor(A * 10000 / (10000 + bps))` with
+ * `f(P) = floor(P * bps / 10000)` equal to the quoted settle fee.
+ *
+ * When `vaultFeeBps` is supplied (deployed vault evidence from `testnet-ids.env`), that bps is
+ * authoritative and must match the frozen quote. When omitted (mock), the frozen quote amounts
+ * and fee must be consistent with some vault bps in 0..1000 — never a caller-chosen
+ * `FP_VAULT_FEE_BPS` env on the acceptance process.
  */
 export function expectPayerPaysSizing(
 	quote: QuoteView,
-	vaultFeeBps: number,
-	where = "CCR-13",
+	vaultFeeBpsOrWhere?: number | string,
+	whereArg = "CCR-13",
 ): void {
+	const vaultFeeBps =
+		typeof vaultFeeBpsOrWhere === "number" ? vaultFeeBpsOrWhere : undefined
+	const where =
+		typeof vaultFeeBpsOrWhere === "string" ? vaultFeeBpsOrWhere : whereArg
 	if (quote.feeMode !== "PayerPays") return
 	const index = quote.route.findIndex((leg) => leg.kind === "settle")
 	if (index < 0) return
@@ -189,17 +196,38 @@ export function expectPayerPaysSizing(
 	if (available.currency !== planned.amountIn.currency) {
 		fail(`${where}: pre-settle amount and principal use different assets`)
 	}
-	if (!Number.isInteger(vaultFeeBps) || vaultFeeBps < 0 || vaultFeeBps > 1000) {
-		fail(`${where}: vault fee bps ${vaultFeeBps} is outside 0..1000`)
-	}
+	const fees = quote.fees
+	if (!fees) fail(`${where}: quote has no fee breakdown`)
 	const a = minor(available, `${where}: available`)
 	const p = minor(planned.amountIn, `${where}: principal`)
-	const expected = (a * 10_000n) / (10_000n + BigInt(vaultFeeBps))
-	if (p !== expected) {
-		fail(
-			`${where}: PayerPays principal ${p} is not floor(A*10000/(10000+${vaultFeeBps}))=${expected}`,
-		)
+	const fee = minor(fees.flexiPayFee, `${where}: fee`)
+
+	if (vaultFeeBps !== undefined) {
+		if (!Number.isInteger(vaultFeeBps) || vaultFeeBps < 0 || vaultFeeBps > 1000) {
+			fail(`${where}: vault fee bps ${vaultFeeBps} is outside 0..1000`)
+		}
+		const expectedP = (a * 10_000n) / (10_000n + BigInt(vaultFeeBps))
+		if (p !== expectedP) {
+			fail(
+				`${where}: PayerPays principal ${p} is not floor(A*10000/(10000+${vaultFeeBps}))=${expectedP}`,
+			)
+		}
+		const expectedFee = (p * BigInt(vaultFeeBps)) / 10_000n
+		if (fee !== expectedFee) {
+			fail(
+				`${where}: quoted fee ${fee} is not f(P)=${expectedFee} at deployed ${vaultFeeBps} bps`,
+			)
+		}
+		return
 	}
+
+	for (let bps = 0; bps <= 1000; bps++) {
+		if ((p * BigInt(bps)) / 10_000n !== fee) continue
+		if ((a * 10_000n) / (10_000n + BigInt(bps)) === p) return
+	}
+	fail(
+		`${where}: PayerPays P=${p}, fee=${fee}, A=${a} are not consistent with vault sizing P=floor(A*10000/(10000+bps)), f=floor(P*bps/10000)`,
+	)
 }
 
 /**

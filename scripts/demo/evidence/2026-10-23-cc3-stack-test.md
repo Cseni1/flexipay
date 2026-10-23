@@ -1,5 +1,11 @@
 # CC2/CC3 stack test — 23 October 2026 (branch, disposable)
 
+**Integrator note (post-merge):** Freebuff evidence retained. Node-24
+`vault-client.js` resolution is fixed on main by aligning
+`@flexipay/adapter-stellar` relative imports to `.ts` (same as domain).
+Endpoints/batches and orphan lock-on-fee-drift remain blockers.
+
+
 **Status: BLOCKED.** The available CC2/CC3 stack boots and serves routes, but no
 DF flow can start: `POST /v1/endpoints` (and batches) is not mounted. Nothing
 here is acceptance on merged `main`; results are from a disposable worktree.

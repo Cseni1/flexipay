@@ -47,8 +47,8 @@ await execute(
 		const worker = workerOf(fixtures, spec.workerRef)
 		const endpoint = endpointOf(worker, spec.endpointRef)
 
-		// CCR-13's fee rate comes from the existing public testnet evidence, tied to the deployed
-		// vault id. DF3 never accepts a separate fee setting that could excuse wrong accounting.
+		// CCR-13: stellar fee rate from public deployment evidence (testnet-ids.env), tied to
+		// vault id — not a caller-chosen FP_VAULT_FEE_BPS. Mock uses quote-identity sizing only.
 		const feeEvidence = readVaultEvidence()
 		if (requestedMode === "stellar") {
 			if (!feeEvidence.ok) {
@@ -91,6 +91,8 @@ await execute(
 		expectQuoteFeeMode(quote, spec.feeMode)
 		if (vaultFeeBps !== undefined) {
 			expectPayerPaysSizing(quote, vaultFeeBps, "DF3")
+		} else {
+			expectPayerPaysSizing(quote, "DF3")
 		}
 		expectKinds(
 			quote.route.map((leg) => leg.kind),
