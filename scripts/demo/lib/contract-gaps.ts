@@ -1,47 +1,47 @@
 import { A0_CONTRACT_ANSWERS } from "./a0-answers.ts"
 import { fail, leg, record } from "./parse.ts"
-import { BlockedError } from "./report.ts"
 import type { EventView, LegView, PaymentView } from "./types.ts"
 
 // DF4 acceptance uses only published evidence: each leg.failed event carries Event.snapshot,
-// whose legs are Payment.legs. A retry must therefore show exactly two failed payout legs on the
-// routed provider with distinct Leg.externalRef values, followed by one payment.refunded and no
-// third attempt. If a snapshot omits the legs or the reference, the evidence is missing and the
-// flow BLOCKS; it never infers an attempt from the fixture's fail count.
-
-const MISSING_SNAPSHOT = (detail: string) => [
-	{
-		what: "DF4 cannot attribute a payout attempt from Event.snapshot",
-		owner: "CC2 (orchestrator)",
-		detail: `${detail}. Event.snapshot must contain the published Payment.legs for each leg.failed event, including the failed payout leg's externalRef; no new API field is required.`,
-	},
-]
+// whose legs are Payment.legs. CCR-14 makes Leg.attempt the durable attempt source of truth.
+// A retry keeps status `processing`, increments attempt to 2 and may clear provider refs, so
+// distinct externalRef values are NOT required. The flow needs attempts 1 and 2, one retry and
+// no attempt 3, followed by payment.refunded. Missing snapshot legs/attempts are contract
+// defects, not a missing-route blocker; they fail acceptance instead of being inferred.
 
 function snapshotLegs(event: EventView, index: number): LegView[] {
 	if (event.snapshot === undefined) {
-		throw new BlockedError(MISSING_SNAPSHOT(`events[${index}] has no snapshot`))
+		fail(
+			`DF4: events[${index}] has no Event.snapshot legs to attribute the attempt`,
+		)
 	}
 	const snapshot = record(event.snapshot, `events[${index}].snapshot`)
 	if (!Array.isArray(snapshot.legs)) {
-		throw new BlockedError(
-			MISSING_SNAPSHOT(`events[${index}].snapshot has no legs array`),
-		)
+		fail(`DF4: events[${index}].snapshot has no legs array`)
 	}
 	return snapshot.legs.map((row, legIndex) =>
 		leg(row, `events[${index}].snapshot.legs[${legIndex}]`),
 	)
 }
 
-/**
- * Provider references for the failed payout legs in one leg.failed snapshot. A snapshot may be
- * cumulative (it can already contain the previous attempt), so every reference is returned and
- * the caller checks that the union is exactly two attempts.
- */
-function failedPayoutRefs(
+function attemptOf(candidate: LegView, where: string): number {
+	if (candidate.attempt === undefined) {
+		fail(`${where}: payout leg has no attempt; CCR-14 requires Leg.attempt`)
+	}
+	if (candidate.attempt > 2) {
+		fail(
+			`${where}: payout attempt ${candidate.attempt}; a third attempt is visible`,
+		)
+	}
+	return candidate.attempt
+}
+
+/** Payout legs in one leg.failed snapshot, on the routed provider. */
+function failedPayoutAttempts(
 	event: EventView,
 	index: number,
 	expectedRail: string,
-): string[] {
+): { attempt: number; ref?: string }[] {
 	const legs = snapshotLegs(event, index)
 	const matches = legs.filter(
 		(candidate) =>
@@ -63,22 +63,18 @@ function failedPayoutRefs(
 			`DF4: events[${index}].snapshot has a payout on ${otherPayout.rail}, expected only ${expectedRail}; a re-route is not part of this scenario`,
 		)
 	}
-	return matches.map((candidate) => {
-		const ref = candidate.externalRef
-		if (!ref) {
-			throw new BlockedError(
-				MISSING_SNAPSHOT(
-					`events[${index}].snapshot failed payout leg has no externalRef`,
-				),
-			)
-		}
-		return ref
-	})
+	return matches.map((candidate, matchIndex) => ({
+		attempt: attemptOf(
+			candidate,
+			`events[${index}].snapshot payout ${matchIndex + 1}`,
+		),
+		...(candidate.externalRef ? { ref: candidate.externalRef } : {}),
+	}))
 }
 
 /**
- * A succeeded payout would mean the refunded payment had already paid out, even if the final
- * payment row was overwritten later. A pending or failed planning row is not a success.
+ * A succeeded payout would mean the refunded payment had already paid out. A pending or failed
+ * planning row is not a success. Every published payout leg must carry its durable attempt.
  */
 function assertSnapshotsShowNoSuccessfulPayout(
 	events: readonly EventView[],
@@ -91,9 +87,10 @@ function assertSnapshotsShowNoSuccessfulPayout(
 		for (const [legIndex, row] of snapshot.legs.entries()) {
 			const candidate = leg(row, `events[${index}].snapshot.legs[${legIndex}]`)
 			if (candidate.kind !== "payout") continue
+			attemptOf(candidate, `events[${index}].snapshot payout ${legIndex + 1}`)
 			if (candidate.status === "succeeded") {
 				fail(
-					`DF4: events[${index}].snapshot shows payout ${candidate.externalRef ?? "(no ref)"} as succeeded; a refunded payment must not have a successful payout`,
+					`DF4: events[${index}].snapshot shows payout attempt ${candidate.attempt} as succeeded; a refunded payment must not have a successful payout`,
 				)
 			}
 			if (candidate.rail !== expectedRail) {
@@ -106,21 +103,19 @@ function assertSnapshotsShowNoSuccessfulPayout(
 }
 
 /**
- * Proves exactly two payout attempts (the first try plus one retry), then a refund, and no third
- * attempt. Throws BLOCKED when the API publishes no attributable attempt evidence; throws
- * AssertionFailure when the published evidence shows any other count.
+ * Proves exactly one payout retry: attempts 1 and 2 failed, the final durable attempt is 2, a
+ * single payment.refunded follows, and no attempt 3 exists anywhere. Provider references may be
+ * absent or repeated because CCR-14 allows the retry to clear them.
  */
 export function assertExactlyTwoPayoutAttemptsThenRefund(
 	payment: PaymentView,
 	events: readonly EventView[],
 	expectedRail: string,
-): { refs: string[] } {
+): { attempts: number[]; refs: string[] } {
 	if (payment.status !== "refunded") {
 		fail(`DF4: payment ${payment.id} is ${payment.status}, expected refunded`)
 	}
 
-	// Scan every published snapshot before extracting attempts, so a payout that succeeded at
-	// some point is reported as such instead of being hidden by a later failed row.
 	assertSnapshotsShowNoSuccessfulPayout(events, expectedRail)
 
 	const failures = events
@@ -128,7 +123,7 @@ export function assertExactlyTwoPayoutAttemptsThenRefund(
 		.filter(({ event }) => event.type === "leg.failed")
 	if (failures.length < 2) {
 		fail(
-			`DF4: only ${failures.length} leg.failed event(s); exactly one retry needs two failures. ${A0_CONTRACT_ANSWERS.payoutAttempts}`,
+			`DF4: only ${failures.length} leg.failed event(s); one retry needs attempts 1 and 2. ${A0_CONTRACT_ANSWERS.payoutAttempts}`,
 		)
 	}
 	if (failures.length > 2) {
@@ -137,49 +132,26 @@ export function assertExactlyTwoPayoutAttemptsThenRefund(
 		)
 	}
 
-	const eventRefs = failures.map(({ event, index }) => ({
-		index,
-		refs: failedPayoutRefs(event, index, expectedRail),
-	}))
-	const refs = [...new Set(eventRefs.flatMap(({ refs }) => refs))]
-	if (refs.length !== 2) {
+	const failureAttempts = failures.map(({ event, index }) =>
+		failedPayoutAttempts(event, index, expectedRail),
+	)
+	const attempts = [
+		...new Set(
+			failureAttempts.flatMap((rows) => rows.map((row) => row.attempt)),
+		),
+	].sort((a, b) => a - b)
+	if (attempts.join(",") !== "1,2") {
 		fail(
-			`DF4: the leg.failed snapshots show ${refs.length} distinct payout attempt(s) (${refs.join(", ") || "none"}), expected exactly two`,
+			`DF4: leg.failed snapshots show payout attempts ${attempts.join(", ") || "(none)"}, expected exactly 1 and 2`,
 		)
 	}
-	for (const { index, refs: seen } of eventRefs) {
-		const distinct = new Set(seen)
-		if (distinct.size !== seen.length) {
-			fail(
-				`DF4: events[${index}].snapshot repeats a payout externalRef; one leg.failed event must not duplicate an attempt`,
-			)
-		}
-		if (distinct.size > 2) {
-			fail(
-				`DF4: events[${index}].snapshot carries ${distinct.size} failed payout attempts; a third attempt is visible`,
-			)
-		}
-	}
-	const attemptNumbers = refs.map((ref) => {
-		const match = /:(\d+)$/.exec(ref)
-		return match ? Number(match[1]) : undefined
-	})
-	const numbered = attemptNumbers.filter(
-		(attempt): attempt is number => attempt !== undefined,
-	)
-	if (numbered.length > 0) {
-		if (numbered.length !== attemptNumbers.length) {
-			fail(
-				"DF4: payout references mix numbered and unnumbered attempts; the retry sequence cannot be ordered",
-			)
-		}
-		const sorted = [...numbered].sort((a, b) => a - b)
-		if (sorted.join(",") !== "1,2") {
-			fail(
-				`DF4: payout attempts are ${sorted.join(", ")}, expected attempt 1 and retry 2`,
-			)
-		}
-	}
+	const refs = [
+		...new Set(
+			failureAttempts
+				.flatMap((rows) => rows.map((row) => row.ref))
+				.filter((ref): ref is string => ref !== undefined),
+		),
+	]
 
 	const refunds = events.filter((event) => event.type === "payment.refunded")
 	if (refunds.length === 0) fail("DF4: missing payment.refunded event")
@@ -218,23 +190,17 @@ export function assertExactlyTwoPayoutAttemptsThenRefund(
 			`DF4: visible payout rails are ${payouts.map((candidate) => candidate.rail).join(", ")}, expected ${expectedRail}`,
 		)
 	}
-	const finalRefs = new Set(
-		payouts.flatMap((candidate) =>
-			candidate.externalRef ? [candidate.externalRef] : [],
-		),
+	const finalAttempts = payouts.map((candidate, index) =>
+		attemptOf(candidate, `payment.legs payout ${index + 1}`),
 	)
-	if (finalRefs.size > 2) {
+	if (!finalAttempts.includes(2)) {
 		fail(
-			`DF4: payment.legs shows ${finalRefs.size} payout attempts; a third attempt is visible`,
+			`DF4: final payout attempts are ${finalAttempts.join(", ")}, expected the retry attempt 2`,
 		)
 	}
-	for (const ref of finalRefs) {
-		if (!refs.includes(ref)) {
-			fail(
-				`DF4: payment.legs carries payout ${ref}, which has no leg.failed snapshot evidence`,
-			)
-		}
+	if (new Set(finalAttempts).size > 2) {
+		fail("DF4: payment.legs shows more than two payout attempts")
 	}
 
-	return { refs }
+	return { attempts, refs }
 }

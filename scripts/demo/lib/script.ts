@@ -99,6 +99,14 @@ export async function execute(
 					"DF3 checks the lock and release invoke this contract; a successful hash alone is not proof",
 			})
 		}
+		if (parsed.env.vaultFeeBps === undefined) {
+			blockers.push({
+				what: "FP_VAULT_FEE_BPS is not set, so the quote fee cannot be checked against the lock",
+				owner: "caller / Csaba (integration)",
+				detail:
+					"public vault fee bps from scripts/testnet/testnet-ids.env; required for CCR-13 lock accounting",
+			})
+		}
 	}
 	if (blockers.length > 0) return flow.finish("BLOCKED", blockers)
 

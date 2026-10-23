@@ -1,12 +1,13 @@
 import {
 	expectEventTypes,
+	expectFrozenAccounting,
 	expectKinds,
 	expectNoEvent,
 	expectNoSettle,
 	expectPaid,
 	expectQuoteFeeMode,
 	expectRail,
-	expectReasonExplaining,
+	expectReasons,
 	expectSimulated,
 	fail,
 } from "./lib/assertions.ts"
@@ -60,11 +61,7 @@ await execute(
 			expected.legs,
 			"quote.route",
 		)
-		expectReasonExplaining(
-			quote.reasons,
-			EXCLUSION_REASONS,
-			"ZA bank quote reasons",
-		)
+		expectReasons(quote.reasons, EXCLUSION_REASONS, "ZA bank quote reasons")
 		expectSimulated(quote.simulated, "quote")
 		flow.check("bank route reason explains the crypto exclusion for a company")
 
@@ -90,7 +87,7 @@ await execute(
 			if (!(error instanceof ApiRejection)) throw error
 			if (error.status !== 422)
 				fail(`crypto quote was refused with HTTP ${error.status}, expected 422`)
-			expectReasonExplaining(
+			expectReasons(
 				error.reasons,
 				EXCLUSION_REASONS,
 				"ZA crypto quote refusal reasons",
@@ -120,6 +117,7 @@ await execute(
 		flow.route("POST", `/v1/payments/${created.payment.id}/fund`)
 		await api.fund(created.payment.id)
 		const payment = await waitForPayment(api, created.payment.id)
+		expectFrozenAccounting(quote, payment, "DF5")
 		expectPaid(payment)
 		if (payment.legs.at(-1)?.kind !== "payout")
 			fail("a paid direct payment must end at payout")

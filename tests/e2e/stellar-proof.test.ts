@@ -157,12 +157,22 @@ describe("Stellar RPC result parsing", () => {
 	})
 })
 
-const releaseOptions = (overrides: Record<string, unknown> = {}) => ({
+type ReleaseOptions = Parameters<typeof verifyVaultRelease>[0]
+
+const releaseOptions = (
+	overrides: Partial<ReleaseOptions> = {},
+): ReleaseOptions => ({
 	paymentId: "pay_demo_1",
+	payoutId: "42",
 	lockHash: LOCK_HASH,
 	releaseHash: RELEASE_HASH,
 	recipientAddress: recipient.publicKey(),
 	vaultContractId: VAULT,
+	principal: "10000000",
+	feeMode: "PayerPays",
+	fee: "50000",
+	net: "10000000",
+	vaultFeeBps: 50,
 	rpcUrl: "https://rpc.example",
 	networkPassphrase: TESTNET,
 	timeoutMs: 1_000,
@@ -176,6 +186,7 @@ const pairRpc = (
 		releaseFunction?: string
 		releaseStatus?: string
 		lockReturn?: string
+		releaseReturn?: string
 		lockLedger?: number
 		releaseLedger?: number
 	} = {},
@@ -192,7 +203,7 @@ const pairRpc = (
 		),
 		[RELEASE_HASH]: transaction(
 			envelope(options.releaseFunction ?? "claim", releaseArgs),
-			resultMeta(u64Value("10000000")),
+			resultMeta(u64Value(options.releaseReturn ?? "10000000")),
 			options.releaseStatus,
 			options.releaseLedger ?? 100,
 		),
@@ -224,8 +235,75 @@ describe("vault release proof", () => {
 			payoutId: "42",
 			recipient: recipient.publicKey(),
 			contractId: VAULT,
+			principal: "10000000",
+			feeMode: "PayerPays",
+			fee: "50000",
+			net: "10000000",
 		})
 		expect(fetchMock).toHaveBeenCalledTimes(3)
+	})
+
+	it("accepts RecipientPays only when the release returns P - f(P)", async () => {
+		const recipientPaysArgs = [
+			addressValue(source.publicKey()),
+			bytesValue(externalId("pay_demo_1")),
+			bytesValue(claimHash()),
+			u64Value("10000000"),
+			xdr.ScVal.scvSymbol("RecipientPays"),
+			u64Value("2000000000"),
+		]
+		vi.stubGlobal(
+			"fetch",
+			pairRpc({ lockArgs: recipientPaysArgs, releaseReturn: "9950000" }),
+		)
+		const proof = await verifyVaultRelease(
+			releaseOptions({ feeMode: "RecipientPays", net: "9950000" }),
+		)
+		expect(proof.net).toBe("9950000")
+		expect(proof.fee).toBe("50000")
+
+		vi.unstubAllGlobals()
+		// the release result is net 10000000; a fee-paying recipient must receive 9995000
+		vi.stubGlobal("fetch", pairRpc({ lockArgs: recipientPaysArgs }))
+		await expect(
+			verifyVaultRelease(
+				releaseOptions({ feeMode: "RecipientPays", net: "9950000" }),
+			),
+		).rejects.toThrow(/release returned net 10000000/)
+	})
+
+	it("rejects frozen amounts that do not match the on-chain lock", async () => {
+		vi.stubGlobal(
+			"fetch",
+			pairRpc({ lockArgs: createPayoutArgs("pay_demo_1") }),
+		)
+		await expect(
+			verifyVaultRelease(releaseOptions({ principal: "9999999" })),
+		).rejects.toThrow(/frozen settle amountIn/)
+		await expect(
+			verifyVaultRelease(releaseOptions({ feeMode: "RecipientPays" })),
+		).rejects.toThrow(/does not match the quoted/)
+		await expect(
+			verifyVaultRelease(releaseOptions({ fee: "49999" })),
+		).rejects.toThrow(/not f\(P\)/)
+		await expect(
+			verifyVaultRelease(releaseOptions({ net: "9995000" })),
+		).rejects.toThrow(/frozen net 9995000 is not 10000000/)
+	})
+
+	it("rejects a payout id that is not the lock's payout", async () => {
+		vi.stubGlobal("fetch", pairRpc({ lockReturn: "43" }))
+		await expect(verifyVaultRelease(releaseOptions())).rejects.toThrow(
+			/lock returned payout 43/,
+		)
+		vi.unstubAllGlobals()
+		await expect(
+			verifyVaultRelease(releaseOptions({ payoutId: "0" })),
+		).rejects.toThrow(/not a positive decimal id/)
+		vi.unstubAllGlobals()
+		await expect(
+			verifyVaultRelease(releaseOptions({ vaultFeeBps: 1001 })),
+		).rejects.toThrow(/outside 0\.\.1000/)
 	})
 
 	it("rejects a release to another recipient", async () => {

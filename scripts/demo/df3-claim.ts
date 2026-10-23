@@ -1,8 +1,11 @@
 import {
 	expectEventTypes,
+	expectFrozenAccounting,
 	expectKinds,
 	expectNoPayout,
 	expectPaid,
+	expectPayerPaysSizing,
+	expectPayoutId,
 	expectQuoteFeeMode,
 	expectRouteRail,
 	expectSimulated,
@@ -59,6 +62,9 @@ await execute(
 			policy: "cheapest",
 		})
 		expectQuoteFeeMode(quote, spec.feeMode)
+		if (env.vaultFeeBps !== undefined) {
+			expectPayerPaysSizing(quote, env.vaultFeeBps, "DF3")
+		}
 		expectKinds(
 			quote.route.map((leg) => leg.kind),
 			expected.legs,
@@ -92,9 +98,13 @@ await execute(
 		expectWaitingForClaim(funded)
 		expectWaitingForClaim(waiting)
 		flow.legs("funded", waiting.legs)
-		const lockedRef = waiting.legs.find(
-			(leg) => leg.kind === "settle",
-		)?.externalRef
+		const fundedSettle = waiting.legs.find((leg) => leg.kind === "settle")
+		if (!fundedSettle) fail("funded claim payment has no settle leg")
+		const payoutId = expectPayoutId(
+			fundedSettle.externalRef,
+			"funded settle.externalRef",
+		)
+		const lockTxRef = fundedSettle.lockTxRef
 		flow.check("funds are locked and the payment is not paid before acceptance")
 
 		flow.route("GET", "/v1/claims/{token}", "public claim view")
@@ -134,15 +144,23 @@ await execute(
 				: await api.payment(created.payment.id)
 		expectPaid(payment)
 		expectNoPayout(payment.legs, "payment.legs")
+		expectFrozenAccounting(quote, payment, "DF3")
 		flow.legs("accepted", payment.legs)
 		flow.check("acceptance released the funds and the payment is paid")
 
-		// The release reference is the settle leg's externalRef (ARCHITECTURE §6.6); the claim
-		// response has no network or txRef field in the shared contract.
+		// CCR-12: settle.externalRef is the payoutId; lockTxRef/releaseTxRef carry the hashes.
 		const settle = payment.legs.find((leg) => leg.kind === "settle")
-		const releaseRef = settle?.externalRef
-		if (!releaseRef)
-			fail("the accepted payment has no settle reference for the release")
+		if (!settle) fail("accepted payment has no settle leg")
+		const releasedPayoutId = expectPayoutId(
+			settle.externalRef,
+			"accepted settle.externalRef",
+		)
+		if (releasedPayoutId !== payoutId) {
+			fail(
+				`payoutId changed from ${payoutId} to ${releasedPayoutId} across acceptance`,
+			)
+		}
+		const releaseTxRef = settle.releaseTxRef
 
 		if (requestedMode === "stellar") {
 			if (
@@ -158,26 +176,57 @@ await execute(
 					},
 				])
 			}
-			if (!lockedRef) {
+			if (!lockTxRef) {
 				throw new BlockedError([
 					{
-						what: "the lock transaction is not visible before claim acceptance",
-						owner: "CC2 (orchestrator) / A0",
+						what: "the funding settle leg has no lockTxRef",
+						owner: "CC2 (orchestrator)",
 						detail:
-							"DF3 needs the funding settle leg's published externalRef to tie the release claim to this payment's create_payout; no new API field is required",
+							"CCR-12 requires lockTxRef on the settle leg; externalRef alone is the payoutId, not a transaction hash",
 					},
 				])
 			}
-			// A0: one settle.externalRef. The release is the claim of the lock created for this
-			// payment; both envelopes and the lock's return value are checked on RPC.
-			expectTxRef(lockedRef, "stellar", "lock")
-			expectTxRef(releaseRef, "stellar", "release")
+			if (!releaseTxRef) {
+				throw new BlockedError([
+					{
+						what: "the accepted settle leg has no releaseTxRef",
+						owner: "CC2 (orchestrator)",
+						detail:
+							"CCR-12 requires releaseTxRef; externalRef is the payoutId only",
+					},
+				])
+			}
+			if (!quote.fees || !quote.feeMode) {
+				fail("settle quote is missing fees or feeMode for the lock proof")
+			}
+			const quotedSettle = quote.route.find((leg) => leg.kind === "settle")
+			if (!quotedSettle?.amountIn || !quotedSettle.amountOut) {
+				fail("settle quote is missing frozen principal or net")
+			}
+			if (env.vaultFeeBps === undefined) {
+				throw new BlockedError([
+					{
+						what: "FP_VAULT_FEE_BPS is not set, so the quote fee cannot be checked against the lock",
+						owner: "caller / Csaba (integration)",
+						detail:
+							"public vault fee bps from scripts/testnet/testnet-ids.env; required for CCR-13 lock accounting",
+					},
+				])
+			}
+			expectTxRef(lockTxRef, "stellar", "lock")
+			expectTxRef(releaseTxRef, "stellar", "release")
 			const proof = await verifyVaultRelease({
 				paymentId: payment.id,
-				lockHash: lockedRef,
-				releaseHash: releaseRef,
+				payoutId,
+				lockHash: lockTxRef,
+				releaseHash: releaseTxRef,
 				recipientAddress: env.recipientAddress,
 				vaultContractId: env.payoutVaultId,
+				principal: quotedSettle.amountIn.amount,
+				feeMode: quote.feeMode,
+				fee: quote.fees.flexiPayFee.amount,
+				net: quotedSettle.amountOut.amount,
+				vaultFeeBps: env.vaultFeeBps,
 				rpcUrl: env.stellarRpcUrl,
 				networkPassphrase: env.stellarNetworkPassphrase,
 				timeoutMs: env.timeoutMs,
@@ -190,13 +239,28 @@ await execute(
 			console.log(
 				`vault  ${proof.contractId}  recipient ${maskAddress(proof.recipient)}`,
 			)
+			console.log(
+				`ccr13 principal ${proof.principal} fee ${proof.fee} net ${proof.net} mode ${proof.feeMode}`,
+			)
 			flow.check(
 				"lock is create_payout for this payment; release claims the same payout id",
 			)
 			flow.check("release pays the intended Worker A recipient address")
+			flow.check("lock principal, feeMode, fee and net match the frozen quote")
 		} else {
-			expectTxRef(releaseRef, "mock", "release")
-			flow.check("release reference is a labelled mock reference")
+			if (!lockTxRef || !releaseTxRef) {
+				throw new BlockedError([
+					{
+						what: "mock claim payment is missing lockTxRef or releaseTxRef",
+						owner: "CC2 (orchestrator)",
+						detail:
+							"CCR-12 separates the payoutId from the mock transaction references",
+					},
+				])
+			}
+			expectTxRef(lockTxRef, "mock", "lock")
+			expectTxRef(releaseTxRef, "mock", "release")
+			flow.check("payoutId is distinct from the mock lock/release references")
 		}
 
 		const events = payment.events ?? (await api.events(payment.id))

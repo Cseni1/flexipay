@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { maskAddress, maskPath, maskValue } from "../../scripts/demo/lib/env.ts"
 import {
+	probeRoutes,
 	routeGaps,
 	routeProbePath,
-	runtimeRouteGaps,
 	type ApiContract,
 } from "../../scripts/demo/lib/preflight.ts"
 
@@ -11,8 +11,40 @@ afterEach(() => {
 	vi.unstubAllGlobals()
 })
 
-// Prerequisite and privacy helpers: a missing route must be reported as a gap, and a claim token
-// or wallet address must never be printed in full.
+// Prerequisite and privacy helpers: a missing route must be reported as a gap, a mounted route
+// that rejects the needed method must not be called missing, and a claim token or wallet address
+// must never be printed in full.
+
+const QUOTE = { method: "POST", path: "/v1/quotes", purpose: "quote" } as const
+const PAYMENT = {
+	method: "GET",
+	path: "/v1/payments/{id}",
+	purpose: "payment",
+} as const
+
+const json = (
+	status: number,
+	body: unknown,
+	headers: Record<string, string> = {},
+) =>
+	new Response(JSON.stringify(body), {
+		status,
+		headers: { "content-type": "application/json", ...headers },
+	})
+
+const options = (status: number, allow?: string, body?: unknown) => {
+	const headers: Record<string, string> = {}
+	if (allow) headers.allow = allow
+	return body === undefined
+		? new Response(null, { status, headers })
+		: json(status, body, headers)
+}
+
+const stub = (...responses: Response[]) => {
+	const mock = vi.fn(async () => responses.shift() ?? options(404))
+	vi.stubGlobal("fetch", mock)
+	return mock
+}
 
 describe("route preflight", () => {
 	const contract: ApiContract = {
@@ -24,8 +56,8 @@ describe("route preflight", () => {
 
 	it("reports only the routes the contract does not carry", () => {
 		const gaps = routeGaps(contract, [
-			{ method: "POST", path: "/v1/quotes", purpose: "quote" },
-			{ method: "GET", path: "/v1/payments/{id}", purpose: "payment" },
+			QUOTE,
+			PAYMENT,
 			{ method: "POST", path: "/v1/claims/{token}/accept", purpose: "accept" },
 		])
 		expect(gaps.map((gap) => gap.path)).toEqual(["/v1/claims/{token}/accept"])
@@ -47,37 +79,90 @@ describe("runtime route probe", () => {
 		)
 	})
 
-	it("reports a published stub the server answers 404 for", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => new Response(null, { status: 404 })),
+	it("reports a route the API's catch-all answers for", async () => {
+		stub(
+			options(404, undefined, { code: "not_found", message: "No such route" }),
+			options(404, undefined, { code: "not_found", message: "No such route" }),
 		)
-		const gaps = await runtimeRouteGaps(
+		const probe = await probeRoutes(
 			"http://127.0.0.1:1",
-			[
-				{ method: "POST", path: "/v1/quotes", purpose: "quote" },
-				{ method: "GET", path: "/v1/payments/{id}", purpose: "payment" },
-			],
+			[QUOTE, PAYMENT],
 			1_000,
 		)
-		expect(gaps.map((gap) => gap.path)).toEqual([
+		expect(probe.missing.map((gap) => gap.path)).toEqual([
 			"/v1/quotes",
 			"/v1/payments/{id}",
 		])
+		expect(probe.methodMismatches).toEqual([])
 	})
 
-	it("accepts a route Express answers for OPTIONS", async () => {
+	it("accepts a mounted route whose Allow header names the needed method", async () => {
+		stub(options(200, "POST"), options(200, "GET, HEAD"))
+		const probe = await probeRoutes(
+			"http://127.0.0.1:1",
+			[QUOTE, PAYMENT],
+			1_000,
+		)
+		expect(probe.missing).toEqual([])
+		expect(probe.methodMismatches).toEqual([])
+	})
+
+	it("separates a mounted path that rejects the method from a missing route", async () => {
+		stub(options(200, "GET, HEAD"))
+		const probe = await probeRoutes("http://127.0.0.1:1", [QUOTE], 1_000)
+		expect(probe.missing).toEqual([])
+		expect(probe.methodMismatches).toEqual([
+			{ need: QUOTE, allow: ["GET", "HEAD"] },
+		])
+	})
+
+	it("does not call a route missing for auth, method or application errors", async () => {
+		for (const response of [
+			options(401, undefined, {
+				code: "unauthorized",
+				message: "Send an API key",
+			}),
+			options(403, undefined, { code: "forbidden" }),
+			options(405, "GET", { code: "method_not_allowed" }),
+			options(500, undefined, { code: "internal_error" }),
+			// an application-level 404 after the route matched, e.g. an unknown payment id
+			options(404, "GET", { code: "payment_not_found" }),
+		]) {
+			stub(response)
+			const probe = await probeRoutes("http://127.0.0.1:1", [PAYMENT], 1_000)
+			expect(probe.missing, JSON.stringify(response)).toEqual([])
+		}
+	})
+
+	it("treats a 404 that still advertises a method as mounted", async () => {
+		stub(options(404, "GET, HEAD", { code: "not_found" }))
+		const probe = await probeRoutes("http://127.0.0.1:1", [PAYMENT], 1_000)
+		expect(probe.missing).toEqual([])
+		expect(probe.methodMismatches).toEqual([])
+	})
+
+	it("confirms a GET route when a proxy answers OPTIONS without Allow", async () => {
+		stub(options(204), options(401, undefined, { code: "unauthorized" }))
+		const probe = await probeRoutes("http://127.0.0.1:1", [PAYMENT], 1_000)
+		expect(probe.missing).toEqual([])
+	})
+
+	it("does not claim a route is missing when a proxy hides the method list", async () => {
+		stub(options(204))
+		const probe = await probeRoutes("http://127.0.0.1:1", [QUOTE], 1_000)
+		expect(probe.missing).toEqual([])
+		expect(probe.methodMismatches).toEqual([])
+	})
+
+	it("skips the probe when the API is unreachable", async () => {
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async () => new Response(null, { status: 200 })),
+			vi.fn(async () => {
+				throw new TypeError("fetch failed")
+			}),
 		)
-		expect(
-			await runtimeRouteGaps(
-				"http://127.0.0.1:1",
-				[{ method: "GET", path: "/v1/payments/{id}", purpose: "payment" }],
-				1_000,
-			),
-		).toEqual([])
+		const probe = await probeRoutes("http://127.0.0.1:1", [QUOTE], 1_000)
+		expect(probe).toEqual({ missing: [], methodMismatches: [] })
 	})
 })
 

@@ -47,29 +47,102 @@ export function routeGaps(
 export const routeProbePath = (path: string): string =>
 	path.replace(/\{[^}]+\}/g, "probe")
 
+export interface RouteProbe {
+	/** No route matched the path: only the API's catch-all 404 answered. */
+	missing: RouteNeed[]
+	/** The path matches a route, but its OPTIONS Allow header omits the needed method. */
+	methodMismatches: { need: RouteNeed; allow: string[] }[]
+}
+
+const parseAllow = (response: Response): string[] =>
+	(response.headers.get("allow") ?? "")
+		.split(",")
+		.map((method) => method.trim().toUpperCase())
+		.filter(Boolean)
+
+async function bodyCode(response: Response): Promise<string | undefined> {
+	try {
+		const raw = await response.text()
+		if (raw.length === 0) return undefined
+		const body: unknown = JSON.parse(raw)
+		if (typeof body !== "object" || body === null) return undefined
+		const code = (body as { code?: unknown }).code
+		return typeof code === "string" ? code : undefined
+	} catch {
+		return undefined
+	}
+}
+
+const probeTimeout = (timeoutMs: number): number => Math.min(timeoutMs, 3_000)
+
 /**
- * OpenAPI contains A0 stubs that CC3 has not mounted. Express answers OPTIONS for a mounted
- * route (200) and the catch-all 404 for an absent one, so this distinguishes a real route from a
- * published stub without sending a mutation or requiring a valid key.
+ * OpenAPI contains A0 stubs that CC3 has not mounted, so the inventory alone is not evidence a
+ * route is served. Express adds a route's methods to the OPTIONS `Allow` header; the app's
+ * catch-all answers an unmatched path with 404 {"code":"not_found"} and no Allow header.
+ *
+ * OPTIONS support by itself proves nothing (a proxy or a global handler can answer it), and an
+ * auth, method or application error on a mounted route must not be reported as a missing route.
+ * Only the catch-all shape counts as missing; a path that answers with Allow but omits the
+ * needed method is reported separately, and anything else (401/403/405/5xx, an application-level
+ * 404, or an OPTIONS answer without Allow) is treated as mounted so the run surfaces the real
+ * defect instead of a false missing-route blocker.
  */
-export async function runtimeRouteGaps(
+export async function probeRoutes(
 	apiUrl: string,
 	needs: readonly RouteNeed[],
 	timeoutMs: number,
-): Promise<RouteNeed[]> {
-	const gaps: RouteNeed[] = []
+): Promise<RouteProbe> {
+	const probe: RouteProbe = { missing: [], methodMismatches: [] }
 	for (const need of needs) {
+		const url = `${apiUrl}${routeProbePath(need.path)}`
+		let response: Response
 		try {
-			const response = await fetch(`${apiUrl}${routeProbePath(need.path)}`, {
+			response = await fetch(url, {
 				method: "OPTIONS",
-				signal: AbortSignal.timeout(Math.min(timeoutMs, 3_000)),
+				signal: AbortSignal.timeout(probeTimeout(timeoutMs)),
 			})
-			if (response.status === 404) gaps.push(need)
 		} catch {
 			// The health blocker already covers an unreachable API; do not duplicate it per route.
+			continue
+		}
+
+		const allow = parseAllow(response)
+		const code = await bodyCode(response)
+		if (response.status === 404 && allow.length === 0 && code === "not_found") {
+			// The catch-all shape: no route matched, and Express would have listed one in Allow otherwise.
+			probe.missing.push(need)
+			continue
+		}
+		if (allow.length > 0) {
+			if (!allow.includes(need.method)) {
+				probe.methodMismatches.push({ need, allow })
+			}
+			continue
+		}
+		// No Allow header: OPTIONS may have been answered by a proxy or a global handler. For a
+		// GET route, a real GET without auth is side-effect free and shows which handler answered.
+		if (need.method === "GET") {
+			let fallback: Response
+			try {
+				fallback = await fetch(url, {
+					method: "GET",
+					headers: { accept: "application/json" },
+					signal: AbortSignal.timeout(probeTimeout(timeoutMs)),
+				})
+			} catch {
+				continue
+			}
+			const fallbackCode = await bodyCode(fallback)
+			if (
+				fallback.status === 404 &&
+				parseAllow(fallback).length === 0 &&
+				fallbackCode === "not_found"
+			) {
+				probe.missing.push(need)
+			}
 		}
 	}
-	return gaps
+	return probe
 }
 
 const A0_SCHEMAS = [
@@ -123,16 +196,23 @@ export async function preflight(
 	} else {
 		contractGaps.push(...routeGaps(contract, options.needs))
 	}
-	const runtimeGaps = await runtimeRouteGaps(
+	const runtime = await probeRoutes(
 		env.apiUrl,
 		options.needs.filter((need) => !contractGaps.includes(need)),
 		env.timeoutMs,
 	)
-	for (const gap of [...contractGaps, ...runtimeGaps]) {
+	for (const gap of [...contractGaps, ...runtime.missing]) {
 		blockers.push({
 			what: `route not available: ${gap.method} ${gap.path}`,
 			owner: "Csaba (CC3a/CC3b)",
 			detail: gap.purpose,
+		})
+	}
+	for (const mismatch of runtime.methodMismatches) {
+		blockers.push({
+			what: `route does not accept ${mismatch.need.method}: ${mismatch.need.path}`,
+			owner: "Csaba (CC3a/CC3b)",
+			detail: `OPTIONS allows ${mismatch.allow.join(", ")}; ${mismatch.need.purpose}`,
 		})
 	}
 

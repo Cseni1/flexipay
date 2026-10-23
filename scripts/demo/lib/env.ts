@@ -23,6 +23,8 @@ export interface DemoEnv {
 	stellarNetworkPassphrase?: string
 	/** Public payout_vault contract id (FP_PAYOUT_VAULT_ID), never a key. */
 	payoutVaultId?: string
+	/** Public vault fee bps (FP_VAULT_FEE_BPS), needed to check CCR-13 fee accounting. */
+	vaultFeeBps?: number
 }
 
 export interface EnvProblem {
@@ -76,6 +78,18 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): EnvResult {
 			owner: "lane D",
 		})
 	}
+	const rawVaultFeeBps = source.FP_VAULT_FEE_BPS?.trim()
+	const vaultFeeBps = rawVaultFeeBps ? Number(rawVaultFeeBps) : undefined
+	if (
+		rawVaultFeeBps &&
+		(!Number.isInteger(vaultFeeBps) || vaultFeeBps! < 0 || vaultFeeBps! > 1000)
+	) {
+		problems.push({
+			key: "FP_VAULT_FEE_BPS",
+			problem: "must be an integer between 0 and 1000",
+			owner: "caller / Csaba (integration)",
+		})
+	}
 	if (problems.length > 0) return { env: null, problems }
 
 	return {
@@ -108,6 +122,7 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): EnvResult {
 			...(source.FP_PAYOUT_VAULT_ID?.trim()
 				? { payoutVaultId: source.FP_PAYOUT_VAULT_ID.trim() }
 				: {}),
+			...(vaultFeeBps !== undefined ? { vaultFeeBps } : {}),
 		},
 	}
 }

@@ -1,114 +1,147 @@
-# D3 acceptance evidence — 23 October 2026
+# D3 acceptance evidence — 23 October 2026 (CCR-11–14 reconciliation)
 
 Lane-D worktree `/Users/csenike/Projects/FlexiPay/flexipay-laned`, branch
-`csenge-freebuff/D3-acceptance`, rebased onto current `main` **`0f7ca41`**.
-Tested lane-D commit: **`05739cc`** (`Strengthen lane-D acceptance evidence for
-DF3-DF5`). This file is committed after the run; per-run JSON records the tested
-commit.
+`csenge-freebuff/D3-acceptance`. The branch is merged with `origin/main` at
+**`e6429fe`**, which carries the CCR-11–14 contracts from #36 (`b3d77a7`); the
+tested tree is commit **`9e38c9c`** (this evidence commit follows it). This file
+is committed after the run; per-run JSON records the tested commit.
 
-D2 #27 is integrated into `main`. This worktree did not edit D2-owned files:
+D2 #27 stays integrated. This worktree did not edit D2-owned files:
 `scripts/demo/offline.ts`, `scripts/seed/**` (except the lane-D fixture
-`scripts/seed/fixtures/flows.json`, which D2 #27 does not own) and
-`tests/e2e/{offline,seed}.test.ts`.
+`scripts/seed/fixtures/`), `tests/e2e/{offline,seed}.test.ts`. No API, contract,
+Prisma or adapter source was changed.
+
+## Contracts read and applied
+
+Read from `origin/main`:
+`packages/domain/src/api/{common,quotes,payments,claims,events}.ts`,
+`openapi-stubs.ts`, `apps/api/openapi.json`, `docs/CONTRACT_CHANGES.md`
+(CCR-11–14), `apps/api/prisma/schema.prisma` (`ClaimLink`, `Leg`).
+
+- **CCR-12** — `Leg.externalRef` on a settle leg is the vault `payoutId`
+  (positive decimal); `lockTxRef` and `releaseTxRef` are separate nullable
+  hashes. Provider refs stay provider refs.
+- **CCR-13** — every `PlannedLeg` has frozen `amountIn`/`amountOut`;
+  `FeeBreakdown.settleUnlockedRemainder` is money or null; `Quote.feeMode` is
+  nullable and copied unchanged. PayerPays principal is
+  `P = floor(A * 10000 / (10000 + bps))`.
+- **CCR-14** — `Leg.attempt` is durable; one retry keeps `processing`,
+  increments attempt to 2, may clear provider/settle refs, and attempt 3 is
+  forbidden.
+- **CCR-11** — claim secret sealed at rest (`FP_CLAIM_SEAL_KEY`,
+  `secretSealed`/`secretSealedNonce`, `vaultClaimHashHex`); never returned by
+  the API.
+- **Claim routes** — `GET /v1/claims/{token}` and
+  `POST /v1/claims/{token}/accept` (ARCHITECTURE §10 and `openapi-stubs.ts`);
+  accept body `{ endpoint }`, response `{ claim, paymentId, paymentStatus }`,
+  view field `allowedDestinationTypes`.
+
+## What changed in lane D
+
+- **DF3** — `settle.externalRef` is read as the payoutId before and after
+  acceptance and must not change. `lockTxRef`/`releaseTxRef` are required for
+  the chain proof. `verifyVaultRelease` now also checks CCR-13: lock principal =
+  quoted settle `amountIn`, lock `feeMode` = quote,
+  `fee = floor(P * bps / 10000)`, release net = `P` or `P - f(P)`, and release
+  return value. A new `expectPayerPaysSizing` checks
+  `P = floor(A * 10000 / (10000 + bps))` from the leg before settle. The claim
+  accept call now uses the published `POST /v1/claims/{token}/accept` path.
+- **DF4** — `assertExactlyTwoPayoutAttemptsThenRefund` reads durable
+  `Leg.attempt` from every `Event.snapshot` leg. It requires attempts 1 and 2,
+  rejects attempt 3 anywhere, allows cumulative snapshots, and no longer needs
+  distinct provider refs: repeated or cleared refs pass. A payout without
+  `attempt`, or a `leg.failed` without snapshot legs, fails acceptance as a
+  contract defect instead of being inferred or reported as a missing route.
+- **DF5** — `expectReasons` matches the meaning across all `reasons[]` items
+  (crypto, company kind, exclusion). Fragmented reasons are accepted; empty or
+  generic prose fails. Harness cases prove both directions.
+- **Preflight** — OPTIONS alone no longer decides a route is mounted. The probe
+  reads the `Allow` header: catch-all 404 + no Allow + `code: not_found` is
+  missing; Allow without the needed method is a separate method mismatch; 401,
+  403, 405, 5xx, application-level 404s and proxy answers without Allow are
+  treated as mounted so auth/method/application defects surface as FAIL, not as
+  a missing-route BLOCKED.
+- **Tests** — harness self-tests rewritten for `attempt`-based DF4 evidence (no
+  distinct-ref assumption), plus new CCR-12 (`payoutId`) and CCR-13 (frozen
+  amounts, fee modes, remainder, sizing) cases; preflight tests cover the new
+  classification.
 
 ## Checks
 
-| Command                                                                                 | Exit | Result                                                              |
-| --------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------- |
-| `npx tsc -p scripts/demo/tsconfig.json`                                                 | 0    | clean                                                               |
-| `npx vitest run tests/e2e/*.test.ts`                                                    | 0    | **50 passed** (harness 21, stellar 15, preflight 6, offline 4, seed 4) |
-| `npx prettier --check "scripts/demo/**/*.ts" "scripts/seed/**/*.json" "tests/e2e/*.ts"` | 0    | clean                                                               |
-| `bash scripts/check-separation.sh`                                                      | 0    | passed                                                              |
-| `git diff --check`                                                                      | 0    | clean                                                               |
-| `FP_API_PORT=8792 FP_WEB_PORT=5174 npm run demo:offline -- --print-plan`                | 0    | loopback plan, mock settlement, no key in the plan                  |
-| `FP_API_PORT=8792 FP_WEB_PORT=5174 npm run demo:offline -- --no-seed`                   | —    | API `/healthz` 200 and Vite 200; both servers stayed up             |
-| `FP_API_KEY=… FP_API_PORT=8792 FP_WEB_PORT=5174 npm run demo:offline`                   | —    | same startup, then seed ran and was **BLOCKED**; servers stayed up  |
-| `sandbox-exec` probe (`deny network-outbound`, allow `localhost:*`)                      | 0    | loopback 200; `https://example.com` denied                          |
-| `node scripts/seed/seed.ts reset` (sandboxed)                                           | 2    | **BLOCKED** — `POST /v1/sandbox/reset` is not mounted               |
-| `node scripts/seed/seed.ts` (sandboxed)                                                 | 2    | **BLOCKED** — same reset route; no fixtures created                 |
-| `node scripts/demo/run-all.ts` (sandboxed)                                              | 2    | DF1–DF5 mock **BLOCKED** in route preflight                          |
-| `node scripts/demo/df3-claim.ts --mode stellar` (sandboxed)                             | 2    | **BLOCKED** — routes plus missing chain inputs                      |
+| Command                                                                           | Exit | Result                                                                            |
+| --------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------- |
+| `npx tsc -p scripts/demo/tsconfig.json`                                           | 0    | clean                                                                             |
+| `npx vitest run tests/e2e/{harness,preflight,stellar-proof,offline,seed}.test.ts` | 0    | **67 passed** (harness 29, stellar 18, preflight 12, offline 4, seed 4)           |
+| `npx prettier --check "scripts/demo/**/*.ts" "tests/e2e/*.ts"`                    | 0    | clean                                                                             |
+| `git diff --check`                                                                | 0    | clean                                                                             |
+| RPC `getNetwork` on `soroban-testnet.stellar.org`                                 | 0    | HTTP 200, passphrase `Test SDF Network ; September 2015` (outbound network works) |
+| `OPTIONS` on the eight DF routes at `http://127.0.0.1:8788`                       | —    | 404, no `Allow` header: only the catch-all answered                               |
+| `node scripts/demo/df3-claim.ts --mode stellar` (online local API)                | 2    | **BLOCKED** on eight unmounted routes; never reached the RPC                      |
+| `node scripts/demo/run-all.ts` (mock)                                             | 2    | DF1–DF5 **BLOCKED** in route preflight                                            |
 
-The offline run used ports 8792/5174 because the integration worktree owns 8788.
-The root `demo:offline` command was exercised twice: without a key (`--no-seed`)
-and with `FP_API_KEY` set, which reached `/v1/sandbox/reset` and reported
-BLOCKED while leaving both servers up. It was then stopped through the
-launcher's SIGTERM path; ports 8792, 5174 and 54329 were free afterwards.
-
-The seed runs used a local Demo Platform organization and API key inserted
-directly into this worktree's ephemeral embedded Postgres. There is still no API
-route that creates an organization or key; the key was never printed, committed
-or written to evidence.
-
-Generated JSON evidence for the last runs records commit `05739cc` and is
-git-ignored. A scan of those files found no `fp_test_` value.
-
-## What changed in this step
-
-- **DF4** — `assertExactlyTwoPayoutAttemptsThenRefund` now:
-  - reads every `leg.failed` event's published `Event.snapshot` legs and takes
-    the union of failed payout `externalRef` values on the routed provider;
-  - requires exactly **two** distinct attempts, allows a cumulative snapshot,
-    rejects a reused ref, a third ref in any snapshot, a third final payout leg,
-    a successful payout in any snapshot, a refund before the failures and more
-    than one `payment.refunded`;
-  - requires the final payout legs to be failed, on the routed provider, and to
-    have snapshot evidence. A snapshot without legs or a ref is **BLOCKED**;
-  - if provider refs encode an attempt number, requires exactly attempts 1 and 2
-    and rejects mixed numbered/unnumbered refs.
-- **DF5** — `expectReasonExplaining` requires **one** reason string to match all
-  of: crypto, the company recipient kind, and an exclusion phrase. Previously
-  the patterns were matched across the joined list, so three unrelated fragments
-  could pass. Both the eligible ZA bank quote and the 422 crypto refusal use the
-  new check.
-- **DF3 Stellar** — `verifyVaultRelease` still checks the lock is
-  `create_payout` on `FP_PAYOUT_VAULT_ID` with external id
-  `sha256("<payment id>:1")` and the release is `claim` of that payout id to
-  `FP_RECIPIENT_A_ADDRESS`. It now also checks the release secret hashes to the
-  lock's `claim_hash` argument, both transactions are in a ledger, and the
-  release ledger is not before the lock ledger. The DF3 script also checks both
-  references are 64-hex before asking the RPC.
-- **A0 answers / README** — corrected the lock/release note: both transactions
-  must be distinct and successful; a single shared hash is not a release proof.
+The DF3 Stellar attempt used the public testnet values from
+`scripts/testnet/testnet-ids.env` (RPC, passphrase, vault id, 100 bps, Worker A
+address) and a clearly non-secret placeholder in `FP_API_KEY`. It stopped at
+route preflight, so no authenticated request, quote or chain call was made. The
+live API was left running; it was not restarted or modified.
 
 ## Runtime result
 
-The integrated API at `05739cc` mounts only `/healthz`, `/v1/corridors` and
-`/v1/recipients`. The DF flows stop in preflight; the seed stops at reset. The
-missing routes are:
+The integrated API at `http://127.0.0.1:8788` (PID 65994 at the time) answers
+`/healthz` 200 and mounts `/healthz`, `/v1/corridors`, `/v1/recipients` only.
+Every DF route below returns the catch-all 404 with no `Allow` header:
 
 `POST /v1/endpoints`, `POST /v1/quotes`, `POST /v1/payments`,
 `POST /v1/payments/{id}/fund`, `GET /v1/payments/{id}`, `GET /v1/events`,
 `GET /v1/claims/{token}`, `POST /v1/claims/{token}/accept`,
-`POST /v1/sandbox/fail-next`, `POST /v1/sandbox/reset`, `POST /v1/batches`,
-`GET /v1/batches/{id}`.
+`POST /v1/sandbox/fail-next`, `POST /v1/batches`, `GET /v1/batches/{id}`.
 
-No DF4, DF5 or DF3 assertion executed against the API. Their evidence rules are
-covered by the 36 focused self-tests; that is not flow acceptance.
+No DF assertion executed against the API. The 67 self-tests prove the acceptance
+rules and their failure modes; they are not flow acceptance.
+
+## CCR-11 restart acceptance — prepared, not run
+
+Uses the same database and the same seal key; never asks the API to reveal a
+secret.
+
+1. Start with a persistent data directory and `FP_CLAIM_SEAL_KEY` set. Create
+   and fund a `claim_link` payment; the settle leg locks (`externalRef` =
+   payoutId, `lockTxRef` set, payment not paid). Record payment id, payoutId and
+   hashes privately.
+2. Stop the API (SIGTERM); keep or restart the database from the same data
+   directory.
+3. Start the API with the same `DATABASE_URL` and `FP_CLAIM_SEAL_KEY`.
+4. Re-open the original claim URL: the view must still be `open` with the same
+   amount and the payment still waiting (token hash and sealed secret survived).
+5. Accept: paid, same payoutId, successful `releaseTxRef`, no payout leg. Verify
+   privately from chain data that `claim` used that payoutId, paid the intended
+   address and hashed to the lock's claim hash.
+6. Negative control: restart with a different seal key; acceptance must fail
+   without releasing (no `releaseTxRef`, not paid) and must not expose the
+   secret.
+
+Evidence keeps ids, hashes, statuses and masked addresses only: no claim token,
+secret, API key or full address. Blocked until CC2 persists the seal and CC3
+mounts accept.
 
 ## Blockers
 
-| Blocker                                                                                                                                                            | Owner                              |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
-| CC3a/CC3b routes above are not mounted, including `/v1/sandbox/reset`                                                                                              | Csaba (CC3a/CC3b)                  |
-| CC2 must publish `Event.snapshot` legs including each failed payout `externalRef`; DF3 also needs the pre-accept settle `externalRef`                              | Csaba (CC2)                        |
-| Stellar acceptance needs the routes, `FP_PAYOUT_VAULT_ID`, RPC URL/passphrase and Worker A's address, then a real testnet run; static/replay proof is not settlement | caller / Csaba (integration) + SC2 |
-| The settle leg's status after a vault refund is still undefined; DF4 does not assert it                                                                            | CC2 / A0                           |
-
-## D2 handoff
-
-D2 #27 is integrated. The root `demo:offline` command started embedded Postgres,
-the API and Vite with mock settlement, and both readiness probes returned 200.
-With `--no-seed`, startup did not require a key. Reset and seed remain blocked on
-the missing `/v1/sandbox/reset`, so the external-network-denied replay is
-recorded as **BLOCKED**, not PASS. No D2 file was edited or duplicated.
+| Blocker                                                                                                                                               | Owner                              |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| CC3a/CC3b routes above are not mounted (including claim accept and sandbox reset)                                                                     | Csaba (CC3a/CC3b)                  |
+| CC2 must persist `secretSealed`/`vaultClaimHashHex`, write `lockTxRef`/`releaseTxRef`, set `Leg.attempt`, and publish `Event.snapshot` legs with them | Csaba (CC2)                        |
+| CC1 must price PayerPays with `P = floor(A * 10000 / (10000 + bps))` and copy frozen quote amounts into payment legs                                  | Csaba (CC1)                        |
+| Stellar acceptance needs the routes, an API key and the vault/RPC/address values; the RPC itself is reachable                                         | caller / Csaba (integration) + SC2 |
+| The settle leg's status after a vault refund is still undefined; DF4 does not assert it                                                               | CC2 / A0                           |
+| CCR-11 restart run needs CC2 seal persistence and the accept route                                                                                    | CC2 / CC3                          |
 
 ## Next run
 
-1. Land `POST /v1/endpoints`, `/v1/sandbox/reset` and the CC2 orchestrator, then
-   rerun seed/reset and DF1–DF5 offline with external networking denied.
-2. Confirm the DF4 event snapshots carry the two failed payout refs; then the
-   exact-two assertion can PASS instead of BLOCK.
-3. Run DF3 Stellar online with the vault id, RPC, passphrase and Worker A
-   address; keep the generated evidence and confirm the lock and release are
-   distinct successful transactions.
+1. Mount endpoints/quotes/payments/fund/read/events/claims/accept and sandbox
+   controls, then rerun seed and DF1–DF5 mock.
+2. Rerun DF4 and confirm `Event.snapshot` legs carry `attempt` 1 and 2 and
+   `payment.refunded`; refs may be cleared.
+3. Run DF3 Stellar with a real key and the published vault/RPC/address; keep the
+   lock and release evidence, verify `releaseTxRef` and net `P`.
+4. Run the CCR-11 restart steps with the same database and seal key, plus the
+   wrong-key negative control.

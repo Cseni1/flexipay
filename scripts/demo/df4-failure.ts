@@ -1,4 +1,5 @@
 import {
+	expectFrozenAccounting,
 	expectKinds,
 	expectQuoteFeeMode,
 	expectRail,
@@ -15,10 +16,9 @@ import { setUpWorker } from "./lib/setup.ts"
 import { waitForPayment } from "./lib/wait.ts"
 
 // DF4: the BR payout provider is forced to fail twice. The documented terminal state is: payout
-// failed, earlier collect/convert legs reversed, payment refunded. Two attempts are proven from
-// the published Event.snapshot legs (two leg.failed events, each with a distinct failed payout
-// externalRef) followed by payment.refunded; no third failure or payout success is accepted. A
-// snapshot without legs/reference BLOCKS rather than inferring attempts from failCount.
+// failed, earlier collect/convert legs reversed, payment refunded. CCR-14 makes Leg.attempt
+// durable: two leg.failed snapshots must show attempts 1 and 2, followed by payment.refunded,
+// with no attempt 3. A retry may clear provider refs, so equal refs are not a failure.
 
 const runId = Date.now().toString(36)
 
@@ -77,6 +77,7 @@ await execute(
 		const payment = await waitForPayment(api, created.payment.id)
 		const events = payment.events ?? (await api.events(payment.id))
 		const types = events.map((event) => event.type)
+		expectFrozenAccounting(quote, payment, "DF4")
 		flow.legs("final", payment.legs)
 
 		expectStatus(payment, ["refunded"], "payment")
@@ -127,7 +128,7 @@ await execute(
 			expected.payoutRail!,
 		)
 		flow.check(
-			`two distinct payout attempts (${attempts.refs.join(", ")}), then refund; no third attempt`,
+			`payout attempts ${attempts.attempts.join(", ")} (refs ${attempts.refs.join(", ") || "cleared"}), then refund; no third attempt`,
 		)
 		flow.note(A0_CONTRACT_ANSWERS.vaultRefund)
 	},

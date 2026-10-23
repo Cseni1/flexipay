@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import type { FeeMode } from "@flexipay/domain"
 import {
 	FeeBumpTransaction,
 	StrKey,
@@ -27,6 +28,12 @@ export interface VaultReleaseProof extends StellarProof {
 	payoutId: string
 	recipient: string
 	contractId: string
+	/** Lock input principal P (settle amountIn), from create_payout (CCR-13). */
+	principal: string
+	feeMode: FeeMode
+	fee: string
+	/** Release return value: P for PayerPays, P − fee for RecipientPays. */
+	net: string
 }
 
 export interface ContractInvocation {
@@ -259,6 +266,11 @@ const nativeAddress = (value: unknown, where: string): string => {
 	return fail(`${where}: expected a Stellar account address`)
 }
 
+const nativeSymbol = (value: unknown, where: string): string => {
+	if (typeof value === "string" && value.length > 0) return value
+	return fail(`${where}: expected a contract symbol`)
+}
+
 const lockExternalId = (paymentId: string, attempt = 1): string =>
 	createHash("sha256").update(`${paymentId}:${attempt}`, "utf8").digest("hex")
 
@@ -304,10 +316,18 @@ export async function verifyStellarTransaction(options: {
  */
 export async function verifyVaultRelease(options: {
 	paymentId: string
+	/** CCR-12: settle.externalRef, the vault payoutId returned by the lock. */
+	payoutId: string
 	lockHash: string
 	releaseHash: string
 	recipientAddress: string
 	vaultContractId: string
+	/** CCR-13 frozen settle principal, fee mode, fee and net from quote/payment. */
+	principal: string
+	feeMode: FeeMode
+	fee: string
+	net: string
+	vaultFeeBps: number
 	rpcUrl: string
 	networkPassphrase: string
 	timeoutMs: number
@@ -319,6 +339,16 @@ export async function verifyVaultRelease(options: {
 	}
 	if (!StrKey.isValidContract(options.vaultContractId)) {
 		fail(`configured vault id is not a Stellar contract address`)
+	}
+	if (!/^[1-9][0-9]*$/.test(options.payoutId)) {
+		fail(`settle payoutId "${options.payoutId}" is not a positive decimal id`)
+	}
+	if (
+		!Number.isInteger(options.vaultFeeBps) ||
+		options.vaultFeeBps < 0 ||
+		options.vaultFeeBps > 1000
+	) {
+		fail(`vault fee bps ${options.vaultFeeBps} is outside 0..1000`)
 	}
 
 	const passphrase = parseNetworkPassphrase(
@@ -358,8 +388,10 @@ export async function verifyVaultRelease(options: {
 	if (lockInvocation.functionName !== "create_payout") {
 		fail(`lock invokes ${lockInvocation.functionName}, expected create_payout`)
 	}
-	if (lockInvocation.args.length < 3) {
-		fail("lock create_payout has no external id or claim hash argument")
+	if (lockInvocation.args.length < 5) {
+		fail(
+			"lock create_payout has no external id, claim hash, amount or fee mode",
+		)
 	}
 	const expectedExternalId = lockExternalId(options.paymentId)
 	const seenExternalId = nativeHex(lockInvocation.args[1], "lock external id")
@@ -373,6 +405,42 @@ export async function verifyVaultRelease(options: {
 		parseReturnValue(lock.resultMetaXdr),
 		"lock return value",
 	)
+	if (payoutId !== options.payoutId) {
+		fail(
+			`lock returned payout ${payoutId}, but settle.externalRef is ${options.payoutId}`,
+		)
+	}
+	const principal = nativeId(lockInvocation.args[3], "lock principal")
+	if (principal !== options.principal) {
+		fail(
+			`lock principal ${principal} does not match the frozen settle amountIn ${options.principal}`,
+		)
+	}
+	const feeMode = nativeSymbol(lockInvocation.args[4], "lock fee mode")
+	if (feeMode !== options.feeMode) {
+		fail(
+			`lock fee mode ${feeMode} does not match the quoted ${options.feeMode}`,
+		)
+	}
+
+	const computedFee = (
+		(BigInt(options.principal) * BigInt(options.vaultFeeBps)) /
+		10_000n
+	).toString()
+	if (computedFee !== options.fee) {
+		fail(
+			`frozen fee ${options.fee} is not f(P)=${computedFee} at ${options.vaultFeeBps} bps`,
+		)
+	}
+	const computedNet =
+		options.feeMode === "PayerPays"
+			? options.principal
+			: (BigInt(options.principal) - BigInt(computedFee)).toString()
+	if (computedNet !== options.net) {
+		fail(
+			`frozen net ${options.net} is not ${computedNet} for ${options.feeMode}`,
+		)
+	}
 
 	if (release.ledger < 1 || lock.ledger < 1) {
 		fail("lock and release must be included in a ledger")
@@ -396,7 +464,7 @@ export async function verifyVaultRelease(options: {
 		fail(`release invokes ${releaseInvocation.functionName}, expected claim`)
 	}
 	if (releaseInvocation.args.length < 3) {
-		fail("release claim has no payout id or destination argument")
+		fail("release claim has no payout id, secret or destination argument")
 	}
 	const releasedPayoutId = nativeId(
 		releaseInvocation.args[0],
@@ -420,6 +488,13 @@ export async function verifyVaultRelease(options: {
 	if (recipient !== options.recipientAddress) {
 		fail(`release pays ${recipient}, expected the claimed recipient address`)
 	}
+	const net = nativeId(
+		parseReturnValue(release.resultMetaXdr),
+		"release return value",
+	)
+	if (net !== computedNet) {
+		fail(`release returned net ${net}, expected ${computedNet}`)
+	}
 
 	return {
 		hash: options.releaseHash,
@@ -430,5 +505,9 @@ export async function verifyVaultRelease(options: {
 		payoutId,
 		recipient,
 		contractId: options.vaultContractId,
+		principal,
+		feeMode,
+		fee: computedFee,
+		net,
 	}
 }
