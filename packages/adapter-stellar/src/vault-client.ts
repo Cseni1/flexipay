@@ -1,7 +1,7 @@
 import { contract, type Keypair } from "@stellar/stellar-sdk";
-import { VAULT_ERRORS, VaultError, toVaultError } from "./vault-errors.js";
-import type { FeeMode } from "./vault-math.js";
-import type { StellarEnv } from "./stellar-env.js";
+import { VAULT_ERRORS, VaultError, toVaultError } from "./vault-errors.ts";
+import type { FeeMode } from "./vault-math.ts";
+import type { StellarEnv } from "./stellar-env.ts";
 
 // Typed access to the deployed payout_vault (contracts/payout_vault/RULES.md). It knows the
 // chain, not payments: the settlement adapter (SC2) maps payments onto these calls once the

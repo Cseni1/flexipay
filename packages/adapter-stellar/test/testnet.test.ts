@@ -14,7 +14,7 @@ import {
   newClaimSecret,
   parseEnvFile,
   payoutAmounts,
-} from "../src/index.js";
+} from "../src/index.ts";
 
 // Runs against the deployed vault on Stellar testnet. Opt in with FP_TESTNET=1.
 // Needs scripts/testnet/.env.secrets from scripts/testnet/setup.sh (git-ignored).

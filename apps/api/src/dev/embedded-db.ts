@@ -63,7 +63,10 @@ export async function startEmbeddedDb(opts: { dir?: string; port?: number; name?
 
 /** Runs the Prisma CLI in apps/api against `url`. */
 export async function prisma(url: string, ...args: string[]): Promise<string> {
-  const { stdout, stderr } = await run("npx", ["prisma", ...args], {
+  // Windows: `execFile("npx")` fails with ENOENT (npx is npx.cmd). Invoke the local
+  // prisma entry with node instead — same as `npx prisma` in this workspace.
+  const prismaJs = join(apiDir, "../../node_modules/prisma/build/index.js");
+  const { stdout, stderr } = await run(process.execPath, [prismaJs, ...args], {
     cwd: apiDir,
     env: { ...process.env, DATABASE_URL: url },
   });
