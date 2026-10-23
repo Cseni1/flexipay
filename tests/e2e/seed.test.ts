@@ -93,7 +93,7 @@ afterEach(async () => {
 })
 
 describe("seed/reset runner", () => {
-	it("resets with A0's empty body and creates no fixtures for the reset command", async () => {
+	it("resets with A0's empty body, without an idempotency key, and creates no fixtures", async () => {
 		stub = await openStub({ reset: 200 })
 		const http = new HttpClient(stub.base, "test-key", 5_000)
 		const outcome = await runSeed(http, loadFixtures(), { command: "reset" })
@@ -104,8 +104,9 @@ describe("seed/reset runner", () => {
 			method: "POST",
 			path: "/v1/sandbox/reset",
 			body: {},
-			idempotencyKey: "seed:reset",
 		})
+		// A key would make the API replay its cached 200 and skip the wipe.
+		expect(stub.seen[0].idempotencyKey).toBeUndefined()
 	})
 
 	it("blocks before creating fixtures when /v1/sandbox/reset is not mounted", async () => {
@@ -145,10 +146,10 @@ describe("seed/reset runner", () => {
 		})
 	})
 
-	it("does not invent endpoint fields when the route is mounted but A0 has no schema", async () => {
+	it("does not invent endpoint fields when the route is mounted but the schema is not wired", async () => {
 		stub = await openStub({ reset: 200, endpoints: 200 })
 		const http = new HttpClient(stub.base, "test-key", 5_000)
-		await expect(runSeed(http, loadFixtures())).rejects.toThrow(/schema/)
+		await expect(runSeed(http, loadFixtures())).rejects.toThrow(/CCR-16 schema/)
 		const requests = stub.seen.map((r) => `${r.method} ${r.path}`)
 		expect(requests).not.toContain("POST /v1/endpoints")
 		expect(requests.at(-1)).toBe("GET /v1/endpoints")

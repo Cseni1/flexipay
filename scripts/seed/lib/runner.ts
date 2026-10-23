@@ -31,9 +31,9 @@ export interface SeedOptions {
 
 const ok = (status: number): boolean => status >= 200 && status < 300
 
-function endpointBlocker(detail: string): Blocker {
+function endpointBlocker(what: string, detail: string): Blocker {
 	return {
-		what: "POST /v1/endpoints is not mounted, so endpoints cannot be created",
+		what,
 		owner: "Csaba (CC3b)",
 		detail,
 	}
@@ -156,7 +156,10 @@ export async function runSeed(
 	throw new BlockedError([
 		endpointBlocker(
 			mounted
-				? "The endpoint route family is mounted, but lane D has not wired the CCR-16 schema into this runner."
+				? "The endpoint route is mounted, but lane D has not wired the CCR-16 schema into this runner"
+				: "POST /v1/endpoints is not mounted, so endpoints cannot be created",
+			mounted
+				? "CCR-16 defines the request/response schemas; this runner still stops instead of inventing fields."
 				: "GET /v1/endpoints returned 404; no endpoint route is mounted on this build (CCR-16 schemas exist, not routes).",
 		),
 	])
