@@ -127,11 +127,46 @@ describe("mock settlement: claim", () => {
 })
 
 describe("mock settlement: refund", () => {
-	it("rejects a refund before expiry", async () => {
+	it("cancels a pending payout before expiry and returns the locked amount", async () => {
 		const locked = await h.adapter.lock(lockRequest())
+		h.events.length = 0
 
-		expect(await codeOfAsync(h.adapter.refund(locked.payoutId))).toBe(9)
-		expect((await h.adapter.status(locked.payoutId)).state).toBe("pending")
+		await h.adapter.refund(locked.payoutId)
+
+		expect((await h.adapter.status(locked.payoutId)).state).toBe("refunded")
+		expect(h.events).toMatchObject([
+			{ type: "payout_refunded", cancelled: true, amount: locked.locked },
+		])
+		// the locked amount is back: the same payment can lock again with attempt 2
+		await h.adapter.lock(lockRequest({ attempt: 2 }))
+		// and attempt 1 stays used for good
+		expect(await codeOfAsync(h.adapter.lock(lockRequest()))).toBe(12)
+	})
+
+	it("reports an expiry refund as not cancelled", async () => {
+		const locked = await h.adapter.lock(lockRequest())
+		h.clock.set(IN_HOUR)
+		h.events.length = 0
+
+		await h.adapter.refund(locked.payoutId)
+
+		expect(h.events).toMatchObject([
+			{ type: "payout_refunded", cancelled: false },
+		])
+	})
+
+	it("does not refund a claimed payout", async () => {
+		const secret = claimSecret()
+		const locked = await h.adapter.lock(
+			lockRequest({ claimHashHex: secret.claimHashHex }),
+		)
+		await h.adapter.release({
+			payoutId: locked.payoutId,
+			secretHex: secret.secretHex,
+			destination: DESTINATION,
+		})
+
+		expect(await codeOfAsync(h.adapter.refund(locked.payoutId))).toBe(7)
 	})
 
 	it("refunds at exactly expires_at and returns the locked amount", async () => {

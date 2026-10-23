@@ -33,10 +33,12 @@ export interface MockSettlementOptions {
 export class MockSettlementAdapter implements SettlementAdapter {
 	readonly network = "mock" as const
 	private readonly vault: MockVault
+	private readonly now: () => Date
 	private transactions = 0
 
 	constructor(options: MockSettlementOptions) {
 		this.vault = new MockVault(options)
+		this.now = options.now
 	}
 
 	/** Read from the vault's config(), like the contract's `config()` (ARCHITECTURE §8). */
@@ -78,9 +80,18 @@ export class MockSettlementAdapter implements SettlementAdapter {
 		return { ...this.ref(), received }
 	}
 
-	/** The vault's `refund`: a pending payout can only be returned once it has expired. */
+	/**
+	 * Returns a pending payout to the payer (SettlementAdapter.refund): the vault's `cancel` before
+	 * expiry, which the payer authorises, and its permissionless `refund` once the payout has
+	 * expired. A payout that is not pending, or does not exist, fails as in the contract.
+	 */
 	async refund(payoutId: string): Promise<SettlementRef> {
-		this.vault.refund(payoutId)
+		const payout = this.vault.getPayout(payoutId)
+		if (payout.status === "Pending" && this.now() < payout.expiresAt) {
+			this.vault.cancel(payoutId)
+		} else {
+			this.vault.refund(payoutId)
+		}
 		return this.ref()
 	}
 

@@ -109,7 +109,13 @@ describe("mock settlement: events", () => {
 		await h.adapter.fundVault(PAYER, usdc("1000000000"))
 		const locked = await h.adapter.lock(lockRequest())
 
-		await codeOfAsync(h.adapter.refund(locked.payoutId))
+		await codeOfAsync(
+			h.adapter.release({
+				payoutId: locked.payoutId,
+				secretHex: claimSecret().secretHex,
+				destination: "GDEMOWRONG",
+			}),
+		)
 		await codeOfAsync(h.adapter.lock(lockRequest()))
 
 		expect(h.events.map((e) => e.type)).toEqual(["payout_created"])
