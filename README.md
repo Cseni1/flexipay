@@ -41,7 +41,7 @@ Stellar testnet. Offline demo is always mock settlement.
 
 ## Tested tip
 
-Pre-event handoff commit: **`e3f788c`**. D1/D2 evidence:
+Pre-event handoff commit: **`92f8cc1`**. D1/D2 evidence:
 `scripts/demo/evidence/2026-10-23-d1-d2-final-acceptance.md`.
 
 CCR-11 Stellar restart is **PASS** (evidence on main after integration). Remaining:

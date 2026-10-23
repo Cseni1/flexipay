@@ -1,6 +1,6 @@
 # Local demo runbook
 
-Operator notes for `main` **`e3f788c`**. Existing scripts only
+Operator notes for `main` **`92f8cc1`**. Existing scripts only
 (`scripts/demo/offline.ts`, `scripts/seed/seed.ts`, DF scripts, Vite CCR-19
 proxy). No new launcher. Never print or commit secrets.
 
@@ -16,7 +16,7 @@ duplicate the successful CCR-11 chain run.
 
 | Item | Value |
 | --- | --- |
-| Git tip | `e3f788c` (`origin/main`) |
+| Git tip | `92f8cc1` (`origin/main`) |
 | Node | **v24** (verified `v24.21.0`) |
 | Install | repo root: `npm install` |
 | Prisma | `npm run db:generate --workspace=@flexipay/api` |
@@ -100,7 +100,7 @@ node scripts/seed/seed.ts reset   # POST /v1/sandbox/reset
 node scripts/seed/seed.ts         # reset + recipients + endpoints
 ```
 
-On **`e3f788c`**: reset, recipients, endpoints and batches are mounted. Seed and
+On **`92f8cc1`**: reset, recipients, endpoints and batches are mounted. Seed and
 replay **PASS** in
 `scripts/demo/evidence/2026-10-23-d1-d2-final-acceptance.md`.
 
@@ -152,7 +152,7 @@ linked below.
 
 | Item | Value |
 | --- | --- |
-| Integrated tip | **`e3f788c`** (D1/D2 + CCR-11 evidence + FX fix; includes `ab0e60a`) |
+| Integrated tip | **`92f8cc1`** (D1/D2 + CCR-11 evidence + FX fix; includes `ab0e60a`) |
 | Acceptance write-up | [`scripts/demo/evidence/2026-10-23-d1-d2-final-acceptance.md`](../scripts/demo/evidence/2026-10-23-d1-d2-final-acceptance.md) |
 | CCR-15 mock recovery | [`scripts/demo/evidence/2026-10-23-ccr15-recovery-c859c92.md`](../scripts/demo/evidence/2026-10-23-ccr15-recovery-c859c92.md) |
 | CCR-11 Stellar restart | [`scripts/demo/evidence/2026-10-23-ccr11-restart-stellar.md`](../scripts/demo/evidence/2026-10-23-ccr11-restart-stellar.md) (code `939a2f9`) |
@@ -176,7 +176,7 @@ plus an uncommitted patch whose `*.ts` hash is preserved in the D1/D2 commits.
 | Event features (anchor, passkey) | **Not started** before Sun 25 Oct 11:30 — planned event work, not Scale entry requirements |
 | Tags `arrival` / `submission` | **Not created yet** — only `qualifier-v1` exists; do not mint early |
 
-## Mounted routes (`e3f788c`)
+## Mounted routes (`92f8cc1`)
 
 `healthz`, corridors, recipients, endpoints, batches, quotes, payments
 (list/get/fund/cancel), events, claims get/accept, sandbox fail-next /
