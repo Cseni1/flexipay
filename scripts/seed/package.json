@@ -1,0 +1,7 @@
+{
+  "name": "@flexipay/seed-scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Lane-D seed and reset tooling (not a workspace package)"
+}

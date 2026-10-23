@@ -65,7 +65,8 @@ export const PlannedLegSchema = z
     kind: LegKindSchema,
     rail: RailId,
     providerId: RailId,
-    simulated: z.literal(true),
+    /** Per-leg label (CCR-10): from provider quote or settlement execution mode — not rail id alone. */
+    simulated: z.boolean(),
   })
   .strict();
 

@@ -983,8 +983,7 @@
                             "pattern": "^[a-z][a-z0-9_]*$"
                           },
                           "simulated": {
-                            "type": "boolean",
-                            "const": true
+                            "type": "boolean"
                           }
                         },
                         "required": [
@@ -1177,8 +1176,7 @@
                                   "pattern": "^[a-z][a-z0-9_]*$"
                                 },
                                 "simulated": {
-                                  "type": "boolean",
-                                  "const": true
+                                  "type": "boolean"
                                 }
                               },
                               "required": [

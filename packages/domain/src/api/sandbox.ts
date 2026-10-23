@@ -4,7 +4,7 @@ import { RailId } from "./common.ts";
 // POST /v1/sandbox/* (ARCHITECTURE §10, CCR-4 SandboxControls). Demo-only controls.
 // Only request fields named in those sources are contracted here. No response bodies are
 // accepted for sandbox routes on main — OpenAPI stubs omit success schemas.
-// advance-time has no accepted request body either (CCR-6 proposal only).
+// advance-time request body: see CCR-6 (sandbox clock). Not yet contracted.
 
 /**
  * fail-next (ARCHITECTURE §10 + CCR-4): next `count` execute() calls fail; optional
