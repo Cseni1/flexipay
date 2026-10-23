@@ -1,0 +1,87 @@
+{
+	"simulated": true,
+	"placeholder": true,
+	"organization": "Demo Platform",
+	"notes": [
+		"Neutral demo data only: Demo Platform, Worker A, Worker B, Worker C, Supplier D.",
+		"Every endpoint is synthetic. No account number, e-wallet id or wallet address is committed; detailsRef is filled with an in-memory synthetic value by the A0 adapter.",
+		"Worker A carries the PH e-wallet, PH bank and PH crypto destinations used by DF1, DF2 and DF3."
+	],
+	"workers": [
+		{
+			"ref": "worker-a",
+			"name": "Worker A",
+			"kind": "individual",
+			"country": "PH",
+			"endpoints": [
+				{
+					"ref": "worker-a-ewallet",
+					"type": "ewallet",
+					"country": "PH",
+					"currency": "PHP",
+					"detailsRef": "synthetic-ewallet-a"
+				},
+				{
+					"ref": "worker-a-bank",
+					"type": "bank_account",
+					"country": "PH",
+					"currency": "PHP",
+					"detailsRef": "synthetic-bank-a"
+				},
+				{
+					"ref": "worker-a-crypto",
+					"type": "crypto_wallet",
+					"country": "PH",
+					"currency": "USDC",
+					"network": "stellar",
+					"detailsRef": "synthetic-crypto-a"
+				}
+			]
+		},
+		{
+			"ref": "worker-b",
+			"name": "Worker B",
+			"kind": "individual",
+			"country": "BR",
+			"endpoints": [
+				{
+					"ref": "worker-b-bank",
+					"type": "bank_account",
+					"country": "BR",
+					"currency": "BRL",
+					"detailsRef": "synthetic-bank-b"
+				}
+			]
+		},
+		{
+			"ref": "worker-c",
+			"name": "Worker C",
+			"kind": "individual",
+			"country": "US",
+			"endpoints": [
+				{
+					"ref": "worker-c-bank",
+					"type": "bank_account",
+					"country": "US",
+					"currency": "USD",
+					"detailsRef": "synthetic-bank-c"
+				}
+			]
+		},
+		{
+			"ref": "supplier-d",
+			"name": "Supplier D",
+			"kind": "company",
+			"country": "ZA",
+			"endpoints": [
+				{
+					"ref": "supplier-d-bank",
+					"type": "bank_account",
+					"country": "ZA",
+					"currency": "ZAR",
+					"detailsRef": "synthetic-bank-d"
+				}
+			]
+		}
+	]
+}

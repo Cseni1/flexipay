@@ -1,0 +1,7 @@
+{
+  "name": "@flexipay/demo-scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Lane-D acceptance scripts for DF1 to DF5 (not a workspace package)"
+}
