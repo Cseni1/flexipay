@@ -57,6 +57,9 @@ export function LegTimeline({ legs }: { legs: Leg[] }) {
 							{formatMoney(leg.amountOut.amount, leg.amountOut.currency)}
 						</span>
 					</p>
+					{leg.attempt > 1 ? (
+						<p className="timeline__note">Attempt {leg.attempt}</p>
+					) : null}
 					{leg.reversalOf ? (
 						<p className="timeline__note">
 							Reversal of <code className="code-text">{leg.reversalOf}</code>
@@ -64,7 +67,18 @@ export function LegTimeline({ legs }: { legs: Leg[] }) {
 					) : null}
 					{leg.externalRef ? (
 						<p className="timeline__reference">
-							Reference <code className="code-text">{leg.externalRef}</code>
+							{leg.kind === "settle" ? "Payout id" : "Reference"}{" "}
+							<code className="code-text">{leg.externalRef}</code>
+						</p>
+					) : null}
+					{leg.lockTxRef ? (
+						<p className="timeline__reference">
+							Lock tx <code className="code-text">{leg.lockTxRef}</code>
+						</p>
+					) : null}
+					{leg.releaseTxRef ? (
+						<p className="timeline__reference">
+							Release tx <code className="code-text">{leg.releaseTxRef}</code>
 						</p>
 					) : null}
 					{leg.error ? (

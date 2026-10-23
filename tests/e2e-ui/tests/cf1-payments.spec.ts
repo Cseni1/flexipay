@@ -141,6 +141,8 @@ test.describe("CF1 payments", () => {
 			page.getByText("Processing", { exact: true }).first(),
 		).toBeVisible()
 		await expect(page.getByText(/a1b2c3d4e5f6/).first()).toBeVisible()
+		await expect(page.getByText("payout_1234567890").first()).toBeVisible()
+		await expect(page.getByText(/Release tx/).first()).toBeVisible()
 		await expect(page.getByText("Payment funded")).toBeVisible()
 		await expect(page.getByText("Simulated").first()).toBeVisible()
 
@@ -277,6 +279,7 @@ test.describe("CF1 payments", () => {
 			page.getByText("Failed", { exact: true }).first(),
 		).toBeVisible()
 		await expect(page.getByText(/provider_declined/)).toBeVisible()
+		await expect(page.getByText("Attempt 2")).toBeVisible()
 		await expect(page.getByText("Leg failed", { exact: true })).toBeVisible()
 	})
 

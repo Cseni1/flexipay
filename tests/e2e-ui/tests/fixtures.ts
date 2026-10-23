@@ -20,30 +20,40 @@ export function quoteFixture(validForMs = 120_000) {
 				kind: "collect",
 				rail: "sim_bank_us_ach",
 				providerId: "sim_bank_us_ach",
+				amountIn: { amount: "125000", currency: "USD" },
+				amountOut: { amount: "125000", currency: "USD" },
 				simulated: true,
 			},
 			{
 				kind: "convert",
 				rail: "sim_fx",
 				providerId: "sim_fx",
+				amountIn: { amount: "125000", currency: "USD" },
+				amountOut: { amount: "125000", currency: "USD" },
 				simulated: true,
 			},
 			{
 				kind: "settle",
 				rail: "stellar_usdc",
 				providerId: "stellar_usdc",
+				amountIn: { amount: "125000", currency: "USD" },
+				amountOut: { amount: "125000", currency: "USD" },
 				simulated: true,
 			},
 			{
 				kind: "convert",
 				rail: "sim_fx",
 				providerId: "sim_fx",
+				amountIn: { amount: "125000", currency: "USD" },
+				amountOut: { amount: "125000", currency: "USD" },
 				simulated: true,
 			},
 			{
 				kind: "payout",
 				rail: "sim_ewallet_ph",
 				providerId: "sim_ewallet_ph",
+				amountIn: { amount: "125000", currency: "USD" },
+				amountOut: { amount: "125000", currency: "USD" },
 				simulated: true,
 			},
 		],
@@ -72,6 +82,7 @@ export function quoteFixture(validForMs = 120_000) {
 			],
 			flexiPayFee: { amount: "1250", currency: "USD" },
 			total: { amount: "3250", currency: "USD" },
+			settleUnlockedRemainder: null,
 		},
 		fxRate: "55.50",
 		expectedReceive: { amount: "6625000", currency: "PHP" },
@@ -86,30 +97,40 @@ export function quoteFixture(validForMs = 120_000) {
 						kind: "collect",
 						rail: "sim_bank_us_ach",
 						providerId: "sim_bank_us_ach",
+						amountIn: { amount: "125000", currency: "USD" },
+						amountOut: { amount: "125000", currency: "USD" },
 						simulated: true,
 					},
 					{
 						kind: "convert",
 						rail: "sim_fx",
 						providerId: "sim_fx",
+						amountIn: { amount: "125000", currency: "USD" },
+						amountOut: { amount: "125000", currency: "USD" },
 						simulated: true,
 					},
 					{
 						kind: "settle",
 						rail: "stellar_usdc",
 						providerId: "stellar_usdc",
+						amountIn: { amount: "125000", currency: "USD" },
+						amountOut: { amount: "125000", currency: "USD" },
 						simulated: true,
 					},
 					{
 						kind: "convert",
 						rail: "sim_fx",
 						providerId: "sim_fx",
+						amountIn: { amount: "125000", currency: "USD" },
+						amountOut: { amount: "125000", currency: "USD" },
 						simulated: true,
 					},
 					{
 						kind: "payout",
 						rail: "sim_bank_ph_instapay",
 						providerId: "sim_bank_ph_instapay",
+						amountIn: { amount: "125000", currency: "USD" },
+						amountOut: { amount: "125000", currency: "USD" },
 						simulated: true,
 					},
 				],
@@ -131,7 +152,10 @@ interface LegFixture {
 	kind: "collect" | "convert" | "settle" | "payout"
 	rail: string
 	status: "pending" | "processing" | "succeeded" | "failed"
+	attempt?: number
 	externalRef?: string | null
+	lockTxRef?: string | null
+	releaseTxRef?: string | null
 	error?: { code: string; message: string } | null
 }
 
@@ -144,7 +168,10 @@ const leg = (input: LegFixture) => ({
 	amountIn: { amount: "125000", currency: "USD" },
 	amountOut: { amount: "125000", currency: "USD" },
 	status: input.status,
+	attempt: input.attempt ?? 1,
 	externalRef: input.externalRef ?? null,
+	lockTxRef: input.lockTxRef ?? null,
+	releaseTxRef: input.releaseTxRef ?? null,
 	error: input.error ?? null,
 	reversalOf: null,
 	simulated: true,
@@ -182,7 +209,10 @@ const processingLegs = [
 		kind: "settle",
 		rail: "stellar_usdc",
 		status: "succeeded",
-		externalRef:
+		externalRef: "payout_1234567890",
+		lockTxRef:
+			"lock-a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e",
+		releaseTxRef:
 			"a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90",
 	}),
 	leg({ id: "leg_4", kind: "convert", rail: "sim_fx", status: "succeeded" }),
@@ -214,6 +244,7 @@ const failedLegs = [
 		kind: "payout",
 		rail: "sim_ewallet_ph",
 		status: "failed",
+		attempt: 2,
 		error: {
 			code: "provider_declined",
 			message: "The simulated payout was declined.",

@@ -240,7 +240,7 @@ export default function PaymentDetail() {
 									value={settleLeg ? settleLeg.providerId : "No settlement leg"}
 								/>
 								<StaticField
-									label="Reference"
+									label="Payout id"
 									value={
 										settleLeg?.externalRef ? (
 											<code className="code-text">{settleLeg.externalRef}</code>
@@ -248,7 +248,31 @@ export default function PaymentDetail() {
 											"—"
 										)
 									}
-									hint="Stellar transaction hash where present."
+									hint="Vault payout id; never a transaction hash."
+								/>
+								<StaticField
+									label="Lock transaction"
+									value={
+										settleLeg?.lockTxRef ? (
+											<code className="code-text">{settleLeg.lockTxRef}</code>
+										) : (
+											"—"
+										)
+									}
+									hint="LockResult transaction hash."
+								/>
+								<StaticField
+									label="Release transaction"
+									value={
+										settleLeg?.releaseTxRef ? (
+											<code className="code-text">
+												{settleLeg.releaseTxRef}
+											</code>
+										) : (
+											"—"
+										)
+									}
+									hint="Release or refund transaction hash."
 								/>
 							</div>
 							{!settleLeg ? (

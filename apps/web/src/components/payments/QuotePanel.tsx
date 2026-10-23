@@ -137,7 +137,7 @@ export function QuotePanel({
 									</span>
 									<span>{formatMoney(fee.fee.amount, fee.fee.currency)}</span>
 								</li>
-							))}
+							))}{" "}
 							<li>
 								<span>FlexiPay fee</span>
 								<span>
@@ -147,6 +147,17 @@ export function QuotePanel({
 									)}
 								</span>
 							</li>
+							{quote.fees.settleUnlockedRemainder ? (
+								<li>
+									<span>Unlocked remainder</span>
+									<span>
+										{formatMoney(
+											quote.fees.settleUnlockedRemainder.amount,
+											quote.fees.settleUnlockedRemainder.currency,
+										)}
+									</span>
+								</li>
+							) : null}
 							<li className="reason-list__total">
 								<span>All fees</span>
 								<span>
