@@ -126,8 +126,8 @@ mounts accept.
 | Blocker                                                                                                                                               | Owner                              |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | CC3a/CC3b routes above are not mounted (including claim accept and sandbox reset)                                                                     | Csaba (CC3a/CC3b)                  |
+| CC3a's quote handler must pass `SettlementAdapter.feeBps()` and the requested `feeMode` into routing                                                  | Csaba (CC3a)                       |
 | CC2 must persist `secretSealed`/`vaultClaimHashHex`, write `lockTxRef`/`releaseTxRef`, set `Leg.attempt`, and publish `Event.snapshot` legs with them | Csaba (CC2)                        |
-| CC1 must price PayerPays with `P = floor(A * 10000 / (10000 + bps))` and copy frozen quote amounts into payment legs                                  | Csaba (CC1)                        |
 | Stellar acceptance needs the routes, an API key and the vault/RPC/address values; the RPC itself is reachable                                         | caller / Csaba (integration) + SC2 |
 | The settle leg's status after a vault refund is still undefined; DF4 does not assert it                                                               | CC2 / A0                           |
 | CCR-11 restart run needs CC2 seal persistence and the accept route                                                                                    | CC2 / CC3                          |
