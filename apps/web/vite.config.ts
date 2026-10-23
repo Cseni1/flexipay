@@ -24,5 +24,6 @@ export default defineConfig({
 	define: {
 		global: "window",
 	},
-	envPrefix: "PUBLIC_",
+	// The API base is the only FP_ value exposed; no FP_ API key or secret may enter the bundle.
+	envPrefix: ["PUBLIC_", "FP_API_URL"],
 })

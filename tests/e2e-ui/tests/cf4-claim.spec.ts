@@ -28,6 +28,7 @@ interface MockOptions {
 	acceptFailOnce?: boolean
 	acceptDelayMs?: number
 	alwaysProcessing?: boolean
+	pollToPaid?: boolean
 }
 
 async function mockClaimApi(page: Page, options: MockOptions = {}) {
@@ -50,6 +51,9 @@ async function mockClaimApi(page: Page, options: MockOptions = {}) {
 			})
 			return
 		}
+		if (options.pollToPaid && getCount > 1) {
+			current = { ...current, paymentStatus: "paid" }
+		}
 		if (accepted && !options.alwaysProcessing) {
 			current = {
 				...current,
@@ -57,6 +61,7 @@ async function mockClaimApi(page: Page, options: MockOptions = {}) {
 				paymentStatus: "paid",
 			}
 		}
+
 		await route.fulfill({ json: current })
 	})
 
@@ -125,12 +130,16 @@ test.describe("CF4 claim page", () => {
 		).toBeDisabled()
 
 		await page.getByRole("radio", { name: /Crypto wallet/ }).check()
+		await expect(page.getByLabel("Stellar testnet wallet address")).toHaveValue(
+			"",
+		)
 		await expect(
-			page.getByLabel("Stellar testnet wallet address"),
-		).toBeVisible()
+			page.getByRole("button", { name: /demo testnet address/i }),
+		).toHaveCount(0)
 		await page
 			.getByLabel("Stellar testnet wallet address")
 			.fill("GDEMOTESTNETADDRESSONLY000000000000000000000000000000000000")
+
 		await expect(
 			page.getByRole("button", { name: "Accept payment" }),
 		).toBeEnabled()
@@ -170,7 +179,7 @@ test.describe("CF4 claim page", () => {
 		).toBe(true)
 	})
 
-	test("renders only the destination types returned by the API", async ({
+	test("fiat options stay visible but cannot be accepted without a contract", async ({
 		page,
 	}) => {
 		await mockClaimApi(page, {
@@ -183,11 +192,39 @@ test.describe("CF4 claim page", () => {
 
 		await expect(
 			page.getByRole("radio", { name: /Bank account/ }),
+		).toBeDisabled()
+		await expect(page.getByRole("radio", { name: /E-wallet/ })).toBeDisabled()
+		await expect(
+			page.getByText(
+				/claim API currently accepts crypto wallet endpoints only/,
+			),
 		).toBeVisible()
-		await expect(page.getByRole("radio", { name: /E-wallet/ })).toBeVisible()
+		await expect(
+			page.getByText(/has no endpoint that the current claim API can accept/),
+		).toBeVisible()
+		await expect(
+			page.getByRole("button", { name: "Accept payment" }),
+		).toHaveCount(0)
 		await expect(
 			page.getByRole("radio", { name: /Crypto wallet/ }),
 		).toHaveCount(0)
+	})
+
+	test("an already accepted claim resumes polling after reload", async ({
+		page,
+	}) => {
+		const counts = await mockClaimApi(page, {
+			claim: claimFixture({ status: "accepted", paymentStatus: "processing" }),
+			pollToPaid: true,
+		})
+		await openClaim(page)
+
+		await expect(page.getByText("Claim Accepted")).toBeVisible()
+		await expect(
+			page.getByText(/Paid: confirmed by the claim API/),
+		).toBeVisible({ timeout: 5_000 })
+		expect(counts.acceptCount()).toBe(0)
+		expect(counts.getCount()).toBeGreaterThanOrEqual(2)
 	})
 
 	test("an expired claim has no accept action", async ({ page }) => {

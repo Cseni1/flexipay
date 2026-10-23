@@ -28,11 +28,6 @@ const CURRENCY_DECIMALS: Readonly<Record<string, number>> = {
 	USDC: 7,
 }
 
-// Public testnet address from scripts/testnet/testnet-ids.env. This is an address, never a
-// secret: the baseline custodial wallet key stays on the backend.
-const DEMO_TESTNET_ADDRESS =
-	"GAAN53RQP4YMHJCBSSPBRSX77HWEWHUL5AFOUSOJBNIKVR6VS63RPRX5"
-
 const PAYMENT_STATUS_LABELS: Readonly<Record<string, string>> = {
 	quoted: "Quoted",
 	awaiting_funding: "Awaiting funding",
@@ -66,6 +61,14 @@ const CLOSED_PAYMENT_STATUSES = new Set([
 const isCrypto = (type: DestinationType): boolean =>
 	type === "crypto_wallet" || type === "crypto_custodial"
 
+// The merged claim accept route only implements the crypto endpoint (details.address). Fiat
+// accept still needs its contracted endpoint persistence, so those options stay visible but
+// disabled rather than sending an unapproved details shape.
+const supportsClaimAccept = (
+	type: DestinationType | "",
+): type is "crypto_wallet" | "crypto_custodial" =>
+	type === "crypto_wallet" || type === "crypto_custodial"
+
 const optionCopy = (
 	type: DestinationType,
 ): { title: string; detail: string } => {
@@ -92,12 +95,6 @@ const detailLabel = (type: DestinationType): string => {
 
 const detailPlaceholder = (type: DestinationType): string =>
 	isCrypto(type) ? "G…" : "Account details"
-
-const detailKey = (type: DestinationType): string => {
-	if (isCrypto(type)) return "address"
-	if (type === "ewallet") return "phoneNumber"
-	return "accountNumber"
-}
 
 const formatAmount = (
 	amount: string,
@@ -196,6 +193,8 @@ export default function ClaimPage() {
 	const acceptLock = useRef(false)
 	const acceptAbort = useRef<AbortController | null>(null)
 	const idempotencyKey = useRef<string | null>(null)
+	const claimStatus = claim?.status
+	const paymentStatus = claim?.paymentStatus
 
 	useEffect(() => {
 		if (!claimToken) {
@@ -236,10 +235,9 @@ export default function ClaimPage() {
 
 	useEffect(() => {
 		if (
-			!claim ||
 			!claimToken ||
-			claim.status !== "accepted" ||
-			TERMINAL_PAYMENT_STATUSES.has(claim.paymentStatus)
+			claimStatus !== "accepted" ||
+			TERMINAL_PAYMENT_STATUSES.has(paymentStatus ?? "")
 		)
 			return
 
@@ -263,7 +261,7 @@ export default function ClaimPage() {
 			window.clearInterval(timer)
 			controller.abort()
 		}
-	}, [claim?.paymentStatus, claim?.status, claimToken, claim])
+	}, [claimStatus, paymentStatus, claimToken])
 
 	useEffect(
 		() => () => {
@@ -273,6 +271,7 @@ export default function ClaimPage() {
 	)
 
 	const updateSelection = (type: DestinationType) => {
+		if (!supportsClaimAccept(type)) return
 		setSelectedType(type)
 		setDetail("")
 		setAcceptError(null)
@@ -285,16 +284,17 @@ export default function ClaimPage() {
 		idempotencyKey.current = null
 	}
 
-	const useDemoAddress = () => {
-		updateDetail(DEMO_TESTNET_ADDRESS)
-	}
-
 	const paymentReady = claim
 		? PAYMENT_READY_STATUSES.has(claim.paymentStatus)
 		: false
+	const hasSupportedType =
+		claim?.allowedDestinationTypes.some(supportsClaimAccept) ?? false
 	const canAccept =
 		Boolean(
-			claim && claim.status === "open" && selectedType && detail.trim(),
+			claim &&
+			claim.status === "open" &&
+			supportsClaimAccept(selectedType) &&
+			detail.trim(),
 		) &&
 		paymentReady &&
 		!accepting
@@ -303,19 +303,18 @@ export default function ClaimPage() {
 		if (
 			!claimToken ||
 			!claim ||
-			!selectedType ||
+			!supportsClaimAccept(selectedType) ||
 			!canAccept ||
 			acceptLock.current
 		)
 			return
 
-		const cryptoDestination = isCrypto(selectedType)
 		const endpoint: ClaimAcceptRequest["endpoint"] = {
 			type: selectedType,
-			country: cryptoDestination ? "" : claim.corridor.to.country,
+			country: "",
 			currency: claim.amount.currency,
-			network: cryptoDestination ? "stellar" : null,
-			details: { [detailKey(selectedType)]: detail.trim() },
+			network: "stellar",
+			details: { address: detail.trim() },
 			simulated: true,
 		}
 
@@ -445,6 +444,7 @@ export default function ClaimPage() {
 										<legend className="field__label">Receive to</legend>
 										{claim.allowedDestinationTypes.map((type) => {
 											const copy = optionCopy(type)
+											const supported = supportsClaimAccept(type)
 											return (
 												<label className="option-card" key={type}>
 													<input
@@ -452,7 +452,7 @@ export default function ClaimPage() {
 														name="receive"
 														value={type}
 														checked={selectedType === type}
-														disabled={accepting}
+														disabled={accepting || !supported}
 														onChange={() => updateSelection(type)}
 													/>
 													<span className="option-card__body">
@@ -460,14 +460,24 @@ export default function ClaimPage() {
 															{copy.title}
 														</span>
 														<span className="option-card__detail">
-															{copy.detail}
+															{supported
+																? copy.detail
+																: "Not available: claim accept does not support fiat yet."}
 														</span>
 													</span>
 												</label>
 											)
 										})}
 									</fieldset>
-
+									{claim.allowedDestinationTypes.some(
+										(type) => !supportsClaimAccept(type),
+									) ? (
+										<Notice tone="warning">
+											The claim API currently accepts crypto wallet endpoints
+											only. Fiat options are shown from the claim response but
+											are not selectable.
+										</Notice>
+									) : null}
 									{selectedType ? (
 										<div className="claim-detail">
 											<TextField
@@ -480,47 +490,38 @@ export default function ClaimPage() {
 												onChange={(event) => updateDetail(event.target.value)}
 												hint={
 													isCrypto(selectedType)
-														? "The baseline uses a labelled custodial testnet wallet. Its secret stays on the backend and never enters this page."
-														: "Only the endpoint type is defined by the claim contract; the details object is sent as provided."
+														? "Testnet only. Paste a public wallet address; never a secret key."
+														: "Only the claimed endpoint type is sent."
 												}
 											/>
-											{isCrypto(selectedType) ? (
-												<div className="claim-demo">
-													{" "}
-													<Button
-														variant="secondary"
-														disabled={accepting}
-														onClick={useDemoAddress}
-													>
-														Use public demo testnet address
-													</Button>
-													<span className="form-note">
-														Worker A demo address; no key is present in the
-														browser.
-													</span>
-												</div>
-											) : null}
 										</div>
 									) : null}
-
 									{!paymentReady ? (
 										<Notice tone="warning">{notReadyMessage(claim)}</Notice>
 									) : null}
-
 									{acceptError ? (
 										<Notice tone="warning">{acceptError}</Notice>
 									) : null}
 
-									<Button
-										onClick={() => void handleAccept()}
-										disabled={!canAccept}
-									>
-										{accepting ? "Accepting…" : "Accept payment"}
-									</Button>
-									<p className="form-note">
-										Accepting sends one idempotent request. The payment is
-										marked paid only when the claim API returns that state.
-									</p>
+									{hasSupportedType ? (
+										<>
+											<Button
+												onClick={() => void handleAccept()}
+												disabled={!canAccept}
+											>
+												{accepting ? "Accepting…" : "Accept payment"}
+											</Button>
+											<p className="form-note">
+												Accepting sends one idempotent request. The payment is
+												marked paid only when the claim API returns that state.
+											</p>
+										</>
+									) : (
+										<Notice tone="warning">
+											This claim has no endpoint that the current claim API can
+											accept.
+										</Notice>
+									)}
 								</>
 							) : (
 								<Notice tone={closedClaimTone(claim)}>
