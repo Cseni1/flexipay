@@ -11,8 +11,11 @@ import {
 	loadConfig,
 	money,
 	routeTemplate,
+	sizePayerPaysPrincipal,
 	subtractMoney,
+	toMinor,
 	type CreateQuoteRequest,
+	type FeeMode,
 	type FlexiPayConfig,
 	type FxRate,
 	type LegKind,
@@ -158,27 +161,19 @@ function registry(
 	return map;
 }
 
-function deps(
-	over: Record<string, "up" | "down"> = {},
-	feeMode: "PayerPays" | "RecipientPays" = "RecipientPays",
-) {
+function deps(over: Record<string, "up" | "down"> = {}) {
 	const providers = registry(over);
 	return {
 		config,
 		getProvider: (id: string) => providers.get(id),
 		vaultFeeBps: VAULT_FEE_BPS,
-		// Explicit test injection — not an accepted product default (integrator decision).
-		vaultFeeMode: feeMode,
 		now: () => T0,
 		quoteId: () => "quo_test_1",
 	};
 }
 
-/** Zero foreign payout fee so fees.total can close under current directional FX rates. */
-function depsZeroPayoutFee(
-	payoutId: string,
-	feeMode: "PayerPays" | "RecipientPays" = "RecipientPays",
-) {
+/** Zero foreign payout fee so fees.total can close under current directional FX rates (CCR-7 gap). */
+function depsZeroPayoutFee(payoutId: string) {
 	const providers = registry();
 	const row = config.providers.find((p) => p.id === payoutId)!;
 	providers.set(
@@ -195,7 +190,6 @@ function depsZeroPayoutFee(
 		config,
 		getProvider: (id: string) => providers.get(id),
 		vaultFeeBps: VAULT_FEE_BPS,
-		vaultFeeMode: feeMode,
 		now: () => T0,
 		quoteId: () => "quo_test_1",
 	};
@@ -210,6 +204,7 @@ const sourceUs = {
 function sendReq(
 	partial: Omit<CreateQuoteRequest, "source" | "amount" | "policy"> & {
 		amount?: CreateQuoteRequest["amount"];
+		feeMode?: FeeMode;
 	},
 ): CreateQuoteRequest {
 	return {
@@ -220,7 +215,16 @@ function sendReq(
 			value: money("10000", "USD"),
 		},
 		destination: partial.destination,
+		...(partial.feeMode !== undefined ? { feeMode: partial.feeMode } : {}),
 	};
+}
+
+/** Settle-route request with explicit CCR-8 feeMode (no silent default). */
+function settleSendReq(
+	partial: Parameters<typeof sendReq>[0],
+	feeMode: FeeMode = "RecipientPays",
+): CreateQuoteRequest {
+	return sendReq({ ...partial, feeMode });
 }
 
 describe("routeTemplate", () => {
@@ -481,7 +485,7 @@ describe("buildQuote corridors", () => {
 		// Convertible into USD total with existing rates: 0 + 125 + convertMoney(USDC fees) + vault.
 		// Payout 28642 PHP has no PHP>USD rate → must not be omitted.
 		const result = await buildQuote(
-			sendReq({
+			settleSendReq({
 				destination: {
 					type: "bank_account",
 					currency: "PHP",
@@ -500,7 +504,7 @@ describe("buildQuote corridors", () => {
 
 	it("PH bank with zero payout fee: five legs, two converts, complete total", async () => {
 		const result = await buildQuote(
-			sendReq({
+			settleSendReq({
 				destination: {
 					type: "bank_account",
 					currency: "PHP",
@@ -540,7 +544,7 @@ describe("buildQuote corridors", () => {
 
 	it("PH e-wallet uses sim_ewallet_ph when payout fee is zeroed for total", async () => {
 		const result = await buildQuote(
-			sendReq({
+			settleSendReq({
 				destination: {
 					type: "ewallet",
 					currency: "PHP",
@@ -558,7 +562,7 @@ describe("buildQuote corridors", () => {
 
 	it("BR bank: five-leg Stellar route when payout fee is zeroed for total", async () => {
 		const result = await buildQuote(
-			sendReq({
+			settleSendReq({
 				destination: {
 					type: "bank_account",
 					currency: "BRL",
@@ -583,7 +587,7 @@ describe("buildQuote corridors", () => {
 
 	it("crypto destination ends at settle with no payout", async () => {
 		const result = await buildQuote(
-			sendReq({
+			settleSendReq({
 				destination: {
 					type: "crypto_wallet",
 					currency: "USDC",
@@ -675,7 +679,7 @@ describe("buildQuote corridors", () => {
 
 	it("vault fee scales with settle input (not a hardcoded 1% of send)", async () => {
 		const small = await buildQuote(
-			sendReq({
+			settleSendReq({
 				destination: {
 					type: "crypto_wallet",
 					currency: "USDC",
@@ -687,7 +691,7 @@ describe("buildQuote corridors", () => {
 			deps(),
 		);
 		const large = await buildQuote(
-			sendReq({
+			settleSendReq({
 				destination: {
 					type: "crypto_wallet",
 					currency: "USDC",
@@ -710,7 +714,7 @@ describe("buildQuote corridors", () => {
 
 	it("uses integer FX rounding (CCR-4) on convert legs", async () => {
 		const result = await buildQuote(
-			sendReq({
+			settleSendReq({
 				destination: {
 					type: "bank_account",
 					currency: "PHP",
@@ -734,7 +738,7 @@ describe("buildQuote corridors", () => {
 
 	it("produces an A0-valid QuoteSchema payload", async () => {
 		const result = await buildQuote(
-			sendReq({
+			settleSendReq({
 				destination: {
 					type: "crypto_wallet",
 					currency: "USDC",
@@ -768,20 +772,22 @@ describe("buildQuote corridors", () => {
 			} as ProviderAdapter;
 		};
 		const result = await buildQuote(
-			sendReq({
-				destination: {
-					type: "crypto_wallet",
-					currency: "USDC",
-					country: "BR",
-					recipientKind: "individual",
+			settleSendReq(
+				{
+					destination: {
+						type: "crypto_wallet",
+						currency: "USDC",
+						country: "BR",
+						recipientKind: "individual",
+					},
+					amount: { side: "send", value: money("50000", "USD") },
 				},
-				amount: { side: "send", value: money("50000", "USD") },
-			}),
+				"RecipientPays",
+			),
 			{
 				config,
 				getProvider: wrappedGet,
 				vaultFeeBps: 250,
-				vaultFeeMode: "RecipientPays",
 				now: () => T0,
 				quoteId: () => "quo_vault",
 			},
@@ -795,29 +801,126 @@ describe("buildQuote corridors", () => {
 		expect(BigInt(result.quote.fees.flexiPayFee.amount)).toBeGreaterThan(0n);
 	});
 
-	it("vault fee mode changes settle amountOut (PayerPays vs RecipientPays); fee applied once", async () => {
-		const req = sendReq({
-			destination: {
-				type: "crypto_wallet",
-				currency: "USDC",
-				country: "PH",
-				recipientKind: "individual",
-			},
-			amount: { side: "send", value: money("100000", "USD") },
-		});
-		const recipient = await buildQuote(req, deps({}, "RecipientPays"));
-		const payer = await buildQuote(req, deps({}, "PayerPays"));
-		expect(recipient.ok && payer.ok).toBe(true);
-		if (!recipient.ok || !payer.ok) return;
-		expect(recipient.quote.fees.flexiPayFee).toEqual(payer.quote.fees.flexiPayFee);
+	it("CCR-8: rejects settle quote without CreateQuoteRequest.feeMode (no silent default)", async () => {
+		const result = await buildQuote(
+			sendReq({
+				destination: {
+					type: "crypto_wallet",
+					currency: "USDC",
+					country: "PH",
+					recipientKind: "individual",
+				},
+				amount: { side: "send", value: money("100000", "USD") },
+			}),
+			deps(),
+		);
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reasons.join(" ")).toMatch(/feeMode/);
+		expect(result.reasons.join(" ")).toMatch(/no silent/i);
+	});
+
+	it("CCR-8: Quote.feeMode echoes request for both modes; null on domestic", async () => {
+		const domestic = await buildQuote(
+			sendReq({
+				destination: {
+					type: "bank_account",
+					currency: "USD",
+					country: "US",
+					recipientKind: "individual",
+				},
+			}),
+			deps(),
+		);
+		expect(domestic.ok).toBe(true);
+		if (domestic.ok) {
+			expect(domestic.quote.feeMode).toBeNull();
+			expect(() => QuoteSchema.parse(domestic.quote)).not.toThrow();
+		}
+
+		for (const mode of ["RecipientPays", "PayerPays"] as const) {
+			const result = await buildQuote(
+				settleSendReq(
+					{
+						destination: {
+							type: "crypto_wallet",
+							currency: "USDC",
+							country: "PH",
+							recipientKind: "individual",
+						},
+						amount: { side: "send", value: money("100000", "USD") },
+					},
+					mode,
+				),
+				deps(),
+			);
+			expect(result.ok).toBe(true);
+			if (!result.ok) return;
+			expect(result.quote.feeMode).toBe(mode);
+			expect(() => QuoteSchema.parse(result.quote)).not.toThrow();
+		}
+	});
+
+	it("CCR-8 PayerPays: P=floor(A*10000/(10000+bps)), P+f(P)≤A; remainder not a fee", async () => {
+		const A = money("9925125000", "USDC");
+		const bps = 100;
+		const { principal, fee, remainder } = sizePayerPaysPrincipal(A, bps);
+		expect(toMinor(principal)).toBe(
+			(toMinor(A) * 10_000n) / (10_000n + BigInt(bps)),
+		);
+		expect(toMinor(fee)).toBe((toMinor(principal) * BigInt(bps)) / 10_000n);
+		expect(toMinor(principal) + toMinor(fee)).toBeLessThanOrEqual(toMinor(A));
+		expect(toMinor(remainder)).toBe(
+			toMinor(A) - toMinor(principal) - toMinor(fee),
+		);
+		// Rounding boundary: A=10001, bps=100 → P=9901, f=99, P+f=10000 ≤ 10001, rem=1
+		const edge = sizePayerPaysPrincipal(money("10001", "USDC"), 100);
+		expect(edge.principal.amount).toBe("9901");
+		expect(edge.fee.amount).toBe("99");
+		expect(edge.remainder.amount).toBe("1");
+
+		const payer = await buildQuote(
+			settleSendReq(
+				{
+					destination: {
+						type: "crypto_wallet",
+						currency: "USDC",
+						country: "PH",
+						recipientKind: "individual",
+					},
+					amount: { side: "send", value: money("100000", "USD") },
+				},
+				"PayerPays",
+			),
+			deps(),
+		);
+		const recipient = await buildQuote(
+			settleSendReq(
+				{
+					destination: {
+						type: "crypto_wallet",
+						currency: "USDC",
+						country: "PH",
+						recipientKind: "individual",
+					},
+					amount: { side: "send", value: money("100000", "USD") },
+				},
+				"RecipientPays",
+			),
+			deps(),
+		);
+		expect(payer.ok && recipient.ok).toBe(true);
+		if (!payer.ok || !recipient.ok) return;
+
+		const settleP = payer.quote.fees.legs.find((l) => l.kind === "settle")!;
+		expect(payer.quote.fees.flexiPayFee).toEqual(settleP.fee);
 		expect(
-			BigInt(payer.quote.expectedReceive.amount),
-		).toBeGreaterThan(BigInt(recipient.quote.expectedReceive.amount));
-		// Difference equals the vault fee (single deduction under RecipientPays).
-		expect(
-			BigInt(payer.quote.expectedReceive.amount) -
-				BigInt(recipient.quote.expectedReceive.amount),
-		).toBe(BigInt(recipient.quote.fees.flexiPayFee.amount));
+			payer.quote.reasons.some((r) => /remainder|unlocked/i.test(r)),
+		).toBe(true);
+		// f(P) vs f(A) — fees differ; remainder must not be booked as fee.
+		expect(payer.quote.fees.flexiPayFee).not.toEqual(
+			recipient.quote.fees.flexiPayFee,
+		);
 	});
 });
 
