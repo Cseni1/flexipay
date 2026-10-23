@@ -12,6 +12,7 @@ export {
 	corridorExplanationReasons,
 	priceRoute,
 	routeTemplate,
+	sizePayerPaysPrincipal,
 	toPlannedLegs,
 	type BuildQuoteDeps,
 	type BuildQuoteResult,

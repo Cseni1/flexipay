@@ -52,9 +52,9 @@ export interface PriceDeps {
 	vaultFeeBps: number;
 	/**
 	 * Vault lock fee mode from RULES.md / LockRequest.feeMode. Required when the template
-	 * includes settle. No MVP default is recorded in ARCHITECTURE or A0 — the caller must pass it.
+	 * includes settle (`null` only for no-settle routes). No silent MVP default.
 	 */
-	vaultFeeMode: FeeMode;
+	vaultFeeMode: FeeMode | null;
 	/**
 	 * Settle-leg `simulated` from settlement **execution** mode (CCR-10), not from rail id.
 	 * `FP_SETTLEMENT=mock` → true; `stellar` → false. Required when the template includes settle.
@@ -224,54 +224,109 @@ async function firstHealthyProvider(
 }
 
 /**
- * Vault settle pricing (RULES.md fee modes). Fee is computed once here from vaultFeeBps;
+ * CCR-8 PayerPays principal sizing from available settle input `A`:
+ * `P = floor(A * 10000 / (10000 + bps))`, `f(P) = floor(P * bps / 10000)`,
+ * guaranteed `P + f(P) ≤ A`. Remainder `A − P − f(P)` stays unlocked — not a fee.
+ */
+export function sizePayerPaysPrincipal(
+	available: Money,
+	bps: number,
+): { principal: Money; fee: Money; remainder: Money } {
+	if (!Number.isInteger(bps) || bps < 0) {
+		throw new Error(`bps must be a non-negative integer, got ${bps}`);
+	}
+	const A = toMinor(available);
+	const P = (A * 10_000n) / (10_000n + BigInt(bps));
+	const feeMinor = (P * BigInt(bps)) / 10_000n;
+	if (P + feeMinor > A) {
+		throw new Error(
+			`CCR-8 invariant broken: P+f(P)=${P + feeMinor} > A=${A}`,
+		);
+	}
+	const remainderMinor = A - P - feeMinor;
+	return {
+		principal: money(P, available.currency),
+		fee: money(feeMinor, available.currency),
+		remainder: money(remainderMinor, available.currency),
+	};
+}
+
+/**
+ * Vault settle pricing (RULES.md / CCR-8). Fee is computed once here from vaultFeeBps;
  * provider adapters are not called for settle, so the vault fee is never double-applied
  * on top of a provider quote.
+ *
+ * `available` is A — the settlement-asset amount arriving from the prior leg.
  */
 function priceSettle(
-	amountIn: Money,
+	available: Money,
 	railId: string,
 	vaultFeeBps: number,
 	feeMode: FeeMode,
 	settlementSimulated: boolean,
-): PricedLeg | { error: string } {
-	let fee: Money;
-	try {
-		fee = applyBps(amountIn, vaultFeeBps);
-	} catch (e) {
-		return {
-			error: e instanceof Error ? e.message : "invalid vault fee bps",
-		};
-	}
+):
+	| { ok: true; leg: PricedLeg; remainderNote?: string }
+	| { ok: false; error: string } {
 	if (feeMode === "RecipientPays") {
-		if (toMinor(fee) >= toMinor(amountIn)) {
+		let fee: Money;
+		try {
+			fee = applyBps(available, vaultFeeBps);
+		} catch (e) {
 			return {
+				ok: false,
+				error: e instanceof Error ? e.message : "invalid vault fee bps",
+			};
+		}
+		if (toMinor(fee) >= toMinor(available)) {
+			return {
+				ok: false,
 				error: `Vault fee ${fee.amount} ${fee.currency} exceeds or equals settle amount (RecipientPays)`,
 			};
 		}
 		return {
+			ok: true,
+			leg: {
+				kind: "settle",
+				rail: railId,
+				providerId: railId,
+				simulated: settlementSimulated,
+				fee,
+				fxRate: null,
+				amountIn: available,
+				amountOut: subtractMoney(available, fee),
+				estimatedTimeSeconds: 0,
+			},
+		};
+	}
+
+	// PayerPays (CCR-8): amountIn = P, amountOut = P, fee = f(P); remainder unlocked.
+	let sized: ReturnType<typeof sizePayerPaysPrincipal>;
+	try {
+		sized = sizePayerPaysPrincipal(available, vaultFeeBps);
+	} catch (e) {
+		return {
+			ok: false,
+			error: e instanceof Error ? e.message : "invalid PayerPays sizing",
+		};
+	}
+	const remainderNote =
+		toMinor(sized.remainder) > 0n
+			? `PayerPays settle remainder ${sized.remainder.amount} ${sized.remainder.currency} stays unlocked (not a fee; CCR-8)`
+			: undefined;
+	return {
+		ok: true,
+		leg: {
 			kind: "settle",
 			rail: railId,
 			providerId: railId,
 			simulated: settlementSimulated,
-			fee,
+			fee: sized.fee,
 			fxRate: null,
-			amountIn,
-			amountOut: subtractMoney(amountIn, fee),
+			amountIn: sized.principal,
+			amountOut: sized.principal,
 			estimatedTimeSeconds: 0,
-		};
-	}
-	// PayerPays: net to the next leg equals amountIn; fee is locked on top (orchestrator funds it).
-	return {
-		kind: "settle",
-		rail: railId,
-		providerId: railId,
-		simulated: settlementSimulated,
-		fee,
-		fxRate: null,
-		amountIn,
-		amountOut: amountIn,
-		estimatedTimeSeconds: 0,
+		},
+		remainderNote,
 	};
 }
 
@@ -308,6 +363,17 @@ export async function priceRoute(
 			if (!railId) {
 				return { ok: false, reasons: ["Corridor has no settle rail"] };
 			}
+			if (
+				deps.vaultFeeMode !== "PayerPays" &&
+				deps.vaultFeeMode !== "RecipientPays"
+			) {
+				return {
+					ok: false,
+					reasons: [
+						"vaultFeeMode is required for settle legs (CCR-8); no silent default",
+					],
+				};
+			}
 			const priced = priceSettle(
 				amountIn,
 				railId,
@@ -315,11 +381,14 @@ export async function priceRoute(
 				deps.vaultFeeMode,
 				deps.settlementSimulated,
 			);
-			if ("error" in priced) {
+			if (!priced.ok) {
 				return { ok: false, reasons: [priced.error] };
 			}
-			legs.push(priced);
-			amountIn = priced.amountOut;
+			if (priced.remainderNote) {
+				exclusionReasons.push(priced.remainderNote);
+			}
+			legs.push(priced.leg);
+			amountIn = priced.leg.amountOut;
 			continue;
 		}
 
