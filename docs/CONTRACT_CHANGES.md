@@ -111,11 +111,23 @@ Status: **approved** by the project owner on 23 Oct 2026. The documents `PRODUCT
   3. Zero fees need no rate. Settle fee is counted once via `flexiPayFee`, not again from the settle row.
   4. If any positive fee lacks `fee.currency > sendCurrency`, the quote **fails** with an explicit reason. Silent omission is forbidden.
 - **Gap (config today):** approved rates are USD↔USDC, USDC→PHP/BRL/ZAR, USD→ZAR. There is **no** PHP→USD, BRL→USD, or ZAR→USD. Real PH/BR/ZA payout fees therefore correctly block quotes under the accepted rule.
-- **Owner decision required (pick exactly one; reply on this CCR):**
-  - **A.** Supply three placeholder directional rate strings (major units of USD per one major unit of foreign) for `PHP>USD`, `BRL>USD`, `ZAR>USD`. Integrator adds them to `config/providers.json` only after the values are written here.
-  - **B.** Authorise MVP placeholder payout fees of `fixed: 0` and `bps: 0` on `sim_bank_ph_instapay`, `sim_ewallet_ph`, `sim_bank_br_pix`, `sim_bank_za_eft` until reverse rates exist (fees stay visible as zero; DF fee assertions stay attribution-only per SCENARIOS).
+- **Owner decision:** option **A** selected in principle (preserve payout fees). **Values below are proposed only — not applied to `config/providers.json` until explicitly approved.**
+- **Proposed directional rates (option A)** — unit = major units of **USD** per one major unit of the foreign currency; `placeholder: true`; up to 7 decimals (`RateString` / CCR-4). Single-hop `feeInCurrency` needs these rows directly (PHP→USDC→USD is not used).
+
+  | from | to | proposed `rate` | consistency note (human check only; not code-derived) |
+  | --- | --- | --- | --- |
+  | PHP | USD | `0.0178571` | Aligns with truncating `1/56` given forward `USDC>PHP=56.0000000` and `USD↔USDC=1` |
+  | BRL | USD | `0.1818181` | Aligns with truncating `1/5.5` given forward `USDC>BRL=5.5000000` and `USD↔USDC=1` |
+  | ZAR | USD | `0.0555555` | Aligns with truncating `1/18` given forward `USDC>ZAR=18.0000000` / `USD>ZAR=18.0000000` |
+
+  Rounding choice: **7-decimal ROUND_DOWN** to match `convertMoney` floor semantics (not half-up). Round-trip drift on 10_000.00 major foreign → USD → USDC → foreign with these strings: PHP −8 minor, BRL −1 minor, ZAR −10 minor (integer floor loss; expected).
+
+  Example fee fold (trunc rates, `convertMoney`): `15153` PHP minor → `270` USD minor.
+
+- **Do not apply** until the owner replies with approval of these three strings (or supplies different literals). No implicit inversion in code; no zeroing of payout fees.
+- **Option B** (zero payout fees) remains available if A is rejected; not prepared here.
 - **Who is affected:** CC1 pricing (done in #28), config owner, DF1/DF2/DF5 scripts, web quote panel.
-- **Not accepted:** deriving `1/56` (or any inverse) from USDC→PHP / USDC→BRL / USDC→ZAR / USD→ZAR.
+- **Not accepted:** runtime derivation of inverses from USDC→PHP / USDC→BRL / USDC→ZAR / USD→ZAR.
 
 ## CCR-8: vault `FeeMode` on quote → payment → lock (accepted; no silent default, 23 Oct 2026)
 
