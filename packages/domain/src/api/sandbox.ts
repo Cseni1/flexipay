@@ -2,12 +2,9 @@ import { z } from "zod";
 import { RailId } from "./common.ts";
 
 // POST /v1/sandbox/* (ARCHITECTURE §10, CCR-4 SandboxControls). Demo-only controls.
-// Only request fields named in those sources are contracted here. advance-time has no
-// accepted body/response on main (CCR-6 proposal only) — see openapi-stubs.ts.
-
-/** Shared ack used by sandbox controls that have no documented response body of their own. */
-export const SandboxOkSchema = z.object({ status: z.literal("ok") }).strict();
-export type SandboxOk = z.infer<typeof SandboxOkSchema>;
+// Only request fields named in those sources are contracted here. No response bodies are
+// accepted for sandbox routes on main — OpenAPI stubs omit success schemas.
+// advance-time has no accepted request body either (CCR-6 proposal only).
 
 /**
  * fail-next (ARCHITECTURE §10 + CCR-4): next `count` execute() calls fail; optional

@@ -44,10 +44,18 @@ describe("OpenAPI", () => {
     expect(Object.keys(recipients.responses).sort()).toEqual(["201", "400", "401", "409"]);
   });
 
-  it("documents advance-time without a contracted request/response body", () => {
-    const advance = doc.paths["/v1/sandbox/advance-time"].post as any;
-    expect(advance.requestBody).toBeUndefined();
-    expect(advance.responses["200"].content).toBeUndefined();
+  it("documents sandbox stubs without contracted response bodies", () => {
+    for (const path of [
+      "/v1/sandbox/fail-next",
+      "/v1/sandbox/provider-health",
+      "/v1/sandbox/advance-time",
+      "/v1/sandbox/reset",
+    ]) {
+      const op = doc.paths[path].post as any;
+      expect(op.responses["200"].content, path).toBeUndefined();
+    }
+    expect(doc.paths["/v1/sandbox/advance-time"].post.requestBody).toBeUndefined();
+    expect(doc.paths["/v1/sandbox/fail-next"].post.requestBody).toBeDefined();
   });
 
   it("matches the committed openapi.json (run: npm run openapi --workspace @flexipay/api)", () => {

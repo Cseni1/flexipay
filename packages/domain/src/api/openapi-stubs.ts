@@ -14,7 +14,6 @@ import {
 import { CreateQuoteRequestSchema, QuoteSchema } from "./quotes.ts";
 import {
 	SandboxFailNextRequestSchema,
-	SandboxOkSchema,
 	SandboxProviderHealthRequestSchema,
 	SandboxResetRequestSchema,
 } from "./sandbox.ts";
@@ -103,20 +102,22 @@ export const A0_OPENAPI_STUBS: readonly ApiOpenApiStub[] = [
 		success: { status: 200, schema: ClaimAcceptResponseSchema },
 	},
 	{
+		// Request from ARCHITECTURE §10 + CCR-4; no approved response body on main.
 		method: "post",
 		path: "/v1/sandbox/fail-next",
 		summary: "Make the next count calls to a provider fail (also forced failure on or off)",
 		auth: "api_key",
 		body: SandboxFailNextRequestSchema,
-		success: { status: 200, schema: SandboxOkSchema },
+		success: { status: 200 },
 	},
 	{
+		// Request from ARCHITECTURE §10 + CCR-4; no approved response body on main.
 		method: "post",
 		path: "/v1/sandbox/provider-health",
 		summary: "Mark a provider down or up",
 		auth: "api_key",
 		body: SandboxProviderHealthRequestSchema,
-		success: { status: 200, schema: SandboxOkSchema },
+		success: { status: 200 },
 	},
 	{
 		// Path only: ARCHITECTURE §10 names the route; body/response are not accepted on main.
@@ -128,11 +129,12 @@ export const A0_OPENAPI_STUBS: readonly ApiOpenApiStub[] = [
 		success: { status: 200 },
 	},
 	{
+		// Empty request from ARCHITECTURE §10 / DEV_PLAN D2; no approved response body on main.
 		method: "post",
 		path: "/v1/sandbox/reset",
 		summary: "Reset and reseed the demo",
 		auth: "api_key",
 		body: SandboxResetRequestSchema,
-		success: { status: 200, schema: SandboxOkSchema },
+		success: { status: 200 },
 	},
 ] as const;

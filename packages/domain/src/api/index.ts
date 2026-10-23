@@ -70,11 +70,9 @@ export {
 
 export {
   SandboxFailNextRequestSchema,
-  SandboxOkSchema,
   SandboxProviderHealthRequestSchema,
   SandboxResetRequestSchema,
   type SandboxFailNextRequest,
-  type SandboxOk,
   type SandboxProviderHealthRequest,
   type SandboxResetRequest,
 } from "./sandbox.ts";

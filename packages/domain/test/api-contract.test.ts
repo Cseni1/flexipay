@@ -263,13 +263,21 @@ describe("A0 sandbox schemas", () => {
     ).toBe(1);
   });
 
-  it("lists advance-time as a path stub without a contracted body schema", () => {
-    const advance = A0_OPENAPI_STUBS.find(
-      (s) => s.path === "/v1/sandbox/advance-time" && s.method === "post",
+  it("lists sandbox stubs without contracted response bodies", () => {
+    const sandbox = A0_OPENAPI_STUBS.filter((s) => s.path.startsWith("/v1/sandbox/"));
+    expect(sandbox.map((s) => s.path).sort()).toEqual(
+      [
+        "/v1/sandbox/advance-time",
+        "/v1/sandbox/fail-next",
+        "/v1/sandbox/provider-health",
+        "/v1/sandbox/reset",
+      ].sort(),
     );
-    expect(advance).toBeDefined();
+    for (const s of sandbox) {
+      expect(s.success.schema).toBeUndefined();
+    }
+    const advance = sandbox.find((s) => s.path === "/v1/sandbox/advance-time");
     expect(advance?.body).toBeUndefined();
-    expect(advance?.success.schema).toBeUndefined();
   });
 });
 
