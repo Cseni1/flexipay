@@ -12,6 +12,7 @@ interface MockOptions {
 	createDelayMs?: number
 	startProcessing?: boolean
 	detailStatus?: "failed"
+	detail?: ReturnType<typeof paymentDetailFixture>
 }
 
 async function mockApi(page: Page, options: MockOptions = {}) {
@@ -67,9 +68,11 @@ async function mockApi(page: Page, options: MockOptions = {}) {
 	await page.route(/\/v1\/payments\/pay_1$/, async (route) => {
 		counts.details += 1
 		await route.fulfill({
-			json: paymentDetailFixture(
-				funded ? "processing" : (options.detailStatus ?? "awaiting_funding"),
-			),
+			json:
+				options.detail ??
+				paymentDetailFixture(
+					funded ? "processing" : (options.detailStatus ?? "awaiting_funding"),
+				),
 		})
 	})
 
@@ -143,6 +146,9 @@ test.describe("CF1 payments", () => {
 		await expect(page.getByText(/a1b2c3d4e5f6/).first()).toBeVisible()
 		await expect(page.getByText("payout_1234567890").first()).toBeVisible()
 		await expect(page.getByText(/Release tx/).first()).toBeVisible()
+		await expect(
+			page.getByRole("link", { name: /payout_1234567890|a1b2c3d4e5f6/ }),
+		).toHaveCount(0)
 		await expect(page.getByText("Payment funded")).toBeVisible()
 		await expect(page.getByText("Simulated").first()).toBeVisible()
 
@@ -269,6 +275,43 @@ test.describe("CF1 payments", () => {
 		await expect(page).toHaveURL(/\/payments\/pay_1$/)
 		expect(counts.recipients).toBe(1)
 		expect(counts.creates).toBe(1)
+	})
+
+	test("a missing release reference is not shown as a link or paid", async ({
+		page,
+	}) => {
+		await mockApi(page)
+		await page.goto("/payments/pay_1")
+
+		await expect(
+			page.getByText("Awaiting funding", { exact: true }).first(),
+		).toBeVisible()
+		await expect(page.getByText("Release tx")).toHaveCount(0)
+		await expect(page.getByText("Lock tx")).toHaveCount(0)
+		await expect(
+			page.getByRole("link", { name: /payout_|a1b2|explorer/i }),
+		).toHaveCount(0)
+		await expect(
+			page
+				.locator(".panel")
+				.filter({ has: page.getByRole("heading", { name: "Payment" }) })
+				.getByText("Paid", { exact: true }),
+		).toHaveCount(0)
+	})
+
+	test("per-leg simulated labels follow the leg field", async ({ page }) => {
+		const detail = paymentDetailFixture("processing")
+		const settle = detail.legs.find((leg) => leg.kind === "settle")
+		if (!settle) throw new Error("settle fixture missing")
+		settle.simulated = false
+		await mockApi(page, { detail })
+		await page.goto("/payments/pay_1")
+
+		await expect(page.getByText("Simulated").first()).toBeVisible()
+		const settleItem = page
+			.locator(".timeline__item")
+			.filter({ hasText: "Settle" })
+		await expect(settleItem.getByText("Simulated")).toHaveCount(0)
 	})
 
 	test("a failed leg shows its error and retry event", async ({ page }) => {
