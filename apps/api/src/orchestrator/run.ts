@@ -25,9 +25,10 @@ import type {
 
 /**
  * In-process claim secrets for crypto claim-wait (ARCHITECTURE §7).
- * Prisma ClaimLink has no claimHashHex / secret column — durable storage needs a
- * contract change. Secrets are returned once from fundAndRun and required again on
- * completeClaimSettle; they are not recovered after process restart.
+ * Re-checked on main c9baefe: ClaimLink still has only `tokenHash` (URL token);
+ * no durable claimHashHex/secret column. Secrets are returned once from fundAndRun
+ * and required again on completeClaimSettle; lost on process restart until the
+ * integrator adds custody. Never put secretHex in Event/Audit/API snapshots.
  */
 const claimSecrets = new Map<string, { secretHex: string; claimHashHex: string }>();
 
