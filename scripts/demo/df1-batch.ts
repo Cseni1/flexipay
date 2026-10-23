@@ -7,7 +7,7 @@ import {
 	expectRail,
 	fail,
 } from "./lib/assertions.ts"
-import { requireBatchRouteReasons } from "./lib/contract-gaps.ts"
+import { A0_CONTRACT_ANSWERS } from "./lib/a0-answers.ts"
 import { endpointOf, flowOf, workerOf } from "./lib/fixtures.ts"
 import { ROUTES } from "./lib/routes.ts"
 import { execute } from "./lib/script.ts"
@@ -93,9 +93,29 @@ await execute(
 			}
 		}
 
-		// The US legs above show the domestic rail. Where a batch row reports the chosen route and
-		// its reasons is not in A0, so the explanation cannot be asserted yet.
-		requireBatchRouteReasons(batch)
+		// A0: reasons live on Quote, not on batch rows. Capture a parallel US quote for the
+		// domestic explanation without inventing batch fields (see a0-answers.ts).
+		const usPrepared = prepared.find((p) => p.endpoint.country === "US")
+		if (!usPrepared) fail("DF1 fixture missing US row")
+		flow.route("POST", "/v1/quotes", "US domestic explanation (A0 Quote.reasons)")
+		const usQuote = await api.quote({
+			destination: {
+				type: usPrepared.endpoint.type,
+				country: usPrepared.endpoint.country,
+				currency: usPrepared.endpoint.currency,
+				recipientKind: workerOf(fixtures, usPrepared.row.workerRef).kind,
+			},
+			amount: usPrepared.row.send,
+			amountSide: "send",
+			policy: "cheapest",
+		})
+		if (usQuote.reasons.length === 0) {
+			fail("US domestic quote has empty reasons; expected a route explanation")
+		}
+		flow.check(
+			`US domestic reasons from Quote (${A0_CONTRACT_ANSWERS.batchReasons})`,
+		)
+		flow.note(`batch ${batch.id} status ${batch.status}; reasons via quote, not batch row`)
 	},
 )
 
