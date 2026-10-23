@@ -136,7 +136,9 @@ export function buildOfflinePlan(
 				"--port",
 				String(config.webPort),
 			],
-			env: { BROWSER: "none" },
+			// The Vite proxy is server-side; it needs the loopback API origin. FP_API_KEY stays in
+			// the inherited process environment and is never put in this plan object.
+			env: { BROWSER: "none", FP_API_URL: apiUrl },
 		},
 		seed: config.seed
 			? hasKey

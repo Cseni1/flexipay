@@ -7,15 +7,13 @@ and Worker A to Worker D (Worker D is the ZA company that DF5 needs).
 
 ## Status (23 Oct 2026)
 
-**Reconciled with CCR-11–14 and exercised, not yet passing end to end.** The
-acceptance work is merged with `main` at `e6429fe` (contracts from #36
-`b3d77a7`). The integrated API still mounts only `healthz`, `corridors` and
-`recipients`: OPTIONS probes of every DF route return the catch-all 404 with no
-`Allow` header, so the quote/payment/batch/claim/endpoint/sandbox handlers are
-not mounted. A run therefore ends as **BLOCKED** with the missing item and its
-owner, never as PASS. See `scripts/demo/evidence/2026-10-23-d3-acceptance.md`
-for the latest run and blockers. Per-run JSON evidence is written to the same
-folder and git-ignored.
+**D1/D2 acceptance: PASS.** On integrated HEAD `b48bfe3` plus the lane-D
+working-tree patch, all five flows pass on the mock API and against Stellar
+testnet, the offline stack runs under a network-denied sandbox, seed/replay
+pass, and the DF2/DF3/DF5 browser flows pass against the real loopback stack.
+The exact commands, results, transaction hashes and screenshots are in
+`scripts/demo/evidence/2026-10-23-d1-d2-final-acceptance.md`. Per-run JSON
+evidence is written to the same folder and git-ignored.
 
 DF1 takes the domestic explanation from `Quote.reasons` (no batch-row reason
 field is invented). DF4 proves the single retry from the published `Leg.attempt`
@@ -24,13 +22,13 @@ count. DF3 reads `settle.externalRef` as the vault **payoutId** (CCR-12) and
 verifies `lockTxRef` / `releaseTxRef` separately. The settle leg's status after
 a refund is still not asserted.
 
-| Flow                   | Script              | Mock    | Stellar                         |
-| ---------------------- | ------------------- | ------- | ------------------------------- |
-| DF1 three-worker batch | `df1-batch.ts`      | BLOCKED | —                               |
-| DF2 quote to paid      | `df2-one-off.ts`    | BLOCKED | —                               |
-| DF3 claim link         | `df3-claim.ts`      | BLOCKED | BLOCKED (routes; RPC reachable) |
-| DF4 retry then refund  | `df4-failure.ts`    | BLOCKED | —                               |
-| DF5 ZA company         | `df5-za-company.ts` | BLOCKED | —                               |
+| Flow                   | Script              | Mock | Stellar testnet |
+| ---------------------- | ------------------- | ---- | --------------- |
+| DF1 three-worker batch | `df1-batch.ts`      | PASS | PASS            |
+| DF2 quote to paid      | `df2-one-off.ts`    | PASS | PASS            |
+| DF3 claim link         | `df3-claim.ts`      | PASS | PASS (verified) |
+| DF4 retry then refund  | `df4-failure.ts`    | PASS | PASS (verified) |
+| DF5 ZA company         | `df5-za-company.ts` | PASS | PASS (no chain) |
 
 ## Run
 
@@ -50,7 +48,7 @@ FP_STELLAR_NETWORK_PASSPHRASE='Test SDF Network ; September 2015' \
 FP_PAYOUT_VAULT_ID=C... \
 node scripts/demo/df3-claim.ts --mode stellar
 
-# every mock flow, plus DF3 on Stellar
+# every flow against Stellar testnet
 node scripts/demo/run-all.ts --stellar
 ```
 
@@ -158,9 +156,11 @@ passed.
 
 - `lib/` — environment, HTTP, preflight, assertions, fixture loading, reporting
   and evidence.
-- `lib/api.ts` — the only seam that may build a request body. It refuses to
-  return a client while A0 is absent, so no field is guessed.
-- `lib/contract-gaps.ts` — blocked seams for evidence A0 has not defined.
+- `lib/api.ts` — the only seam that may build a request body. Every body and
+  success response is parsed by the published Zod schema, so no field is
+  guessed.
+- `lib/contract-gaps.ts` — acceptance rules that depend on published evidence
+  (`Leg.attempt`, event snapshots, retry/refund order).
 - `lib/stellar-proof.ts` — testnet RPC verification of the lock and release,
   including CCR-13 accounting.
 - `scripts/seed/fixtures/` — neutral workers, endpoints and per-flow
@@ -169,7 +169,7 @@ passed.
   generated JSON per run: commit, command, exit code, steps, blockers. No key,
   token, account number or address.
 
-## CCR-11 restart acceptance (prepared, blocked on CC2/CC3)
+## CCR-11 restart acceptance (not part of the D1/D2 gate)
 
 Claim secrets are sealed at rest with `FP_CLAIM_SEAL_KEY` (32 bytes, 64 hex
 chars). Restart acceptance must use the **same database** and the **same key**
@@ -194,28 +194,42 @@ across restarts; it never asks the API to reveal a secret.
    the secret.
 
 Evidence records ids, hashes and statuses only: no claim token, secret, API key
-or full address. This procedure has not run: the claim routes are not mounted
-and CC2 does not yet persist the seal (see blockers in the D3 evidence).
+or full address.
 
-## Known integration needs (owner: Csaba)
+**Attempt status: not accepted.** A mock-mode attempt kept the claim `open` and
+the payment `processing` across an API restart, but accept returned **502
+`release_failed` / `PayoutNotFound`** because the mock vault is in-memory and
+lost payout state. A Stellar-mode restart was not run in this acceptance. The
+mock result must not be reported as a pass; use a persistent mock vault, or run
+the same procedure against Stellar where the lock lives on-chain.
 
-1. A0 schemas under `packages/domain/src/api`, exported for scripts.
-2. CC3a/CC3b routes from ARCHITECTURE §10, reflected in `apps/api/openapi.json`.
-   The claim accept route is `POST /v1/claims/{token}/accept`, which is what
-   `openapi-stubs.ts` and ARCHITECTURE §10 publish.
-3. `/v1/sandbox/fail-next` accepting a count, so DF4's retry can fail
-   deterministically.
-4. A refund that works without waiting for ledger time (cancel before expiry,
-   CCR-5 §5).
-5. `FP_API_URL` and `FP_API_KEY` names in the root `.env.example`.
-6. SC2's adapter and `FP_SETTLEMENT` wiring for DF3 on Stellar.
-7. Event snapshots must carry the payment's legs, including durable `attempt`
-   (CCR-14) and `lockTxRef`/`releaseTxRef` (CCR-12); DF3 also needs the
-   pre-accept settle `externalRef` (payoutId). These are published contract
-   fields; no new API field is needed.
-8. CC2 must persist the sealed claim secret and `vaultClaimHashHex` (CCR-11);
-   CC3 must decrypt only inside the API host for release.
-9. The settle leg's status after a vault refund is still not defined; DF4 does
-   not assert it.
-10. No stable refusal-reason code exists; DF5 asserts the explanation's meaning
-    across `reasons[]` instead of a code.
+## Integration items resolved in this acceptance
+
+1. A0 schemas are exported from `packages/domain/src/api` and parsed by the demo
+   client.
+2. CC3a/CC3b routes are mounted, including endpoints, batches, claims, events
+   and sandbox controls.
+3. `/v1/sandbox/fail-next` accepts a count; DF4's two attempts are
+   deterministic.
+4. Refund/cancel works before expiry (CCR-5 §5); DF4 reaches `refunded`.
+5. `FP_API_URL` and `FP_API_KEY` are documented in the root `.env.example`.
+6. SC2's adapter and `FP_SETTLEMENT` wiring are active; DF1–DF4 settle on
+   Stellar testnet.
+7. Event snapshots carry legs with durable `attempt`, `lockTxRef` and
+   `releaseTxRef`; DF3/DF4 assertions pass against them.
+8. The sealed claim secret survives an API restart (claim view stayed `open`),
+   though mock release still needs a persistent vault (see above).
+
+## Remaining caveats (not blockers for D1/D2)
+
+1. The settle leg's status after a vault refund is still not defined; DF4 does
+   not assert it. The on-chain `cancel` was verified separately for the recorded
+   DF4 run.
+2. No stable refusal-reason code exists; DF5 asserts the explanation's meaning
+   across `reasons[]` instead of a code.
+3. DF1/DF2 prove successful testnet settlement through the API and events, but
+   only DF3/DF4 independently decode the contract invocation from RPC.
+4. The browser flow cannot request a ZA crypto destination because the web form
+   only offers bank accounts for ZA; the 422 crypto refusal is covered by DF5 at
+   the API level, while the browser covers the eligible bank route.
+5. CCR-11 restart acceptance remains open for the reason above.

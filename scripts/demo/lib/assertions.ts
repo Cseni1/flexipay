@@ -1,6 +1,12 @@
 import type { FeeMode, LegKind, PaymentStatus } from "@flexipay/domain"
-import { fail } from "./parse.ts"
-import type { LegView, MoneyView, PaymentView, QuoteView } from "./types.ts"
+import { fail, record } from "./parse.ts"
+import type {
+	EventView,
+	LegView,
+	MoneyView,
+	PaymentView,
+	QuoteView,
+} from "./types.ts"
 
 // Flow assertions over the semantic view. The shape parsers live in parse.ts and are re-exported
 // here so scripts and self-tests keep one import site.
@@ -203,7 +209,11 @@ export function expectPayerPaysSizing(
 	const fee = minor(fees.flexiPayFee, `${where}: fee`)
 
 	if (vaultFeeBps !== undefined) {
-		if (!Number.isInteger(vaultFeeBps) || vaultFeeBps < 0 || vaultFeeBps > 1000) {
+		if (
+			!Number.isInteger(vaultFeeBps) ||
+			vaultFeeBps < 0 ||
+			vaultFeeBps > 1000
+		) {
 			fail(`${where}: vault fee bps ${vaultFeeBps} is outside 0..1000`)
 		}
 		const expectedP = (a * 10_000n) / (10_000n + BigInt(vaultFeeBps))
@@ -353,6 +363,58 @@ export function expectFrozenAccounting(
 				`${where}: payment has no ${planned.kind} leg with the quoted ${amountIn.amount}→${amountOut.amount}`,
 			)
 		}
+	}
+}
+
+/**
+ * DF3: `Leg.releaseTxRef` is documented as a release **or refund** hash (CCR-12). A paid claim
+ * must therefore be proven by the release event, not by the field name alone: the settle leg is
+ * succeeded and exactly one `payment.onchain` event says `phase: "release"` for this payout and
+ * hash. A refund event is never accepted as a successful claim release.
+ */
+export function expectClaimRelease(
+	payment: PaymentView,
+	events: readonly EventView[],
+	releaseTxRef: string | undefined,
+	payoutId: string,
+): void {
+	const settle = payment.legs.find((leg) => leg.kind === "settle")
+	if (!settle) fail("accepted payment has no settle leg")
+	if (settle.status !== "succeeded") {
+		fail(`accepted settle leg is ${settle.status}, not succeeded`)
+	}
+	if (!releaseTxRef) fail("accepted settle leg has no releaseTxRef")
+	if (settle.releaseTxRef !== releaseTxRef) {
+		fail("accepted settle leg changed its releaseTxRef")
+	}
+
+	const onchain = events.filter((event) => event.type === "payment.onchain")
+	const refunds = onchain.filter((event) => {
+		const snapshot = record(event.snapshot, "payment.onchain.snapshot")
+		return snapshot.phase === "refund"
+	})
+	if (refunds.length > 0) {
+		fail(
+			"claim release timeline contains a refund; a refund is not a claim release",
+		)
+	}
+	const releases = onchain.filter((event) => {
+		const snapshot = record(event.snapshot, "payment.onchain.snapshot")
+		return snapshot.phase === "release"
+	})
+	if (releases.length !== 1) {
+		fail(
+			`claim release has ${releases.length} release events, expected exactly one`,
+		)
+	}
+	const snapshot = record(releases[0]!.snapshot, "release.snapshot")
+	if (snapshot.payoutId !== payoutId) {
+		fail(
+			`release event payout ${String(snapshot.payoutId)}, expected ${payoutId}`,
+		)
+	}
+	if (snapshot.releaseTxRef !== releaseTxRef) {
+		fail("release event hash does not match settle.releaseTxRef")
 	}
 }
 

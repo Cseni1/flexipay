@@ -1,12 +1,19 @@
-import { SandboxResetRequestSchema } from "@flexipay/domain"
-import type { Fixtures } from "../../demo/lib/fixtures.ts"
+import {
+	CreateEndpointRequestSchema,
+	EndpointSchema,
+	SandboxResetRequestSchema,
+} from "@flexipay/domain"
+import {
+	endpointWireFields,
+	type Fixtures,
+	type FixtureWorker,
+} from "../../demo/lib/fixtures.ts"
 import type { ApiResponse, HttpClient } from "../../demo/lib/http.ts"
-import { BlockedError, type Blocker } from "../../demo/lib/report.ts"
+import { BlockedError } from "../../demo/lib/report.ts"
 
 // Seed/reset through the API only. `POST /v1/sandbox/reset` has an A0 request schema but no
-// response body; recipients have a mounted route and a schema. CCR-16 defines the endpoint
-// request schema, but the Express route is not mounted on main, so this runner probes it and
-// stops there rather than writing the database directly or inventing a route.
+// response body; recipients and endpoints use the mounted CCR-16/17 routes and schemas. Nothing
+// is copied into Postgres directly, and no field is invented.
 
 export interface SeedHooks {
 	step(name: string): void
@@ -18,9 +25,17 @@ export interface SeedRecipient {
 	name: string
 }
 
+export interface SeedEndpoint {
+	ref: string
+	id: string
+	recipientRef: string
+	type: string
+}
+
 export interface SeedOutcome {
 	resetStatus: number
 	recipients: SeedRecipient[]
+	endpoints: SeedEndpoint[]
 }
 
 export interface SeedOptions {
@@ -30,14 +45,6 @@ export interface SeedOptions {
 }
 
 const ok = (status: number): boolean => status >= 200 && status < 300
-
-function endpointBlocker(what: string, detail: string): Blocker {
-	return {
-		what,
-		owner: "Csaba (CC3b)",
-		detail,
-	}
-}
 
 function responseDetail(label: string, response: ApiResponse): string {
 	const body = response.body as
@@ -69,27 +76,6 @@ async function reset(http: HttpClient, hooks?: SeedHooks): Promise<number> {
 	}
 	hooks?.step(`reset   POST /v1/sandbox/reset  HTTP ${response.status}`)
 	return response.status
-}
-
-/**
- * The endpoint family is probed with GET, which cannot create data. A 404 means the route is not
- * mounted; a 2xx/4xx means it is mounted. Either way the seed stops here until lane D wires the
- * agreed CCR-16 schema into this runner.
- */
-async function probeEndpoints(
-	http: HttpClient,
-	hooks?: SeedHooks,
-): Promise<boolean> {
-	const response = await http.call("GET", "/v1/endpoints")
-	if (response.status === 404) {
-		hooks?.step("probe   GET /v1/endpoints  HTTP 404  not mounted")
-		return false
-	}
-	if (response.status === 401) {
-		throw new Error(responseDetail("GET /v1/endpoints", response))
-	}
-	hooks?.step(`probe   GET /v1/endpoints  HTTP ${response.status}  mounted`)
-	return true
 }
 
 async function seedRecipients(
@@ -136,9 +122,76 @@ async function seedRecipients(
 	return created
 }
 
+async function seedEndpoints(
+	http: HttpClient,
+	workers: readonly FixtureWorker[],
+	recipients: readonly SeedRecipient[],
+	hooks?: SeedHooks,
+): Promise<SeedEndpoint[]> {
+	const created: SeedEndpoint[] = []
+	for (const worker of workers) {
+		const recipient = recipients.find((r) => r.ref === worker.ref)
+		if (!recipient) {
+			throw new Error(
+				`recipient ${worker.ref} was not created before its endpoints`,
+			)
+		}
+		for (const endpoint of worker.endpoints) {
+			const wire = endpointWireFields(endpoint)
+			const body = CreateEndpointRequestSchema.parse({
+				recipientId: recipient.id,
+				type: endpoint.type,
+				country: wire.country,
+				currency: endpoint.currency,
+				network: wire.network,
+				details: wire.details,
+				simulated: true,
+			})
+			const response = await http.call("POST", "/v1/endpoints", {
+				body,
+				idempotencyKey: `seed:endpoint:${worker.ref}:${endpoint.ref}`,
+			})
+			if (response.status === 404) {
+				throw new BlockedError([
+					{
+						what: "POST /v1/endpoints is not mounted",
+						owner: "Csaba (CC3b)",
+						detail:
+							"CCR-16/17 requires the endpoint route for fixture destinations.",
+					},
+				])
+			}
+			if (!ok(response.status)) {
+				throw new Error(
+					responseDetail(
+						`POST /v1/endpoints (${worker.ref}/${endpoint.ref})`,
+						response,
+					),
+				)
+			}
+			const parsed = EndpointSchema.parse(response.body)
+			if (parsed.recipientId !== recipient.id) {
+				throw new Error(
+					`POST /v1/endpoints (${worker.ref}/${endpoint.ref}) returned recipient ${parsed.recipientId}, expected ${recipient.id}`,
+				)
+			}
+			created.push({
+				ref: endpoint.ref,
+				id: parsed.id,
+				recipientRef: worker.ref,
+				type: parsed.type,
+			})
+			hooks?.step(
+				`seed    endpoint ${worker.ref}/${endpoint.ref}  ${parsed.id}`,
+			)
+		}
+	}
+	return created
+}
+
 /**
- * Resets, then creates the neutral recipients from `scripts/seed/fixtures/workers.json`.
- * Endpoint creation is deliberately not attempted: it would require inventing a contract.
+ * Resets, then creates every neutral recipient and endpoint from
+ * `scripts/seed/fixtures/workers.json` through the mounted API routes.
  */
 export async function runSeed(
 	http: HttpClient,
@@ -148,19 +201,15 @@ export async function runSeed(
 	const command = options.command ?? "seed"
 	const resetStatus = await reset(http, options.hooks)
 	if (command === "reset") {
-		return { resetStatus, recipients: [] }
+		return { resetStatus, recipients: [], endpoints: [] }
 	}
 
 	const recipients = await seedRecipients(http, fixtures, options.hooks)
-	const mounted = await probeEndpoints(http, options.hooks)
-	throw new BlockedError([
-		endpointBlocker(
-			mounted
-				? "The endpoint route is mounted, but lane D has not wired the CCR-16 schema into this runner"
-				: "POST /v1/endpoints is not mounted, so endpoints cannot be created",
-			mounted
-				? "CCR-16 defines the request/response schemas; this runner still stops instead of inventing fields."
-				: "GET /v1/endpoints returned 404; no endpoint route is mounted on this build (CCR-16 schemas exist, not routes).",
-		),
-	])
+	const endpoints = await seedEndpoints(
+		http,
+		fixtures.workers,
+		recipients,
+		options.hooks,
+	)
+	return { resetStatus, recipients, endpoints }
 }

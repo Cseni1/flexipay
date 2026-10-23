@@ -1,14 +1,19 @@
-import { existsSync } from "node:fs"
 import {
+	BatchSchema,
 	ClaimAcceptRequestSchema,
 	ClaimAcceptResponseSchema,
 	ClaimViewSchema,
+	CreateBatchRequestSchema,
+	CreateEndpointRequestSchema,
 	CreatePaymentRequestSchema,
 	CreateQuoteRequestSchema,
+	EndpointSchema,
 	EventListResponseSchema,
 	PaymentDetailSchema,
 	PaymentSchema,
 	QuoteSchema,
+	SandboxAdvanceTimeRequestSchema,
+	SandboxAdvanceTimeResponseSchema,
 	SandboxFailNextRequestSchema,
 	type Payment,
 	type PaymentDetail,
@@ -16,9 +21,7 @@ import {
 } from "@flexipay/domain"
 import type { DemoEnv } from "./env.ts"
 import { HttpClient, apiErrorCode, apiErrorMessage } from "./http.ts"
-import { A0_DIR } from "./preflight.ts"
 import { ApiRejection } from "./rejection.ts"
-import { BlockedError } from "./report.ts"
 import type {
 	AcceptInput,
 	BatchRowInput,
@@ -37,31 +40,23 @@ import type {
 	RecipientView,
 } from "./types.ts"
 
-// Wire DemoApi to A0 Zod schemas. Batches and endpoint-create are not in A0 — those calls
-// stay BLOCKED with an owner. Recipients use the existing core route.
-
-export const A0_REQUIREMENTS = [
-	"A0 present: quotes, payments, fund, claims, events, sandbox fail-next",
-	"Still absent from A0: POST/GET /v1/batches, POST /v1/endpoints (CC3)",
-]
-
-function requireA0(): void {
-	if (!existsSync(A0_DIR)) {
-		throw new BlockedError([
-			{
-				what: "A0 API contracts are absent (packages/domain/src/api)",
-				owner: "Csaba (A0)",
-				detail: A0_REQUIREMENTS.join(" | "),
-			},
-		])
-	}
-}
+// Wire DemoApi to the merged A0/CC3b Zod schemas. Every request body and success response is
+// parsed by its published schema; this file is the only place that maps the demo's semantic view
+// onto wire shapes.
 
 function reasonsFromBody(body: unknown): string[] {
 	if (typeof body !== "object" || body === null) return []
 	const record = body as Record<string, unknown>
 	if (Array.isArray(record.reasons)) {
 		return record.reasons.filter((r): r is string => typeof r === "string")
+	}
+	// Quote 422s publish the explanations in details.reasons; `message` is only the summary.
+	const details = record.details
+	if (typeof details === "object" && details !== null) {
+		const nested = (details as Record<string, unknown>).reasons
+		if (Array.isArray(nested)) {
+			return nested.filter((r): r is string => typeof r === "string")
+		}
 	}
 	if (typeof record.message === "string" && record.message.length > 0) {
 		return [record.message]
@@ -138,8 +133,18 @@ function claimTokenFromHandle(url: string): string | undefined {
 	return m?.[1]
 }
 
+function mapBatch(batch: ReturnType<typeof BatchSchema.parse>): BatchView {
+	return {
+		id: batch.id,
+		organizationId: batch.organizationId,
+		status: batch.status,
+		paymentIds: batch.paymentIds,
+		totals: batch.totals,
+		createdAt: batch.createdAt,
+	}
+}
+
 export function loadDemoApi(env: DemoEnv): DemoApi {
-	requireA0()
 	const http = new HttpClient(env.apiUrl, env.apiKey, env.timeoutMs)
 
 	async function ok<T>(
@@ -183,14 +188,26 @@ export function loadDemoApi(env: DemoEnv): DemoApi {
 			return body
 		},
 
-		async createEndpoint(_input: EndpointInput): Promise<EndpointView> {
-			throw new BlockedError([
-				{
-					what: "POST /v1/endpoints is not in A0 and has no Express route yet",
-					owner: "Csaba (CC3b)",
-					detail: A0_CONTRACT_ENDPOINTS,
-				},
-			])
+		async createEndpoint(input: EndpointInput): Promise<EndpointView> {
+			const body = CreateEndpointRequestSchema.parse({
+				recipientId: input.recipientId,
+				type: input.type,
+				country: input.country,
+				currency: input.currency,
+				network: input.network ?? null,
+				details: input.details,
+				simulated: input.simulated,
+			})
+			const endpoint = await ok("POST", "/v1/endpoints", {
+				body,
+				idempotencyKey: `endpoint:${input.recipientId}:${input.type}:${JSON.stringify(input.details)}`,
+				parse: (raw) => EndpointSchema.parse(raw),
+			})
+			return {
+				id: endpoint.id,
+				recipientId: endpoint.recipientId,
+				type: endpoint.type,
+			}
 		},
 
 		async quote(input: QuoteInput): Promise<QuoteView> {
@@ -271,24 +288,23 @@ export function loadDemoApi(env: DemoEnv): DemoApi {
 				}))
 		},
 
-		async createBatch(_rows: BatchRowInput[]): Promise<BatchView> {
-			throw new BlockedError([
-				{
-					what: "POST /v1/batches is not contracted in A0",
-					owner: "Csaba (A0 follow-up / CC3b)",
-					detail: A0_CONTRACT_BATCHES,
-				},
-			])
+		async createBatch(
+			rows: BatchRowInput[],
+			feeMode: QuoteInput["feeMode"],
+		): Promise<BatchView> {
+			const body = CreateBatchRequestSchema.parse({ feeMode, rows })
+			const batch = await ok("POST", "/v1/batches", {
+				body,
+				parse: (raw) => BatchSchema.parse(raw),
+			})
+			return mapBatch(batch)
 		},
 
-		async batch(_batchId: string): Promise<BatchView> {
-			throw new BlockedError([
-				{
-					what: "GET /v1/batches/{id} is not contracted in A0",
-					owner: "Csaba (A0 follow-up / CC3b)",
-					detail: A0_CONTRACT_BATCHES,
-				},
-			])
+		async batch(batchId: string): Promise<BatchView> {
+			const batch = await ok("GET", `/v1/batches/${batchId}`, {
+				parse: (raw) => BatchSchema.parse(raw),
+			})
+			return mapBatch(batch)
 		},
 
 		async claim(token: string): Promise<ClaimView> {
@@ -352,16 +368,12 @@ export function loadDemoApi(env: DemoEnv): DemoApi {
 			})
 		},
 
-		async advanceTime(_seconds: number): Promise<void> {
+		async advanceTime(seconds: number): Promise<void> {
+			const body = SandboxAdvanceTimeRequestSchema.parse({ seconds })
 			await ok("POST", "/v1/sandbox/advance-time", {
-				parse: () => undefined,
+				body,
+				parse: (raw) => SandboxAdvanceTimeResponseSchema.parse(raw),
 			})
 		},
 	}
 }
-
-const A0_CONTRACT_BATCHES =
-	"A0 answers batch reasons via Quote.reasons only (see scripts/demo/lib/a0-answers.ts). Batch routes themselves are still CC3b."
-
-const A0_CONTRACT_ENDPOINTS =
-	"Endpoint create is listed in ARCHITECTURE §10 as to-build; A0 did not add a Zod schema. Recipients exist on core routes."

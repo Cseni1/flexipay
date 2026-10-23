@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { LegKind } from "@flexipay/domain"
 import {
 	AssertionFailure,
+	expectClaimRelease,
 	expectFrozenAccounting,
 	expectKinds,
 	expectNoEvent,
@@ -567,6 +568,52 @@ describe("CCR-12 settle references", () => {
 		)
 		expect(() => expectPayoutId("tx_abc", "settle")).toThrow(/positive decimal/)
 	})
+
+	it("proves a claim release from the release event, never a refund field", () => {
+		const released = payment({
+			id: "pay_3",
+			status: "paid",
+			legs: [collect, convert, { ...settle, externalRef: "42" }],
+		})
+		const releaseEvent: EventView = {
+			type: "payment.onchain",
+			snapshot: {
+				phase: "release",
+				payoutId: "42",
+				releaseTxRef: settle.releaseTxRef,
+			},
+		}
+		expect(() =>
+			expectClaimRelease(
+				released,
+				[releaseEvent, { type: "payment.paid" }],
+				settle.releaseTxRef,
+				"42",
+			),
+		).not.toThrow()
+
+		// The same field can hold a refund hash (CCR-12). A refund event must never prove a claim.
+		expect(() =>
+			expectClaimRelease(
+				released,
+				[
+					{
+						type: "payment.onchain",
+						snapshot: {
+							phase: "refund",
+							payoutId: "42",
+							releaseTxRef: settle.releaseTxRef,
+						},
+					},
+				],
+				settle.releaseTxRef,
+				"42",
+			),
+		).toThrow(/refund is not a claim release/)
+		expect(() =>
+			expectClaimRelease(released, [releaseEvent], undefined, "42"),
+		).toThrow(/no releaseTxRef/)
+	})
 })
 
 const payoutAttempt = (
@@ -640,6 +687,19 @@ describe("DF4 payout attempt evidence", () => {
 		)
 		expect(evidence.attempts).toEqual([1, 2])
 		expect(evidence.refs).toEqual([])
+	})
+
+	it("accepts the pre-transition processing snapshot emitted by leg.failed", () => {
+		const evidence = assertExactlyTwoPayoutAttemptsThenRefund(
+			refundedPayment(),
+			[
+				failureEvent([payoutAttempt(1, { status: "processing" })]),
+				failureEvent([payoutAttempt(2, { status: "processing" })]),
+				{ type: "payment.refunded" },
+			],
+			"sim_bank_br_pix",
+		)
+		expect(evidence.attempts).toEqual([1, 2])
 	})
 
 	it("rejects no retry, a third attempt and attempts 2 and 3", () => {

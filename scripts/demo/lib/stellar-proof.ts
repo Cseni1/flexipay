@@ -266,8 +266,18 @@ const nativeAddress = (value: unknown, where: string): string => {
 	return fail(`${where}: expected a Stellar account address`)
 }
 
+// Soroban encodes a contract enum as a one-element vec of its variant symbol, e.g.
+// `FeeMode::PayerPays` arrives as ["PayerPays"]. A bare symbol is accepted as well.
 const nativeSymbol = (value: unknown, where: string): string => {
 	if (typeof value === "string" && value.length > 0) return value
+	if (
+		Array.isArray(value) &&
+		value.length === 1 &&
+		typeof value[0] === "string" &&
+		value[0].length > 0
+	) {
+		return value[0]
+	}
 	return fail(`${where}: expected a contract symbol`)
 }
 

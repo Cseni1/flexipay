@@ -1,4 +1,5 @@
 import {
+	expectClaimRelease,
 	expectEventTypes,
 	expectFrozenAccounting,
 	expectKinds,
@@ -13,7 +14,7 @@ import {
 	expectWaitingForClaim,
 	fail,
 } from "./lib/assertions.ts"
-import { endpointOf, flowOf, workerOf } from "./lib/fixtures.ts"
+import { destinationFor, endpointOf, flowOf, workerOf } from "./lib/fixtures.ts"
 import { maskAddress, readVaultEvidence } from "./lib/env.ts"
 import { BlockedError } from "./lib/report.ts"
 import { ROUTES } from "./lib/routes.ts"
@@ -51,6 +52,16 @@ await execute(
 		// vault id — not a caller-chosen FP_VAULT_FEE_BPS. Mock uses quote-identity sizing only.
 		const feeEvidence = readVaultEvidence()
 		if (requestedMode === "stellar") {
+			if (!env.recipientAddress) {
+				throw new BlockedError([
+					{
+						what: "FP_RECIPIENT_A_ADDRESS is required for the Stellar claim destination",
+						owner: "caller / Csaba (integration)",
+						detail:
+							"scripts/testnet/testnet-ids.env publishes Worker A's address; no address is committed",
+					},
+				])
+			}
 			if (!feeEvidence.ok) {
 				throw new BlockedError([
 					{
@@ -160,12 +171,17 @@ await execute(
 			"/v1/claims/{token}/accept",
 			`${expected.claimType}, requested ${requestedMode}`,
 		)
+		// The claim accept schema requires `details.address` for crypto endpoints in every mode.
+		// Mock uses the labelled placeholder; Stellar requires the caller's published address.
+		const claimAddress = destinationFor(
+			fixtures,
+			requestedMode,
+			env.recipientAddress,
+		)
 		const accepted = await api.acceptClaim(token, {
 			endpointId: handles.endpoint.id,
 			type: expected.claimType,
-			...(requestedMode === "stellar" && env.recipientAddress
-				? { address: env.recipientAddress }
-				: {}),
+			address: claimAddress,
 		})
 		const payment =
 			accepted.status === "paid"
@@ -298,6 +314,8 @@ await execute(
 			["claim.accepted", "payment.onchain", "payment.paid"],
 			"payment events",
 		)
+		// `releaseTxRef` may also hold a refund hash (CCR-12), so prove a release explicitly.
+		expectClaimRelease(payment, events, releaseTxRef, payoutId)
 		flow.check("claim acceptance, release and paid are on the timeline")
 	},
 )

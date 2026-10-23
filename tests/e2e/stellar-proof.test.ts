@@ -100,7 +100,8 @@ const createPayoutArgs = (
 	bytesValue(externalId(paymentId)),
 	bytesValue(claimHash(secret)),
 	u64Value("10000000"),
-	xdr.ScVal.scvSymbol("PayerPays"),
+	// Soroban contract enums decode as a one-element vec of the variant symbol.
+	xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("PayerPays")]),
 	u64Value("2000000000"),
 ]
 

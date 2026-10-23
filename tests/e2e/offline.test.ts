@@ -21,6 +21,11 @@ describe("offline launcher plan", () => {
 			env: { PORT: "8788", FP_SETTLEMENT: "mock" },
 		})
 		expect(plan.web.url).toBe("http://127.0.0.1:5173")
+		// The server-side Vite proxy needs the loopback origin; the key stays inherited, not here.
+		expect(plan.web.env).toMatchObject({
+			BROWSER: "none",
+			FP_API_URL: "http://127.0.0.1:8788",
+		})
 		expect(plan.web.args).toEqual(
 			expect.arrayContaining([
 				"@flexipay/web",

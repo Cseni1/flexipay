@@ -1,4 +1,8 @@
-import type { FixtureEndpoint, FixtureWorker } from "./fixtures.ts"
+import {
+	endpointWireFields,
+	type FixtureEndpoint,
+	type FixtureWorker,
+} from "./fixtures.ts"
 import type { Flow } from "./report.ts"
 import type { DemoApi, EndpointView, RecipientView } from "./types.ts"
 
@@ -24,20 +28,14 @@ export async function setUpWorker(
 	flow.check(`recipient ${worker.name} created`)
 
 	// CCR-16/17: map synthetic fixture refs into contracted detail keys (never syntheticRef).
-	const details =
-		endpoint.type === "bank_account"
-			? { accountNumber: endpoint.detailsRef }
-			: endpoint.type === "ewallet"
-				? { phoneNumber: endpoint.detailsRef }
-				: { address: endpoint.detailsRef }
-
+	const wire = endpointWireFields(endpoint)
 	const created = await api.createEndpoint({
 		recipientId: recipient.id,
 		type: endpoint.type,
-		country: endpoint.country,
+		country: wire.country,
 		currency: endpoint.currency,
-		...(endpoint.network ? { network: endpoint.network } : { network: null }),
-		details,
+		network: wire.network,
+		details: wire.details,
 		simulated: true,
 	})
 	flow.check(`endpoint ${endpoint.type} for ${worker.name} created`)
