@@ -94,6 +94,15 @@ export const claimRoutes: RouteDef<any, any>[] = [
 			}
 			const link = await loadClaimByToken(ctx.db, params.token!);
 			if (!link) throw new ApiError(404, "not_found", "Claim not found");
+
+			// Idempotent replay: accepted ≠ automatically paid, but both fields are returned.
+			if (link.status === "accepted") {
+				return {
+					claim: toClaimView(link),
+					paymentId: link.paymentId,
+					paymentStatus: link.payment.status,
+				};
+			}
 			if (link.status !== "open") {
 				throw new ApiError(409, "invalid_state", `claim is ${link.status}`);
 			}
@@ -109,32 +118,36 @@ export const claimRoutes: RouteDef<any, any>[] = [
 			const crypto =
 				ep.type === "crypto_wallet" || ep.type === "crypto_custodial";
 			if (!crypto) {
-				// Fiat claim accept: payout endpoint selection — needs payout leg pending.
-				// MVP crypto path is the contracted DF3 path; fiat claim payout wiring
-				// needs endpoint storage contract (report to integrator if required).
 				throw new ApiError(
 					422,
 					"unsupported",
-					"Fiat claim accept requires contracted endpoint persistence; use crypto_wallet for MVP claim settle",
+					"Fiat claim accept blocked until POST /v1/endpoints + ClaimAcceptEndpoint.details keys are contracted",
+				);
+			}
+			// Do not invent keys from the web UI. Only `address` is used for crypto release
+			// until the integrator contracts details (address | accountNumber | phoneNumber | …).
+			if (
+				ep.details.accountNumber !== undefined ||
+				ep.details.phoneNumber !== undefined
+			) {
+				throw new ApiError(
+					422,
+					"uncontracted_details",
+					"details.accountNumber/phoneNumber are not an accepted claim-accept contract yet",
 				);
 			}
 			const address =
-				typeof ep.details.address === "string"
-					? ep.details.address
-					: typeof ep.details.wallet === "string"
-						? ep.details.wallet
-						: null;
+				typeof ep.details.address === "string" ? ep.details.address : null;
 			if (!address) {
 				throw new ApiError(
 					400,
 					"validation_error",
-					"crypto endpoint details.address (or wallet) required",
+					"crypto endpoint details.address required (string)",
 				);
 			}
 
 			const settle = link.payment.legs.find((l) => l.kind === "settle");
 			if (!settle || settle.status !== "processing") {
-				// May need fund first — claim accept after fundAndRun left settle processing.
 				throw new ApiError(
 					409,
 					"invalid_state",
@@ -142,21 +155,29 @@ export const claimRoutes: RouteDef<any, any>[] = [
 				);
 			}
 
-			const result = await completeClaimSettle(
-				ctx.db,
-				link.paymentId,
-				{
-					getProvider: ctx.runtime.getProvider,
-					settlement: ctx.runtime.settlement,
-					vaultPayer: ctx.runtime.vaultPayer,
-					now: ctx.runtime.now,
-					claimSealKey: ctx.runtime.claimSealKey,
-				},
-				{ destination: address },
-			);
+			let result: { status: string };
+			try {
+				result = await completeClaimSettle(
+					ctx.db,
+					link.paymentId,
+					{
+						getProvider: ctx.runtime.getProvider,
+						settlement: ctx.runtime.settlement,
+						vaultPayer: ctx.runtime.vaultPayer,
+						now: ctx.runtime.now,
+						claimSealKey: ctx.runtime.claimSealKey,
+					},
+					{ destination: address },
+				);
+			} catch (e) {
+				// Release failed: claim stays `open`; payment stays `processing` (accepted ≠ paid).
+				const msg = e instanceof Error ? e.message : "release failed";
+				throw new ApiError(502, "release_failed", msg);
+			}
 
 			const refreshed = await loadClaimByToken(ctx.db, params.token!);
 			if (!refreshed) throw new ApiError(404, "not_found", "Claim not found");
+			// ClaimLink.status and Payment.status are independent fields in the response.
 			return {
 				claim: toClaimView(refreshed),
 				paymentId: link.paymentId,
