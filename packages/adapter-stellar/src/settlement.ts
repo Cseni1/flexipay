@@ -12,10 +12,10 @@ import {
 	type SettlementRef,
 	type SettlementStatus,
 } from "@flexipay/domain";
-import type { CustodialDemoWalletProvider } from "./demo-wallets.js";
-import { PayoutVault, type Payout } from "./vault-client.js";
-import { VaultError, toVaultError } from "./vault-errors.js";
-import { externalIdFor, payoutAmounts } from "./vault-math.js";
+import type { CustodialDemoWalletProvider } from "./demo-wallets.ts";
+import { PayoutVault, type Payout } from "./vault-client.ts";
+import { VaultError, toVaultError } from "./vault-errors.ts";
+import { externalIdFor, payoutAmounts } from "./vault-math.ts";
 
 // Stellar settlement adapter (ARCHITECTURE §11.2, DEV_PLAN SC2). Same SettlementAdapter
 // contract as MockSettlementAdapter; real testnet tx hashes; fee from vault config().
