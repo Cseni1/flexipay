@@ -1,7 +1,5 @@
-import {
-	type ClaimAcceptRequest,
-	type ClaimView,
-} from "@flexipay/web-lib/claim-contract"
+import { type ClaimView } from "@flexipay/web-lib/claim-contract"
+import { buildClaimEndpoint } from "@flexipay/web-lib/claim-endpoint"
 import { useEffect, useRef, useState } from "react"
 import { useParams } from "react-router-dom"
 import {
@@ -62,9 +60,10 @@ const CLOSED_PAYMENT_STATUSES = new Set([
 const isCrypto = (type: DestinationType): boolean =>
 	type === "crypto_wallet" || type === "crypto_custodial"
 
-// The merged claim accept route only implements the crypto endpoint (details.address). Fiat
-// accept still needs its contracted endpoint persistence, so those options stay visible but
-// disabled rather than sending an unapproved details shape.
+// The merged claim accept route only implements the crypto endpoint (details.address).
+// CCR-17 fiat keys are contracted and buildClaimEndpoint prepares them, but the API still
+// returns 422 until its route persists accountNumber/phoneNumber. Keep fiat visible but
+// disabled rather than turning that backend gap into a browser error.
 const supportsClaimAccept = (
 	type: DestinationType | "",
 ): type is "crypto_wallet" | "crypto_custodial" =>
@@ -317,14 +316,12 @@ export default function ClaimPage() {
 		)
 			return
 
-		const endpoint: ClaimAcceptRequest["endpoint"] = {
+		const endpoint = buildClaimEndpoint({
 			type: selectedType,
-			country: "",
+			detail: detail.trim(),
 			currency: claim.amount.currency,
-			network: "stellar",
-			details: { address: detail.trim() },
-			simulated: true,
-		}
+			country: claim.corridor.to.country,
+		})
 
 		acceptLock.current = true
 		setAccepting(true)

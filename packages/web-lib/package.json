@@ -6,6 +6,7 @@
   "exports": {
     ".": "./index.ts",
     "./claim-contract": "./claim-contract.ts",
+    "./claim-endpoint": "./claim-endpoint.ts",
     "./styles.css": "./styles.css"
   },
   "dependencies": {

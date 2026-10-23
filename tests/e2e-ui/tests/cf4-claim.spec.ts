@@ -179,7 +179,7 @@ test.describe("CF4 claim page", () => {
 		).toBe(true)
 	})
 
-	test("fiat options stay visible but cannot be accepted without a contract", async ({
+	test("fiat options stay visible but cannot be accepted until the API route supports them", async ({
 		page,
 	}) => {
 		await mockClaimApi(page, {
