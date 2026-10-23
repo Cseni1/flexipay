@@ -320,7 +320,11 @@ describe("CC2 orchestrator (CCR-11–14)", () => {
 		expect(blob).not.toMatch(/secretHex/);
 	});
 
-	it("restart-safe claim: unseal from DB without process Map", async () => {
+	it("CCR-11 restart-custody: claim release after new adapters object (DB seal only; not same-call replay)", async () => {
+		// Distinguishes custody restart from fundAndRun replay:
+		// - Replay = same adapters + fundAndRun again (covered elsewhere).
+		// - Restart-custody = discard prior OrchestratorAdapters; load secret from ClaimLink seal.
+		// Mock vault state still lives in this process (stellar would share on-chain).
 		sim.controls.reset();
 		const { orgId } = await t.newOrg("Demo Platform");
 		const { recipientId, quoteId } = await seedQuote(orgId, {
@@ -351,10 +355,14 @@ describe("CC2 orchestrator (CCR-11–14)", () => {
 			delivery: "claim_link",
 			profile: "one_off",
 		});
-		await fundAndRun(db, paymentId, adapters());
+		const fundingAdapters = adapters();
+		await fundAndRun(db, paymentId, fundingAdapters);
 
-		// Simulate new process: only DB + same env seal key (no in-memory Map).
-		const freshAdapters: OrchestratorAdapters = {
+		const link = await db.claimLink.findUniqueOrThrow({ where: { paymentId } });
+		expect(link.secretSealed).toBeTruthy();
+
+		// New adapters instance — no retained secret handle from fundingAdapters.
+		const restartAdapters: OrchestratorAdapters = {
 			getProvider: (id) => sim.providers.get(id),
 			settlement,
 			vaultPayer: PAYER,
@@ -362,8 +370,9 @@ describe("CC2 orchestrator (CCR-11–14)", () => {
 			defaultClaimDestination: DEST,
 			claimSealKey: Buffer.from("a".repeat(64), "hex"),
 		};
+		expect(restartAdapters).not.toBe(fundingAdapters);
 
-		const done = await completeClaimSettle(db, paymentId, freshAdapters, {
+		const done = await completeClaimSettle(db, paymentId, restartAdapters, {
 			destination: DEST,
 		});
 		expect(done.status).toBe("paid");
@@ -374,6 +383,90 @@ describe("CC2 orchestrator (CCR-11–14)", () => {
 		expect(settle.releaseTxRef).toBeTruthy();
 		expect(settle.releaseTxRef).not.toBe(settle.externalRef);
 		expect(settle.releaseTxRef).not.toBe(settle.lockTxRef);
+	});
+
+	it("CCR-13: PayerPays fundVault(P+quotedFee); RecipientPays fundVault(P only); lock fee matches quote", async () => {
+		sim.controls.reset();
+		const funds: { amount: string; currency: string }[] = [];
+		const tracking = new MockSettlementAdapter({
+			token: "USDC",
+			treasury: "GDEMOTREASURY0000000000000000000000000000000000000000",
+			feeBps: 100,
+			now: () => clock.now,
+		});
+		const origFund = tracking.fundVault.bind(tracking);
+		tracking.fundVault = async (payer, amount) => {
+			funds.push({ amount: amount.amount, currency: amount.currency });
+			return origFund(payer, amount);
+		};
+
+		const P = "9826856435";
+		const fee = "98268564";
+		const runMode = async (feeMode: "PayerPays" | "RecipientPays") => {
+			funds.length = 0;
+			const { orgId } = await t.newOrg("Demo Platform");
+			const route =
+				feeMode === "PayerPays"
+					? cryptoClaimRoute
+					: [
+							cryptoClaimRoute[0]!,
+							cryptoClaimRoute[1]!,
+							{
+								...cryptoClaimRoute[2]!,
+								// RecipientPays: amountIn = A, amountOut = A - f(A)
+								amountIn: money("9925125000", "USDC"),
+								amountOut: money("9825873750", "USDC"),
+							},
+						];
+			const flexi =
+				feeMode === "PayerPays"
+					? money(fee, "USDC")
+					: money("99251250", "USDC");
+			const { recipientId, quoteId } = await seedQuote(orgId, {
+				feeMode,
+				route,
+				fees: {
+					legs: [
+						{ kind: "collect", rail: "sim_bank_us_ach", fee: money("0", "USD") },
+						{ kind: "convert", rail: "sim_fx", fee: money("125", "USD") },
+						{ kind: "settle", rail: "stellar_usdc", fee: flexi },
+					],
+					flexiPayFee: flexi,
+					total: money("125", "USD"),
+					settleUnlockedRemainder:
+						feeMode === "PayerPays" ? money("1", "USDC") : null,
+				},
+				destination: {
+					type: "crypto_wallet",
+					currency: "USDC",
+					country: "PH",
+					recipientKind: "individual",
+				},
+			});
+			const { paymentId } = await createPaymentFromQuote(db, {
+				organizationId: orgId,
+				recipientId,
+				quoteId,
+				delivery: "claim_link",
+				profile: "one_off",
+			});
+			await fundAndRun(db, paymentId, {
+				...adapters(),
+				settlement: tracking,
+			});
+			const settleFund = funds[funds.length - 1]!;
+			if (feeMode === "PayerPays") {
+				expect(settleFund.amount).toBe(
+					(BigInt(P) + BigInt(fee)).toString(),
+				);
+			} else {
+				expect(settleFund.amount).toBe("9925125000");
+			}
+			expect(settleFund.currency).toBe("USDC");
+		};
+
+		await runMode("PayerPays");
+		await runMode("RecipientPays");
 	});
 
 	it("exactly one payout retry then success; no third execute", async () => {
