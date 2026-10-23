@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test"
+import { paymentDetailFixture } from "./fixtures"
 
 test.describe("CF0 web shell", () => {
 	test("send payment screen uses the shared shell", async ({ page }) => {
@@ -10,10 +11,15 @@ test.describe("CF0 web shell", () => {
 		).toBeVisible()
 		await expect(page.getByRole("link", { name: "Payments" })).toBeVisible()
 		await expect(page.getByText("Simulated").first()).toBeVisible()
-		await expect(page.getByRole("button", { name: "Get quote" })).toBeDisabled()
+		await expect(page.getByRole("button", { name: "Get quote" })).toBeEnabled()
 	})
 
 	test("payment detail shows the status colour key", async ({ page }) => {
+		await page.route(/\/v1\/payments\/demo-payment$/, (route) =>
+			route.fulfill({
+				json: { ...paymentDetailFixture(), id: "demo-payment" },
+			}),
+		)
 		await page.goto("/payments/demo-payment")
 
 		await expect(

@@ -1,44 +1,57 @@
-export type PaymentStatus =
-	| "pending"
-	| "paid"
-	| "completed"
-	| "failed"
-	| "expired"
-	| "processing"
-	| "awaiting_funding"
-	| "refunded"
-	| "cancelled"
+import {
+	PAYMENT_STATUSES as DOMAIN_PAYMENT_STATUSES,
+	type LegStatus,
+	type PaymentStatus as DomainPaymentStatus,
+} from "@flexipay/web-lib/contract"
+
+/** CF0 also used these two labels for the shell and future batch screens. */
+export type StatusValue = DomainPaymentStatus | LegStatus | "completed"
 
 type StatusTone = "success" | "danger" | "warning" | "muted" | "neutral"
 
-const LABELS: Record<PaymentStatus, string> = {
+const LABELS: Record<StatusValue, string> = {
 	pending: "Pending",
-	paid: "Paid",
-	completed: "Completed",
-	failed: "Failed",
-	expired: "Expired",
-	processing: "Processing",
+	quoted: "Quoted",
 	awaiting_funding: "Awaiting funding",
-	refunded: "Refunded",
+	funded: "Funded",
+	processing: "Processing",
+	paid: "Paid",
 	cancelled: "Cancelled",
+	failed: "Failed",
+	refunding: "Refunding",
+	refunded: "Refunded",
+	expired: "Expired",
+	succeeded: "Succeeded",
+	reversing: "Reversing",
+	reversed: "Reversed",
+	completed: "Completed",
 }
 
-const TONES: Record<PaymentStatus, StatusTone> = {
+const TONES: Record<StatusValue, StatusTone> = {
 	pending: "neutral",
-	paid: "success",
-	completed: "success",
-	failed: "danger",
-	expired: "danger",
-	processing: "warning",
+	quoted: "neutral",
 	awaiting_funding: "warning",
-	refunded: "muted",
+	funded: "warning",
+	processing: "warning",
+	paid: "success",
 	cancelled: "muted",
+	failed: "danger",
+	refunding: "warning",
+	refunded: "muted",
+	expired: "danger",
+	succeeded: "success",
+	reversing: "warning",
+	reversed: "muted",
+	completed: "success",
 }
 
-export const PAYMENT_STATUSES = Object.keys(LABELS) as PaymentStatus[]
+export const PAYMENT_STATUSES: StatusValue[] = [
+	...DOMAIN_PAYMENT_STATUSES,
+	"completed",
+]
 
 export interface StatusBadgeProps {
-	status: PaymentStatus
+	status: StatusValue
 	label?: string
 }
 

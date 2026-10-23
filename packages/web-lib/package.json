@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./index.ts",
+    "./contract": "./contract.ts",
     "./styles.css": "./styles.css"
   },
   "dependencies": {
