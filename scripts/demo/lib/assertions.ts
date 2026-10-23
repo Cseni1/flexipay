@@ -77,9 +77,12 @@ export function expectPaid(p: PaymentView): void {
 			`payment ${p.id} is paid but legs are not all succeeded: ${unfinished.map((l) => `${l.kind}:${l.status}`).join(", ")}`,
 		)
 	}
-	if (p.legs.at(-1)?.kind !== "payout") {
+	const last = p.legs.at(-1)
+	if (!last) fail(`payment ${p.id} is paid with no legs`)
+	// A claim-link crypto route ends at settle; every other route ends at payout (ARCHITECTURE §7).
+	if (last.kind !== "payout" && last.kind !== "settle") {
 		fail(
-			`payment ${p.id} is paid but its last leg is ${p.legs.at(-1)?.kind ?? "(none)"}, not payout`,
+			`payment ${p.id} is paid but its last leg is ${last.kind}, not payout or settle`,
 		)
 	}
 }

@@ -43,6 +43,18 @@ describe("payment assertions", () => {
 		expect(() => expectPaid(paid())).not.toThrow()
 	})
 
+	it("accepts a claim route that is paid at settle", () => {
+		expect(() =>
+			expectPaid(
+				payment({
+					id: "pay_2",
+					status: "paid",
+					legs: [collect, convert, settle],
+				}),
+			),
+		).not.toThrow()
+	})
+
 	it("rejects a paid payment with an unfinished or trailing non-payout leg", () => {
 		expect(() =>
 			expectPaid(

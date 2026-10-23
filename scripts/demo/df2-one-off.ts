@@ -80,6 +80,8 @@ await execute(
 		await api.fund(created.payment.id)
 		const payment = await waitForPayment(api, created.payment.id)
 		expectPaid(payment)
+		if (payment.legs.at(-1)?.kind !== "payout")
+			fail("a paid direct payment must end at payout")
 		flow.legs("payment", payment.legs)
 		flow.check("payment is paid only after the last leg succeeded")
 

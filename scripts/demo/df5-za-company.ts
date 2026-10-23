@@ -101,6 +101,8 @@ await execute(
 		await api.fund(created.payment.id)
 		const payment = await waitForPayment(api, created.payment.id)
 		expectPaid(payment)
+		if (payment.legs.at(-1)?.kind !== "payout")
+			fail("a paid direct payment must end at payout")
 		expectNoSettle(payment.legs, "payment.legs")
 		expectKinds(
 			payment.legs.map((leg) => leg.kind),
