@@ -469,6 +469,59 @@ describe("CC2 orchestrator (CCR-11–14)", () => {
 		await runMode("RecipientPays");
 	});
 
+	it("CCR-13: rejects settle when locked.fee drifts from quoted flexiPayFee", async () => {
+		sim.controls.reset();
+		const fee = "98268564";
+		const drifting = new MockSettlementAdapter({
+			token: "USDC",
+			treasury: "GDEMOTREASURY0000000000000000000000000000000000000000",
+			feeBps: 100,
+			now: () => clock.now,
+		});
+		const origLock = drifting.lock.bind(drifting);
+		drifting.lock = async (req) => {
+			const locked = await origLock(req);
+			return { ...locked, fee: money("1", "USDC") };
+		};
+
+		const { orgId } = await t.newOrg("Demo Platform");
+		const { recipientId, quoteId } = await seedQuote(orgId, {
+			feeMode: "PayerPays",
+			route: cryptoClaimRoute,
+			fees: {
+				legs: [
+					{ kind: "collect", rail: "sim_bank_us_ach", fee: money("0", "USD") },
+					{ kind: "convert", rail: "sim_fx", fee: money("125", "USD") },
+					{ kind: "settle", rail: "stellar_usdc", fee: money(fee, "USDC") },
+				],
+				flexiPayFee: money(fee, "USDC"),
+				total: money("125", "USD"),
+				settleUnlockedRemainder: money("1", "USDC"),
+			},
+			destination: {
+				type: "crypto_wallet",
+				currency: "USDC",
+				country: "PH",
+				recipientKind: "individual",
+			},
+		});
+		const { paymentId } = await createPaymentFromQuote(db, {
+			organizationId: orgId,
+			recipientId,
+			quoteId,
+			delivery: "claim_link",
+			profile: "one_off",
+		});
+		await expect(
+			fundAndRun(db, paymentId, { ...adapters(), settlement: drifting }),
+		).rejects.toThrow(/lock fee drift/i);
+		const settle = await db.leg.findFirstOrThrow({
+			where: { paymentId, kind: "settle" },
+		});
+		expect(settle.externalRef).toBeNull();
+		expect(settle.lockTxRef).toBeNull();
+	});
+
 	it("exactly one payout retry then success; no third execute", async () => {
 		sim.controls.reset();
 		sim.controls.failNext("sim_bank_ph_instapay", 1);
