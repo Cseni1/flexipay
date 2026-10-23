@@ -1,13 +1,17 @@
 import {
+	FEE_MODES,
 	LEG_KINDS,
 	LEG_STATUSES,
 	PAYMENT_STATUSES,
+	type FeeMode,
 	type LegKind,
 	type LegStatus,
 	type PaymentStatus,
 } from "@flexipay/domain"
 import type {
 	EventView,
+	FeeLegView,
+	FeeView,
 	LegView,
 	MoneyView,
 	PaymentView,
@@ -62,6 +66,13 @@ export function money(value: unknown, where: string): MoneyView {
 	}
 }
 
+export function positiveInteger(value: unknown, where: string): number {
+	if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+		fail(`${where}: expected a positive integer`)
+	}
+	return value
+}
+
 const oneOf = <T extends string>(
 	value: unknown,
 	allowed: readonly T[],
@@ -77,14 +88,28 @@ const oneOf = <T extends string>(
 export function leg(value: unknown, where: string): LegView {
 	const l = record(value, where)
 	const error =
-		l.error === undefined ? undefined : record(l.error, `${where}.error`)
+		l.error === undefined || l.error === null
+			? undefined
+			: record(l.error, `${where}.error`)
 	const out: LegView = {
 		kind: oneOf<LegKind>(l.kind, LEG_KINDS, `${where}.kind`),
 		rail: text(l.rail, `${where}.rail`),
 		status: oneOf<LegStatus>(l.status, LEG_STATUSES, `${where}.status`),
 	}
-	if (l.externalRef !== undefined)
+	if (l.providerId !== undefined)
+		out.providerId = text(l.providerId, `${where}.providerId`)
+	if (l.amountIn !== undefined)
+		out.amountIn = money(l.amountIn, `${where}.amountIn`)
+	if (l.amountOut !== undefined)
+		out.amountOut = money(l.amountOut, `${where}.amountOut`)
+	if (l.attempt !== undefined)
+		out.attempt = positiveInteger(l.attempt, `${where}.attempt`)
+	if (l.externalRef !== undefined && l.externalRef !== null)
 		out.externalRef = text(l.externalRef, `${where}.externalRef`)
+	if (l.lockTxRef !== undefined && l.lockTxRef !== null)
+		out.lockTxRef = text(l.lockTxRef, `${where}.lockTxRef`)
+	if (l.releaseTxRef !== undefined && l.releaseTxRef !== null)
+		out.releaseTxRef = text(l.releaseTxRef, `${where}.releaseTxRef`)
 	if (l.simulated !== undefined) out.simulated = l.simulated === true
 	if (error) {
 		out.error = {
@@ -104,8 +129,36 @@ export function leg(value: unknown, where: string): LegView {
 export function events(value: unknown, where: string): EventView[] {
 	return list(value, where).map((e, i) => {
 		const event = record(e, `${where}[${i}]`)
-		return { type: text(event.type, `${where}[${i}].type`) }
+		const out: EventView = { type: text(event.type, `${where}[${i}].type`) }
+		if (event.createdAt !== undefined)
+			out.createdAt = text(event.createdAt, `${where}[${i}].createdAt`)
+		if (event.paymentId !== undefined && event.paymentId !== null)
+			out.paymentId = text(event.paymentId, `${where}[${i}].paymentId`)
+		if (event.snapshot !== undefined)
+			out.snapshot = record(event.snapshot, `${where}[${i}].snapshot`)
+		return out
 	})
+}
+
+function feeView(value: unknown, where: string): FeeView {
+	const f = record(value, where)
+	const legs: FeeLegView[] = list(f.legs, `${where}.legs`).map((l, i) => {
+		const row = record(l, `${where}.legs[${i}]`)
+		return {
+			kind: oneOf<LegKind>(row.kind, LEG_KINDS, `${where}.legs[${i}].kind`),
+			rail: text(row.rail, `${where}.legs[${i}].rail`),
+			fee: money(row.fee, `${where}.legs[${i}].fee`),
+		}
+	})
+	return {
+		legs,
+		flexiPayFee: money(f.flexiPayFee, `${where}.flexiPayFee`),
+		total: money(f.total, `${where}.total`),
+		settleUnlockedRemainder:
+			f.settleUnlockedRemainder === null
+				? null
+				: money(f.settleUnlockedRemainder, `${where}.settleUnlockedRemainder`),
+	}
 }
 
 export function payment(value: unknown, where = "payment"): PaymentView {
@@ -143,6 +196,30 @@ export function quote(value: unknown, where = "quote"): QuoteView {
 				...(legRow.rail === undefined
 					? {}
 					: { rail: text(legRow.rail, `${where}.route[${i}].rail`) }),
+				...(legRow.providerId === undefined
+					? {}
+					: {
+							providerId: text(
+								legRow.providerId,
+								`${where}.route[${i}].providerId`,
+							),
+						}),
+				...(legRow.amountIn === undefined
+					? {}
+					: {
+							amountIn: money(legRow.amountIn, `${where}.route[${i}].amountIn`),
+						}),
+				...(legRow.amountOut === undefined
+					? {}
+					: {
+							amountOut: money(
+								legRow.amountOut,
+								`${where}.route[${i}].amountOut`,
+							),
+						}),
+				...(legRow.simulated === undefined
+					? {}
+					: { simulated: legRow.simulated === true }),
 			}
 		}),
 		reasons: list(q.reasons, `${where}.reasons`).map((r, i) =>
@@ -151,9 +228,24 @@ export function quote(value: unknown, where = "quote"): QuoteView {
 		expectedReceive: money(q.expectedReceive, `${where}.expectedReceive`),
 		validUntil: text(q.validUntil, `${where}.validUntil`),
 		simulated: q.simulated === true,
+		feeMode:
+			q.feeMode === null
+				? null
+				: oneOf<FeeMode>(q.feeMode, FEE_MODES, `${where}.feeMode`),
+	}
+	if (q.amount !== undefined) {
+		const amount = record(q.amount, `${where}.amount`)
+		out.amount = {
+			side: oneOf(
+				amount.side,
+				["send", "receive"] as const,
+				`${where}.amount.side`,
+			),
+			value: money(amount.value, `${where}.amount.value`),
+		}
 	}
 	if (q.fxRate !== undefined) out.fxRate = text(q.fxRate, `${where}.fxRate`)
-	if (q.fees !== undefined) out.fees = q.fees
+	if (q.fees !== undefined) out.fees = feeView(q.fees, `${where}.fees`)
 	if (q.alternatives !== undefined)
 		out.alternatives = list(q.alternatives, `${where}.alternatives`)
 	return out

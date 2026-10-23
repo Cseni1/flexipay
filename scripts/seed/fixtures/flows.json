@@ -4,6 +4,7 @@
 	"notes": [
 		"Placeholder amounts and routes from tests/e2e/SCENARIOS.md; the API's corridor config remains the runtime truth and every rail is asserted against the response.",
 		"Amounts are integer minor units with an explicit currency; USD has 2 decimals.",
+		"feeMode is an explicit demo request choice (PayerPays), not an API default; CCR-8 records no MVP default. Every quote request carries it.",
 		"DF4 sets fail-next on the single BR payout provider so the first attempt and its one retry both fail, which must end in a vault refund."
 	],
 	"cryptoDestination": {
@@ -14,6 +15,7 @@
 	"flows": {
 		"df1": {
 			"profile": "batch",
+			"feeMode": "PayerPays",
 			"rows": [
 				{
 					"workerRef": "worker-a",
@@ -34,12 +36,14 @@
 		},
 		"df2": {
 			"profile": "one_off",
+			"feeMode": "PayerPays",
 			"workerRef": "worker-a",
 			"endpointRef": "worker-a-bank",
 			"send": { "amount": "25000", "currency": "USD" }
 		},
 		"df3": {
 			"profile": "one_off",
+			"feeMode": "PayerPays",
 			"delivery": "claim_link",
 			"workerRef": "worker-a",
 			"endpointRef": "worker-a-crypto",
@@ -47,12 +51,14 @@
 		},
 		"df4": {
 			"profile": "one_off",
+			"feeMode": "PayerPays",
 			"workerRef": "worker-b",
 			"endpointRef": "worker-b-bank",
 			"send": { "amount": "10000", "currency": "USD" }
 		},
 		"df5": {
 			"profile": "one_off",
+			"feeMode": "PayerPays",
 			"workerRef": "worker-d",
 			"endpointRef": "worker-d-bank",
 			"send": { "amount": "60000", "currency": "USD" }

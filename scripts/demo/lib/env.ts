@@ -1,5 +1,6 @@
+import { existsSync, readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
-import { resolve } from "node:path"
+import { join, resolve } from "node:path"
 
 // Environment for lane-D scripts. Only names here; values are read at run time and never
 // printed. FP_API_KEY is a sandbox key and is the one value that must not reach logs or
@@ -21,6 +22,60 @@ export interface DemoEnv {
 	/** Public testnet RPC used to verify a Stellar release; no key needed. */
 	stellarRpcUrl?: string
 	stellarNetworkPassphrase?: string
+	/** Public payout_vault contract id (FP_PAYOUT_VAULT_ID), never a key. */
+	payoutVaultId?: string
+}
+
+/**
+ * The deployed vault's public identity and fee, from the existing testnet evidence file
+ * (`scripts/testnet/testnet-ids.env`, written by setup.sh and also used by the API). Lane D does
+ * not take a fee rate from its own environment: a caller-supplied rate could make a wrong quote
+ * pass. The evidence is tied to one vault id, so it is only valid for that deployment.
+ */
+export const TESTNET_IDS_PATH = join(
+	REPO_ROOT,
+	"scripts/testnet/testnet-ids.env",
+)
+
+export interface VaultEvidence {
+	vaultId: string
+	feeBps: number
+	source: string
+}
+
+export type VaultEvidenceResult =
+	{ ok: true; evidence: VaultEvidence } | { ok: false; problem: string }
+
+export function readVaultEvidence(
+	path = TESTNET_IDS_PATH,
+): VaultEvidenceResult {
+	if (!existsSync(path)) {
+		return {
+			ok: false,
+			problem: `missing public testnet evidence at ${path}`,
+		}
+	}
+	const text = readFileSync(path, "utf8")
+	const read = (key: string): string | undefined => {
+		const match = new RegExp(
+			`^\\s*${key}\\s*=\\s*"?([^"\\n]+)"?\\s*$`,
+			"m",
+		).exec(text)
+		return match?.[1]?.trim()
+	}
+	const vaultId = read("FP_PAYOUT_VAULT_ID")
+	if (!vaultId) {
+		return { ok: false, problem: `${path} has no FP_PAYOUT_VAULT_ID` }
+	}
+	const rawFee = read("FP_VAULT_FEE_BPS")
+	const feeBps = rawFee === undefined ? Number.NaN : Number(rawFee)
+	if (!Number.isInteger(feeBps) || feeBps < 0 || feeBps > 1000) {
+		return {
+			ok: false,
+			problem: `${path} has no FP_VAULT_FEE_BPS in 0..1000`,
+		}
+	}
+	return { ok: true, evidence: { vaultId, feeBps, source: path } }
 }
 
 export interface EnvProblem {
@@ -102,6 +157,9 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): EnvResult {
 						stellarNetworkPassphrase:
 							source.FP_STELLAR_NETWORK_PASSPHRASE.trim(),
 					}
+				: {}),
+			...(source.FP_PAYOUT_VAULT_ID?.trim()
+				? { payoutVaultId: source.FP_PAYOUT_VAULT_ID.trim() }
 				: {}),
 		},
 	}

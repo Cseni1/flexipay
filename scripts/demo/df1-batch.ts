@@ -4,6 +4,7 @@ import {
 	expectNoEvent,
 	expectNoSettle,
 	expectPaid,
+	expectQuoteFeeMode,
 	expectRail,
 	fail,
 } from "./lib/assertions.ts"
@@ -97,7 +98,11 @@ await execute(
 		// domestic explanation without inventing batch fields (see a0-answers.ts).
 		const usPrepared = prepared.find((p) => p.endpoint.country === "US")
 		if (!usPrepared) fail("DF1 fixture missing US row")
-		flow.route("POST", "/v1/quotes", "US domestic explanation (A0 Quote.reasons)")
+		flow.route(
+			"POST",
+			"/v1/quotes",
+			"US domestic explanation (A0 Quote.reasons)",
+		)
 		const usQuote = await api.quote({
 			destination: {
 				type: usPrepared.endpoint.type,
@@ -107,15 +112,19 @@ await execute(
 			},
 			amount: usPrepared.row.send,
 			amountSide: "send",
+			feeMode: spec.feeMode,
 			policy: "cheapest",
 		})
+		expectQuoteFeeMode(usQuote, spec.feeMode, "US quote")
 		if (usQuote.reasons.length === 0) {
 			fail("US domestic quote has empty reasons; expected a route explanation")
 		}
 		flow.check(
 			`US domestic reasons from Quote (${A0_CONTRACT_ANSWERS.batchReasons})`,
 		)
-		flow.note(`batch ${batch.id} status ${batch.status}; reasons via quote, not batch row`)
+		flow.note(
+			`batch ${batch.id} status ${batch.status}; reasons via quote, not batch row`,
+		)
 	},
 )
 
