@@ -30,6 +30,11 @@ export interface BuildQuoteDeps {
 	 * CCR-8 source of truth for settle routes is always `req.feeMode`.
 	 */
 	vaultFeeMode?: FeeMode;
+	/**
+	 * Settle-leg simulated label from settlement execution mode (CCR-10).
+	 * Required when the template includes settle. Not inferred from `stellar_usdc` alone.
+	 */
+	settlementSimulated: boolean;
 	/** API clock; defaults to `() => new Date()`. */
 	now?: () => Date;
 	/** Quote id factory; defaults to a `quo_` + random hex id. */
@@ -52,6 +57,7 @@ function priceDeps(deps: BuildQuoteDeps, feeMode: FeeMode | null): PriceDeps {
 		getProvider: deps.getProvider,
 		vaultFeeBps: deps.vaultFeeBps,
 		vaultFeeMode: feeMode,
+		settlementSimulated: deps.settlementSimulated,
 	};
 }
 
@@ -242,6 +248,14 @@ export async function buildQuote(
 		const resolved = resolveSettleFeeMode(req, deps);
 		if (!resolved.ok) return resolved;
 		feeMode = resolved.feeMode;
+		if (typeof deps.settlementSimulated !== "boolean") {
+			return {
+				ok: false,
+				reasons: [
+					"settlementSimulated (boolean from FP_SETTLEMENT execution mode) is required for settle routes (CCR-10); do not infer from rail id alone",
+				],
+			};
+		}
 	}
 
 	const destination = {

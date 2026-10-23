@@ -24,7 +24,7 @@ export interface PricedLeg {
 	kind: LegKind;
 	rail: string;
 	providerId: string;
-	simulated: true;
+	simulated: boolean;
 	fee: Money;
 	fxRate: string | null;
 	amountIn: Money;
@@ -55,6 +55,11 @@ export interface PriceDeps {
 	 * includes settle (`null` only for no-settle routes). No silent MVP default.
 	 */
 	vaultFeeMode: FeeMode | null;
+	/**
+	 * Settle-leg `simulated` from settlement **execution** mode (CCR-10), not from rail id.
+	 * `FP_SETTLEMENT=mock` → true; `stellar` → false. Required when the template includes settle.
+	 */
+	settlementSimulated: boolean;
 }
 
 function settlementAsset(corridor: Corridor, config: FlexiPayConfig): string | undefined {
@@ -130,7 +135,7 @@ function plannedFrom(leg: PricedLeg): PlannedLeg {
 		kind: leg.kind,
 		rail: leg.rail,
 		providerId: leg.providerId,
-		simulated: true,
+		simulated: leg.simulated,
 	};
 }
 
@@ -258,6 +263,7 @@ function priceSettle(
 	railId: string,
 	vaultFeeBps: number,
 	feeMode: FeeMode,
+	settlementSimulated: boolean,
 ):
 	| { ok: true; leg: PricedLeg; remainderNote?: string }
 	| { ok: false; error: string } {
@@ -283,7 +289,7 @@ function priceSettle(
 				kind: "settle",
 				rail: railId,
 				providerId: railId,
-				simulated: true,
+				simulated: settlementSimulated,
 				fee,
 				fxRate: null,
 				amountIn: available,
@@ -313,7 +319,7 @@ function priceSettle(
 			kind: "settle",
 			rail: railId,
 			providerId: railId,
-			simulated: true,
+			simulated: settlementSimulated,
 			fee: sized.fee,
 			fxRate: null,
 			amountIn: sized.principal,
@@ -373,6 +379,7 @@ export async function priceRoute(
 				railId,
 				deps.vaultFeeBps,
 				deps.vaultFeeMode,
+				deps.settlementSimulated,
 			);
 			if (!priced.ok) {
 				return { ok: false, reasons: [priced.error] };
@@ -479,19 +486,12 @@ export async function priceRoute(
 			};
 		}
 
-		const simulated = quoted.simulated === true;
-		if (!simulated) {
-			// Quote schema requires simulated: true on planned legs in the MVP.
-			exclusionReasons.push(
-				`Provider ${adapter.id} returned a non-simulated quote; MVP quotes are simulated`,
-			);
-		}
-
 		legs.push({
 			kind,
 			rail: adapter.id,
 			providerId: adapter.id,
-			simulated: true,
+			// CCR-10: pass through the provider quote flag (sim adapters are true).
+			simulated: quoted.simulated === true,
 			fee: quoted.fee,
 			fxRate: quoted.fxRate,
 			amountIn,

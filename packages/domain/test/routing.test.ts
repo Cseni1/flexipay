@@ -161,18 +161,23 @@ function registry(
 	return map;
 }
 
-function deps(over: Record<string, "up" | "down"> = {}) {
+function deps(
+	over: Record<string, "up" | "down"> = {},
+	settlementSimulated = true,
+) {
 	const providers = registry(over);
 	return {
 		config,
 		getProvider: (id: string) => providers.get(id),
 		vaultFeeBps: VAULT_FEE_BPS,
+		// CCR-10: mock execution mode by default; stellar mode sets false.
+		settlementSimulated,
 		now: () => T0,
 		quoteId: () => "quo_test_1",
 	};
 }
 
-/** Zero foreign payout fee so fees.total can close under current directional FX rates (CCR-7 gap). */
+/** Zero foreign payout fee (legacy helper; CCR-7 option A rates cover PHP/BRL/ZAR totals). */
 function depsZeroPayoutFee(payoutId: string) {
 	const providers = registry();
 	const row = config.providers.find((p) => p.id === payoutId)!;
@@ -190,6 +195,7 @@ function depsZeroPayoutFee(payoutId: string) {
 		config,
 		getProvider: (id: string) => providers.get(id),
 		vaultFeeBps: VAULT_FEE_BPS,
+		settlementSimulated: true,
 		now: () => T0,
 		quoteId: () => "quo_test_1",
 	};
@@ -402,7 +408,7 @@ describe("buildQuote corridors", () => {
 		expect(q.validUntil).toBe("2026-10-23T12:02:00.000Z");
 	});
 
-	it("PH bank with real config fees: blocks fees.total (no PHP>USD rate)", async () => {
+	it("PH bank with real config fees: fees.total includes PHP payout via CCR-7 rates", async () => {
 		// Concrete send 500.00 USD — leg chain under real providers.json (evidence for review).
 		const providers = registry();
 		const send = money("50000", "USD");
@@ -482,8 +488,7 @@ describe("buildQuote corridors", () => {
 				fee: money("15153", "PHP"),
 			},
 		});
-		// Convertible into USD total with existing rates: 0 + 125 + convertMoney(USDC fees) + vault.
-		// Payout 28642 PHP has no PHP>USD rate → must not be omitted.
+		// CCR-7 option A: PHP>USD placeholder folds the payout fee into fees.total.
 		const result = await buildQuote(
 			settleSendReq({
 				destination: {
@@ -496,10 +501,13 @@ describe("buildQuote corridors", () => {
 			}),
 			deps(),
 		);
-		expect(result.ok).toBe(false);
-		if (result.ok) return;
-		expect(result.reasons.join(" ")).toMatch(/PHP>USD/);
-		expect(result.reasons.join(" ")).toMatch(/fees\.total/);
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.quote.fees.total.currency).toBe("USD");
+		expect(BigInt(result.quote.fees.total.amount)).toBeGreaterThan(0n);
+		const payoutFee = result.quote.fees.legs.find((l) => l.kind === "payout")!.fee;
+		expect(payoutFee.currency).toBe("PHP");
+		expect(BigInt(payoutFee.amount)).toBeGreaterThan(0n);
 	});
 
 	it("PH bank with zero payout fee: five legs, two converts, complete total", async () => {
@@ -642,7 +650,7 @@ describe("buildQuote corridors", () => {
 		).toBe(true);
 	});
 
-	it("ZA bank with real payout fee blocks fees.total (no ZAR>USD rate)", async () => {
+	it("ZA bank with real payout fee: fees.total includes ZAR via CCR-7 rates", async () => {
 		const result = await buildQuote(
 			sendReq({
 				destination: {
@@ -655,9 +663,13 @@ describe("buildQuote corridors", () => {
 			}),
 			deps(),
 		);
-		expect(result.ok).toBe(false);
-		if (result.ok) return;
-		expect(result.reasons.join(" ")).toMatch(/ZAR>USD/);
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.quote.fees.total.currency).toBe("USD");
+		expect(BigInt(result.quote.fees.total.amount)).toBeGreaterThan(0n);
+		expect(result.quote.fees.legs.find((l) => l.kind === "payout")!.fee.currency).toBe(
+			"ZAR",
+		);
 	});
 
 	it("excludes a down provider and fails when no healthy alternative", async () => {
@@ -788,6 +800,7 @@ describe("buildQuote corridors", () => {
 				config,
 				getProvider: wrappedGet,
 				vaultFeeBps: 250,
+				settlementSimulated: true,
 				now: () => T0,
 				quoteId: () => "quo_vault",
 			},
@@ -914,6 +927,8 @@ describe("buildQuote corridors", () => {
 
 		const settleP = payer.quote.fees.legs.find((l) => l.kind === "settle")!;
 		expect(payer.quote.fees.flexiPayFee).toEqual(settleP.fee);
+		expect(payer.quote.feeMode).toBe("PayerPays");
+		expect(recipient.quote.feeMode).toBe("RecipientPays");
 		expect(
 			payer.quote.reasons.some((r) => /remainder|unlocked/i.test(r)),
 		).toBe(true);
@@ -921,6 +936,41 @@ describe("buildQuote corridors", () => {
 		expect(payer.quote.fees.flexiPayFee).not.toEqual(
 			recipient.quote.fees.flexiPayFee,
 		);
+		// Quote.route / fees.legs do not export settle amountIn/P — only fee + feeMode.
+		// Remainder is reason-text only (integration gap for lock/ledger; see PR).
+		expect(
+			Object.keys(settleP).sort().join(","),
+		).toBe("fee,kind,rail");
+	});
+
+	it("CCR-10: settle simulated follows settlementSimulated, not rail id alone", async () => {
+		const req = settleSendReq(
+			{
+				destination: {
+					type: "crypto_wallet",
+					currency: "USDC",
+					country: "PH",
+					recipientKind: "individual",
+				},
+				amount: { side: "send", value: money("100000", "USD") },
+			},
+			"RecipientPays",
+		);
+		const mockMode = await buildQuote(req, deps({}, true));
+		const stellarMode = await buildQuote(req, deps({}, false));
+		expect(mockMode.ok && stellarMode.ok).toBe(true);
+		if (!mockMode.ok || !stellarMode.ok) return;
+		const mockSettle = mockMode.quote.route.find((l) => l.kind === "settle")!;
+		const stellarSettle = stellarMode.quote.route.find((l) => l.kind === "settle")!;
+		expect(mockSettle.rail).toBe("stellar_usdc");
+		expect(stellarSettle.rail).toBe("stellar_usdc");
+		expect(mockSettle.simulated).toBe(true);
+		expect(stellarSettle.simulated).toBe(false);
+		expect(mockMode.quote.simulated).toBe(true);
+		expect(stellarMode.quote.simulated).toBe(true);
+		expect(
+			mockMode.quote.route.filter((l) => l.kind !== "settle").every((l) => l.simulated),
+		).toBe(true);
 	});
 });
 
