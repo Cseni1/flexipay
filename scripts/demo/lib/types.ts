@@ -95,9 +95,11 @@ export interface QuoteView {
 
 export interface BatchView {
 	id: string
+	organizationId: string
 	status: string
 	paymentIds: string[]
-	totals?: unknown
+	totals: { count: number }
+	createdAt: string
 }
 
 export interface ClaimView {
@@ -193,7 +195,7 @@ export interface DemoApi {
 	fund(paymentId: string): Promise<PaymentView>
 	payment(paymentId: string): Promise<PaymentView>
 	events(paymentId: string): Promise<EventView[]>
-	createBatch(rows: BatchRowInput[]): Promise<BatchView>
+	createBatch(rows: BatchRowInput[], feeMode: FeeMode): Promise<BatchView>
 	batch(batchId: string): Promise<BatchView>
 	claim(token: string): Promise<ClaimView>
 	acceptClaim(token: string, input: AcceptInput): Promise<PaymentView>

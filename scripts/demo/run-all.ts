@@ -2,8 +2,9 @@ import { spawnSync } from "node:child_process"
 import { join } from "node:path"
 import { REPO_ROOT } from "./lib/env.ts"
 
-// Runs every mock flow, plus DF3 on Stellar when --stellar is given. Each child prints its own
-// route/legs/result; this wrapper only aggregates the exit codes. BLOCKED (2) never becomes PASS.
+// Runs every flow in one settlement mode: mock by default, Stellar with --stellar. Each child
+// prints its own route/legs/result; this wrapper only aggregates the exit codes. BLOCKED (2)
+// never becomes PASS.
 
 interface Run {
 	id: string
@@ -11,16 +12,14 @@ interface Run {
 	args: string[]
 }
 
+const mode = process.argv.includes("--stellar") ? "stellar" : "mock"
 const runs: Run[] = [
 	{ id: "DF1", script: "df1-batch.ts", args: [] },
 	{ id: "DF2", script: "df2-one-off.ts", args: [] },
-	{ id: "DF3", script: "df3-claim.ts", args: ["--mode", "mock"] },
+	{ id: "DF3", script: "df3-claim.ts", args: ["--mode", mode] },
 	{ id: "DF4", script: "df4-failure.ts", args: [] },
 	{ id: "DF5", script: "df5-za-company.ts", args: [] },
 ]
-if (process.argv.includes("--stellar")) {
-	runs.push({ id: "DF3", script: "df3-claim.ts", args: ["--mode", "stellar"] })
-}
 
 const results: {
 	id: string
@@ -30,7 +29,6 @@ const results: {
 }[] = []
 
 for (const run of runs) {
-	const mode = run.args.includes("stellar") ? "stellar" : "mock"
 	console.log(`\n=== ${run.id} (${mode}) ===`)
 	const child = spawnSync(
 		process.execPath,
@@ -38,7 +36,7 @@ for (const run of runs) {
 		{
 			cwd: REPO_ROOT,
 			stdio: "inherit",
-			timeout: 180_000,
+			timeout: 300_000,
 			env: { ...process.env, FP_SETTLEMENT: mode },
 		},
 	)
@@ -56,7 +54,7 @@ for (const run of runs) {
 						: "ERROR",
 		code,
 	})
-	if (code === null) console.error(`${run.id}: timed out after 180 s`)
+	if (code === null) console.error(`${run.id}: timed out after 300 s`)
 }
 
 console.log("\n=== summary ===")

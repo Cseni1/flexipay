@@ -71,12 +71,12 @@ describe("FX conversion (CCR-4 §2 and §3)", () => {
 
 	it("never derives an inverse rate", async () => {
 		const adapter = adapterOf(fresh(), FX)
-		// USD>ZAR is configured; ZAR>USD is not, so this direction has no rate.
+		// ZAR>USD is configured, but ZAR>PHP is not, so this direction has no rate.
 		await expect(
 			adapter.quote({
 				kind: "convert",
 				amountIn: money("100000", "ZAR"),
-				outCurrency: "USD",
+				outCurrency: "PHP",
 			}),
 		).rejects.toMatchObject({ code: "no_fx_rate" })
 		expect(
@@ -84,7 +84,7 @@ describe("FX conversion (CCR-4 §2 and §3)", () => {
 				adapter.execute({
 					kind: "convert",
 					amountIn: money("100000", "ZAR"),
-					outCurrency: "USD",
+					outCurrency: "PHP",
 					paymentId: "pay_x",
 					legId: "leg_x",
 					attempt: 1,

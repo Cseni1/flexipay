@@ -3,11 +3,14 @@ import { fail, leg, record } from "./parse.ts"
 import type { EventView, LegView, PaymentView } from "./types.ts"
 
 // DF4 acceptance uses only published evidence: each leg.failed event carries Event.snapshot,
-// whose legs are Payment.legs. CCR-14 makes Leg.attempt the durable attempt source of truth.
-// A retry keeps status `processing`, increments attempt to 2 and may clear provider refs, so
-// distinct externalRef values are NOT required. The flow needs attempts 1 and 2, one retry and
-// no attempt 3, followed by payment.refunded. Missing snapshot legs/attempts are contract
-// defects, not a missing-route blocker; they fail acceptance instead of being inferred.
+// whose legs are the payment state when the event was emitted. CCR-14 makes Leg.attempt the
+// durable attempt source of truth. The API emits the leg.failed event before the leg's
+// processing→failed transition, so the snapshot payout may still read `processing`; the event
+// type itself is the failure. A retry keeps status `processing`, increments attempt to 2 and may
+// clear provider refs, so distinct externalRef values are NOT required. The flow needs attempts
+// 1 and 2, one retry and no attempt 3, followed by payment.refunded. Missing snapshot
+// legs/attempts are contract defects, not a missing-route blocker; they fail acceptance instead
+// of being inferred.
 
 function snapshotLegs(event: EventView, index: number): LegView[] {
 	if (event.snapshot === undefined) {
@@ -43,15 +46,17 @@ function failedPayoutAttempts(
 	expectedRail: string,
 ): { attempt: number; ref?: string }[] {
 	const legs = snapshotLegs(event, index)
+	// The snapshot is taken before processing→failed, so `processing` is the normal status here.
+	// A pending row is not the attempted leg; a succeeded row is rejected elsewhere.
 	const matches = legs.filter(
 		(candidate) =>
 			candidate.kind === "payout" &&
 			candidate.rail === expectedRail &&
-			candidate.status === "failed",
+			(candidate.status === "processing" || candidate.status === "failed"),
 	)
 	if (matches.length === 0) {
 		fail(
-			`DF4: events[${index}] is leg.failed but its snapshot has no failed ${expectedRail} payout leg`,
+			`DF4: events[${index}] is leg.failed but its snapshot has no in-flight or failed ${expectedRail} payout leg`,
 		)
 	}
 	const otherPayout = legs.find(

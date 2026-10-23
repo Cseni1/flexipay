@@ -6,10 +6,10 @@ import { BlockedError, Flow, runFlow } from "../demo/lib/report.ts"
 import { runSeed } from "./lib/runner.ts"
 
 // D2 seed/reset CLI. Both commands go through the API: reset uses A0's empty
-// SandboxResetRequestSchema; recipients use the mounted POST /v1/recipients route. Endpoint
-// creation is blocked until CC3b and A0 define it, so no database write and no invented body.
+// SandboxResetRequestSchema; recipients and endpoints use the merged CCR-16/17 routes. No
+// database write and no invented body.
 //
-//   node scripts/seed/seed.ts          reset, then create the neutral recipients
+//   node scripts/seed/seed.ts          reset, then create the neutral recipients and endpoints
 //   node scripts/seed/seed.ts reset    only POST /v1/sandbox/reset
 //
 // Exit codes match the demo scripts: 0 PASS, 1 FAIL, 2 BLOCKED.
@@ -20,7 +20,7 @@ const flow = new Flow({
 	title:
 		command === "reset"
 			? "Reset the demo through /v1/sandbox/reset"
-			: "Seed Demo Platform and Worker A to Worker D through the API",
+			: "Seed Demo Platform, Worker A to Worker D and their endpoints through the API",
 	mode: "mock",
 	evidenceDir: join(
 		process.env.FP_EVIDENCE_DIR?.trim() ||
@@ -68,6 +68,7 @@ const result = await runFlow(flow, async () => {
 	flow.check(`reset HTTP ${outcome.resetStatus}`)
 	if (command === "seed") {
 		flow.check(`${outcome.recipients.length} recipients seeded`)
+		flow.check(`${outcome.endpoints.length} endpoints seeded`)
 	}
 })
 

@@ -3,6 +3,11 @@
 **Status: defect reproduced; regression check prepared for the API owner. No
 API/domain change made.** This is branch evidence, not acceptance on `main`.
 
+**Follow-up:** on `main` `286d044` the duplicate-lock half is fixed (refs are
+persisted before the drift throw and replay never re-locks). CCR-15 durable
+failure/refund recovery is still open, and a drifted lock can still be paid
+through claim accept. See `2026-10-23-orphan-lock-286d044.md`.
+
 - Tested tree: lane-D `csenge-freebuff/D3-acceptance` at **`1a34c9f`** (merge of
   `origin/main` **`b06a814`**). API/domain files are identical to `b06a814`; the
   merge only reconciled lane-D files.

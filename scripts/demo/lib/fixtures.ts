@@ -125,6 +125,33 @@ export function loadFixtures(): Fixtures {
 	}
 }
 
+export const isCryptoEndpoint = (type: EndpointType): boolean =>
+	type === "crypto_wallet" || type === "crypto_custodial"
+
+/**
+ * CCR-16/17 wire fields. Crypto endpoints use an empty country and `stellar`; fiat endpoints use
+ * the fixture country and a null network. Details keys are contracted per endpoint type, so the
+ * synthetic fixture ref is mapped here and never sent as a free-form key.
+ */
+export function endpointWireFields(endpoint: FixtureEndpoint): {
+	country: string
+	network: "stellar" | null
+	details: Record<string, string>
+} {
+	const crypto = isCryptoEndpoint(endpoint.type)
+	const details: Record<string, string> =
+		endpoint.type === "bank_account"
+			? { accountNumber: endpoint.detailsRef }
+			: endpoint.type === "ewallet"
+				? { phoneNumber: endpoint.detailsRef }
+				: { address: endpoint.detailsRef }
+	return {
+		country: crypto ? "" : endpoint.country,
+		network: crypto ? "stellar" : null,
+		details,
+	}
+}
+
 export function workerOf(fixtures: Fixtures, ref: string): FixtureWorker {
 	const worker = fixtures.workers.find((w) => w.ref === ref)
 	if (!worker) throw new Error(`fixture worker ${ref} not found`)

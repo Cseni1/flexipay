@@ -48,6 +48,7 @@ await execute(
 				externalId: `df1-${runId}-${index + 1}`,
 				profile: "batch" as const,
 			})),
+			spec.feeMode,
 		)
 		if (created.paymentIds.length !== 3) {
 			fail(
