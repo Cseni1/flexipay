@@ -11,16 +11,26 @@ import {
 } from "@flexipay/web-lib/contract"
 
 // The web app only calls the v1 API (ARCHITECTURE §5, §10). Responses are validated with the
-// merged A0 schemas; no parallel quote or payment DTO is defined here.
-
-const baseUrl = (import.meta.env.FP_API_URL ?? "").replace(/\/+$/, "")
+// merged A0 schemas; no parallel quote or payment DTO is defined here. Every request is
+// same-origin: the local Vite proxy adds the server-side Bearer credential. Browser code never
+// reads FP_API_KEY nor sends an Authorization header.
 
 export const AUTH_NOT_CONFIGURED_MESSAGE =
-	"Frontend API authentication is not configured. Real quote, payment and funding calls are blocked until an approved frontend auth method exists."
+	"The local web proxy is not configured with a server-side API key. Set FP_API_KEY for the Vite server and restart it."
+
+export const API_KEY_REJECTED_MESSAGE =
+	"The API rejected the server-side key. Check FP_API_KEY and restart the Vite server."
+
+const AUTH_BLOCKED_CODES = new Set([
+	"auth_required",
+	"unauthorized",
+	"frontend_auth_not_configured",
+	"frontend_api_not_configured",
+])
 
 export const isAuthRequired = (error: unknown): error is ApiError =>
 	error instanceof ApiError &&
-	(error.status === 401 || error.code === "auth_required")
+	(error.status === 401 || AUTH_BLOCKED_CODES.has(error.code))
 
 interface Parser<T> {
 	parse: (value: unknown) => T
@@ -78,13 +88,13 @@ async function request<T>(
 	const headers = new Headers({ Accept: "application/json" })
 	if (options.body !== undefined)
 		headers.set("Content-Type", "application/json")
-	// No browser-side API key: an unauthenticated call gets the explicit 401 block.
+	// No browser-side auth header. The same-origin proxy owns the Bearer credential.
 	if (options.idempotencyKey)
 		headers.set("Idempotency-Key", options.idempotencyKey)
 
 	let response: Response
 	try {
-		response = await fetch(`${baseUrl}${path}`, {
+		response = await fetch(path, {
 			method: options.method ?? "GET",
 			headers,
 			body:
@@ -121,10 +131,12 @@ async function request<T>(
 			typeof record.code === "string" ? record.code : `http_${response.status}`
 		const message =
 			response.status === 401
-				? AUTH_NOT_CONFIGURED_MESSAGE
-				: typeof record.message === "string"
-					? record.message
-					: `API request failed (HTTP ${response.status}).`
+				? API_KEY_REJECTED_MESSAGE
+				: code === "frontend_auth_not_configured"
+					? AUTH_NOT_CONFIGURED_MESSAGE
+					: typeof record.message === "string"
+						? record.message
+						: `API request failed (HTTP ${response.status}).`
 		throw new ApiError(
 			response.status,
 			response.status === 401 ? "auth_required" : code,

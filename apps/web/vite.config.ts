@@ -2,9 +2,12 @@ import react from "@vitejs/plugin-react"
 import { defineConfig, loadEnv } from "vite"
 import { nodePolyfills } from "vite-plugin-node-polyfills"
 import wasm from "vite-plugin-wasm"
+import { apiProxyPlugin } from "./vite.proxy.ts"
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
+	// Vite's config runs in Node. FP_API_KEY is read here only for the local same-origin
+	// proxy; it is never put in `define`, `envPrefix` or any browser-visible value.
 	const env = loadEnv(mode, process.cwd(), "")
 
 	return {
@@ -17,6 +20,10 @@ export default defineConfig(({ mode }) => {
 				},
 			}),
 			wasm(),
+			apiProxyPlugin({
+				target: env.FP_API_URL,
+				apiKey: env.FP_API_KEY,
+			}),
 		],
 		build: {
 			target: "esnext",
@@ -26,11 +33,9 @@ export default defineConfig(({ mode }) => {
 		},
 		define: {
 			global: "window",
-			// Vite's envPrefix is a prefix, not an exact name. Inject only the exact public API
-			// base here so a longer FP_API_URL-name cannot enter the bundle.
-			"import.meta.env.FP_API_URL": JSON.stringify(env.FP_API_URL ?? ""),
 		},
-		// PUBLIC_* values are public Stellar configuration. No other FP_ value is exposed.
+		// PUBLIC_* values are public Stellar configuration. FP_API_URL and FP_API_KEY stay
+		// server-side; the clients call relative /v1 paths through the proxy.
 		envPrefix: ["PUBLIC_"],
 	}
 })
