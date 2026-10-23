@@ -1,0 +1,101 @@
+{
+	"simulated": true,
+	"placeholder": true,
+	"notes": [
+		"Placeholder amounts and routes from tests/e2e/SCENARIOS.md; the API's corridor config remains the runtime truth and every rail is asserted against the response.",
+		"Amounts are integer minor units with an explicit currency; USD has 2 decimals.",
+		"DF4 sets fail-next on the single BR payout provider so the first attempt and its one retry both fail, which must end in a vault refund."
+	],
+	"cryptoDestination": {
+		"mock": "MOCK-DESTINATION-DEMO",
+		"stellarEnv": "FP_RECIPIENT_A_ADDRESS",
+		"note": "No wallet address is committed. Stellar mode uses Worker A's published FP_RECIPIENT_A_ADDRESS and prints it masked."
+	},
+	"flows": {
+		"df1": {
+			"profile": "batch",
+			"rows": [
+				{
+					"workerRef": "worker-a",
+					"endpointRef": "worker-a-ewallet",
+					"send": { "amount": "15000", "currency": "USD" }
+				},
+				{
+					"workerRef": "worker-b",
+					"endpointRef": "worker-b-bank",
+					"send": { "amount": "20000", "currency": "USD" }
+				},
+				{
+					"workerRef": "worker-c",
+					"endpointRef": "worker-c-bank",
+					"send": { "amount": "5000", "currency": "USD" }
+				}
+			]
+		},
+		"df2": {
+			"profile": "one_off",
+			"workerRef": "worker-a",
+			"endpointRef": "worker-a-bank",
+			"send": { "amount": "25000", "currency": "USD" }
+		},
+		"df3": {
+			"profile": "one_off",
+			"delivery": "claim_link",
+			"workerRef": "worker-a",
+			"endpointRef": "worker-a-crypto",
+			"send": { "amount": "12000", "currency": "USD" }
+		},
+		"df4": {
+			"profile": "one_off",
+			"workerRef": "worker-b",
+			"endpointRef": "worker-b-bank",
+			"send": { "amount": "10000", "currency": "USD" }
+		},
+		"df5": {
+			"profile": "one_off",
+			"workerRef": "worker-d",
+			"endpointRef": "worker-d-bank",
+			"send": { "amount": "60000", "currency": "USD" }
+		}
+	},
+	"expectations": {
+		"df1": {
+			"us": {
+				"legs": ["collect", "payout"],
+				"collectRail": "sim_bank_us_ach",
+				"payoutRail": "sim_bank_us_ach",
+				"domesticRail": "sim_bank_us_ach"
+			},
+			"ph": {
+				"legs": ["collect", "convert", "settle", "convert", "payout"],
+				"payoutRail": "sim_ewallet_ph",
+				"settleRail": "stellar_usdc"
+			},
+			"br": {
+				"legs": ["collect", "convert", "settle", "convert", "payout"],
+				"payoutRail": "sim_bank_br_pix",
+				"settleRail": "stellar_usdc"
+			}
+		},
+		"df2": {
+			"legs": ["collect", "convert", "settle", "convert", "payout"],
+			"payoutRail": "sim_bank_ph_instapay",
+			"settleRail": "stellar_usdc"
+		},
+		"df3": {
+			"legs": ["collect", "convert", "settle"],
+			"settleRail": "stellar_usdc",
+			"claimType": "crypto_wallet"
+		},
+		"df4": {
+			"legs": ["collect", "convert", "settle", "convert", "payout"],
+			"payoutRail": "sim_bank_br_pix",
+			"failCount": 2,
+			"payoutAttempts": 2
+		},
+		"df5": {
+			"legs": ["collect", "convert", "payout"],
+			"payoutRail": "sim_bank_za_eft"
+		}
+	}
+}

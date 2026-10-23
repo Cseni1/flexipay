@@ -1,0 +1,7 @@
+{
+  "name": "@flexipay/e2e-harness",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Lane-D API acceptance flows and harness self-tests (not a workspace package)"
+}
