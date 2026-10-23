@@ -208,21 +208,26 @@ Status: **approved** by the project owner on 23 Oct 2026. The documents `PRODUCT
 - **Forbidden:** undocumented bypass of other `assertLegTransition` paths; treating text-only timelines as proof.
 - **Who implements:** CC2 (already close); expose `attempt` on A0 `LegSchema` this commit.
 
-## CCR-15: orphan-lock recovery after fee-drift (accepted, 23 Oct 2026)
+## CCR-15: orphan-lock recovery after fee-drift (accepted, 23 Oct 2026; claim bypass clarified)
 
-- **From:** integrator review of CC2 fee-drift path (`run.ts`); #32 follow-up.
-- **Status:** **accepted.** Persisting refs alone does **not** complete recovery.
+- **From:** integrator review of CC2 fee-drift path (`run.ts`); #32 / #46 follow-up; Freebuff public-API evidence on `main` `286d044` (`scripts/demo/evidence/2026-10-23-orphan-lock-286d044.md`).
+- **Status:** **accepted.** Persist+no-re-lock (#46) is **PARTIAL only**. End-to-end “never paid on drift” is **OPEN** until step 2–5 land. A UI guard is **not** a fix.
+- **Counters (do not conflate):**
+  - **`Payment.lockAttempt`** — vault lock-attempt counter. Derives the settle external id (`sha256("<paymentId>:<attempt>")`) and is the attempt argument to `findLock`. CCR-15 recovery keys off this.
+  - **`Leg.attempt`** — provider execute/retry counter (CCR-14: at most one payout retry). The settle lock path does **not** advance `Leg.attempt` for a vault lock. Reporting “attempt” for orphan-lock must say **`lockAttempt`**, not CCR-14 provider attempt.
 - **Required behavior:**
   1. **Persist first:** immediately after `lock` returns, write settle `externalRef = locked.payoutId` and `lockTxRef = locked.txRef` (and emit `payment.onchain` lock phase). **Then** compare `locked.fee` to quoted `flexiPayFee`.
-  2. **On fee mismatch after persist:** keep those refs; mark the settle leg **failed** (durable error); do **not** clear refs. Call **`refund_vault`** for that `payoutId` (same adapter path as payout failure) so funds are not left Pending forever. Then surface the drift error to the caller.
-  3. **Crash window** (lock succeeded, persist not yet written): before calling `lock` when `externalRef` is null, if this payment already advanced `lockAttempt`, call `SettlementAdapter.findLock(vaultPayer, paymentId, attempt)`. If a payout id is found, adopt it into `externalRef`/`lockTxRef` (`txRef` may stay null if unknown) and **skip** create/lock; continue with fee check / claim-wait. Never call `lock` again for the same `(paymentId, attempt)`.
-  4. **Replay when `externalRef` is set:** CCR-12 status/release path only; never re-lock.
-- **Who implements:** CC2 orchestrator (Csaba). Integrator reviews; does not duplicate CC2.
+  2. **On fee mismatch after persist:** keep those refs; mark the settle leg **`failed`** with a **durable** error (and a durable event/reason that names fee drift); do **not** clear refs. Call **`refund_vault`** for that `payoutId` (same adapter path as payout failure). Then surface the drift error to the caller (e.g. fund → 409). Payment must **not** be `paid`.
+  3. **Reject claim release** for that payment: `completeClaimSettle` / `POST /v1/claims/{token}/accept` must **not** release or mark `paid` when the settle leg is failed (or otherwise marked drift-failed). Leaving settle `processing` after drift is forbidden — that is the Freebuff bypass (claim accept 200 → `paid` at the mismatched on-chain fee).
+  4. **Refund failure:** if `refund_vault` throws, keep refs; leave settle **`failed`** with durable error that records both drift and refund failure; still reject claim release; do **not** re-lock on replay. Operator/recovery may retry refund later; silent Pending+claimable is forbidden.
+  5. **Replay** with durable refs: never re-fund / re-lock; never mark `paid` from fund or claim while drift-failed. Crash window: `findLock(vaultPayer, paymentId, lockAttempt)` as before.
+- **Acceptance before closing “never paid on drift”:** public-API reproduction (quote @ 100 bps → restart @ 50 bps → fund 409 → claim accept **must not** pay) **and** unit/orchestrator tests covering refund success, refund failure, and replay. Duplicate-lock prevention alone is insufficient.
+- **Who implements:** CC2 orchestrator + claim settle gate (Csaba). Integrator reviews; does not duplicate CC2.
 
 ## CCR-16: `POST/GET /v1/endpoints` (accepted, 23 Oct 2026)
 
 - **From:** #43 contract asks.
-- **Status:** **accepted and applied** (A0 schemas this commit).
+- **Status:** **accepted and applied** as A0 schemas/stubs (`ad9dc2c` / main via #45). **Executable Express routes are not on main until CC3b #43 mounts them** — seed/DF remain blocked on routes, not on missing schemas.
 - **Auth:** `api_key`.
 - **POST body:** `{ recipientId, type, country, currency, network, details, simulated: true }` with §6.3 country/network rules.
   - crypto (`crypto_wallet` | `crypto_custodial`): `country=""`, `network:"stellar"`, `details.address` (string).
@@ -243,7 +248,7 @@ Status: **approved** by the project owner on 23 Oct 2026. The documents `PRODUCT
 ## CCR-18: `POST/GET /v1/batches` (accepted, 23 Oct 2026)
 
 - **From:** #43 contract asks.
-- **Status:** **accepted and applied** (A0 schemas this commit).
+- **Status:** **accepted and applied** as A0 schemas/stubs (`ad9dc2c` / main via #45). **Routes still CC3b #43** (same as CCR-16).
 - **Auth:** `api_key`.
 - **POST body:** `{ feeMode, rows: [{ recipientId, endpointId, amount (Money), externalId, profile: "batch" }] }` (1..50 rows).
 - **Implementation rule:** create quote + payment **per row via the existing CC3a payment engine** (no second orchestrator).
