@@ -90,3 +90,13 @@ Status: **approved** by the project owner on 23 Oct 2026. The documents `PRODUCT
 7. **Baseline wallet** for recipients is a labelled custodial testnet wallet; no wallet connection. The passkey wallet replaces it at the event.
 8. **API contract first (task A0):** the zod schemas for quote, payment, claim, event and sandbox bodies are added to `packages/domain` before the other lanes build against them.
 9. **Lanes** replace named owners (DEV_PLAN section 2). Acceptance is a demo script per flow.
+
+## CCR-6: per-leg `simulated` on quote routes (proposed, 23 Oct 2026)
+
+- **From:** integrator (Csenge Cursor), after A0 merge and SC2 wiring.
+- **Status:** **proposed — awaiting Csaba (A0/CC1) confirmation before schema edit.** Do not apply until accepted.
+- **What:** change `PlannedLegSchema.simulated` from `z.literal(true)` to `z.boolean()` in `packages/domain/src/api/common.ts` (and regenerate OpenAPI stubs). Keep quote-level `QuoteSchema.simulated` as `z.literal(true)` for the MVP demo quote envelope unless CC1 needs otherwise.
+- **Why:** Architecture §1 / §11 and `config/providers.json` mark `stellar_usdc` with `simulated: false`. A0 currently forces every planned leg to `simulated: true`, so a truthful Stellar settle leg cannot appear on a quote. DF3 and judges must see the real testnet rail labelled correctly; inventing `true` for settle would weaken acceptance.
+- **Who is affected:** `packages/domain` A0 (Csaba), CC1 route selection (must set `simulated` from provider/rail config), lane C/D clients that display per-leg labels, OpenAPI.
+- **Out of scope:** changing `ClaimViewSchema.simulated` / claim-accept endpoint `simulated: true` (demo claim UX stays labelled simulated at the surface); settlement adapter behaviour.
+- **Acceptance once applied:** a US→PH crypto quote’s settle leg has `rail: stellar_usdc` and `simulated: false`; collect/convert/payout (when present) remain `simulated: true`. Unit test in `packages/domain/test/api-contract.test.ts` covers both.
