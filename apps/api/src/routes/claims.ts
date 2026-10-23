@@ -9,6 +9,7 @@ import { newId, sha256Hex } from "../ids.ts";
 import {
 	acceptFiatClaim,
 	ClaimNotWaitingError,
+	ClaimReleaseRefusedError,
 	completeClaimSettle,
 	expireClaimIfDue,
 	type OrchestratorAdapters,
@@ -151,6 +152,14 @@ export const claimRoutes: RouteDef<any, any>[] = [
 				// Validation (CCR-17) already guarantees details = { address }.
 				const address = ep.details.address!;
 				const settle = link.payment.legs.find((l) => l.kind === "settle");
+				// CCR-15: a failed / drift-failed settle leg is never released.
+				if (settle && (settle.status === "failed" || settle.errorCode === "fee_drift")) {
+					throw new ApiError(
+						409,
+						"settle_failed",
+						"the funds for this payment were returned; the claim cannot be accepted",
+					);
+				}
 				if (!settle || settle.status !== "processing") {
 					throw new ApiError(
 						409,
@@ -164,6 +173,9 @@ export const claimRoutes: RouteDef<any, any>[] = [
 						destination: address,
 					});
 				} catch (e) {
+					if (e instanceof ClaimReleaseRefusedError) {
+						throw new ApiError(409, "settle_failed", e.message);
+					}
 					// Release failed: claim stays `open`; payment stays `processing` (accepted ≠ paid).
 					const msg = e instanceof Error ? e.message : "release failed";
 					throw new ApiError(502, "release_failed", msg);
@@ -191,6 +203,13 @@ export const claimRoutes: RouteDef<any, any>[] = [
 				);
 			}
 			const settleLeg = link.payment.legs.find((l) => l.kind === "settle");
+			if (settleLeg && (settleLeg.status === "failed" || settleLeg.errorCode === "fee_drift")) {
+				throw new ApiError(
+					409,
+					"settle_failed",
+					"the funds for this payment were returned; the claim cannot be accepted",
+				);
+			}
 			if (link.payment.status !== "processing" || settleLeg?.status !== "succeeded") {
 				throw new ApiError(
 					409,
@@ -220,6 +239,9 @@ export const claimRoutes: RouteDef<any, any>[] = [
 					})
 				).status;
 			} catch (e) {
+				if (e instanceof ClaimReleaseRefusedError) {
+					throw new ApiError(409, "settle_failed", e.message);
+				}
 				if (e instanceof ClaimNotWaitingError) {
 					throw new ApiError(
 						409,

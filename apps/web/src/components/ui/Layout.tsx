@@ -1,4 +1,4 @@
-import { type ReactNode } from "react"
+import { type HTMLAttributes, type ReactNode } from "react"
 
 export function Page({ children }: { children: ReactNode }) {
 	return <div className="page">{children}</div>
@@ -44,12 +44,13 @@ export function Grid({
 export function Notice({
 	children,
 	tone = "info",
+	...props
 }: {
 	children: ReactNode
 	tone?: "info" | "warning"
-}) {
+} & Omit<HTMLAttributes<HTMLParagraphElement>, "children">) {
 	return (
-		<p className={`notice notice--${tone}`} role="note">
+		<p className={`notice notice--${tone}`} role="note" {...props}>
 			{children}
 		</p>
 	)
