@@ -55,6 +55,8 @@ test.describe("CF0 web shell", () => {
 			.getByRole("button", { name: "More information: Route selection" })
 			.click()
 
-		await expect(page.getByRole("note")).toContainText("ineligible")
+		await expect(page.locator(".info-popover__panel")).toContainText(
+			"ineligible",
+		)
 	})
 })

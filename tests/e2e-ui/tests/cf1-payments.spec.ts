@@ -23,6 +23,8 @@ async function mockApi(page: Page, options: MockOptions = {}) {
 		funds: 0,
 		paymentKey: "",
 		fundKey: "",
+		quoteAuthHeader: undefined as string | undefined,
+		createAuthHeader: undefined as string | undefined,
 	}
 	let funded = options.startProcessing ?? false
 
@@ -35,6 +37,7 @@ async function mockApi(page: Page, options: MockOptions = {}) {
 	await page.route(/\/v1\/quotes$/, async (route) => {
 		if (route.request().method() !== "POST") return route.fallback()
 		counts.quotes += 1
+		counts.quoteAuthHeader = route.request().headers()["authorization"]
 		if (options.quoteDelayMs) {
 			await new Promise((resolve) => setTimeout(resolve, options.quoteDelayMs))
 		}
@@ -52,6 +55,7 @@ async function mockApi(page: Page, options: MockOptions = {}) {
 		if (route.request().method() !== "POST") return route.fallback()
 		counts.creates += 1
 		counts.paymentKey = route.request().headers()["idempotency-key"] ?? ""
+		counts.createAuthHeader = route.request().headers()["authorization"]
 		if (options.createDelayMs) {
 			await new Promise((resolve) => setTimeout(resolve, options.createDelayMs))
 		}
@@ -138,6 +142,29 @@ test.describe("CF1 payments", () => {
 		expect(counts.funds).toBe(1)
 		expect(counts.paymentKey).toBe("payment-quo_1")
 		expect(counts.fundKey).toBe("fund-pay_1")
+		expect(counts.quoteAuthHeader).toBeUndefined()
+		expect(counts.createAuthHeader).toBeUndefined()
+	})
+
+	test("a 401 blocks real quote actions and shows the auth blocker", async ({
+		page,
+	}) => {
+		await mockApi(page, {
+			quoteError: {
+				status: 401,
+				body: { code: "unauthorized", message: "Unknown or revoked API key" },
+			},
+		})
+		await page.goto("/")
+		await fillQuoteForm(page)
+		await page.getByRole("button", { name: "Get quote" }).click()
+
+		await expect(
+			page.getByText(/Frontend API authentication is not configured/).first(),
+		).toBeVisible()
+		await expect(
+			page.getByRole("button", { name: "Authentication required" }),
+		).toBeDisabled()
 	})
 
 	test("an expired quote cannot create a payment", async ({ page }) => {
@@ -196,7 +223,9 @@ test.describe("CF1 payments", () => {
 		await page.goto("/")
 		await fillQuoteForm(page)
 		await page.getByRole("button", { name: "Get quote" }).click()
-		await expect(page.getByRole("heading", { name: "Chosen route" })).toBeVisible()
+		await expect(
+			page.getByRole("heading", { name: "Chosen route" }),
+		).toBeVisible()
 
 		await page.getByRole("button", { name: "Create payment" }).dblclick()
 		await expect(page).toHaveURL(/\/payments\/pay_1$/)

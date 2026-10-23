@@ -13,8 +13,14 @@ import {
 // The web app only calls the v1 API (ARCHITECTURE §5, §10). Responses are validated with the
 // merged A0 schemas; no parallel quote or payment DTO is defined here.
 
-const baseUrl = (import.meta.env.PUBLIC_API_URL ?? "").replace(/\/+$/, "")
-const apiKey = import.meta.env.PUBLIC_API_KEY?.trim()
+const baseUrl = (import.meta.env.FP_API_URL ?? "").replace(/\/+$/, "")
+
+export const AUTH_NOT_CONFIGURED_MESSAGE =
+	"Frontend API authentication is not configured. Real quote, payment and funding calls are blocked until an approved frontend auth method exists."
+
+export const isAuthRequired = (error: unknown): error is ApiError =>
+	error instanceof ApiError &&
+	(error.status === 401 || error.code === "auth_required")
 
 interface Parser<T> {
 	parse: (value: unknown) => T
@@ -72,7 +78,7 @@ async function request<T>(
 	const headers = new Headers({ Accept: "application/json" })
 	if (options.body !== undefined)
 		headers.set("Content-Type", "application/json")
-	if (apiKey) headers.set("Authorization", `Bearer ${apiKey}`)
+	// No browser-side API key: an unauthenticated call gets the explicit 401 block.
 	if (options.idempotencyKey)
 		headers.set("Idempotency-Key", options.idempotencyKey)
 
@@ -114,10 +120,17 @@ async function request<T>(
 		const code =
 			typeof record.code === "string" ? record.code : `http_${response.status}`
 		const message =
-			typeof record.message === "string"
-				? record.message
-				: `API request failed (HTTP ${response.status}).`
-		throw new ApiError(response.status, code, message, record.details)
+			response.status === 401
+				? AUTH_NOT_CONFIGURED_MESSAGE
+				: typeof record.message === "string"
+					? record.message
+					: `API request failed (HTTP ${response.status}).`
+		throw new ApiError(
+			response.status,
+			response.status === 401 ? "auth_required" : code,
+			message,
+			record.details,
+		)
 	}
 
 	try {

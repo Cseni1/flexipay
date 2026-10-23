@@ -24,5 +24,7 @@ export default defineConfig({
 	define: {
 		global: "window",
 	},
-	envPrefix: "PUBLIC_",
+	// Only the existing FP_API_URL name is exposed from the FP_ namespace; no FP_ secret
+	// (deployer, payer, recipient) may enter the browser bundle.
+	envPrefix: ["PUBLIC_", "FP_API_URL"],
 })

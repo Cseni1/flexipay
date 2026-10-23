@@ -15,6 +15,7 @@ interface QuotePanelProps {
 	onDeliveryChange: (delivery: Delivery) => void
 	onCreate: () => void
 	creating: boolean
+	authBlocked: boolean
 	expired: boolean
 	validityLabel: string
 	createError: string | null
@@ -33,6 +34,7 @@ export function QuotePanel({
 	onDeliveryChange,
 	onCreate,
 	creating,
+	authBlocked,
 	expired,
 	validityLabel,
 	createError,
@@ -236,8 +238,15 @@ export function QuotePanel({
 					{createError ? <Notice tone="warning">{createError}</Notice> : null}
 
 					<div className="form-actions">
-						<Button disabled={expired || creating} onClick={onCreate}>
-							{creating ? "Creating…" : "Create payment"}
+						<Button
+							disabled={expired || creating || authBlocked}
+							onClick={onCreate}
+						>
+							{creating
+								? "Creating…"
+								: authBlocked
+									? "Authentication required"
+									: "Create payment"}
 						</Button>
 						<span className="form-note">
 							{creating

@@ -1,7 +1,13 @@
 import { formatMoney } from "@flexipay/web-lib"
 import { useEffect, useRef, useState } from "react"
 import { useParams } from "react-router-dom"
-import { ApiError, describeApiError, fundPayment } from "../api/client"
+import {
+	AUTH_NOT_CONFIGURED_MESSAGE,
+	ApiError,
+	describeApiError,
+	fundPayment,
+	isAuthRequired,
+} from "../api/client"
 import { EventLog } from "../components/payments/EventLog"
 import { LegTimeline } from "../components/payments/LegTimeline"
 import {
@@ -31,13 +37,16 @@ export default function PaymentDetail() {
 	const { payment, error, loading, refresh } = usePaymentDetail(paymentId)
 	const [funding, setFunding] = useState(false)
 	const [fundError, setFundError] = useState<string | null>(null)
+	const [fundAuthBlocked, setFundAuthBlocked] = useState(false)
 	const fundLock = useRef(false)
 	const fundAbort = useRef<AbortController | null>(null)
 
 	useEffect(() => () => fundAbort.current?.abort(), [])
 
+	const authBlocked = fundAuthBlocked || isAuthRequired(error)
+
 	const handleFund = async () => {
-		if (!payment || fundLock.current) return
+		if (!payment || fundLock.current || authBlocked) return
 		if (payment.status !== "awaiting_funding" && payment.status !== "quoted")
 			return
 		fundLock.current = true
@@ -50,6 +59,7 @@ export default function PaymentDetail() {
 			refresh()
 		} catch (cause) {
 			if (controller.signal.aborted) return
+			if (isAuthRequired(cause)) setFundAuthBlocked(true)
 			setFundError(
 				cause instanceof ApiError
 					? `Funding failed: ${describeApiError(cause)}`
@@ -67,7 +77,8 @@ export default function PaymentDetail() {
 	const firstLeg = payment?.legs[0]
 	const settleLeg = payment?.legs.find((leg) => leg.kind === "settle")
 	const lastLeg = payment?.legs.at(-1)
-	const canFund = status === "awaiting_funding" || status === "quoted"
+	const canFund =
+		(status === "awaiting_funding" || status === "quoted") && !authBlocked
 	const polling = status ? POLLING_STATUSES.has(status) : false
 
 	return (
@@ -82,6 +93,8 @@ export default function PaymentDetail() {
 					</Button>
 				}
 			/>
+
+			<Notice tone="warning">{AUTH_NOT_CONFIGURED_MESSAGE}</Notice>
 
 			{error && !payment ? (
 				<Panel title="Payment">
@@ -116,9 +129,10 @@ export default function PaymentDetail() {
 							footer={
 								canFund ? (
 									<div className="form-actions">
+										{" "}
 										<Button
 											onClick={() => void handleFund()}
-											disabled={funding}
+											disabled={funding || authBlocked}
 										>
 											{funding ? "Funding…" : "Fund payment"}
 										</Button>

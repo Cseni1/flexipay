@@ -9,11 +9,13 @@ import {
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import {
+	AUTH_NOT_CONFIGURED_MESSAGE,
 	ApiError,
 	createPayment,
 	createQuote,
 	createRecipient,
 	describeApiError,
+	isAuthRequired,
 } from "../api/client"
 import { QuotePanel } from "../components/payments/QuotePanel"
 import {
@@ -93,6 +95,7 @@ export default function SendPayment() {
 	const [formError, setFormError] = useState<string | null>(null)
 	const [creating, setCreating] = useState(false)
 	const [createError, setCreateError] = useState<string | null>(null)
+	const [authBlocked, setAuthBlocked] = useState(false)
 	const [delivery, setDelivery] = useState<Delivery>("direct")
 	const quoteLock = useRef(false)
 	const createLock = useRef(false)
@@ -131,7 +134,7 @@ export default function SendPayment() {
 
 	const handleQuote = async (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault()
-		if (quoteLock.current) return
+		if (quoteLock.current || authBlocked) return
 
 		const amount = parseUsdInput(form.amount)
 		if (amount === null || BigInt(amount) <= 0n) {
@@ -177,6 +180,7 @@ export default function SendPayment() {
 		} catch (cause) {
 			if (controller.signal.aborted || requestId !== quoteRequest.current)
 				return
+			if (isAuthRequired(cause)) setAuthBlocked(true)
 			setQuoteError(
 				cause instanceof ApiError
 					? cause
@@ -195,7 +199,7 @@ export default function SendPayment() {
 	}
 
 	const handleCreate = async () => {
-		if (!quote || countdown.expired || createLock.current) return
+		if (!quote || countdown.expired || createLock.current || authBlocked) return
 		createLock.current = true
 		setCreating(true)
 		setCreateError(null)
@@ -225,6 +229,7 @@ export default function SendPayment() {
 			void navigate(`/payments/${encodeURIComponent(payment.id)}`)
 		} catch (cause) {
 			if (controller.signal.aborted) return
+			if (isAuthRequired(cause)) setAuthBlocked(true)
 			setCreateError(
 				cause instanceof ApiError
 					? `Payment creation failed: ${describeApiError(cause)}`
@@ -252,6 +257,8 @@ export default function SendPayment() {
 					</InfoPopover>
 				}
 			/>
+
+			<Notice tone="warning">{AUTH_NOT_CONFIGURED_MESSAGE}</Notice>
 
 			<Grid>
 				<Panel
@@ -326,8 +333,12 @@ export default function SendPayment() {
 						) : null}
 
 						<div className="form-actions">
-							<Button type="submit" disabled={quotePending}>
-								{quotePending ? "Getting quote…" : "Get quote"}
+							<Button type="submit" disabled={quotePending || authBlocked}>
+								{quotePending
+									? "Getting quote…"
+									: authBlocked
+										? "Authentication required"
+										: "Get quote"}
 							</Button>
 							<span className="form-note">
 								The quote is simulated and expires; no payment is created yet.
@@ -342,6 +353,7 @@ export default function SendPayment() {
 					onDeliveryChange={setDelivery}
 					onCreate={() => void handleCreate()}
 					creating={creating}
+					authBlocked={authBlocked}
 					expired={countdown.expired}
 					validityLabel={countdown.label}
 					createError={createError}
