@@ -158,12 +158,44 @@ function registry(
 	return map;
 }
 
-function deps(over: Record<string, "up" | "down"> = {}) {
+function deps(
+	over: Record<string, "up" | "down"> = {},
+	feeMode: "PayerPays" | "RecipientPays" = "RecipientPays",
+) {
 	const providers = registry(over);
 	return {
 		config,
 		getProvider: (id: string) => providers.get(id),
 		vaultFeeBps: VAULT_FEE_BPS,
+		// Explicit test injection — not an accepted product default (integrator decision).
+		vaultFeeMode: feeMode,
+		now: () => T0,
+		quoteId: () => "quo_test_1",
+	};
+}
+
+/** Zero foreign payout fee so fees.total can close under current directional FX rates. */
+function depsZeroPayoutFee(
+	payoutId: string,
+	feeMode: "PayerPays" | "RecipientPays" = "RecipientPays",
+) {
+	const providers = registry();
+	const row = config.providers.find((p) => p.id === payoutId)!;
+	providers.set(
+		payoutId,
+		mockAdapter(
+			{
+				...row,
+				fee: { fixed: { amount: "0", currency: row.fee.fixed.currency }, bps: 0 },
+			},
+			config.fxRates,
+		),
+	);
+	return {
+		config,
+		getProvider: (id: string) => providers.get(id),
+		vaultFeeBps: VAULT_FEE_BPS,
+		vaultFeeMode: feeMode,
 		now: () => T0,
 		quoteId: () => "quo_test_1",
 	};
@@ -301,6 +333,42 @@ describe("checkEligibility exclusions", () => {
 		);
 		expect(r.ok).toBe(false);
 	});
+
+	it("rejects ambiguous crypto when destination.country is empty (PH and BR both match)", () => {
+		const r = checkEligibility(
+			sendReq({
+				destination: {
+					type: "crypto_wallet",
+					currency: "USDC",
+					country: "",
+					recipientKind: "individual",
+				},
+			}),
+			config,
+		);
+		expect(r.ok).toBe(false);
+		if (!r.ok) {
+			expect(r.reasons.join(" ")).toMatch(/Ambiguous crypto corridor/);
+			expect(r.reasons.join(" ")).toMatch(/US-PH/);
+			expect(r.reasons.join(" ")).toMatch(/US-BR/);
+		}
+	});
+
+	it("accepts crypto when destination.country selects a unique corridor", () => {
+		const r = checkEligibility(
+			sendReq({
+				destination: {
+					type: "crypto_wallet",
+					currency: "USDC",
+					country: "PH",
+					recipientKind: "individual",
+				},
+			}),
+			config,
+		);
+		expect(r.ok).toBe(true);
+		if (r.ok) expect(r.corridor.to.country).toBe("PH");
+	});
 });
 
 describe("buildQuote corridors", () => {
@@ -330,8 +398,107 @@ describe("buildQuote corridors", () => {
 		expect(q.validUntil).toBe("2026-10-23T12:02:00.000Z");
 	});
 
-	it("PH bank: five legs with two convert legs", async () => {
-		// ~500 USD stays under sim_bank_ph_instapay max (50_000.00 PHP).
+	it("PH bank with real config fees: blocks fees.total (no PHP>USD rate)", async () => {
+		// Concrete send 500.00 USD — leg chain under real providers.json (evidence for review).
+		const providers = registry();
+		const send = money("50000", "USD");
+		const collect = await providers.get("sim_bank_us_ach")!.quote({
+			kind: "collect",
+			amountIn: send,
+			outCurrency: "USD",
+		});
+		const convert1 = await providers.get("sim_fx")!.quote({
+			kind: "convert",
+			amountIn: collect.amountOut,
+			outCurrency: "USDC",
+		});
+		const settleIn = convert1.amountOut;
+		const vaultFee = applyBps(settleIn, VAULT_FEE_BPS);
+		const settleOut = subtractMoney(settleIn, vaultFee);
+		const convert2 = await providers.get("sim_fx")!.quote({
+			kind: "convert",
+			amountIn: settleOut,
+			outCurrency: "PHP",
+		});
+		const payout = await providers.get("sim_bank_ph_instapay")!.quote({
+			kind: "payout",
+			amountIn: convert2.amountOut,
+			outCurrency: "PHP",
+			endpoint: {
+				endpointId: "quote_dest",
+				type: "bank_account",
+				country: "PH",
+				currency: "PHP",
+			},
+		});
+		// amountIn/out and fee per leg (minor units):
+		expect({
+			collect: { in: send, out: collect.amountOut, fee: collect.fee },
+			convert1: {
+				in: collect.amountOut,
+				out: convert1.amountOut,
+				fee: convert1.fee,
+			},
+			settle: { in: settleIn, out: settleOut, fee: vaultFee },
+			convert2: {
+				in: settleOut,
+				out: convert2.amountOut,
+				fee: convert2.fee,
+			},
+			payout: {
+				in: convert2.amountOut,
+				out: payout.amountOut,
+				fee: payout.fee,
+			},
+		}).toEqual({
+			collect: {
+				in: money("50000", "USD"),
+				out: money("50000", "USD"),
+				fee: money("0", "USD"),
+			},
+			convert1: {
+				in: money("50000", "USD"),
+				out: money("4962562500", "USDC"),
+				fee: money("125", "USD"),
+			},
+			settle: {
+				in: money("4962562500", "USDC"),
+				out: money("4912936875", "USDC"),
+				fee: money("49625625", "USDC"),
+			},
+			convert2: {
+				in: money("4912936875", "USDC"),
+				out: money("2730644", "PHP"),
+				fee: money("12282342", "USDC"),
+			},
+			payout: {
+				in: money("2730644", "PHP"),
+				out: money("2715491", "PHP"),
+				// fixed 1500 PHP + 50 bps of input, rounded down
+				fee: money("15153", "PHP"),
+			},
+		});
+		// Convertible into USD total with existing rates: 0 + 125 + convertMoney(USDC fees) + vault.
+		// Payout 28642 PHP has no PHP>USD rate → must not be omitted.
+		const result = await buildQuote(
+			sendReq({
+				destination: {
+					type: "bank_account",
+					currency: "PHP",
+					country: "PH",
+					recipientKind: "individual",
+				},
+				amount: { side: "send", value: send },
+			}),
+			deps(),
+		);
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reasons.join(" ")).toMatch(/PHP>USD/);
+		expect(result.reasons.join(" ")).toMatch(/fees\.total/);
+	});
+
+	it("PH bank with zero payout fee: five legs, two converts, complete total", async () => {
 		const result = await buildQuote(
 			sendReq({
 				destination: {
@@ -342,7 +509,7 @@ describe("buildQuote corridors", () => {
 				},
 				amount: { side: "send", value: money("50000", "USD") },
 			}),
-			deps(),
+			depsZeroPayoutFee("sim_bank_ph_instapay"),
 		);
 		if (!result.ok) {
 			expect.fail(`PH bank quote failed: ${result.reasons.join(" | ")}`);
@@ -364,14 +531,14 @@ describe("buildQuote corridors", () => {
 		expect(result.quote.route[4]?.providerId).toBe("sim_bank_ph_instapay");
 		expect(result.quote.expectedReceive.currency).toBe("PHP");
 		expect(result.quote.fees.flexiPayFee.currency).toBe("USDC");
-		// Vault fee depends on settle input, not a hardcoded 1% of send.
 		const settleFee = result.quote.fees.legs.find((l) => l.kind === "settle")!.fee;
 		expect(result.quote.fees.flexiPayFee).toEqual(settleFee);
-		expect(BigInt(settleFee.amount)).toBeGreaterThan(0n);
+		expect(result.quote.fees.total.currency).toBe("USD");
+		// Every non-settle leg fee + vault fee is folded into total (payout fee is 0).
+		expect(BigInt(result.quote.fees.total.amount)).toBeGreaterThan(0n);
 	});
 
-	it("PH e-wallet uses sim_ewallet_ph", async () => {
-		// E-wallet max is 10_000.00 PHP — keep send small.
+	it("PH e-wallet uses sim_ewallet_ph when payout fee is zeroed for total", async () => {
 		const result = await buildQuote(
 			sendReq({
 				destination: {
@@ -382,14 +549,14 @@ describe("buildQuote corridors", () => {
 				},
 				amount: { side: "send", value: money("10000", "USD") },
 			}),
-			deps(),
+			depsZeroPayoutFee("sim_ewallet_ph"),
 		);
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
 		expect(result.quote.route.at(-1)?.providerId).toBe("sim_ewallet_ph");
 	});
 
-	it("BR bank: five-leg Stellar route", async () => {
+	it("BR bank: five-leg Stellar route when payout fee is zeroed for total", async () => {
 		const result = await buildQuote(
 			sendReq({
 				destination: {
@@ -400,7 +567,7 @@ describe("buildQuote corridors", () => {
 				},
 				amount: { side: "send", value: money("100000", "USD") },
 			}),
-			deps(),
+			depsZeroPayoutFee("sim_bank_br_pix"),
 		);
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
@@ -442,6 +609,7 @@ describe("buildQuote corridors", () => {
 	});
 
 	it("ZA bank: collect → convert → payout, no settle; company crypto reason", async () => {
+		// Real ZA payout fee is ZAR with no ZAR>USD rate — zero it so total can close.
 		const result = await buildQuote(
 			sendReq({
 				destination: {
@@ -452,7 +620,7 @@ describe("buildQuote corridors", () => {
 				},
 				amount: { side: "send", value: money("100000", "USD") },
 			}),
-			deps(),
+			depsZeroPayoutFee("sim_bank_za_eft"),
 		);
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
@@ -468,6 +636,24 @@ describe("buildQuote corridors", () => {
 				/Crypto leg not allowed for company/i.test(r),
 			),
 		).toBe(true);
+	});
+
+	it("ZA bank with real payout fee blocks fees.total (no ZAR>USD rate)", async () => {
+		const result = await buildQuote(
+			sendReq({
+				destination: {
+					type: "bank_account",
+					currency: "ZAR",
+					country: "ZA",
+					recipientKind: "individual",
+				},
+				amount: { side: "send", value: money("100000", "USD") },
+			}),
+			deps(),
+		);
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reasons.join(" ")).toMatch(/ZAR>USD/);
 	});
 
 	it("excludes a down provider and fails when no healthy alternative", async () => {
@@ -533,7 +719,7 @@ describe("buildQuote corridors", () => {
 				},
 				amount: { side: "send", value: money("50000", "USD") },
 			}),
-			deps(),
+			depsZeroPayoutFee("sim_bank_ph_instapay"),
 		);
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
@@ -550,8 +736,8 @@ describe("buildQuote corridors", () => {
 		const result = await buildQuote(
 			sendReq({
 				destination: {
-					type: "bank_account",
-					currency: "PHP",
+					type: "crypto_wallet",
+					currency: "USDC",
 					country: "PH",
 					recipientKind: "individual",
 				},
@@ -595,6 +781,7 @@ describe("buildQuote corridors", () => {
 				config,
 				getProvider: wrappedGet,
 				vaultFeeBps: 250,
+				vaultFeeMode: "RecipientPays",
 				now: () => T0,
 				quoteId: () => "quo_vault",
 			},
@@ -605,8 +792,32 @@ describe("buildQuote corridors", () => {
 		expect(result.quote.fees.flexiPayFee).toEqual(
 			result.quote.fees.legs.find((l) => l.kind === "settle")!.fee,
 		);
-		// 250 bps of settle input — different from the default 100 bps fixture.
 		expect(BigInt(result.quote.fees.flexiPayFee.amount)).toBeGreaterThan(0n);
+	});
+
+	it("vault fee mode changes settle amountOut (PayerPays vs RecipientPays); fee applied once", async () => {
+		const req = sendReq({
+			destination: {
+				type: "crypto_wallet",
+				currency: "USDC",
+				country: "PH",
+				recipientKind: "individual",
+			},
+			amount: { side: "send", value: money("100000", "USD") },
+		});
+		const recipient = await buildQuote(req, deps({}, "RecipientPays"));
+		const payer = await buildQuote(req, deps({}, "PayerPays"));
+		expect(recipient.ok && payer.ok).toBe(true);
+		if (!recipient.ok || !payer.ok) return;
+		expect(recipient.quote.fees.flexiPayFee).toEqual(payer.quote.fees.flexiPayFee);
+		expect(
+			BigInt(payer.quote.expectedReceive.amount),
+		).toBeGreaterThan(BigInt(recipient.quote.expectedReceive.amount));
+		// Difference equals the vault fee (single deduction under RecipientPays).
+		expect(
+			BigInt(payer.quote.expectedReceive.amount) -
+				BigInt(recipient.quote.expectedReceive.amount),
+		).toBe(BigInt(recipient.quote.fees.flexiPayFee.amount));
 	});
 });
 
