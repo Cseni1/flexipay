@@ -7,12 +7,10 @@ import {
 	type ClaimView,
 } from "@flexipay/web-lib/claim-contract"
 
-// Public claim routes use the same FP_API_URL base as the payment client. An empty value means
-// same-origin, which is what the fixture tests use. The raw claim token comes from the URL and
-// is used only in the request path: it is never logged, stored in browser storage or sent
-// elsewhere.
-
-const baseUrl = (import.meta.env.FP_API_URL ?? "").replace(/\/+$/, "")
+// Public claim routes are same-origin and use their own client: no Authorization header is
+// ever set here, and the Vite proxy forwards claims upstream without one. The raw claim token
+// comes from the URL and is used only in the request path: it is never logged, stored in
+// browser storage or sent elsewhere.
 
 export class ClaimApiError extends Error {
 	readonly status: number
@@ -64,7 +62,7 @@ async function claimRequest<T>(
 
 	let response: Response
 	try {
-		response = await fetch(`${baseUrl}${path}`, {
+		response = await fetch(path, {
 			method: options.method ?? "GET",
 			headers,
 			body:
