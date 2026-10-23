@@ -7,7 +7,6 @@ import {
   ProfileSchema,
 } from "./common.ts";
 import { EventSchema } from "./events.ts";
-import { QuoteSchema } from "./quotes.ts";
 
 // POST/GET /v1/payments and /v1/payments/{id} (ARCHITECTURE §6.5, §6.6, §7, §10).
 
@@ -68,9 +67,8 @@ export const PaymentListResponseSchema = z
 
 export type PaymentListResponse = z.infer<typeof PaymentListResponseSchema>;
 
-/** GET /v1/payments/{id} — payment with legs and timeline events (§10). */
+/** GET /v1/payments/{id} — payment with legs and events (§10). No embedded quote. */
 export const PaymentDetailSchema = PaymentSchema.extend({
-  quote: QuoteSchema.optional(),
   events: z.array(EventSchema),
 }).strict();
 

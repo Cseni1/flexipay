@@ -26,7 +26,7 @@ type PathOp = {
   summary: string;
   auth: "api_key" | "none";
   body?: z.ZodType;
-  success: { status: 200 | 201; schema: z.ZodType };
+  success: { status: 200 | 201; schema?: z.ZodType };
 };
 
 function addPath(
@@ -35,7 +35,10 @@ function addPath(
   opts: { include422?: boolean } = {},
 ) {
   const responses: Record<string, unknown> = {
-    [r.success.status]: { description: "Success", content: json(r.success.schema) },
+    [r.success.status]: {
+      description: "Success",
+      ...(r.success.schema ? { content: json(r.success.schema) } : {}),
+    },
     "400": { description: "Invalid request", content: { "application/json": { schema: ERROR_SCHEMA } } },
   };
   if (r.auth === "api_key") {

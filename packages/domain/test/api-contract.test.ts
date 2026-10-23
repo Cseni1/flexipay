@@ -10,7 +10,6 @@ import {
   PaymentDetailSchema,
   PaymentSchema,
   QuoteSchema,
-  SandboxAdvanceTimeRequestSchema,
   SandboxFailNextRequestSchema,
 } from "../src/index.ts";
 
@@ -186,6 +185,18 @@ describe("A0 payment schemas", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("PaymentDetail is payment plus events only (no embedded quote)", () => {
+    const detail = PaymentDetailSchema.parse({ ...payment, events: [] });
+    expect(detail).not.toHaveProperty("quote");
+    expect(
+      PaymentDetailSchema.safeParse({
+        ...payment,
+        events: [],
+        quote: validQuote,
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe("A0 claim and event schemas", () => {
@@ -246,16 +257,19 @@ describe("A0 claim and event schemas", () => {
 });
 
 describe("A0 sandbox schemas", () => {
-  it("accepts fail-next and advance-time shapes", () => {
+  it("accepts fail-next shaped from ARCHITECTURE §10 and CCR-4", () => {
     expect(
       SandboxFailNextRequestSchema.parse({ providerId: "sim_bank_br_pix", count: 1 }).count,
     ).toBe(1);
-    expect(SandboxAdvanceTimeRequestSchema.parse({ seconds: 120 }).seconds).toBe(120);
   });
 
-  it("rejects non-positive advance seconds", () => {
-    expect(SandboxAdvanceTimeRequestSchema.safeParse({ seconds: 0 }).success).toBe(false);
-    expect(SandboxAdvanceTimeRequestSchema.safeParse({ seconds: 1.5 }).success).toBe(false);
+  it("lists advance-time as a path stub without a contracted body schema", () => {
+    const advance = A0_OPENAPI_STUBS.find(
+      (s) => s.path === "/v1/sandbox/advance-time" && s.method === "post",
+    );
+    expect(advance).toBeDefined();
+    expect(advance?.body).toBeUndefined();
+    expect(advance?.success.schema).toBeUndefined();
   });
 });
 

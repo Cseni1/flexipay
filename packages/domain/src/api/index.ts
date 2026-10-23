@@ -69,14 +69,10 @@ export {
 } from "./events.ts";
 
 export {
-  SandboxAdvanceTimeRequestSchema,
-  SandboxAdvanceTimeResponseSchema,
   SandboxFailNextRequestSchema,
   SandboxOkSchema,
   SandboxProviderHealthRequestSchema,
   SandboxResetRequestSchema,
-  type SandboxAdvanceTimeRequest,
-  type SandboxAdvanceTimeResponse,
   type SandboxFailNextRequest,
   type SandboxOk,
   type SandboxProviderHealthRequest,

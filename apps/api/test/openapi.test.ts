@@ -38,6 +38,18 @@ describe("OpenAPI", () => {
     expect(quote.requestBody.content["application/json"].schema.additionalProperties).toBe(false);
   });
 
+  it("does not overwrite mounted route docs with stubs", () => {
+    const recipients = doc.paths["/v1/recipients"].post as any;
+    expect(recipients.summary).toBe("Create a recipient");
+    expect(Object.keys(recipients.responses).sort()).toEqual(["201", "400", "401", "409"]);
+  });
+
+  it("documents advance-time without a contracted request/response body", () => {
+    const advance = doc.paths["/v1/sandbox/advance-time"].post as any;
+    expect(advance.requestBody).toBeUndefined();
+    expect(advance.responses["200"].content).toBeUndefined();
+  });
+
   it("matches the committed openapi.json (run: npm run openapi --workspace @flexipay/api)", () => {
     const committed = readFileSync(fileURLToPath(new URL("../openapi.json", import.meta.url)), "utf8");
     expect(committed).toBe(`${JSON.stringify(doc, null, 2)}\n`);
