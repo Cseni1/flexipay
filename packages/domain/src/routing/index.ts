@@ -8,6 +8,7 @@ export {
 } from "./eligibility.ts";
 export {
 	priceRoute,
+	sizePayerPaysPrincipal,
 	toPlannedLegs,
 	type PriceDeps,
 	type PriceFail,

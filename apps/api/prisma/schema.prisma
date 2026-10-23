@@ -99,6 +99,8 @@ model Quote {
   validUntil       DateTime
   alternatives     Json
   reasons          Json
+  /// Vault FeeMode used to price settle (CCR-8 / CCR-13). Null when the route has no settle.
+  feeMode          String?
   simulated        Boolean      @default(true)
   createdAt        DateTime     @default(now())
 
@@ -152,10 +154,14 @@ model Leg {
   amountOutValue  String
   amountOutCurrency String
   status      String   @default("pending") // pending | processing | succeeded | failed | reversing | reversed
-  /// Attempts on the current provider (a retry increments it); a re-route resets it.
+  /// Attempts on the current provider (a retry increments it); a re-route resets it (CCR-14).
   attempt     Int      @default(1)
-  /// Provider reference, or the Stellar transaction hash for settle legs.
+  /// Provider reference, or for settle legs the vault payoutId only — never a tx hash (CCR-12).
   externalRef String?
+  /// Settle lock transaction hash (CCR-12). Null for non-settle / before lock.
+  lockTxRef   String?
+  /// Settle release or refund transaction hash (CCR-12).
+  releaseTxRef String?
   errorCode   String?
   errorMessage String?
   reversalOf  String?
@@ -180,9 +186,13 @@ model Batch {
 model ClaimLink {
   paymentId String   @id
   payment   Payment  @relation(fields: [paymentId], references: [id])
-  /// sha256 of the token; the raw token exists only in the link.
+  /// sha256 of the URL token; the raw token exists only in the link.
   tokenHash String   @unique
-  /// sha256 hex of the claim secret locked in the vault (the secret is held by the backend).
+  /// sha256 hex of the vault claim secret (LockRequest.claimHashHex). Not secret (CCR-11).
+  vaultClaimHashHex String?
+  /// AES-256-GCM sealed claim secret (CCR-11). Never expose via API/events/logs.
+  secretSealed      Bytes?
+  secretSealedNonce Bytes?
   expiresAt DateTime
   status    String   @default("open") // open | accepted | expired
   createdAt DateTime @default(now())
