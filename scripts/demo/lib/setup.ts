@@ -23,13 +23,21 @@ export async function setUpWorker(
 	})
 	flow.check(`recipient ${worker.name} created`)
 
+	// CCR-16/17: map synthetic fixture refs into contracted detail keys (never syntheticRef).
+	const details =
+		endpoint.type === "bank_account"
+			? { accountNumber: endpoint.detailsRef }
+			: endpoint.type === "ewallet"
+				? { phoneNumber: endpoint.detailsRef }
+				: { address: endpoint.detailsRef }
+
 	const created = await api.createEndpoint({
 		recipientId: recipient.id,
 		type: endpoint.type,
 		country: endpoint.country,
 		currency: endpoint.currency,
-		...(endpoint.network ? { network: endpoint.network } : {}),
-		details: { syntheticRef: endpoint.detailsRef },
+		...(endpoint.network ? { network: endpoint.network } : { network: null }),
+		details,
 		simulated: true,
 	})
 	flow.check(`endpoint ${endpoint.type} for ${worker.name} created`)

@@ -3,6 +3,8 @@ import {
   A0_OPENAPI_STUBS,
   ClaimAcceptRequestSchema,
   ClaimViewSchema,
+  CreateBatchRequestSchema,
+  CreateEndpointRequestSchema,
   CreatePaymentRequestSchema,
   CreateQuoteRequestSchema,
   EVENT_TYPES,
@@ -10,6 +12,8 @@ import {
   PaymentDetailSchema,
   PaymentSchema,
   QuoteSchema,
+  SandboxAdvanceTimeRequestSchema,
+  SandboxAdvanceTimeResponseSchema,
   SandboxFailNextRequestSchema,
 } from "../src/index.ts";
 
@@ -268,7 +272,19 @@ describe("A0 claim and event schemas", () => {
     ).toBe("crypto_wallet");
   });
 
-  it("rejects fiat accept without country and unknown event types", () => {
+  it("accepts fiat claim details under CCR-17 and rejects empty country / wrong keys", () => {
+    expect(
+      ClaimAcceptRequestSchema.parse({
+        endpoint: {
+          type: "bank_account",
+          country: "PH",
+          currency: "PHP",
+          network: null,
+          details: { accountNumber: "****1234" },
+          simulated: true,
+        },
+      }).endpoint.details.accountNumber,
+    ).toBe("****1234");
     expect(
       ClaimAcceptRequestSchema.safeParse({
         endpoint: {
@@ -277,6 +293,18 @@ describe("A0 claim and event schemas", () => {
           currency: "PHP",
           network: null,
           details: { accountNumber: "****1234" },
+          simulated: true,
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      ClaimAcceptRequestSchema.safeParse({
+        endpoint: {
+          type: "ewallet",
+          country: "PH",
+          currency: "PHP",
+          network: null,
+          details: { syntheticRef: "demo" },
           simulated: true,
         },
       }).success,
@@ -294,6 +322,36 @@ describe("A0 claim and event schemas", () => {
   });
 });
 
+describe("A0 endpoint and batch schemas (CCR-16/18)", () => {
+  it("accepts create-endpoint and create-batch bodies", () => {
+    expect(
+      CreateEndpointRequestSchema.parse({
+        recipientId: "rcp_1",
+        type: "ewallet",
+        country: "PH",
+        currency: "PHP",
+        network: null,
+        details: { phoneNumber: "+63000000000" },
+        simulated: true,
+      }).type,
+    ).toBe("ewallet");
+    expect(
+      CreateBatchRequestSchema.parse({
+        feeMode: "PayerPays",
+        rows: [
+          {
+            recipientId: "rcp_1",
+            endpointId: "ep_1",
+            amount: moneyUsd("10000"),
+            externalId: "batch-row-1",
+            profile: "batch",
+          },
+        ],
+      }).rows,
+    ).toHaveLength(1);
+  });
+});
+
 describe("A0 sandbox schemas", () => {
   it("accepts fail-next shaped from ARCHITECTURE §10 and CCR-4", () => {
     expect(
@@ -301,7 +359,11 @@ describe("A0 sandbox schemas", () => {
     ).toBe(1);
   });
 
-  it("lists sandbox stubs without contracted response bodies", () => {
+  it("contracts CCR-6 advance-time request/response; other sandbox stubs stay body-only", () => {
+    expect(SandboxAdvanceTimeRequestSchema.parse({ seconds: 60 }).seconds).toBe(60);
+    expect(
+      SandboxAdvanceTimeResponseSchema.parse({ now: T1 }).now,
+    ).toBe(T1);
     const sandbox = A0_OPENAPI_STUBS.filter((s) => s.path.startsWith("/v1/sandbox/"));
     expect(sandbox.map((s) => s.path).sort()).toEqual(
       [
@@ -311,11 +373,12 @@ describe("A0 sandbox schemas", () => {
         "/v1/sandbox/reset",
       ].sort(),
     );
-    for (const s of sandbox) {
+    const advance = sandbox.find((s) => s.path === "/v1/sandbox/advance-time");
+    expect(advance?.body).toBe(SandboxAdvanceTimeRequestSchema);
+    expect(advance?.success.schema).toBe(SandboxAdvanceTimeResponseSchema);
+    for (const s of sandbox.filter((x) => x.path !== "/v1/sandbox/advance-time")) {
       expect(s.success.schema).toBeUndefined();
     }
-    const advance = sandbox.find((s) => s.path === "/v1/sandbox/advance-time");
-    expect(advance?.body).toBeUndefined();
   });
 });
 
@@ -324,11 +387,15 @@ describe("A0 OpenAPI stubs", () => {
     const paths = A0_OPENAPI_STUBS.map((s) => `${s.method.toUpperCase()} ${s.path}`).sort();
     expect(paths).toEqual(
       [
+        "GET /v1/batches/{id}",
         "GET /v1/claims/{token}",
+        "GET /v1/endpoints",
         "GET /v1/events",
         "GET /v1/payments",
         "GET /v1/payments/{id}",
+        "POST /v1/batches",
         "POST /v1/claims/{token}/accept",
+        "POST /v1/endpoints",
         "POST /v1/payments",
         "POST /v1/payments/{id}/cancel",
         "POST /v1/payments/{id}/fund",

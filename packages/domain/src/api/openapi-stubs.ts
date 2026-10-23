@@ -1,9 +1,18 @@
 import type { ZodType } from "zod";
 import {
+	BatchSchema,
+	CreateBatchRequestSchema,
+} from "./batches.ts";
+import {
 	ClaimAcceptRequestSchema,
 	ClaimAcceptResponseSchema,
 	ClaimViewSchema,
 } from "./claims.ts";
+import {
+	CreateEndpointRequestSchema,
+	EndpointListResponseSchema,
+	EndpointSchema,
+} from "./endpoints.ts";
 import { EventListResponseSchema } from "./events.ts";
 import {
 	CreatePaymentRequestSchema,
@@ -13,6 +22,8 @@ import {
 } from "./payments.ts";
 import { CreateQuoteRequestSchema, QuoteSchema } from "./quotes.ts";
 import {
+	SandboxAdvanceTimeRequestSchema,
+	SandboxAdvanceTimeResponseSchema,
 	SandboxFailNextRequestSchema,
 	SandboxProviderHealthRequestSchema,
 	SandboxResetRequestSchema,
@@ -23,7 +34,7 @@ import {
  * mounts Express handlers. Not executable routes — never added to `ROUTES` / `createApp`.
  *
  * `success.schema` may be omitted when ARCHITECTURE names the path but no body/response
- * shape is accepted yet (e.g. advance-time pending integrator CCR).
+ * shape is accepted yet.
  */
 export interface ApiOpenApiStub {
 	method: "get" | "post";
@@ -87,6 +98,36 @@ export const A0_OPENAPI_STUBS: readonly ApiOpenApiStub[] = [
 		success: { status: 200, schema: EventListResponseSchema },
 	},
 	{
+		method: "post",
+		path: "/v1/endpoints",
+		summary: "Create a payout endpoint for a recipient (CCR-16)",
+		auth: "api_key",
+		body: CreateEndpointRequestSchema,
+		success: { status: 201, schema: EndpointSchema },
+	},
+	{
+		method: "get",
+		path: "/v1/endpoints",
+		summary: "List endpoints (optional recipientId filter) (CCR-16)",
+		auth: "api_key",
+		success: { status: 200, schema: EndpointListResponseSchema },
+	},
+	{
+		method: "post",
+		path: "/v1/batches",
+		summary: "Create a batch of payments via the existing payment engine (CCR-18)",
+		auth: "api_key",
+		body: CreateBatchRequestSchema,
+		success: { status: 201, schema: BatchSchema },
+	},
+	{
+		method: "get",
+		path: "/v1/batches/{id}",
+		summary: "Batch with payment ids and totals (CCR-18)",
+		auth: "api_key",
+		success: { status: 200, schema: BatchSchema },
+	},
+	{
 		method: "get",
 		path: "/v1/claims/{token}",
 		summary: "Public: what is waiting for the recipient",
@@ -120,13 +161,13 @@ export const A0_OPENAPI_STUBS: readonly ApiOpenApiStub[] = [
 		success: { status: 200 },
 	},
 	{
-		// Path only: ARCHITECTURE §10 names the route; body/response are not accepted on main.
-		// Proposed (not contracted): POST { seconds: positive int } → { status: "ok", now: ISO-8601 }.
+		// CCR-6 accepted: API clock only.
 		method: "post",
 		path: "/v1/sandbox/advance-time",
 		summary: "Move the API clock (quote and claim expiry)",
 		auth: "api_key",
-		success: { status: 200 },
+		body: SandboxAdvanceTimeRequestSchema,
+		success: { status: 200, schema: SandboxAdvanceTimeResponseSchema },
 	},
 	{
 		// Empty request from ARCHITECTURE §10 / DEV_PLAN D2; no approved response body on main.

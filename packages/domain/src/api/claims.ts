@@ -7,6 +7,7 @@ import {
   PaymentStatusSchema,
 } from "./common.ts";
 import { CurrencyCode } from "../money.ts";
+import { endpointDetailsSchemaFor } from "./endpoints.ts";
 
 // GET/POST /v1/claims/{token} (ARCHITECTURE §6.7, §7, §10). Public routes (auth: none).
 
@@ -39,8 +40,8 @@ export const ClaimViewSchema = z
 export type ClaimView = z.infer<typeof ClaimViewSchema>;
 
 /**
- * Endpoint the recipient chooses on accept (§6.3). `details` holds account number, wallet id
- * or address; responses that echo endpoints must mask it (API implementation concern).
+ * Endpoint the recipient chooses on accept (§6.3). `details` keys are type-specific (CCR-17);
+ * responses that echo endpoints must mask values (API implementation concern).
  */
 export const ClaimAcceptEndpointSchema = z
   .object({
@@ -48,7 +49,7 @@ export const ClaimAcceptEndpointSchema = z
     country: CountryOrEmpty,
     currency: CurrencyCode,
     network: z.enum(["stellar"]).nullable(),
-    details: z.record(z.string(), z.unknown()),
+    details: z.record(z.string(), z.string()),
     simulated: z.literal(true),
   })
   .strict()
@@ -80,6 +81,14 @@ export const ClaimAcceptEndpointSchema = z
         code: "custom",
         message: "fiat endpoints require a country (§6.3)",
         path: ["country"],
+      });
+    }
+    const parsed = endpointDetailsSchemaFor(ep.type).safeParse(ep.details);
+    if (!parsed.success) {
+      ctx.addIssue({
+        code: "custom",
+        message: `details must match type ${ep.type} (CCR-17)`,
+        path: ["details"],
       });
     }
   });
