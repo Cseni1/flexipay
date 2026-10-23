@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import type { EndpointType, LegKind, RecipientKind } from "@flexipay/domain"
+import type {
+	EndpointType,
+	FeeMode,
+	LegKind,
+	RecipientKind,
+} from "@flexipay/domain"
 import { REPO_ROOT, type SettlementMode } from "./env.ts"
 import type { MoneyView } from "./types.ts"
 
@@ -35,6 +40,8 @@ export interface FlowRow {
 
 export interface FlowSpec {
 	profile: string
+	/** Explicit per-flow choice; the API has no accepted default (CCR-8). */
+	feeMode: FeeMode
 	workerRef: string
 	endpointRef: string
 	send: MoneyView
@@ -101,6 +108,13 @@ export function loadFixtures(): Fixtures {
 		throw new Error("workers.json has no workers")
 	if (!flows.flows || !flows.expectations || !flows.cryptoDestination) {
 		throw new Error("flows.json is incomplete")
+	}
+	for (const [id, flow] of Object.entries(flows.flows)) {
+		if (flow.feeMode !== "PayerPays" && flow.feeMode !== "RecipientPays") {
+			throw new Error(
+				`flows.json ${id} must name feeMode explicitly (PayerPays or RecipientPays); no default is inferred`,
+			)
+		}
 	}
 	return {
 		organization: workers.organization,
