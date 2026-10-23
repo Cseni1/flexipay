@@ -234,4 +234,135 @@ describe("CC3a quotes / payments / fund / cancel / events", () => {
 		};
 		expect(payment.claimLink?.url).toMatch(/\/v1\/claims\/[0-9a-f]+$/);
 	});
+
+	it("rejects expired quote; duplicate externalId → 409; idempotent POST replay; org isolation", async () => {
+		const a = await t.newOrg("Demo Platform");
+		const b = await t.newOrg("Demo Platform B");
+
+		const recipient = await (
+			await fetch(`${t.base}/v1/recipients`, {
+				method: "POST",
+				headers: auth(a.key),
+				body: JSON.stringify({
+					name: "Worker A",
+					kind: "individual",
+					country: "US",
+				}),
+			})
+		).json() as { id: string };
+
+		const quote = await (
+			await fetch(`${t.base}/v1/quotes`, {
+				method: "POST",
+				headers: auth(a.key),
+				body: JSON.stringify({
+					source: { type: "bank_account", currency: "USD", country: "US" },
+					destination: {
+						type: "bank_account",
+						currency: "USD",
+						country: "US",
+						recipientKind: "individual",
+					},
+					amount: {
+						side: "send",
+						value: { amount: "10000", currency: "USD" },
+					},
+					policy: "cheapest",
+				}),
+			})
+		).json() as { id: string };
+
+		await t.db.quote.update({
+			where: { id: quote.id },
+			data: { validUntil: new Date("2000-01-01T00:00:00.000Z") },
+		});
+		const expiredPay = await fetch(`${t.base}/v1/payments`, {
+			method: "POST",
+			headers: auth(a.key),
+			body: JSON.stringify({
+				quoteId: quote.id,
+				recipientId: recipient.id,
+				delivery: "direct",
+				profile: "domestic",
+			}),
+		});
+		expect(expiredPay.status).toBe(422);
+
+		const quote2 = await (
+			await fetch(`${t.base}/v1/quotes`, {
+				method: "POST",
+				headers: auth(a.key),
+				body: JSON.stringify({
+					source: { type: "bank_account", currency: "USD", country: "US" },
+					destination: {
+						type: "bank_account",
+						currency: "USD",
+						country: "US",
+						recipientKind: "individual",
+					},
+					amount: {
+						side: "send",
+						value: { amount: "15000", currency: "USD" },
+					},
+					policy: "cheapest",
+				}),
+			})
+		).json() as { id: string };
+
+		const body = {
+			quoteId: quote2.id,
+			recipientId: recipient.id,
+			delivery: "direct" as const,
+			profile: "domestic",
+			externalId: "ext-unique-1",
+		};
+		const p1 = await fetch(`${t.base}/v1/payments`, {
+			method: "POST",
+			headers: auth(a.key, { "idempotency-key": "idem-pay-1" }),
+			body: JSON.stringify(body),
+		});
+		expect(p1.status).toBe(201);
+		const payment = (await p1.json()) as { id: string };
+
+		const replay = await fetch(`${t.base}/v1/payments`, {
+			method: "POST",
+			headers: auth(a.key, { "idempotency-key": "idem-pay-1" }),
+			body: JSON.stringify(body),
+		});
+		expect(replay.status).toBe(201);
+		expect(((await replay.json()) as { id: string }).id).toBe(payment.id);
+
+		const dup = await fetch(`${t.base}/v1/payments`, {
+			method: "POST",
+			headers: auth(a.key, { "idempotency-key": "idem-pay-2" }),
+			body: JSON.stringify({ ...body, externalId: "ext-unique-1" }),
+		});
+		expect(dup.status).toBe(409);
+
+		const fund1 = await fetch(`${t.base}/v1/payments/${payment.id}/fund`, {
+			method: "POST",
+			headers: auth(a.key, { "idempotency-key": "idem-fund-1" }),
+			body: "{}",
+		});
+		expect(fund1.status).toBe(200);
+		expect(((await fund1.json()) as { status: string }).status).toBe("paid");
+
+		const fundReplay = await fetch(`${t.base}/v1/payments/${payment.id}/fund`, {
+			method: "POST",
+			headers: auth(a.key, { "idempotency-key": "idem-fund-1" }),
+			body: "{}",
+		});
+		expect(fundReplay.status).toBe(200);
+		expect(((await fundReplay.json()) as { id: string }).id).toBe(payment.id);
+
+		const cross = await fetch(`${t.base}/v1/payments/${payment.id}`, {
+			headers: auth(b.key),
+		});
+		expect(cross.status).toBe(404);
+
+		const eventsB = await fetch(`${t.base}/v1/events`, { headers: auth(b.key) });
+		expect(eventsB.status).toBe(200);
+		const ev = (await eventsB.json()) as { events: { paymentId: string | null }[] };
+		expect(ev.events.every((e) => e.paymentId !== payment.id)).toBe(true);
+	});
 });
