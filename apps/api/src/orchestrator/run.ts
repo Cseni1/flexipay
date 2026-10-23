@@ -71,6 +71,8 @@ async function loadRuntime(
 		errorMessage: string | null;
 	}>;
 	feeMode: FeeMode | null;
+	/** Frozen vault fee from Quote.fees.flexiPayFee (CCR-13). */
+	quotedFlexiPayFee: Money | null;
 	claimWaitSettle: boolean;
 	lockExpiresAt: Date;
 	payoutEndpoint:
@@ -100,6 +102,13 @@ async function loadRuntime(
 	if (payment.legs.some((l) => l.kind === "settle") && feeMode === null) {
 		throw new Error("quote.feeMode missing for settle route (CCR-13)");
 	}
+	const fees = payment.quote.fees as {
+		flexiPayFee?: { amount: string; currency: string };
+	};
+	const quotedFlexiPayFee =
+		fees.flexiPayFee?.amount !== undefined
+			? moneyOf(fees.flexiPayFee.amount, fees.flexiPayFee.currency)
+			: null;
 	const payoutEndpoint =
 		dest.type === "bank_account" || dest.type === "ewallet"
 			? {
@@ -113,6 +122,7 @@ async function loadRuntime(
 		payment,
 		legs: payment.legs,
 		feeMode,
+		quotedFlexiPayFee,
 		claimWaitSettle,
 		lockExpiresAt: payment.claimLink?.expiresAt ?? payment.quote.validUntil,
 		payoutEndpoint,
@@ -498,15 +508,23 @@ async function executeSettle(
 
 	// CCR-13: lock amount = settle leg amountIn (quoted P); feeMode from quote.
 	const amount = moneyOf(leg.amountInValue, leg.amountInCurrency);
-	const bps = await adapters.settlement.feeBps();
-	const feePad = {
-		amount: ((BigInt(amount.amount) * BigInt(bps)) / 10_000n).toString(),
-		currency: amount.currency,
-	};
-	const fundAmount = {
-		amount: (BigInt(amount.amount) + BigInt(feePad.amount)).toString(),
-		currency: amount.currency,
-	};
+	const quotedFee = rt.quotedFlexiPayFee;
+	if (!quotedFee || quotedFee.currency !== amount.currency) {
+		throw new Error(
+			"quote.fees.flexiPayFee missing or currency mismatch for settle lock (CCR-13)",
+		);
+	}
+	// RecipientPays: vault locks P (fee from principal). PayerPays: locks P+f(P).
+	// Fund only what lock will debit — use frozen quoted fee, never a live-bps pad.
+	const fundAmount =
+		feeMode === "PayerPays"
+			? {
+					amount: (
+						BigInt(amount.amount) + BigInt(quotedFee.amount)
+					).toString(),
+					currency: amount.currency,
+				}
+			: amount;
 	await adapters.settlement.fundVault(adapters.vaultPayer, fundAmount);
 
 	const locked = await adapters.settlement.lock({
@@ -518,6 +536,15 @@ async function executeSettle(
 		expiresAt: rt.lockExpiresAt,
 		claimHashHex,
 	});
+
+	if (
+		locked.fee.amount !== quotedFee.amount ||
+		locked.fee.currency !== quotedFee.currency
+	) {
+		throw new Error(
+			`lock fee drift: locked.fee=${locked.fee.amount} ${locked.fee.currency} != quoted flexiPayFee=${quotedFee.amount} ${quotedFee.currency} (CCR-13)`,
+		);
+	}
 
 	// CCR-12: externalRef = payoutId; lockTxRef = lock transaction hash.
 	await db.leg.update({
