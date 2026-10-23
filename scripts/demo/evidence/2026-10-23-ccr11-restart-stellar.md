@@ -10,7 +10,7 @@ second funding or lock occurred.
 | ------------------ | ----------------------------------------------------------------------------------------------- |
 | Base commit        | `b48bfe3` (merge `f4347bd` into lane D)                                                         |
 | Acceptance code    | `939a2f9` (lane D; evidence follows in a separate commit)                                       |
-| Adapters-sim test  | `528b89b` (cross-lane fix, reported separately)                                                 |
+| Adapters-sim test  | `528b89b`, corrected in `81a0244` (cross-lane test only; reported separately)                   |
 | Runtime            | Node `24.21.0`, npm `11.12.1`, macOS arm64                                                      |
 | API                | `http://127.0.0.1:3211`, `FP_SETTLEMENT=stellar`, persistent embedded Postgres on `54333`       |
 | Web                | `http://127.0.0.1:5299` through the Vite loopback proxy                                         |
