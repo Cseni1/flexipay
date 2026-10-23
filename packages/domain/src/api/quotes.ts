@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   AlternativeRouteSchema,
   FeeBreakdownSchema,
+  FeeModeSchema,
   IsoTimestamp,
   MoneySchema,
   PlannedLegSchema,
@@ -21,6 +22,11 @@ export const CreateQuoteRequestSchema = z
     amount: QuoteAmountSchema,
     /** Only `cheapest` is accepted in the MVP; any other value is a 422 (§8). */
     policy: z.literal("cheapest").default("cheapest"),
+    /**
+     * Vault FeeMode for settle routes (CCR-8). Required when the chosen route includes
+     * settle; ignored for domestic / no-settle routes. No silent product default.
+     */
+    feeMode: FeeModeSchema.optional(),
   })
   .strict();
 
@@ -39,6 +45,11 @@ export const QuoteSchema = z
     expectedReceive: MoneySchema,
     priceRiskBearer: PriceRiskBearerSchema,
     policy: z.literal("cheapest"),
+    /**
+     * Echo of the vault FeeMode used to price settle (CCR-8). Null when the route has no
+     * settle leg. Must be identical on payment create and SettlementAdapter.lock.
+     */
+    feeMode: FeeModeSchema.nullable(),
     validUntil: IsoTimestamp,
     alternatives: z.array(AlternativeRouteSchema),
     reasons: z.array(z.string().min(1)),

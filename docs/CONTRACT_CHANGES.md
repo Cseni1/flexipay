@@ -90,3 +90,69 @@ Status: **approved** by the project owner on 23 Oct 2026. The documents `PRODUCT
 7. **Baseline wallet** for recipients is a labelled custodial testnet wallet; no wallet connection. The passkey wallet replaces it at the event.
 8. **API contract first (task A0):** the zod schemas for quote, payment, claim, event and sandbox bodies are added to `packages/domain` before the other lanes build against them.
 9. **Lanes** replace named owners (DEV_PLAN section 2). Acceptance is a demo script per flow.
+
+## CCR-6: sandbox `advance-time` request body (proposed; identifier preserved, 22–23 Oct 2026)
+
+- **From:** A0 / sandbox stubs (`packages/domain/src/api/sandbox.ts`, OpenAPI).
+- **Status:** **proposed — not contracted.** Identifier **CCR-6 stays with advance-time** (do not reuse for simulation flags).
+- **What:** accept an explicit request body for `POST /v1/sandbox/advance-time` (e.g. seconds or target clock) so N1/N3 expiry demos are typed. Until accepted, the route may exist as a stub without a success/request schema on main.
+- **Why:** ARCHITECTURE §10 and SCENARIOS N1/N3 move the API clock for quote/claim expiry; ledger time is separate (CCR-5).
+- **Who is affected:** A0, CC3 sandbox routes, D1 negative cases.
+- **Note:** An earlier draft briefly labelled per-leg `simulated` as “CCR-6”; that topic is **CCR-10** below. Both requests remain under distinct ids.
+
+## CCR-7: `Quote.fees.total` aggregation (accepted; option A rates applied, 23 Oct 2026)
+
+- **From:** integrator, after CC1 follow-up PR #28 (`d371241`).
+- **Status:** **accepted and applied.** Option A placeholder reverse rates are in `config/providers.json`. Option B (zero payout fees) was an alternative only and is **not** approved.
+- **Accepted rule (matches #28 / CCR-4):**
+  1. `fees.total` is a single `Money` in the **send / source currency**.
+  2. Sum every positive non-settle leg fee plus `flexiPayFee`, each converted into send currency with a **configured directional** `fxRates` entry only (`convertMoney`).
+  3. Zero fees need no rate. Settle fee is counted once via `flexiPayFee`, not again from the settle row.
+  4. If any positive fee lacks `fee.currency > sendCurrency`, the quote **fails** with an explicit reason. Silent omission is forbidden.
+- **Applied directional rates (option A)** — unit = major units of **USD** per one major unit of the foreign currency; `placeholder: true`; 7-decimal ROUND_DOWN strings; **no runtime inversion**:
+
+  | from | to | `rate` |
+  | --- | --- | --- |
+  | PHP | USD | `0.0178571` |
+  | BRL | USD | `0.1818181` |
+  | ZAR | USD | `0.0555555` |
+
+- **Who is affected:** CC1 pricing, config, DF1/DF2/DF5, web quote panel.
+- **Not accepted:** runtime derivation of inverses from forward USDC→PHP / USDC→BRL / USDC→ZAR / USD→ZAR.
+
+## CCR-8: vault `FeeMode` on quote → payment → lock (accepted; no silent default, 23 Oct 2026)
+
+- **From:** integrator, after PR #28. Sources: `contracts/payout_vault/RULES.md`, CCR-3, `config/drafts/fees.md` Q-fee-side (was open), A0 had no field.
+- **Status:** **accepted — no MVP product default.** Caller must choose. A0 gains `feeMode` (this commit).
+- **Contract:**
+  - `CreateQuoteRequest.feeMode` optional in the schema; **required by CC1/CC3 whenever the chosen template includes settle** (422 / quote fail otherwise) — same as #28 `vaultFeeMode`.
+  - `Quote.feeMode`: `PayerPays` | `RecipientPays` when settle is on the route; `null` when it is not.
+  - `CreatePayment` does not re-specify mode; payment + `SettlementAdapter.lock` **must reuse `quote.feeMode` unchanged**.
+- **Money conservation (binding on CC1 pricing and CC2 lock; both modes):**
+  Let `A` be the settlement-asset amount available at the settle leg after prior legs (send-fixed path). Let `bps` be vault `feeBps`, `f(P) = floor(P * bps / 10000)`.
+  - **RecipientPays:** settle `amountIn = A`, `fee = f(A)`, `amountOut = A − fee` (fail if `fee ≥ A`), lock `locked = A`, `net = A − fee`. Same send envelope never yields lock principal above `A`.
+  - **PayerPays:** fee is **not** created from thin air. Choose principal `P = floor(A * 10000 / (10000 + bps))` so `P + f(P) ≤ A`. Settle `amountIn = P`, `amountOut = P`, `fee = f(P)`, lock `locked = P + fee`, `net = P`. `#28` currently prices PayerPays as `amountOut = amountIn` without reducing `P` from `A` — **Csaba Cursor must apply this sizing in CC1** before CC2 locks, or lock will demand more than the funded vault balance.
+- **Owner decision (optional product default for demos):** if the pitch wants a default when the client omits `feeMode`, pick **PayerPays** or **RecipientPays** explicitly. Until then demos/API clients pass it. Integrator will not invent one.
+- **Who is affected:** A0 (this commit), CC1 (pricing + sizing), CC2/CC3 (persist and lock), SC2 (already takes `feeMode`), DF3 (assert claimed `net`).
+
+## CCR-9: crypto `destination.country` disambiguation (accepted, 23 Oct 2026)
+
+- **From:** integrator, confirming PR #28 against ARCHITECTURE §6.3 (`CountryOrEmpty`) and corridor keys `(from.country, to.country)`.
+- **Status:** **accepted.**
+- **Rule:**
+  - Non-empty `destination.country` → unique corridor `from+to`, or fail.
+  - Empty country + crypto destination → corridors from the source that allow the type/kind and have a settle rail. **Exactly one** match → use it; **zero** → fail; **two or more** → fail with an explicit ambiguous-corridor reason (require `destination.country`). **No arbitrary first-match.**
+- **MVP implication:** US→crypto with both PH and BR eligible must send `destination.country` (`PH` or `BR`). Empty country remains valid only when a single corridor matches.
+- **Who is affected:** CC1 (done in #28), web send form, D1 fixtures (set country on crypto quotes).
+
+## CCR-10: per-leg `simulated` on quote routes (accepted, 23 Oct 2026)
+
+- **From:** integrator / owner decision after the mislabelled “CCR-6” simulation proposal.
+- **Status:** **accepted and applied.** Identifier is **CCR-10** (CCR-6 remains advance-time).
+- **What:** `PlannedLegSchema.simulated` is `z.boolean()`. Quote-level `QuoteSchema.simulated` stays `z.literal(true)` because MVP fiat/FX legs are simulated.
+- **Derivation (binding on CC1):**
+  - Provider legs: use the provider adapter quote’s `simulated` flag (config / adapter), not a hard-coded `true`.
+  - Settle leg: use **settlement execution mode** from the caller (`settlementSimulated` on quote deps). `FP_SETTLEMENT=mock` → `true`; `FP_SETTLEMENT=stellar` → `false`. **`stellar_usdc` rail id alone does not prove real execution** (mock can still price that rail).
+- **UI:** show “Simulated” only when the leg’s `simulated` is true.
+- **Who is affected:** A0, CC1 pricing, CC3 (`buildQuote` deps from `FP_SETTLEMENT`), web labels, OpenAPI.
+- **Out of scope:** inventing browser auth; changing claim-surface `simulated: true` labels.

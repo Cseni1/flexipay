@@ -263,6 +263,24 @@
       "to": "ZAR",
       "rate": "18.0000000",
       "placeholder": true
+    },
+    {
+      "from": "PHP",
+      "to": "USD",
+      "rate": "0.0178571",
+      "placeholder": true
+    },
+    {
+      "from": "BRL",
+      "to": "USD",
+      "rate": "0.1818181",
+      "placeholder": true
+    },
+    {
+      "from": "ZAR",
+      "to": "USD",
+      "rate": "0.0555555",
+      "placeholder": true
     }
   ]
 }

@@ -10,7 +10,8 @@
     "format:check": "prettier . --check",
     "prepare": "git config core.hooksPath .husky",
     "validate:config": "npm run validate:config --workspace @flexipay/domain",
-    "test:domain": "npm test --workspace @flexipay/domain"
+    "test:domain": "npm test --workspace @flexipay/domain",
+    "demo:offline": "node scripts/demo/offline.ts"
   },
   "workspaces": [
     "apps/*",

@@ -819,6 +819,13 @@
                     "default": "cheapest",
                     "type": "string",
                     "const": "cheapest"
+                  },
+                  "feeMode": {
+                    "type": "string",
+                    "enum": [
+                      "PayerPays",
+                      "RecipientPays"
+                    ]
                   }
                 },
                 "required": [
@@ -976,8 +983,7 @@
                             "pattern": "^[a-z][a-z0-9_]*$"
                           },
                           "simulated": {
-                            "type": "boolean",
-                            "const": true
+                            "type": "boolean"
                           }
                         },
                         "required": [
@@ -1122,6 +1128,20 @@
                       "type": "string",
                       "const": "cheapest"
                     },
+                    "feeMode": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "PayerPays",
+                            "RecipientPays"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "validUntil": {
                       "type": "string",
                       "format": "date-time",
@@ -1156,8 +1176,7 @@
                                   "pattern": "^[a-z][a-z0-9_]*$"
                                 },
                                 "simulated": {
-                                  "type": "boolean",
-                                  "const": true
+                                  "type": "boolean"
                                 }
                               },
                               "required": [
@@ -1232,6 +1251,7 @@
                     "expectedReceive",
                     "priceRiskBearer",
                     "policy",
+                    "feeMode",
                     "validUntil",
                     "alternatives",
                     "reasons",
