@@ -14,7 +14,7 @@ import {
 	fail,
 } from "./lib/assertions.ts"
 import { endpointOf, flowOf, workerOf } from "./lib/fixtures.ts"
-import { maskAddress } from "./lib/env.ts"
+import { maskAddress, readVaultEvidence } from "./lib/env.ts"
 import { BlockedError } from "./lib/report.ts"
 import { ROUTES } from "./lib/routes.ts"
 import { execute, modeArg } from "./lib/script.ts"
@@ -46,6 +46,33 @@ await execute(
 		const expected = fixtures.expectations.df3
 		const worker = workerOf(fixtures, spec.workerRef)
 		const endpoint = endpointOf(worker, spec.endpointRef)
+
+		// CCR-13's fee rate comes from the existing public testnet evidence, tied to the deployed
+		// vault id. DF3 never accepts a separate fee setting that could excuse wrong accounting.
+		const feeEvidence = readVaultEvidence()
+		if (requestedMode === "stellar") {
+			if (!feeEvidence.ok) {
+				throw new BlockedError([
+					{
+						what: `the deployed vault fee is unavailable: ${feeEvidence.problem}`,
+						owner: "caller / Csaba (integration)",
+						detail:
+							"scripts/testnet/testnet-ids.env is the public deployment evidence used by the API; no separate fee setting is accepted",
+					},
+				])
+			}
+			if (feeEvidence.evidence.vaultId !== env.payoutVaultId) {
+				throw new BlockedError([
+					{
+						what: `the fee evidence is for vault ${feeEvidence.evidence.vaultId}, not the configured ${env.payoutVaultId ?? "(none)"}`,
+						owner: "caller / Csaba (integration)",
+						detail:
+							"point DF3 at the vault described by scripts/testnet/testnet-ids.env, or regenerate that evidence from the deployment",
+					},
+				])
+			}
+		}
+		const vaultFeeBps = feeEvidence.ok ? feeEvidence.evidence.feeBps : undefined
 		const handles = await setUpWorker(api, flow, worker, endpoint)
 
 		flow.route("POST", "/v1/quotes", "PH crypto wallet, send amount fixed")
@@ -62,8 +89,8 @@ await execute(
 			policy: "cheapest",
 		})
 		expectQuoteFeeMode(quote, spec.feeMode)
-		if (env.vaultFeeBps !== undefined) {
-			expectPayerPaysSizing(quote, env.vaultFeeBps, "DF3")
+		if (vaultFeeBps !== undefined) {
+			expectPayerPaysSizing(quote, vaultFeeBps, "DF3")
 		}
 		expectKinds(
 			quote.route.map((leg) => leg.kind),
@@ -203,13 +230,13 @@ await execute(
 			if (!quotedSettle?.amountIn || !quotedSettle.amountOut) {
 				fail("settle quote is missing frozen principal or net")
 			}
-			if (env.vaultFeeBps === undefined) {
+			if (vaultFeeBps === undefined) {
 				throw new BlockedError([
 					{
-						what: "FP_VAULT_FEE_BPS is not set, so the quote fee cannot be checked against the lock",
+						what: "the deployed vault fee is unavailable, so the quote fee cannot be checked against the lock",
 						owner: "caller / Csaba (integration)",
 						detail:
-							"public vault fee bps from scripts/testnet/testnet-ids.env; required for CCR-13 lock accounting",
+							"scripts/testnet/testnet-ids.env must describe the configured vault (CCR-13)",
 					},
 				])
 			}
@@ -226,7 +253,7 @@ await execute(
 				feeMode: quote.feeMode,
 				fee: quote.fees.flexiPayFee.amount,
 				net: quotedSettle.amountOut.amount,
-				vaultFeeBps: env.vaultFeeBps,
+				vaultFeeBps,
 				rpcUrl: env.stellarRpcUrl,
 				networkPassphrase: env.stellarNetworkPassphrase,
 				timeoutMs: env.timeoutMs,

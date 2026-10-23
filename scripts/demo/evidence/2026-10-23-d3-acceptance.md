@@ -2,9 +2,10 @@
 
 Lane-D worktree `/Users/csenike/Projects/FlexiPay/flexipay-laned`, branch
 `csenge-freebuff/D3-acceptance`. The branch is merged with `origin/main` at
-**`e6429fe`**, which carries the CCR-11–14 contracts from #36 (`b3d77a7`); the
-tested tree is commit **`9e38c9c`** (this evidence commit follows it). This file
-is committed after the run; per-run JSON records the tested commit.
+**`e6429fe`**, which carries the CCR-11–14 contracts from #36 (`b3d77a7`). The
+tested tree is this commit's tree (branch HEAD); the runtime runs below were
+made at `9e38c9c`, and the fee-source and preflight corrections after them were
+covered by the same targeted checks. Per-run JSON records its own commit.
 
 D2 #27 stays integrated. This worktree did not edit D2-owned files:
 `scripts/demo/offline.ts`, `scripts/seed/**` (except the lane-D fixture
@@ -44,8 +45,19 @@ Read from `origin/main`:
   quoted settle `amountIn`, lock `feeMode` = quote,
   `fee = floor(P * bps / 10000)`, release net = `P` or `P - f(P)`, and release
   return value. A new `expectPayerPaysSizing` checks
-  `P = floor(A * 10000 / (10000 + bps))` from the leg before settle. The claim
-  accept call now uses the published `POST /v1/claims/{token}/accept` path.
+  `P = floor(A * 10000 / (10000 + bps))` from the leg before settle; this
+  matches the merged `sizePayerPaysPrincipal` in
+  `packages/domain/src/routing/price.ts`, so there is no CC1 sizing defect. The
+  fee rate is read from the existing public deployment evidence
+  `scripts/testnet/testnet-ids.env`, tied to the configured vault id; the API
+  validates that same rate against the vault's on-chain `config()` at startup,
+  and lane D does not accept a separate fee setting that could excuse wrong
+  accounting. The claim accept call now uses the published
+  `POST /v1/claims/{token}/accept` path.
+- **Payout id** — CCR-12 explicitly documents the vault payoutId as a decimal
+  string, and the adapter returns `receipt.result.toString()` from the
+  contract's u64. DF3 keeps the positive-decimal check for that documented
+  representation; `lockTxRef`/`releaseTxRef` are the only transaction hashes.
 - **DF4** — `assertExactlyTwoPayoutAttemptsThenRefund` reads durable
   `Leg.attempt` from every `Event.snapshot` leg. It requires attempts 1 and 2,
   rejects attempt 3 anywhere, allows cumulative snapshots, and no longer needs
@@ -56,34 +68,40 @@ Read from `origin/main`:
   (crypto, company kind, exclusion). Fragmented reasons are accepted; empty or
   generic prose fails. Harness cases prove both directions.
 - **Preflight** — OPTIONS alone no longer decides a route is mounted. The probe
-  reads the `Allow` header: catch-all 404 + no Allow + `code: not_found` is
-  missing; Allow without the needed method is a separate method mismatch; 401,
-  403, 405, 5xx, application-level 404s and proxy answers without Allow are
-  treated as mounted so auth/method/application defects surface as FAIL, not as
-  a missing-route BLOCKED.
+  reads the `Allow` header and the error body: only the app's exact catch-all
+  (404, no Allow, `code: not_found`, `message: No such route`) is missing; Allow
+  without the needed method is a separate method mismatch; a bare or generic
+  404, 401, 403, 405, 5xx, application-level 404s and proxy answers without
+  Allow are treated as mounted so auth/method/application defects surface as
+  FAIL, not as a missing-route BLOCKED. A safe GET probe confirms a missing GET
+  route.
 - **Tests** — harness self-tests rewritten for `attempt`-based DF4 evidence (no
   distinct-ref assumption), plus new CCR-12 (`payoutId`) and CCR-13 (frozen
   amounts, fee modes, remainder, sizing) cases; preflight tests cover the new
-  classification.
+  classification, generic 404s and the fee-evidence parser.
 
 ## Checks
 
 | Command                                                                           | Exit | Result                                                                            |
 | --------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------- |
 | `npx tsc -p scripts/demo/tsconfig.json`                                           | 0    | clean                                                                             |
-| `npx vitest run tests/e2e/{harness,preflight,stellar-proof,offline,seed}.test.ts` | 0    | **67 passed** (harness 29, stellar 18, preflight 12, offline 4, seed 4)           |
+| `npx vitest run tests/e2e/{harness,preflight,stellar-proof,offline,seed}.test.ts` | 0    | **71 passed** (harness 29, stellar 18, preflight 16, offline 4, seed 4)           |
 | `npx prettier --check "scripts/demo/**/*.ts" "tests/e2e/*.ts"`                    | 0    | clean                                                                             |
 | `git diff --check`                                                                | 0    | clean                                                                             |
 | RPC `getNetwork` on `soroban-testnet.stellar.org`                                 | 0    | HTTP 200, passphrase `Test SDF Network ; September 2015` (outbound network works) |
 | `OPTIONS` on the eight DF routes at `http://127.0.0.1:8788`                       | —    | 404, no `Allow` header: only the catch-all answered                               |
 | `node scripts/demo/df3-claim.ts --mode stellar` (online local API)                | 2    | **BLOCKED** on eight unmounted routes; never reached the RPC                      |
+| same probe re-run after the catch-all correction                                  | 2    | same eight routes; the live catch-all body matched, no false route gap            |
 | `node scripts/demo/run-all.ts` (mock)                                             | 2    | DF1–DF5 **BLOCKED** in route preflight                                            |
 
 The DF3 Stellar attempt used the public testnet values from
-`scripts/testnet/testnet-ids.env` (RPC, passphrase, vault id, 100 bps, Worker A
-address) and a clearly non-secret placeholder in `FP_API_KEY`. It stopped at
-route preflight, so no authenticated request, quote or chain call was made. The
-live API was left running; it was not restarted or modified.
+`scripts/testnet/testnet-ids.env` (RPC, passphrase, vault id, Worker A address)
+and a clearly non-secret placeholder in `FP_API_KEY`. It stopped at route
+preflight, so no authenticated request, quote or chain call was made. The live
+API was left running; it was not restarted or modified. After the catch-all
+correction, the DF3 Stellar probe was re-run once against the same live API: it
+reported the same eight routes, so the stricter body check did not hide a route.
+No other blocked flow was repeated.
 
 ## Runtime result
 
@@ -96,7 +114,7 @@ Every DF route below returns the catch-all 404 with no `Allow` header:
 `GET /v1/claims/{token}`, `POST /v1/claims/{token}/accept`,
 `POST /v1/sandbox/fail-next`, `POST /v1/batches`, `GET /v1/batches/{id}`.
 
-No DF assertion executed against the API. The 67 self-tests prove the acceptance
+No DF assertion executed against the API. The 71 self-tests prove the acceptance
 rules and their failure modes; they are not flow acceptance.
 
 ## CCR-11 restart acceptance — prepared, not run
@@ -116,24 +134,25 @@ secret.
 5. Accept: paid, same payoutId, successful `releaseTxRef`, no payout leg. Verify
    privately from chain data that `claim` used that payoutId, paid the intended
    address and hashed to the lock's claim hash.
-6. Negative control: restart with a different seal key; acceptance must fail
-   without releasing (no `releaseTxRef`, not paid) and must not expose the
-   secret.
+6. Negative control: on a disposable copy of the database, restart with a
+   different seal key; acceptance must fail without releasing (no
+   `releaseTxRef`, not paid) and must not expose the secret.
 
 Evidence keeps ids, hashes, statuses and masked addresses only: no claim token,
-secret, API key or full address. Blocked until CC2 persists the seal and CC3
-mounts accept.
+secret, API key, raw calldata/XDR or full address is logged. The wrong-key
+negative control uses a disposable fixture, never the shared database. Blocked
+until CC2 persists the seal and CC3 mounts accept; this procedure has not run.
 
 ## Blockers
 
-| Blocker                                                                                                                                               | Owner                              |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| CC3a/CC3b routes above are not mounted (including claim accept and sandbox reset)                                                                     | Csaba (CC3a/CC3b)                  |
-| CC2 must persist `secretSealed`/`vaultClaimHashHex`, write `lockTxRef`/`releaseTxRef`, set `Leg.attempt`, and publish `Event.snapshot` legs with them | Csaba (CC2)                        |
-| CC1 must price PayerPays with `P = floor(A * 10000 / (10000 + bps))` and copy frozen quote amounts into payment legs                                  | Csaba (CC1)                        |
-| Stellar acceptance needs the routes, an API key and the vault/RPC/address values; the RPC itself is reachable                                         | caller / Csaba (integration) + SC2 |
-| The settle leg's status after a vault refund is still undefined; DF4 does not assert it                                                               | CC2 / A0                           |
-| CCR-11 restart run needs CC2 seal persistence and the accept route                                                                                    | CC2 / CC3                          |
+| Blocker                                                                                                                                                       | Owner                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| CC3a/CC3b routes above are not mounted (including claim accept and sandbox reset)                                                                             | Csaba (CC3a/CC3b)                  |
+| CC3's quote handler must pass `SettlementAdapter.feeBps()` and the requested `feeMode` into routing; quote → payment → lock is unexecuted until it is mounted | Csaba (CC3a)                       |
+| CC2 must persist `secretSealed`/`vaultClaimHashHex`, write `lockTxRef`/`releaseTxRef`, set `Leg.attempt`, and publish `Event.snapshot` legs with them         | Csaba (CC2)                        |
+| Stellar acceptance needs the routes, an API key and the vault/RPC/address values; the RPC itself is reachable                                                 | caller / Csaba (integration) + SC2 |
+| The settle leg's status after a vault refund is still undefined; DF4 does not assert it                                                                       | CC2 / A0                           |
+| CCR-11 restart run needs CC2 seal persistence and the accept route                                                                                            | CC2 / CC3                          |
 
 ## Next run
 

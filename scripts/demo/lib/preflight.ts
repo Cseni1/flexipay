@@ -60,25 +60,50 @@ const parseAllow = (response: Response): string[] =>
 		.map((method) => method.trim().toUpperCase())
 		.filter(Boolean)
 
-async function bodyCode(response: Response): Promise<string | undefined> {
+interface ErrorBody {
+	code?: string
+	message?: string
+}
+
+async function errorBody(response: Response): Promise<ErrorBody> {
 	try {
 		const raw = await response.text()
-		if (raw.length === 0) return undefined
+		if (raw.length === 0) return {}
 		const body: unknown = JSON.parse(raw)
-		if (typeof body !== "object" || body === null) return undefined
-		const code = (body as { code?: unknown }).code
-		return typeof code === "string" ? code : undefined
+		if (typeof body !== "object" || body === null) return {}
+		const record = body as { code?: unknown; message?: unknown }
+		return {
+			...(typeof record.code === "string" ? { code: record.code } : {}),
+			...(typeof record.message === "string"
+				? { message: record.message }
+				: {}),
+		}
 	} catch {
-		return undefined
+		return {}
 	}
 }
+
+/**
+ * The app's catch-all is the only route that answers with this exact body. A bare 404, another
+ * error code, or a 404 that still lists an Allow method is not evidence that a route is absent.
+ */
+const isCatchAll = (
+	status: number,
+	allow: readonly string[],
+	body: ErrorBody,
+): boolean =>
+	status === 404 &&
+	allow.length === 0 &&
+	body.code === "not_found" &&
+	body.message === "No such route"
 
 const probeTimeout = (timeoutMs: number): number => Math.min(timeoutMs, 3_000)
 
 /**
  * OpenAPI contains A0 stubs that CC3 has not mounted, so the inventory alone is not evidence a
- * route is served. Express adds a route's methods to the OPTIONS `Allow` header; the app's
- * catch-all answers an unmatched path with 404 {"code":"not_found"} and no Allow header.
+ * route is served. Express adds a route's methods to the OPTIONS `Allow` header; only the app's
+ * exact catch-all shape (404, no Allow, `code: not_found`, `message: No such route`) is accepted
+ * as proof that no route matched, so a generic 404 or an application error cannot hide a route.
  *
  * OPTIONS support by itself proves nothing (a proxy or a global handler can answer it), and an
  * auth, method or application error on a mounted route must not be reported as a missing route.
@@ -107,8 +132,8 @@ export async function probeRoutes(
 		}
 
 		const allow = parseAllow(response)
-		const code = await bodyCode(response)
-		if (response.status === 404 && allow.length === 0 && code === "not_found") {
+		const body = await errorBody(response)
+		if (isCatchAll(response.status, allow, body)) {
 			// The catch-all shape: no route matched, and Express would have listed one in Allow otherwise.
 			probe.missing.push(need)
 			continue
@@ -132,12 +157,8 @@ export async function probeRoutes(
 			} catch {
 				continue
 			}
-			const fallbackCode = await bodyCode(fallback)
-			if (
-				fallback.status === 404 &&
-				parseAllow(fallback).length === 0 &&
-				fallbackCode === "not_found"
-			) {
+			const fallbackBody = await errorBody(fallback)
+			if (isCatchAll(fallback.status, parseAllow(fallback), fallbackBody)) {
 				probe.missing.push(need)
 			}
 		}

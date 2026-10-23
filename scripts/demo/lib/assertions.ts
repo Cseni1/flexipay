@@ -154,8 +154,10 @@ function expectMoneyEqual(
 }
 
 /**
- * CCR-12: settle.externalRef is the contract payoutId, never a transaction hash. The lock and
- * release hashes are separate fields and are verified by `lib/stellar-proof.ts`.
+ * CCR-12: settle.externalRef is the contract payoutId, never a transaction hash. CCR-12 documents
+ * the payoutId as a decimal string, and the Stellar adapter returns `receipt.result.toString()`
+ * from the contract's u64; the positive id therefore stays decimal. Lock/release hashes are
+ * separate fields and are verified by `lib/stellar-proof.ts`.
  */
 export function expectPayoutId(ref: string | undefined, where: string): string {
 	if (ref === undefined) fail(`${where}: no settle payoutId`)
