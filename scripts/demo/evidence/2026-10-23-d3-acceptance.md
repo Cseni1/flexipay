@@ -3,10 +3,15 @@
 **Integrated flow acceptance: BLOCKED** (CC2/CC3 routes unmounted). Self-tests
 are harness rules only — not DF1–DF5 flow acceptance.
 
-Lane-D Freebuff branch `csenge-freebuff/D3-acceptance`. Ancestry verified:
-`e6429fe` (main) ⊂ merge **`9e38c9c`** ⊂ align commit **`c3ea2a9`** (Freebuff HEAD
-at review). Integrator fee-source fix commits land on top before merge to main.
-Do not assume `c3ea2a9` precedes `9e38c9c`.
+## Reconciliation (integrator)
+
+Overlapping heads after #40: main `f949c2c` (`79e6572` quote-identity fee proof)
+vs Freebuff `182a2f6` (deployed `testnet-ids.env` fee + stricter catch-all
+preflight). Common ancestor `c3ea2a9`. CCR-13 resolution: Stellar uses
+**deployed vault evidence** (vault id + fee bps from `testnet-ids.env`); mock
+uses **frozen-quote vault-math identities**. Neither accepts a caller-chosen
+`FP_VAULT_FEE_BPS` on the acceptance process. Ancestry: do not assume commit
+order — verify `9e38c9c` ⊂ `c3ea2a9` ⊂ each tip.
 
 D2 #27 stays integrated. This worktree did not edit D2-owned files:
 `scripts/demo/offline.ts`, `scripts/seed/**` (except the lane-D fixture
@@ -40,34 +45,23 @@ Read from `origin/main`:
 
 ## What changed in lane D
 
-- **DF3** — `settle.externalRef` is read as the payoutId before and after
-  acceptance and must not change. `lockTxRef`/`releaseTxRef` are required for
-  the chain proof. `verifyVaultRelease` now also checks CCR-13: lock principal =
-  quoted settle `amountIn`, lock `feeMode` = quote,
-  `fee = floor(P * bps / 10000)`, release net = `P` or `P - f(P)`, and release
-  return value. `expectPayerPaysSizing` checks quote P and fee against vault
-  sizing identities (authoritative frozen quote — not a script-chosen
-  `FP_VAULT_FEE_BPS`). The claim accept call uses
-  `POST /v1/claims/{token}/accept`.
-- **DF4** — `assertExactlyTwoPayoutAttemptsThenRefund` reads durable
-  `Leg.attempt` from every `Event.snapshot` leg. It requires attempts 1 and 2,
-  rejects attempt 3 anywhere, allows cumulative snapshots, and no longer needs
-  distinct provider refs: repeated or cleared refs pass. A payout without
-  `attempt`, or a `leg.failed` without snapshot legs, fails acceptance as a
-  contract defect instead of being inferred or reported as a missing route.
-- **DF5** — `expectReasons` matches the meaning across all `reasons[]` items
-  (crypto, company kind, exclusion). Fragmented reasons are accepted; empty or
-  generic prose fails. Harness cases prove both directions.
-- **Preflight** — OPTIONS alone no longer decides a route is mounted. The probe
-  reads the `Allow` header: catch-all 404 + no Allow + `code: not_found` is
-  missing; Allow without the needed method is a separate method mismatch; 401,
-  403, 405, 5xx, application-level 404s and proxy answers without Allow are
-  treated as mounted so auth/method/application defects surface as FAIL, not as
-  a missing-route BLOCKED.
-- **Tests** — harness self-tests rewritten for `attempt`-based DF4 evidence (no
-  distinct-ref assumption), plus new CCR-12 (`payoutId`) and CCR-13 (frozen
-  amounts, fee modes, remainder, sizing) cases; preflight tests cover the new
-  classification.
+- **DF3** — `settle.externalRef` is the payoutId before/after accept;
+  `lockTxRef`/`releaseTxRef` required for chain proof. CCR-13: lock principal =
+  quoted settle `amountIn`, `feeMode` = quote, fee = `f(P)`, release net =
+  `P` or `P - f(P)`. Stellar: fee bps from `scripts/testnet/testnet-ids.env`
+  tied to vault id (API validates the same rate against on-chain `config()`).
+  Mock: frozen-quote vault-math identities. No caller `FP_VAULT_FEE_BPS`.
+  `expectPayerPaysSizing` matches merged `sizePayerPaysPrincipal` in
+  `packages/domain/src/routing/price.ts` — **no CC1 sizing defect**.
+- **Payout id** — CCR-12 decimal string; adapter `receipt.result.toString()`
+  from vault u64. Positive-decimal check documents that representation;
+  `lockTxRef`/`releaseTxRef` are the only transaction hashes.
+- **DF4** — attempt-based retry evidence (1 and 2, no 3); refs may repeat/clear.
+- **DF5** — exclusion meaning across `reasons[]`.
+- **Preflight** — only exact catch-all (404, no Allow, `code: not_found`,
+  `message: No such route`) is missing; bare/generic 404s and application
+  errors are treated as mounted (FAIL, not missing-route BLOCKED).
+- **Tests** — harness + preflight cover the above; self-tests ≠ flow acceptance.
 
 ## Checks
 
@@ -132,8 +126,8 @@ mounts accept.
 | Blocker                                                                                                                                               | Owner                              |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | CC3a/CC3b routes above are not mounted (including claim accept and sandbox reset)                                                                     | Csaba (CC3a/CC3b)                  |
+| CC3a's quote handler must pass `SettlementAdapter.feeBps()` and the requested `feeMode` into routing                                                  | Csaba (CC3a)                       |
 | CC2 must persist `secretSealed`/`vaultClaimHashHex`, write `lockTxRef`/`releaseTxRef`, set `Leg.attempt`, and publish `Event.snapshot` legs with them | Csaba (CC2)                        |
-| CC1 must price PayerPays with `P = floor(A * 10000 / (10000 + bps))` and copy frozen quote amounts into payment legs                                  | Csaba (CC1)                        |
 | Stellar acceptance needs the routes, an API key and the vault/RPC/address values; the RPC itself is reachable                                         | caller / Csaba (integration) + SC2 |
 | The settle leg's status after a vault refund is still undefined; DF4 does not assert it                                                               | CC2 / A0                           |
 | CCR-11 restart run needs CC2 seal persistence and the accept route                                                                                    | CC2 / CC3                          |

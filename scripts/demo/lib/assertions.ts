@@ -154,9 +154,9 @@ function expectMoneyEqual(
 }
 
 /**
- * CCR-12: settle.externalRef is the contract payoutId, never a transaction hash. The Stellar
- * adapter stringifies the vault u64 via `BigInt.toString()` (decimal); this check mirrors that
- * wire format and rejects tx hashes / opaque labels — it does not invent a separate id scheme.
+ * CCR-12: settle.externalRef is the contract payoutId, never a transaction hash. CCR-12
+ * documents a decimal string; the Stellar adapter returns `receipt.result.toString()` from the
+ * vault u64. This check mirrors that wire format — it does not invent a separate id scheme.
  */
 export function expectPayoutId(ref: string | undefined, where: string): string {
 	if (ref === undefined) fail(`${where}: no settle payoutId`)
@@ -168,14 +168,22 @@ export function expectPayoutId(ref: string | undefined, where: string): string {
 
 /**
  * CCR-13: PayerPays must size `P = floor(A * 10000 / (10000 + bps))` with
- * `f(P) = floor(P * bps / 10000)` equal to the quoted settle fee. The authoritative
- * inputs are the frozen quote amounts and fee — not an independently chosen
- * `FP_VAULT_FEE_BPS`. Any vault bps in 0..1000 that makes both identities hold is accepted.
+ * `f(P) = floor(P * bps / 10000)` equal to the quoted settle fee.
+ *
+ * When `vaultFeeBps` is supplied (deployed vault evidence from `testnet-ids.env`), that bps is
+ * authoritative and must match the frozen quote. When omitted (mock), the frozen quote amounts
+ * and fee must be consistent with some vault bps in 0..1000 — never a caller-chosen
+ * `FP_VAULT_FEE_BPS` env on the acceptance process.
  */
 export function expectPayerPaysSizing(
 	quote: QuoteView,
-	where = "CCR-13",
+	vaultFeeBpsOrWhere?: number | string,
+	whereArg = "CCR-13",
 ): void {
+	const vaultFeeBps =
+		typeof vaultFeeBpsOrWhere === "number" ? vaultFeeBpsOrWhere : undefined
+	const where =
+		typeof vaultFeeBpsOrWhere === "string" ? vaultFeeBpsOrWhere : whereArg
 	if (quote.feeMode !== "PayerPays") return
 	const index = quote.route.findIndex((leg) => leg.kind === "settle")
 	if (index < 0) return
@@ -193,6 +201,26 @@ export function expectPayerPaysSizing(
 	const a = minor(available, `${where}: available`)
 	const p = minor(planned.amountIn, `${where}: principal`)
 	const fee = minor(fees.flexiPayFee, `${where}: fee`)
+
+	if (vaultFeeBps !== undefined) {
+		if (!Number.isInteger(vaultFeeBps) || vaultFeeBps < 0 || vaultFeeBps > 1000) {
+			fail(`${where}: vault fee bps ${vaultFeeBps} is outside 0..1000`)
+		}
+		const expectedP = (a * 10_000n) / (10_000n + BigInt(vaultFeeBps))
+		if (p !== expectedP) {
+			fail(
+				`${where}: PayerPays principal ${p} is not floor(A*10000/(10000+${vaultFeeBps}))=${expectedP}`,
+			)
+		}
+		const expectedFee = (p * BigInt(vaultFeeBps)) / 10_000n
+		if (fee !== expectedFee) {
+			fail(
+				`${where}: quoted fee ${fee} is not f(P)=${expectedFee} at deployed ${vaultFeeBps} bps`,
+			)
+		}
+		return
+	}
+
 	for (let bps = 0; bps <= 1000; bps++) {
 		if ((p * BigInt(bps)) / 10_000n !== fee) continue
 		if ((a * 10_000n) / (10_000n + BigInt(bps)) === p) return
