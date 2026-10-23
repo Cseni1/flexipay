@@ -10,7 +10,7 @@ Version 5, 23 Oct 2026. Derived from `ARCHITECTURE.md` v5 and `PRODUCT.md` v4. A
 | **Preparation** (no event-feature code) | Today and during travel | Pitch deck, README and doc skeletons, event task cards, rehearsal |
 | **New work at HackMeridian** | Sunday 25 Oct 11:30 to Monday 26 Oct submission | Anchor cash-out to a bank, passkey smart-wallet claim, fee sponsorship (stretch) |
 
-Entry: one **Scale** entry in the **Stellar Composed** track. Nothing built for the event features before 11:30 on Sunday. Everything prepared beforehand is disclosed in `docs/PRIOR_WORK.md`. Saturday (travel) is for fixes only.
+Entry: one **Scale** builder-track entry (standalone; thematic tracks are Genesis-only). Anchor and passkey are planned event work after 11:30 on Sunday, not Scale eligibility requirements. Nothing built for those event features before 11:30 on Sunday. Everything prepared beforehand is disclosed in `docs/PRIOR_WORK.md`. Saturday (travel) is for fixes only.
 
 ## 2. People, agents and lanes
 

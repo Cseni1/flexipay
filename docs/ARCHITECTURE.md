@@ -8,7 +8,7 @@ Version 5, 23 Oct 2026. Frozen for the build: changes only through `docs/CONTRAC
 
 ## 1. Goals of this build
 
-- Submission: one entry in the **Scale** builder track and the **Stellar Composed** thematic track. The pre-event build is the disclosed arrival baseline; the new work at the event is anchor cash-out to a bank and a passkey smart-wallet claim (section 2).
+- Submission: one entry in the **Scale** builder track (standalone under published rules; thematic tracks are Genesis-only). The pre-event build is the disclosed arrival baseline; the new work at the event is anchor cash-out to a bank and a passkey smart-wallet claim (section 2). Those event features are planned demos, not Scale eligibility requirements.
 - A working MVP for HackMeridian (Lisbon, 25 and 26 Oct 2026): outgoing payouts from a US dollar bank source to a bank account, an e-wallet or a Stellar crypto wallet, over four corridors, with eligibility-based route selection and an explanation of the route.
 - Real: payment engine, route selection, per-leg state machine, API, three web screens, claim link, Stellar testnet settlement through the Soroban vault; at the event, anchor cash-out through the SDF test anchor and a passkey smart-wallet claim.
 - Simulated and labelled: bank, e-wallet and FX providers, KYC and KYB, quote locks. Real money never moves.
@@ -48,7 +48,7 @@ Both builder tracks require substantive new work completed during HackMeridian, 
 | **Arrival baseline** (disclosed prior work) | Before 25 Oct, 11:30 | Qualifier `pay_shift` project, the zip prototype, and the pre-event build: domain, routing, orchestrator, API, dashboard, claim page, vault contract on testnet, simulated providers |
 | **New work at HackMeridian** | 25 Oct 11:30 to 26 Oct submission | Anchor cash-out to a bank through the SDF test anchor (SEP-10, SEP-38, SEP-24); passkey smart-wallet claim with no seed phrase; fee sponsorship so recipients need no XLM (stretch) |
 
-**Why Stellar Composed:** the track asks for two or more ecosystem tools combined. FlexiPay combines an anchor (cash-out to a bank) and a smart wallet (no seed phrase, no gas), which matches two of the track's own example ideas.
+**Track note (corrected):** published rules make **Scale** a standalone builder track; thematic tracks are **Genesis-only**. Anchor + passkey remain planned event work (section 2), not a Composed-track entry claim.
 
 **Git tags:** `qualifier-v1` (before any change), `arrival` (at 11:30 on 25 Oct, when hacking begins), `submission` (the submitted commit). The diff from `arrival` to `submission` is the event work.
 
@@ -420,7 +420,7 @@ DF1 to DF5 belong to the arrival baseline; DF7 and DF8 are the new work at HackM
 | FlexiPay fee | Vault routes: fixed 1 percent set at deployment and read from the vault. `fees.json` (placeholders) sets fees only for legs outside the vault |
 | Quote validity | 120 seconds; sender bears price movement and re-quotes on expiry |
 | Operating model | Orchestrator only; legal advice later |
-| Entry | One Scale entry in Stellar Composed |
+| Entry | One Scale builder-track entry (standalone; thematic tracks Genesis-only) |
 | Tips module | Deferred; shown as a use case in the pitch |
 | API host and Postgres | Railway by default; **not yet created** (account step) |
 | Vercel production branch and Preview | **not yet set** (account step) |
@@ -432,7 +432,7 @@ Built on the existing qualifier repo instead of a new one; npm workspaces instea
 
 ## 18. Revision notes (v3)
 
-Aligned with the HackMeridian rules: one Scale entry in Stellar Composed; the pre-event build is the disclosed arrival baseline and the event work is anchor cash-out (SEP-10, SEP-38, SEP-24) plus a passkey smart-wallet claim, with fee sponsorship as a stretch; git tags `qualifier-v1`, `arrival` and `submission`; one stable Preview link per branch; one public release for judges after the freeze; new demo flows DF7 and DF8; tips moved to stretch; submission deliverables listed.
+Aligned with the then-understood HackMeridian structure: pre-event arrival baseline; event work is anchor cash-out (SEP-10, SEP-38, SEP-24) plus a passkey smart-wallet claim, with fee sponsorship as a stretch; git tags `qualifier-v1`, `arrival` and `submission`; Preview link and public release; DF7 and DF8; tips as stretch. **Later correction:** Scale is standalone; thematic tracks are Genesis-only — see section 1 and `docs/PRIOR_WORK.md`.
 
 ## 19. Revision notes (v4)
 

@@ -178,7 +178,7 @@ Payoneer, Deel, Remote, Hyperwallet, Dots, Wise Platform, Stripe and Bridge, Air
 
 **Demo story (about 3 minutes):** a data-annotation platform pays workers abroad. One worker opens the claim link on a phone, creates a wallet with a fingerprint (no seed phrase), and cashes out to a bank account through a Stellar anchor, seeing an indicative price first (on testnet the reference anchor pays out to a US-dollar bank account; local anchors in production). Then the route comparison, a US domestic payout where the router picks the local rail and says why, a failed last leg that is refunded, and the South Africa case showing regulation-aware routing. Before the event the same story runs with the custodial demo wallet and the anchor step shown as the next part.
 
-**Entry:** one Scale entry in the Stellar Composed track (anchor plus smart wallet). Everything built before the event is disclosed as the arrival baseline.
+**Entry:** one **Scale** builder-track entry (standalone under published rules; thematic tracks are Genesis-only). Anchor cash-out and passkey claim are planned **event** work, not Scale eligibility requirements. Everything built before the event is disclosed as the arrival baseline (`docs/PRIOR_WORK.md`).
 
 ## 13. Architecture principles (details come next)
 
@@ -219,7 +219,7 @@ Changed from v1: "payment provider" became "payment orchestration platform"; the
 
 ## 17. Revision notes (v3)
 
-Passkey smart wallet added as a self-custody wallet option and built at the event; Stellar anchors listed as payout providers, with bank cash-out through the test anchor built at the event; fee sponsorship as a stretch; tips moved to a stretch goal shown in the pitch; demo story and entry (Scale, Stellar Composed) updated.
+Passkey smart wallet added as a self-custody wallet option and built at the event; Stellar anchors listed as payout providers, with bank cash-out through the test anchor built at the event; fee sponsorship as a stretch; tips moved to a stretch goal shown in the pitch; demo story updated. Entry wording later corrected: Scale standalone; thematic tracks Genesis-only.
 
 ## 18. Revision notes (v4)
 

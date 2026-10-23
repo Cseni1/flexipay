@@ -42,30 +42,20 @@ is redacted.
 
 ## Contract boundary
 
-D2 goes through the API only; it never copies rows into Postgres. The order is:
+D2 goes through the API only; it never copies rows into Postgres. Order:
 
-1. `POST /v1/sandbox/reset` with A0's empty `SandboxResetRequestSchema` body.
-2. `POST /v1/recipients` for each fixture worker, with a deterministic
-   `Idempotency-Key` (`seed:recipient:<ref>`).
-3. `GET /v1/endpoints` to report whether the endpoint family is mounted.
+1. `POST /v1/sandbox/reset`
+2. `POST /v1/recipients` for each fixture worker (deterministic Idempotency-Key)
+3. `POST /v1/endpoints` for each fixture endpoint (CCR-16/17 schemas)
 
-Endpoint creation is deliberately not attempted. A0 has no create-request schema
-for `POST /v1/endpoints` (only the claim-accept endpoint shape), and the route
-is not mounted on `main` at `8aa2290`. Sending fields would invent a contract.
-The exact dependency is:
+## Current status on `975d959`
 
-> Cursor/CC3b: add `POST /v1/endpoints` and its A0 request/response schema; then
-> lane D can implement the fixture-endpoint step and the seed command can pass.
+| Command | Result |
+| --- | --- |
+| `node scripts/seed/seed.ts reset` | **PASS** (mounted) |
+| `node scripts/seed/seed.ts` | **PASS** — recipients + endpoints (see D1/D2 evidence) |
 
-## Current status on `8aa2290`
-
-| Command                           | Result                                              |
-| --------------------------------- | --------------------------------------------------- |
-| `node scripts/seed/seed.ts reset` | **BLOCKED** — `POST /v1/sandbox/reset` returns 404  |
-| `node scripts/seed/seed.ts`       | **BLOCKED** — same reset route; no fixtures changed |
-
-The API at `8aa2290` still mounts only `healthz`, `corridors` and `recipients`
-(the quote/payment/claim/endpoint/sandbox handlers are A0 stubs, not routes).
+Evidence: `scripts/demo/evidence/2026-10-23-d1-d2-final-acceptance.md`.
 
 ## Offline launcher
 
