@@ -193,6 +193,7 @@ export default function ClaimPage() {
 	const [detail, setDetail] = useState("")
 	const [accepting, setAccepting] = useState(false)
 	const [acceptError, setAcceptError] = useState<string | null>(null)
+	const [expired, setExpired] = useState(false)
 	const acceptLock = useRef(false)
 	const acceptAbort = useRef<AbortController | null>(null)
 	const idempotencyKey = useRef<string | null>(null)
@@ -273,6 +274,18 @@ export default function ClaimPage() {
 		[],
 	)
 
+	useEffect(() => {
+		if (!claim?.expiresAt || claim.status !== "open") {
+			setExpired(false)
+			return
+		}
+		const expiresAt = new Date(claim.expiresAt).getTime()
+		const check = () => setExpired(Date.now() >= expiresAt)
+		check()
+		const timer = window.setInterval(check, 1_000)
+		return () => window.clearInterval(timer)
+	}, [claim?.expiresAt, claim?.status])
+
 	const updateSelection = (type: DestinationType) => {
 		if (!supportsClaimAccept(type)) return
 		setSelectedType(type)
@@ -296,6 +309,7 @@ export default function ClaimPage() {
 		Boolean(
 			claim &&
 			!loading &&
+			!expired &&
 			claim.status === "open" &&
 			supportsClaimAccept(selectedType) &&
 			detail.trim(),
@@ -308,6 +322,7 @@ export default function ClaimPage() {
 			!claimToken ||
 			!claim ||
 			loading ||
+			expired ||
 			accepting ||
 			!supportsClaimAccept(selectedType) ||
 			!paymentAcceptable ||
@@ -457,7 +472,7 @@ export default function ClaimPage() {
 														name="receive"
 														value={type}
 														checked={selectedType === type}
-														disabled={accepting || !supported}
+														disabled={accepting || expired || !supported}
 														onChange={() => updateSelection(type)}
 													/>
 													<span className="option-card__body">
@@ -491,7 +506,7 @@ export default function ClaimPage() {
 												placeholder={detailPlaceholder(selectedType)}
 												autoComplete="off"
 												value={detail}
-												disabled={accepting}
+												disabled={accepting || expired}
 												onChange={(event) => updateDetail(event.target.value)}
 												hint={
 													isCrypto(selectedType)
@@ -500,6 +515,12 @@ export default function ClaimPage() {
 												}
 											/>
 										</div>
+									) : null}
+									{expired ? (
+										<Notice tone="warning">
+											This claim link has expired. No release was made by this
+											page.
+										</Notice>
 									) : null}
 									{!paymentAcceptable ? (
 										<Notice tone="warning">{notReadyMessage(claim)}</Notice>
