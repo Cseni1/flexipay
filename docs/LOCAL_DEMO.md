@@ -59,6 +59,14 @@ paste keys into git, evidence JSON, or chat.
 
 Until a key is set, `demo:offline` still starts API+web but **skips seed**.
 
+### Browser vs API key (CCR-19)
+
+- **No merged BFF yet.** Do not put `FP_API_KEY` in `apps/web` env or Vite
+  `define`. Demo scripts and seed use the key in the **shell** only.
+- Accepted minimal path (Freebuff owns implementation): Vite/same-origin proxy
+  injects Bearer for protected `/v1/*`; public `/v1/claims/*` stay unauthenticated.
+  See `docs/CONTRACT_CHANGES.md` CCR-19.
+
 ## Launch (offline / mock)
 
 ```bash

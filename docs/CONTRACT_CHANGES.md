@@ -254,3 +254,18 @@ Status: **approved** by the project owner on 23 Oct 2026. The documents `PRODUCT
 - **Implementation rule:** create quote + payment **per row via the existing CC3a payment engine** (no second orchestrator).
 - **Response / GET** `/v1/batches/{id}`: `{ id, organizationId, status, paymentIds, totals: { count }, createdAt }` with `status ∈ open|processing|completed|failed`.
 - **Who implements:** A0 schemas (integrator); CC3b routes (Csaba).
+
+## CCR-19: browser access to `api_key` routes (accepted, 23 Oct 2026)
+
+- **From:** integrator CF1/CF4 reviews (#29 / #37); no prior accepted BFF existed on main.
+- **Status:** **accepted (contract only).** There is **no** merged BFF/proxy commit yet. CF1 correctly blocks real calls with `auth_required` until this lands.
+- **Split surfaces:**
+  1. **Protected payment API** (`auth: api_key`): `/v1/quotes`, `/v1/recipients`, `/v1/payments*`, `/v1/events`, `/v1/endpoints*`, `/v1/batches*`, `/v1/sandbox/*`. Browser must **never** receive `FP_API_KEY` (not in Vite `define` / `envPrefix` / bundle).
+  2. **Public claim API** (`auth: none`): `GET/POST /v1/claims/{token}` (+ accept). Separate client; **no** `Authorization` header. Token only in the URL path; never stored in web storage.
+- **Minimal accepted pattern (demo/local):** same-origin **dev proxy** (Vite `server.proxy` or equivalent small Node forwarder) so the web origin calls relative `/v1/...`:
+  - For **protected** paths: proxy injects `Authorization: Bearer <key>` from **server-side** env (`FP_API_KEY` readable only by the Node/Vite process). Forward `Idempotency-Key` and JSON body unchanged.
+  - For **claim** paths: proxy forwards **without** injecting Bearer (or browser may call `FP_API_URL` directly for claims only).
+  - Prefer proxy over opening CORS on the API for demo; if claims are called cross-origin without proxy, API may later allow those two routes from the web origin **without credentials** — not required while proxy is used.
+- **Forbidden:** shipping `FP_API_KEY` / `FP_*_SECRET` into the browser bundle; treating Playwright fixture PASS as DF2/DF3 acceptance; treating CF4 Accept UI gates as CCR-15 backend proof.
+- **Who implements:** **Freebuff (web)** — Vite (or sibling) proxy + CF1 client uses same-origin `/v1` once proxy exists; keep CF4 claim client keyless. **Integrator** accepts this CCR; does not implement the proxy. **Csaba (API)** keeps Bearer auth as today; no CORS change required for the proxy path.
+- **Acceptance:** CF1 can create quote/payment/fund through the proxy in a local demo **without** the key appearing in the built assets or browser network request headers originating from page JS (header is added by the proxy). Fixture-only e2e does **not** close DF2/DF3.
