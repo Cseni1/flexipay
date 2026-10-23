@@ -1,4 +1,4 @@
-import type { EndpointType, LegKind } from "../enums.ts";
+import type { EndpointType, FeeMode, LegKind } from "../enums.ts";
 import {
 	CURRENCY_DECIMALS,
 	addMoney,
@@ -50,6 +50,11 @@ export interface PriceDeps {
 	getProvider: (id: string) => ProviderAdapter | undefined;
 	/** Vault fixed fee in bps from SettlementAdapter.feeBps(); unused when the route has no settle. */
 	vaultFeeBps: number;
+	/**
+	 * Vault lock fee mode from RULES.md / LockRequest.feeMode. Required when the template
+	 * includes settle. No MVP default is recorded in ARCHITECTURE or A0 — the caller must pass it.
+	 */
+	vaultFeeMode: FeeMode;
 }
 
 function settlementAsset(corridor: Corridor, config: FlexiPayConfig): string | undefined {
@@ -66,16 +71,58 @@ function rateLookup(
 	return rates.find((r) => r.from === from && r.to === to);
 }
 
-/** Convert fee money into `toCurrency` when a configured directional rate exists; otherwise null. */
+/**
+ * Convert fee money into `toCurrency` using a configured directional rate only (CCR-4: never invert).
+ * Zero fees need no rate. Returns null when a positive fee cannot be expressed in `toCurrency`.
+ */
 function feeInCurrency(
 	fee: Money,
 	toCurrency: string,
 	rates: FxRate[],
 ): Money | null {
 	if (fee.currency === toCurrency) return fee;
+	if (toMinor(fee) === 0n) return money(0n, toCurrency);
 	const rate = rateLookup(rates, fee.currency, toCurrency);
 	if (!rate) return null;
 	return convertMoney(fee, rate.rate, toCurrency);
+}
+
+/**
+ * Sum every charged fee into `fromCurrency` for Quote.fees.total.
+ * Settle fee is counted once via flexiPayFee (not again from the settle leg row).
+ * Fails if any positive fee cannot be converted — never omits a fee silently.
+ */
+function sumFeesTotal(
+	legs: PricedLeg[],
+	flexiPayFee: Money,
+	fromCurrency: string,
+	rates: FxRate[],
+): { ok: true; total: Money } | { ok: false; reasons: string[] } {
+	let total = money(0n, fromCurrency);
+	for (const leg of legs) {
+		if (leg.kind === "settle") continue;
+		const converted = feeInCurrency(leg.fee, fromCurrency, rates);
+		if (!converted) {
+			return {
+				ok: false,
+				reasons: [
+					`Cannot include ${leg.kind} fee ${leg.fee.amount} ${leg.fee.currency} (rail ${leg.rail}) in fees.total (${fromCurrency}): no configured rate ${leg.fee.currency}>${fromCurrency}. CCR-4 forbids deriving an inverse. Integrator must define Quote.fees.total aggregation for multi-currency leg fees (add directional rates, or change the total contract).`,
+				],
+			};
+		}
+		total = addMoney(total, converted);
+	}
+	const vaultInSend = feeInCurrency(flexiPayFee, fromCurrency, rates);
+	if (!vaultInSend) {
+		return {
+			ok: false,
+			reasons: [
+				`Cannot include vault flexiPayFee ${flexiPayFee.amount} ${flexiPayFee.currency} in fees.total (${fromCurrency}): no configured rate ${flexiPayFee.currency}>${fromCurrency}.`,
+			],
+		};
+	}
+	total = addMoney(total, vaultInSend);
+	return { ok: true, total };
 }
 
 function plannedFrom(leg: PricedLeg): PlannedLeg {
@@ -171,10 +218,16 @@ async function firstHealthyProvider(
 	return null;
 }
 
+/**
+ * Vault settle pricing (RULES.md fee modes). Fee is computed once here from vaultFeeBps;
+ * provider adapters are not called for settle, so the vault fee is never double-applied
+ * on top of a provider quote.
+ */
 function priceSettle(
 	amountIn: Money,
 	railId: string,
 	vaultFeeBps: number,
+	feeMode: FeeMode,
 ): PricedLeg | { error: string } {
 	let fee: Money;
 	try {
@@ -184,11 +237,25 @@ function priceSettle(
 			error: e instanceof Error ? e.message : "invalid vault fee bps",
 		};
 	}
-	if (toMinor(fee) >= toMinor(amountIn)) {
+	if (feeMode === "RecipientPays") {
+		if (toMinor(fee) >= toMinor(amountIn)) {
+			return {
+				error: `Vault fee ${fee.amount} ${fee.currency} exceeds or equals settle amount (RecipientPays)`,
+			};
+		}
 		return {
-			error: `Vault fee ${fee.amount} ${fee.currency} exceeds or equals settle amount`,
+			kind: "settle",
+			rail: railId,
+			providerId: railId,
+			simulated: true,
+			fee,
+			fxRate: null,
+			amountIn,
+			amountOut: subtractMoney(amountIn, fee),
+			estimatedTimeSeconds: 0,
 		};
 	}
+	// PayerPays: net to the next leg equals amountIn; fee is locked on top (orchestrator funds it).
 	return {
 		kind: "settle",
 		rail: railId,
@@ -197,7 +264,7 @@ function priceSettle(
 		fee,
 		fxRate: null,
 		amountIn,
-		amountOut: subtractMoney(amountIn, fee),
+		amountOut: amountIn,
 		estimatedTimeSeconds: 0,
 	};
 }
@@ -235,7 +302,12 @@ export async function priceRoute(
 			if (!railId) {
 				return { ok: false, reasons: ["Corridor has no settle rail"] };
 			}
-			const priced = priceSettle(amountIn, railId, deps.vaultFeeBps);
+			const priced = priceSettle(
+				amountIn,
+				railId,
+				deps.vaultFeeBps,
+				deps.vaultFeeMode,
+			);
 			if ("error" in priced) {
 				return { ok: false, reasons: [priced.error] };
 			}
@@ -383,22 +455,14 @@ export async function priceRoute(
 		fee: l.fee,
 	}));
 
-	// total in send currency: provider fees already in fromCurrency + vault fee when convertible.
-	// Settle fee is represented as flexiPayFee (not double-counted from the settle leg row).
-	let total = money(0n, fromCurrency);
-	for (const leg of legs) {
-		if (leg.kind === "settle") continue;
-		const converted = feeInCurrency(leg.fee, fromCurrency, deps.config.fxRates);
-		if (converted) total = addMoney(total, converted);
-	}
-	const vaultInSend = feeInCurrency(
+	const summed = sumFeesTotal(
+		legs,
 		flexiPayFee,
 		fromCurrency,
 		deps.config.fxRates,
 	);
-	if (vaultInSend) total = addMoney(total, vaultInSend);
-	else if (flexiPayFee.currency === fromCurrency) {
-		total = addMoney(total, flexiPayFee);
+	if (!summed.ok) {
+		return { ok: false, reasons: summed.reasons };
 	}
 
 	const fxRate = overallFxRate(sendAmount, expectedReceive);
@@ -411,7 +475,7 @@ export async function priceRoute(
 			fees: {
 				legs: feeLegs,
 				flexiPayFee,
-				total,
+				total: summed.total,
 			},
 			fxRate,
 			estimatedTimeSeconds: totalTime,
