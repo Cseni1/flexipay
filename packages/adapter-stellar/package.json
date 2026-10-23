@@ -1,0 +1,24 @@
+{
+  "name": "@flexipay/adapter-stellar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Stellar settlement adapter: payout_vault client, custodial demo wallets, FP_SETTLEMENT=stellar",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:testnet": "FP_TESTNET=1 vitest run test/testnet.test.ts"
+  },
+  "dependencies": {
+    "@flexipay/domain": "*",
+    "@stellar/stellar-sdk": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^6.0.2",
+    "vitest": "^5.0.5"
+  }
+}
