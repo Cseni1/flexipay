@@ -4,9 +4,9 @@ import type { ApiResponse, HttpClient } from "../../demo/lib/http.ts"
 import { BlockedError, type Blocker } from "../../demo/lib/report.ts"
 
 // Seed/reset through the API only. `POST /v1/sandbox/reset` has an A0 request schema but no
-// response body; recipients have a mounted route and a schema. Endpoint creation has neither a
-// route on main nor an A0 request schema, so this runner stops there rather than inventing
-// `/v1/endpoints` fields or writing the database directly.
+// response body; recipients have a mounted route and a schema. CCR-16 defines the endpoint
+// request schema, but the Express route is not mounted on main, so this runner probes it and
+// stops there rather than writing the database directly or inventing a route.
 
 export interface SeedHooks {
 	step(name: string): void
@@ -33,8 +33,8 @@ const ok = (status: number): boolean => status >= 200 && status < 300
 
 function endpointBlocker(detail: string): Blocker {
 	return {
-		what: "POST /v1/endpoints and its A0 request schema are absent, so endpoints cannot be created without inventing fields",
-		owner: "Csaba (A0/CC3b)",
+		what: "POST /v1/endpoints is not mounted, so endpoints cannot be created",
+		owner: "Csaba (CC3b)",
 		detail,
 	}
 }
@@ -49,9 +49,10 @@ function responseDetail(label: string, response: ApiResponse): string {
 }
 
 async function reset(http: HttpClient, hooks?: SeedHooks): Promise<number> {
+	// Reset must execute on every seed run. Sending an Idempotency-Key makes the API replay
+	// the first cached 200 without deleting anything, so a second seed would reuse stale rows.
 	const response = await http.call("POST", "/v1/sandbox/reset", {
 		body: SandboxResetRequestSchema.parse({}),
-		idempotencyKey: "seed:reset",
 	})
 	if (response.status === 404) {
 		throw new BlockedError([
@@ -72,8 +73,8 @@ async function reset(http: HttpClient, hooks?: SeedHooks): Promise<number> {
 
 /**
  * The endpoint family is probed with GET, which cannot create data. A 404 means the route is not
- * mounted; a 2xx/4xx means it is mounted, but A0 still has no create-request schema. Either way the
- * seed cannot continue without guessing request fields.
+ * mounted; a 2xx/4xx means it is mounted. Either way the seed stops here until lane D wires the
+ * agreed CCR-16 schema into this runner.
  */
 async function probeEndpoints(
 	http: HttpClient,
@@ -155,8 +156,8 @@ export async function runSeed(
 	throw new BlockedError([
 		endpointBlocker(
 			mounted
-				? "The endpoint route family is mounted, but no A0 request/response schema exists for POST /v1/endpoints; lane D does not invent one."
-				: "GET /v1/endpoints returned 404; no endpoint route is mounted on this build.",
+				? "The endpoint route family is mounted, but lane D has not wired the CCR-16 schema into this runner."
+				: "GET /v1/endpoints returned 404; no endpoint route is mounted on this build (CCR-16 schemas exist, not routes).",
 		),
 	])
 }
