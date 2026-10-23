@@ -1432,29 +1432,6 @@
                 }
               }
             }
-          },
-          "422": {
-            "description": "Not eligible or business-rule failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
           }
         }
       }
@@ -1925,29 +1902,6 @@
                 }
               }
             }
-          },
-          "422": {
-            "description": "Not eligible or business-rule failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
           }
         }
       },
@@ -2319,29 +2273,6 @@
           },
           "401": {
             "description": "Missing or invalid API key",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Not eligible or business-rule failure",
             "content": {
               "application/json": {
                 "schema": {
@@ -2805,29 +2736,6 @@
                 }
               }
             }
-          },
-          "422": {
-            "description": "Not eligible or business-rule failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
           }
         }
       }
@@ -3222,29 +3130,6 @@
           },
           "409": {
             "description": "Idempotency or state conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Not eligible or business-rule failure",
             "content": {
               "application/json": {
                 "schema": {
@@ -3679,29 +3564,6 @@
                 }
               }
             }
-          },
-          "422": {
-            "description": "Not eligible or business-rule failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
           }
         }
       }
@@ -3818,29 +3680,6 @@
           },
           "401": {
             "description": "Missing or invalid API key",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Not eligible or business-rule failure",
             "content": {
               "application/json": {
                 "schema": {

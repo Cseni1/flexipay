@@ -803,11 +803,7 @@ export async function cancelPayment(
 	const payment = await db.payment.findUniqueOrThrow({
 		where: { id: paymentId },
 	});
-	if (
-		payment.status !== "awaiting_funding" &&
-		payment.status !== "quoted" &&
-		payment.status !== "funded"
-	) {
+	if (payment.status !== "awaiting_funding" && payment.status !== "funded") {
 		throw new Error(`cannot cancel payment in status ${payment.status}`);
 	}
 	const from = payment.status as PaymentStatus;
