@@ -129,8 +129,9 @@ export interface EndpointInput {
 	type: EndpointType
 	country: string
 	currency: string
-	network?: "stellar"
-	/** Synthetic details from the fixture; never printed. */
+	/** `stellar` for crypto; null for fiat (CCR-16). */
+	network?: "stellar" | null
+	/** Type-specific CCR-16/17 keys (address | accountNumber | phoneNumber); never printed. */
 	details: Record<string, string>
 	simulated: true
 }

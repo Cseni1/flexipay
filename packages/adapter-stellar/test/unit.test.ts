@@ -10,7 +10,7 @@ import {
   parseEnvFile,
   payoutAmounts,
   toVaultError,
-} from "../src/index.js";
+} from "../src/index.ts";
 
 const repoFile = (path: string) =>
   readFileSync(fileURLToPath(new URL(`../../../${path}`, import.meta.url)), "utf8");

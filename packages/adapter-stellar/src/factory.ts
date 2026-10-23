@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
-import { CustodialDemoWalletProvider } from "./demo-wallets.js";
-import { StellarSettlementAdapter } from "./settlement.js";
-import { loadStellarEnv, parseEnvFile, type StellarEnv } from "./stellar-env.js";
-import { PayoutVault } from "./vault-client.js";
+import { CustodialDemoWalletProvider } from "./demo-wallets.ts";
+import { StellarSettlementAdapter } from "./settlement.ts";
+import { loadStellarEnv, parseEnvFile, type StellarEnv } from "./stellar-env.ts";
+import { PayoutVault } from "./vault-client.ts";
 
 // Selection contract for Csaba / the API (ARCHITECTURE §1a, §11.2):
 //   FP_SETTLEMENT=mock|stellar  (default mock)
