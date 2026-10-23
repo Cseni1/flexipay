@@ -819,6 +819,13 @@
                     "default": "cheapest",
                     "type": "string",
                     "const": "cheapest"
+                  },
+                  "feeMode": {
+                    "type": "string",
+                    "enum": [
+                      "PayerPays",
+                      "RecipientPays"
+                    ]
                   }
                 },
                 "required": [
@@ -1122,6 +1129,20 @@
                       "type": "string",
                       "const": "cheapest"
                     },
+                    "feeMode": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "PayerPays",
+                            "RecipientPays"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "validUntil": {
                       "type": "string",
                       "format": "date-time",
@@ -1232,6 +1253,7 @@
                     "expectedReceive",
                     "priceRiskBearer",
                     "policy",
+                    "feeMode",
                     "validUntil",
                     "alternatives",
                     "reasons",

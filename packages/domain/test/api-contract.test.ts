@@ -76,6 +76,7 @@ const validQuote = {
   expectedReceive: moneyPhp("560000"),
   priceRiskBearer: "sender" as const,
   policy: "cheapest" as const,
+  feeMode: "RecipientPays" as const,
   validUntil: T1,
   alternatives: [],
   reasons: ["Cheapest eligible route for this corridor"],
@@ -117,11 +118,34 @@ describe("A0 CreateQuoteRequestSchema", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("accepts optional feeMode PayerPays | RecipientPays (CCR-8)", () => {
+    const withMode = CreateQuoteRequestSchema.parse({
+      source: validQuote.source,
+      destination: validQuote.destination,
+      amount: validQuote.amount,
+      feeMode: "PayerPays",
+    });
+    expect(withMode.feeMode).toBe("PayerPays");
+    expect(
+      CreateQuoteRequestSchema.safeParse({
+        source: validQuote.source,
+        destination: validQuote.destination,
+        amount: validQuote.amount,
+        feeMode: "SplitEvenly",
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe("A0 QuoteSchema", () => {
   it("accepts a full quote response", () => {
     expect(QuoteSchema.parse(validQuote).id).toBe("quo_demo_1");
+    expect(QuoteSchema.parse(validQuote).feeMode).toBe("RecipientPays");
+  });
+
+  it("allows feeMode null for no-settle routes", () => {
+    expect(QuoteSchema.parse({ ...validQuote, feeMode: null }).feeMode).toBeNull();
   });
 
   it("rejects a quote marked simulated:false", () => {
