@@ -49,7 +49,7 @@ Vault-level companion run (`sc2_1792764067450`): deposit `d0d5f82a…`, lock `10
 | `contract_debited` | Worker A (fee path) | **vault** `CCG232…` | USDC | `0.0100000` |
 | `account_credited` | **Treasury** | — | USDC | `0.0100000` |
 
-Matches `PayerPays` at 100 bps: net 1.0 USDC to intended recipient, fee 0.01 USDC to treasury, from our vault contract. Release tx source account = Worker A (claim authorisation). Lock tx source = payer demo.
+Matches `PayerPays` at 100 bps: **principal P = 1.0 USDC** net to intended recipient, fee **f(P) = 0.01 USDC** to treasury, from our vault contract. Lock funded **P + f(P) = 1.01 USDC** from the payer’s vault balance — **not** a fixed 1 USDC all-in budget. Release tx source account = Worker A (claim authorisation). Lock tx source = payer demo.
 
 Payout id is returned by the adapter/`get_payout` (not always present as a Horizon classic effect field); assert via adapter `status(payoutId)` / vault `get_payout` when available.
 

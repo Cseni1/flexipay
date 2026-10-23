@@ -135,6 +135,8 @@ function plannedFrom(leg: PricedLeg): PlannedLeg {
 		kind: leg.kind,
 		rail: leg.rail,
 		providerId: leg.providerId,
+		amountIn: leg.amountIn,
+		amountOut: leg.amountOut,
 		simulated: leg.simulated,
 	};
 }
@@ -265,7 +267,13 @@ function priceSettle(
 	feeMode: FeeMode,
 	settlementSimulated: boolean,
 ):
-	| { ok: true; leg: PricedLeg; remainderNote?: string }
+	| {
+			ok: true;
+			leg: PricedLeg;
+			/** CCR-13 accounting; null when RecipientPays or remainder is zero. */
+			unlockedRemainder: Money | null;
+			remainderNote?: string;
+	  }
 	| { ok: false; error: string } {
 	if (feeMode === "RecipientPays") {
 		let fee: Money;
@@ -285,6 +293,7 @@ function priceSettle(
 		}
 		return {
 			ok: true,
+			unlockedRemainder: null,
 			leg: {
 				kind: "settle",
 				rail: railId,
@@ -309,12 +318,13 @@ function priceSettle(
 			error: e instanceof Error ? e.message : "invalid PayerPays sizing",
 		};
 	}
-	const remainderNote =
-		toMinor(sized.remainder) > 0n
-			? `PayerPays settle remainder ${sized.remainder.amount} ${sized.remainder.currency} stays unlocked (not a fee; CCR-8)`
-			: undefined;
+	const hasRemainder = toMinor(sized.remainder) > 0n;
+	const remainderNote = hasRemainder
+		? `PayerPays settle remainder ${sized.remainder.amount} ${sized.remainder.currency} stays unlocked (not a fee; CCR-8/CCR-13)`
+		: undefined;
 	return {
 		ok: true,
+		unlockedRemainder: hasRemainder ? sized.remainder : null,
 		leg: {
 			kind: "settle",
 			rail: railId,
@@ -353,6 +363,7 @@ export async function priceRoute(
 	const legs: PricedLeg[] = [];
 	let amountIn = sendAmount;
 	let totalTime = 0;
+	let settleUnlockedRemainder: Money | null = null;
 
 	for (let i = 0; i < template.length; i++) {
 		const kind = template[i]!;
@@ -387,6 +398,7 @@ export async function priceRoute(
 			if (priced.remainderNote) {
 				exclusionReasons.push(priced.remainderNote);
 			}
+			settleUnlockedRemainder = priced.unlockedRemainder;
 			legs.push(priced.leg);
 			amountIn = priced.leg.amountOut;
 			continue;
@@ -545,6 +557,7 @@ export async function priceRoute(
 				legs: feeLegs,
 				flexiPayFee,
 				total: summed.total,
+				settleUnlockedRemainder,
 			},
 			fxRate,
 			estimatedTimeSeconds: totalTime,

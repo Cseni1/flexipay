@@ -982,6 +982,42 @@
                             "type": "string",
                             "pattern": "^[a-z][a-z0-9_]*$"
                           },
+                          "amountIn": {
+                            "type": "object",
+                            "properties": {
+                              "amount": {
+                                "type": "string",
+                                "pattern": "^(0|[1-9][0-9]*)$"
+                              },
+                              "currency": {
+                                "type": "string",
+                                "pattern": "^[A-Z][A-Z0-9]{2,11}$"
+                              }
+                            },
+                            "required": [
+                              "amount",
+                              "currency"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "amountOut": {
+                            "type": "object",
+                            "properties": {
+                              "amount": {
+                                "type": "string",
+                                "pattern": "^(0|[1-9][0-9]*)$"
+                              },
+                              "currency": {
+                                "type": "string",
+                                "pattern": "^[A-Z][A-Z0-9]{2,11}$"
+                              }
+                            },
+                            "required": [
+                              "amount",
+                              "currency"
+                            ],
+                            "additionalProperties": false
+                          },
                           "simulated": {
                             "type": "boolean"
                           }
@@ -990,6 +1026,8 @@
                           "kind",
                           "rail",
                           "providerId",
+                          "amountIn",
+                          "amountOut",
                           "simulated"
                         ],
                         "additionalProperties": false
@@ -1078,12 +1116,38 @@
                             "currency"
                           ],
                           "additionalProperties": false
+                        },
+                        "settleUnlockedRemainder": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "amount": {
+                                  "type": "string",
+                                  "pattern": "^(0|[1-9][0-9]*)$"
+                                },
+                                "currency": {
+                                  "type": "string",
+                                  "pattern": "^[A-Z][A-Z0-9]{2,11}$"
+                                }
+                              },
+                              "required": [
+                                "amount",
+                                "currency"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
                         "legs",
                         "flexiPayFee",
-                        "total"
+                        "total",
+                        "settleUnlockedRemainder"
                       ],
                       "additionalProperties": false
                     },
@@ -1175,6 +1239,42 @@
                                   "type": "string",
                                   "pattern": "^[a-z][a-z0-9_]*$"
                                 },
+                                "amountIn": {
+                                  "type": "object",
+                                  "properties": {
+                                    "amount": {
+                                      "type": "string",
+                                      "pattern": "^(0|[1-9][0-9]*)$"
+                                    },
+                                    "currency": {
+                                      "type": "string",
+                                      "pattern": "^[A-Z][A-Z0-9]{2,11}$"
+                                    }
+                                  },
+                                  "required": [
+                                    "amount",
+                                    "currency"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "amountOut": {
+                                  "type": "object",
+                                  "properties": {
+                                    "amount": {
+                                      "type": "string",
+                                      "pattern": "^(0|[1-9][0-9]*)$"
+                                    },
+                                    "currency": {
+                                      "type": "string",
+                                      "pattern": "^[A-Z][A-Z0-9]{2,11}$"
+                                    }
+                                  },
+                                  "required": [
+                                    "amount",
+                                    "currency"
+                                  ],
+                                  "additionalProperties": false
+                                },
                                 "simulated": {
                                   "type": "boolean"
                                 }
@@ -1183,6 +1283,8 @@
                                 "kind",
                                 "rail",
                                 "providerId",
+                                "amountIn",
+                                "amountOut",
                                 "simulated"
                               ],
                               "additionalProperties": false
@@ -1599,7 +1701,34 @@
                               "reversed"
                             ]
                           },
+                          "attempt": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991
+                          },
                           "externalRef": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lockTxRef": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "releaseTxRef": {
                             "anyOf": [
                               {
                                 "type": "string",
@@ -1659,7 +1788,10 @@
                           "amountIn",
                           "amountOut",
                           "status",
+                          "attempt",
                           "externalRef",
+                          "lockTxRef",
+                          "releaseTxRef",
                           "error",
                           "reversalOf",
                           "simulated"
@@ -1999,7 +2131,34 @@
                                     "reversed"
                                   ]
                                 },
+                                "attempt": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 9007199254740991
+                                },
                                 "externalRef": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "lockTxRef": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "releaseTxRef": {
                                   "anyOf": [
                                     {
                                       "type": "string",
@@ -2059,7 +2218,10 @@
                                 "amountIn",
                                 "amountOut",
                                 "status",
+                                "attempt",
                                 "externalRef",
+                                "lockTxRef",
+                                "releaseTxRef",
                                 "error",
                                 "reversalOf",
                                 "simulated"
@@ -2380,7 +2542,34 @@
                               "reversed"
                             ]
                           },
+                          "attempt": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991
+                          },
                           "externalRef": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lockTxRef": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "releaseTxRef": {
                             "anyOf": [
                               {
                                 "type": "string",
@@ -2440,7 +2629,10 @@
                           "amountIn",
                           "amountOut",
                           "status",
+                          "attempt",
                           "externalRef",
+                          "lockTxRef",
+                          "releaseTxRef",
                           "error",
                           "reversalOf",
                           "simulated"
@@ -2826,7 +3018,34 @@
                               "reversed"
                             ]
                           },
+                          "attempt": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991
+                          },
                           "externalRef": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lockTxRef": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "releaseTxRef": {
                             "anyOf": [
                               {
                                 "type": "string",
@@ -2886,7 +3105,10 @@
                           "amountIn",
                           "amountOut",
                           "status",
+                          "attempt",
                           "externalRef",
+                          "lockTxRef",
+                          "releaseTxRef",
                           "error",
                           "reversalOf",
                           "simulated"
@@ -3233,7 +3455,34 @@
                               "reversed"
                             ]
                           },
+                          "attempt": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991
+                          },
                           "externalRef": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lockTxRef": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "releaseTxRef": {
                             "anyOf": [
                               {
                                 "type": "string",
@@ -3293,7 +3542,10 @@
                           "amountIn",
                           "amountOut",
                           "status",
+                          "attempt",
                           "externalRef",
+                          "lockTxRef",
+                          "releaseTxRef",
                           "error",
                           "reversalOf",
                           "simulated"

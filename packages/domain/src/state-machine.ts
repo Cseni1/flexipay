@@ -25,6 +25,11 @@ const LEG_TRANSITIONS: Record<LegStatus, readonly LegStatus[]> = {
   reversed: [],
 };
 
+// CCR-14: a payout *retry* does not change status. While `attemptsOnProvider < 2`,
+// `decideOnFailure` returns `{ action: "retry" }`; the orchestrator keeps status
+// `processing`, bumps `Leg.attempt`, and clears refs for the new attempt. There is
+// no `failed → processing` edge and no third attempt.
+
 export const canTransitionPayment = (from: PaymentStatus, to: PaymentStatus): boolean =>
   PAYMENT_TRANSITIONS[from].includes(to);
 
