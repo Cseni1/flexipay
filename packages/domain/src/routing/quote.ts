@@ -26,10 +26,10 @@ export interface BuildQuoteDeps {
 	 */
 	vaultFeeBps: number;
 	/**
-	 * Vault `FeeMode` for the settle leg (RULES.md / LockRequest). Required when the template
-	 * includes settle. No accepted MVP default exists in docs — caller must supply it.
+	 * Optional mirror of CreateQuoteRequest.feeMode for adapter wiring checks.
+	 * CCR-8 source of truth for settle routes is always `req.feeMode`.
 	 */
-	vaultFeeMode: FeeMode;
+	vaultFeeMode?: FeeMode;
 	/**
 	 * Settle-leg simulated label from settlement execution mode (CCR-10).
 	 * Required when the template includes settle. Not inferred from `stellar_usdc` alone.
@@ -51,14 +51,45 @@ function defaultQuoteId(): string {
 	return `quo_${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }
 
-function priceDeps(deps: BuildQuoteDeps): PriceDeps {
+function priceDeps(deps: BuildQuoteDeps, feeMode: FeeMode | null): PriceDeps {
 	return {
 		config: deps.config,
 		getProvider: deps.getProvider,
 		vaultFeeBps: deps.vaultFeeBps,
-		vaultFeeMode: deps.vaultFeeMode,
+		vaultFeeMode: feeMode,
 		settlementSimulated: deps.settlementSimulated,
 	};
+}
+
+/**
+ * CCR-8: settle routes take feeMode only from CreateQuoteRequest.feeMode (no silent default).
+ * If deps.vaultFeeMode is also set, it must match the request.
+ */
+function resolveSettleFeeMode(
+	req: CreateQuoteRequest,
+	deps: BuildQuoteDeps,
+): { ok: true; feeMode: FeeMode } | { ok: false; reasons: string[] } {
+	const fromRequest = req.feeMode;
+	if (fromRequest !== "PayerPays" && fromRequest !== "RecipientPays") {
+		return {
+			ok: false,
+			reasons: [
+				"CreateQuoteRequest.feeMode (PayerPays | RecipientPays) is required for settle routes (CCR-8); no silent MVP default",
+			],
+		};
+	}
+	if (
+		deps.vaultFeeMode !== undefined &&
+		deps.vaultFeeMode !== fromRequest
+	) {
+		return {
+			ok: false,
+			reasons: [
+				`feeMode mismatch: CreateQuoteRequest.feeMode=${fromRequest} but vaultFeeMode=${deps.vaultFeeMode}`,
+			],
+		};
+	}
+	return { ok: true, feeMode: fromRequest };
 }
 
 function assembleQuote(
@@ -66,6 +97,7 @@ function assembleQuote(
 	deps: BuildQuoteDeps,
 	eligibilityReasons: string[],
 	priced: PricedRoute,
+	feeMode: FeeMode | null,
 ): Quote {
 	const now = (deps.now ?? (() => new Date()))();
 	const validUntil = new Date(
@@ -84,7 +116,6 @@ function assembleQuote(
 		id: (deps.quoteId ?? defaultQuoteId)(),
 		source: req.source,
 		destination: req.destination,
-		// Echo the request amount (send or receive); sendAmount is used only for pricing.
 		amount: req.amount,
 		route: toPlannedLegs(priced.legs),
 		fees: priced.fees,
@@ -92,8 +123,7 @@ function assembleQuote(
 		expectedReceive: priced.expectedReceive,
 		priceRiskBearer: deps.config.fees.priceRiskBearer,
 		policy: "cheapest",
-		// CCR-8: echo the mode used to price settle; null when the route has no settle leg.
-		feeMode: hasSettle ? deps.vaultFeeMode : null,
+		feeMode: hasSettle ? feeMode : null,
 		validUntil,
 		alternatives: [],
 		reasons,
@@ -114,6 +144,7 @@ async function priceForReceive(
 		ReturnType<typeof checkEligibility>,
 		{ ok: true }
 	>,
+	feeMode: FeeMode | null,
 ): Promise<
 	| { ok: true; priced: PricedRoute; sendAmount: Money }
 	| { ok: false; reasons: string[] }
@@ -136,14 +167,13 @@ async function priceForReceive(
 		const mid = (lo + hi) / 2n;
 		const sendAmount = money(mid, corridor.from.currency);
 		const priced = await priceRoute(
-			priceDeps(deps),
+			priceDeps(deps, feeMode),
 			corridor,
 			template,
 			sendAmount,
 			destination,
 		);
 		if (!priced.ok) {
-			// Amount too small for downstream provider mins — search higher.
 			lo = mid + 1n;
 			continue;
 		}
@@ -169,8 +199,6 @@ async function priceForReceive(
 		};
 	}
 
-	// Accept the closest send that meets or exceeds the receive target when exact is impossible
-	// (integer FX rounding). Re-scan upward from best if under.
 	if (
 		compareMoney(best.priced.expectedReceive, target) < 0 &&
 		toMinor(best.send) < toMinor(limits.max)
@@ -182,7 +210,7 @@ async function priceForReceive(
 		) {
 			const sendAmount = money(a, corridor.from.currency);
 			const priced = await priceRoute(
-				priceDeps(deps),
+				priceDeps(deps, feeMode),
 				corridor,
 				template,
 				sendAmount,
@@ -207,6 +235,7 @@ export async function buildQuote(
 		return eligibility satisfies EligibilityFail;
 	}
 
+	let feeMode: FeeMode | null = null;
 	if (eligibility.template.includes("settle")) {
 		if (!Number.isInteger(deps.vaultFeeBps) || deps.vaultFeeBps < 0) {
 			return {
@@ -216,17 +245,9 @@ export async function buildQuote(
 				],
 			};
 		}
-		if (
-			deps.vaultFeeMode !== "PayerPays" &&
-			deps.vaultFeeMode !== "RecipientPays"
-		) {
-			return {
-				ok: false,
-				reasons: [
-					"vaultFeeMode (PayerPays | RecipientPays) is required for settle routes (CCR-8); pass CreateQuoteRequest.feeMode — no silent MVP default",
-				],
-			};
-		}
+		const resolved = resolveSettleFeeMode(req, deps);
+		if (!resolved.ok) return resolved;
+		feeMode = resolved.feeMode;
 		if (typeof deps.settlementSimulated !== "boolean") {
 			return {
 				ok: false,
@@ -245,7 +266,7 @@ export async function buildQuote(
 
 	if (req.amount.side === "send") {
 		const priced = await priceRoute(
-			priceDeps(deps),
+			priceDeps(deps, feeMode),
 			eligibility.corridor,
 			eligibility.template,
 			req.amount.value,
@@ -259,14 +280,14 @@ export async function buildQuote(
 				deps,
 				eligibility.reasons,
 				priced.priced,
+				feeMode,
 			),
 		};
 	}
 
-	const solved = await priceForReceive(deps, req, eligibility);
+	const solved = await priceForReceive(deps, req, eligibility, feeMode);
 	if (!solved.ok) return solved;
 
-	// Receive-side: after pricing, send amount must still sit inside corridor limits.
 	const limits =
 		eligibility.corridor.limits[req.destination.recipientKind];
 	if (compareMoney(solved.sendAmount, limits.min) < 0) {
@@ -288,6 +309,12 @@ export async function buildQuote(
 
 	return {
 		ok: true,
-		quote: assembleQuote(req, deps, eligibility.reasons, solved.priced),
+		quote: assembleQuote(
+			req,
+			deps,
+			eligibility.reasons,
+			solved.priced,
+			feeMode,
+		),
 	};
 }
