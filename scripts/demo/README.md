@@ -7,12 +7,15 @@ and Worker A to Worker D (Worker D is the ZA company that DF5 needs).
 
 ## Status (23 Oct 2026)
 
-**D1/D2 acceptance: PASS.** On integrated HEAD `b48bfe3` plus the lane-D
-working-tree patch, all five flows pass on the mock API and against Stellar
-testnet, the offline stack runs under a network-denied sandbox, seed/replay
-pass, and the DF2/DF3/DF5 browser flows pass against the real loopback stack.
-The exact commands, results, transaction hashes and screenshots are in
-`scripts/demo/evidence/2026-10-23-d1-d2-final-acceptance.md`. Per-run JSON
+**D1/D2 acceptance: PASS. CCR-11 restart acceptance: PASS on Stellar testnet.**
+On integrated HEAD `b48bfe3` plus lane-D changes committed as `939a2f9`, all
+five flows pass on the mock API and against Stellar testnet, the offline stack
+runs under a network-denied sandbox, seed/replay pass, the DF2/DF3/DF5 browser
+flows pass against the real loopback stack, and a funded claim survives an API
+restart and releases its existing lock through the UI. The exact commands,
+results, transaction hashes and screenshots are in
+`scripts/demo/evidence/2026-10-23-d1-d2-final-acceptance.md` and
+`scripts/demo/evidence/2026-10-23-ccr11-restart-stellar.md`. Per-run JSON
 evidence is written to the same folder and git-ignored.
 
 DF1 takes the domestic explanation from `Quote.reasons` (no batch-row reason
@@ -169,7 +172,7 @@ passed.
   generated JSON per run: commit, command, exit code, steps, blockers. No key,
   token, account number or address.
 
-## CCR-11 restart acceptance (not part of the D1/D2 gate)
+## CCR-11 restart acceptance (Stellar testnet PASS)
 
 Claim secrets are sealed at rest with `FP_CLAIM_SEAL_KEY` (32 bytes, 64 hex
 chars). Restart acceptance must use the **same database** and the **same key**
@@ -196,12 +199,19 @@ across restarts; it never asks the API to reveal a secret.
 Evidence records ids, hashes and statuses only: no claim token, secret, API key
 or full address.
 
-**Attempt status: not accepted.** A mock-mode attempt kept the claim `open` and
-the payment `processing` across an API restart, but accept returned **502
-`release_failed` / `PayoutNotFound`** because the mock vault is in-memory and
-lost payout state. A Stellar-mode restart was not run in this acceptance. The
-mock result must not be reported as a pass; use a persistent mock vault, or run
-the same procedure against Stellar where the lock lives on-chain.
+**Attempt status: PASS on Stellar testnet** for payment
+`pay_130322f594bcf3c64330e80c`. The API stopped with the database left running
+and restarted on the same `DATABASE_URL` and `FP_CLAIM_SEAL_KEY`. In a new
+browser context the original claim stayed `open` and `processing`; accepting it
+released the **same payout `39`** and **same lock hash**, paid Worker A, and set
+the payment to `paid`. There was one lock and one funding event before and
+after. See `2026-10-23-ccr11-restart-stellar.md` for the transaction hashes,
+restart timestamps, UI network trace and screenshot links.
+
+A mock-mode attempt still fails because that vault is in-memory: the claim stays
+`open`, but accept returns **502 `release_failed` / `PayoutNotFound`** after the
+payout state is lost. That result is not a pass; mock restart needs a persistent
+vault. CCR-11's Stellar path does not.
 
 ## Integration items resolved in this acceptance
 
@@ -217,8 +227,9 @@ the same procedure against Stellar where the lock lives on-chain.
    Stellar testnet.
 7. Event snapshots carry legs with durable `attempt`, `lockTxRef` and
    `releaseTxRef`; DF3/DF4 assertions pass against them.
-8. The sealed claim secret survives an API restart (claim view stayed `open`),
-   though mock release still needs a persistent vault (see above).
+8. The sealed claim secret survives an API restart: the claim view stayed
+   `open`, and the Stellar release decrypted it and released the original lock
+   after restart. Mock release still needs a persistent vault (see above).
 
 ## Remaining caveats (not blockers for D1/D2)
 
@@ -232,4 +243,5 @@ the same procedure against Stellar where the lock lives on-chain.
 4. The browser flow cannot request a ZA crypto destination because the web form
    only offers bank accounts for ZA; the 422 crypto refusal is covered by DF5 at
    the API level, while the browser covers the eligible bank route.
-5. CCR-11 restart acceptance remains open for the reason above.
+5. CCR-11 passes on Stellar testnet. Mock-mode restart remains unsupported by
+   the in-memory mock vault; that is a mock limitation, not a Stellar gap.

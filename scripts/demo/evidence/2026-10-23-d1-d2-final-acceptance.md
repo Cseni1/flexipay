@@ -1,21 +1,22 @@
 # D1/D2 final acceptance — 23 October 2026
 
 **Result: PASS** for D1 (DF1–DF5) and D2 (seed, replay, offline launcher) on the
-lane-D working tree.
+lane-D tree, now committed as `939a2f9` on base `b48bfe3`.
 
 | Item                | Value                                                                                                                                     |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Integrated HEAD     | `b48bfe3` (merge `f4347bd` into lane D)                                                                                                   |
 | Lane-D source patch | `sha256(git diff -- '*.ts') = 249cee56ecf9619c4b3ba23391d85d5691913cbaa4ab7d02d71c8e466313cf07`                                           |
-| Working tree        | uncommitted lane-D changes; no API, web, Prisma, contract or adapter source was edited                                                    |
+| Working tree        | lane-D changes committed as `939a2f9`; no API, web, Prisma, contract or adapter source was edited                                         |
 | Runtime             | Node `24.21.0`, npm `11.12.1`, macOS arm64                                                                                                |
 | Mock API            | `http://127.0.0.1:3212`, `FP_SETTLEMENT=mock`, embedded Postgres `54333`                                                                  |
 | Stellar API         | `http://127.0.0.1:3211`, `FP_SETTLEMENT=stellar`, same database, testnet vault `CCG232ACW63XVUQGMMA6SWV46W2HIVR2ZSB5ENXHOIIITQBXUBHHIUMN` |
 | Offline stack       | API `http://127.0.0.1:8899`, web `http://127.0.0.1:5299`, loopback only, external network denied                                          |
 | Evidence            | per-run JSON below is git-ignored; this document and `browser/*.png` are retained                                                         |
 
-The scripts print `commit b48bfe3` because the lane-D patch is still
-uncommitted. The source patch hash identifies the exact tested code.
+The scripts print `commit b48bfe3` because they ran before the lane-D commit.
+The source patch hash identifies the exact tested code; the same tree is now
+committed as `939a2f9`.
 
 ## D1 — flow results
 
@@ -185,12 +186,13 @@ browser.
 
 ## Remaining caveats
 
-1. CCR-11 restart acceptance is **not passed**: a mock-mode restart kept the
-   claim `open`, but accept returned `502 release_failed / PayoutNotFound`
-   because the mock vault is in-memory. A Stellar restart was not run.
+1. CCR-11 restart acceptance **passes on Stellar testnet**; see
+   `2026-10-23-ccr11-restart-stellar.md`. A mock-mode restart still fails
+   because the mock vault is in-memory (`502 release_failed / PayoutNotFound`).
 2. The settle leg's status after a vault refund is undefined; DF4 does not
    assert it.
 3. DF1/DF2/DF4 prove testnet settlement through API state and events; only
    DF3/DF4 were independently decoded from RPC in this acceptance.
 4. No stable refusal-reason code exists; DF5 asserts the explanation's meaning.
-5. The lane-D changes are uncommitted; the patch hash above identifies them.
+5. The lane-D changes are committed as `939a2f9`; the patch hash above
+   identifies the tested tree.
