@@ -179,10 +179,15 @@ Status: **approved** by the project owner on 23 Oct 2026. The documents `PRODUCT
 - **Rules:**
   - **Vault `payoutId`** — opaque contract id (decimal string). For **settle** legs, `Leg.externalRef` **MUST** be this payoutId only. It is **not** a transaction hash. Used for `status` / `release` / `refund`.
   - **`Leg.lockTxRef`** — Stellar (or mock) transaction hash from `LockResult.txRef`. Nullable until lock succeeds.
-  - **`Leg.releaseTxRef`** — hash from `ReleaseResult.txRef` (or refund tx for cancel/refund path). Nullable until release/refund succeeds.
+  - **`Leg.releaseTxRef`** — hash from `ReleaseResult.txRef` **or** from a vault **refund/cancel** tx on the refund path (CCR-15 fee-drift / payout failure). Nullable until release **or** refund succeeds. **Do not rename** this field for refunds.
   - Provider legs keep `externalRef` as the provider reference string; `lockTxRef` / `releaseTxRef` stay null.
-- **Acceptance scripts** may use public Horizon effects on `releaseTxRef` plus `externalRef` as payoutId; never require secrets.
-- **Who implements:** CC2 writes the three fields; do not overwrite `externalRef` with a tx hash.
+- **Consumer rule (clarified 23 Oct 2026):** presence of `releaseTxRef` alone is **not** proof of a successful claim release. Interpret with:
+  - `Payment.status` (`paid` ⇒ claim/release path; `refunded` / settle `failed` ⇒ refund path),
+  - settle `Leg.status` / `errorCode`,
+  - and/or `payment.onchain` event `phase` (`release` vs `refund`).
+  UI and DF scripts must not label a refund hash as a claim release or treat it as `paid`.
+- **Acceptance scripts** may use public Horizon effects on `releaseTxRef` plus `externalRef` as payoutId; never require secrets. For DF3 release proof, require `payment.status === paid` (and settle succeeded) before verifying `releaseTxRef` as a **claim** invoke.
+- **Who implements:** CC2 writes the three fields; do not overwrite `externalRef` with a tx hash. UI copy: Freebuff. No schema rename.
 
 ## CCR-13: quote → payment → lock frozen amounts (accepted, 23 Oct 2026)
 
