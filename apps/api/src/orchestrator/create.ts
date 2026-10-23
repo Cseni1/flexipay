@@ -27,7 +27,7 @@ export async function createPaymentFromQuote(
 	if (quote.organizationId !== input.organizationId) {
 		throw new Error("quote does not belong to organization");
 	}
-	if (quote.validUntil.getTime() <= Date.now()) {
+	if (quote.validUntil.getTime() <= (input.now ?? new Date()).getTime()) {
 		throw new Error("quote expired");
 	}
 
@@ -70,6 +70,7 @@ export async function createPaymentFromQuote(
 			quoteId: input.quoteId,
 			recipientId: input.recipientId,
 			externalId: input.externalId ?? null,
+			batchId: input.batchId ?? null,
 			delivery: input.delivery,
 			profile: input.profile,
 			reference: input.reference ?? null,

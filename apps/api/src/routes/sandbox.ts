@@ -1,5 +1,7 @@
 import { z } from "zod";
 import {
+	SandboxAdvanceTimeRequestSchema,
+	SandboxAdvanceTimeResponseSchema,
 	SandboxFailNextRequestSchema,
 	SandboxProviderHealthRequestSchema,
 	SandboxResetRequestSchema,
@@ -63,6 +65,21 @@ export const sandboxRoutes: RouteDef<any, any>[] = [
 	}),
 	defineRoute({
 		method: "post",
+		path: "/v1/sandbox/advance-time",
+		summary: "Move the API clock (quote and claim expiry)",
+		auth: "api_key",
+		body: SandboxAdvanceTimeRequestSchema,
+		success: { status: 200, schema: SandboxAdvanceTimeResponseSchema },
+		handler: async (ctx, { body }) => {
+			orgOf(ctx);
+			if (!ctx.runtime) throw new ApiError(500, "internal_error", "runtime not configured");
+			// CCR-6: API clock only. Ledger time (Stellar / mock vault) is not moved (CCR-5).
+			const now = ctx.runtime.clock.advance(body.seconds);
+			return { now: now.toISOString() };
+		},
+	}),
+	defineRoute({
+		method: "post",
 		path: "/v1/sandbox/reset",
 		summary: "Reset and reseed the demo",
 		auth: "api_key",
@@ -98,6 +115,7 @@ export const sandboxRoutes: RouteDef<any, any>[] = [
 				where: { organizationId: org.id },
 			});
 			ctx.runtime?.sim?.controls.reset();
+				ctx.runtime?.clock.reset();
 			return {};
 		},
 	}),
