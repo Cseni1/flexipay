@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import EmbeddedPostgres from "embedded-postgres";
+import { fixEmbeddedPostgresDylibs } from "./fix-embedded-pg-dylibs.ts";
 
 const run = promisify(execFile);
 const apiDir = fileURLToPath(new URL("../..", import.meta.url));
@@ -30,6 +31,8 @@ async function freePort(): Promise<number> {
 
 /** Starts Postgres. `dir` keeps data between runs; without it the database is temporary. */
 export async function startEmbeddedDb(opts: { dir?: string; port?: number; name?: string } = {}): Promise<EmbeddedDb> {
+  // darwin-arm64 package omits ICU soname symlinks; repair before initdb (see fix-embedded-pg-dylibs.ts).
+  fixEmbeddedPostgresDylibs();
   const temporary = opts.dir === undefined;
   const databaseDir = opts.dir ?? (await mkdtemp(join(tmpdir(), "flexipay-pg-")));
   const port = opts.port ?? (await freePort());
