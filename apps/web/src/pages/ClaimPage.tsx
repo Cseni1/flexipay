@@ -41,7 +41,8 @@ const PAYMENT_STATUS_LABELS: Readonly<Record<string, string>> = {
 	expired: "Expired",
 }
 
-const PAYMENT_READY_STATUSES = new Set(["funded", "processing"])
+/** Accept CTA only when settle is waiting (typically after fund → processing). `funded` alone yields API 409. */
+const PAYMENT_ACCEPTABLE_STATUSES = new Set(["processing"])
 
 const TERMINAL_PAYMENT_STATUSES = new Set([
 	"paid",
@@ -162,6 +163,9 @@ const notReadyMessage = (claim: ClaimView): string => {
 		claim.paymentStatus === "awaiting_funding"
 	) {
 		return "This claim is open, but the payment is not funded yet. Ask the sender to fund it before accepting."
+	}
+	if (claim.paymentStatus === "funded") {
+		return "This claim is open, but the payment is not ready to accept yet. Wait until the API reports processing (settle waiting), then accept."
 	}
 	return `This claim cannot be accepted while the payment is ${paymentStatusLabel(claim.paymentStatus)}.`
 }
@@ -284,27 +288,31 @@ export default function ClaimPage() {
 		idempotencyKey.current = null
 	}
 
-	const paymentReady = claim
-		? PAYMENT_READY_STATUSES.has(claim.paymentStatus)
+	const paymentAcceptable = claim
+		? PAYMENT_ACCEPTABLE_STATUSES.has(claim.paymentStatus)
 		: false
 	const hasSupportedType =
 		claim?.allowedDestinationTypes.some(supportsClaimAccept) ?? false
 	const canAccept =
 		Boolean(
 			claim &&
+			!loading &&
 			claim.status === "open" &&
 			supportsClaimAccept(selectedType) &&
 			detail.trim(),
 		) &&
-		paymentReady &&
+		paymentAcceptable &&
 		!accepting
 
 	const handleAccept = async () => {
 		if (
 			!claimToken ||
 			!claim ||
+			loading ||
+			accepting ||
 			!supportsClaimAccept(selectedType) ||
-			!canAccept ||
+			!paymentAcceptable ||
+			!detail.trim() ||
 			acceptLock.current
 		)
 			return
@@ -496,11 +504,13 @@ export default function ClaimPage() {
 											/>
 										</div>
 									) : null}
-									{!paymentReady ? (
+									{!paymentAcceptable ? (
 										<Notice tone="warning">{notReadyMessage(claim)}</Notice>
 									) : null}
 									{acceptError ? (
-										<Notice tone="warning">{acceptError}</Notice>
+										<Notice tone="warning" data-testid="claim-accept-error">
+											{acceptError}
+										</Notice>
 									) : null}
 
 									{hasSupportedType ? (
@@ -508,6 +518,7 @@ export default function ClaimPage() {
 											<Button
 												onClick={() => void handleAccept()}
 												disabled={!canAccept}
+												data-testid="claim-accept"
 											>
 												{accepting ? "Accepting…" : "Accept payment"}
 											</Button>

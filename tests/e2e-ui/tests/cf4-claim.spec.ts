@@ -320,7 +320,58 @@ test.describe("CF4 claim page", () => {
 			.fill("GDEMOTESTNETADDRESSONLY000000000000000000000000000000000000")
 		await page.getByRole("button", { name: "Accept payment" }).click()
 
-		await expect(page.getByText("Claim is no longer open.")).toBeVisible()
+		await expect(page.getByTestId("claim-accept-error")).toHaveText(
+			"Claim is no longer open.",
+		)
+		await expect(page.getByText("Claim Accepted")).toHaveCount(0)
+		expect(counts.acceptCount()).toBe(1)
+	})
+
+	test("Accept stays disabled while paymentStatus is funded", async ({
+		page,
+	}) => {
+		const counts = await mockClaimApi(page, {
+			claim: claimFixture({ paymentStatus: "funded" }),
+		})
+		await openClaim(page)
+		await expect(page.getByText("Funded", { exact: true })).toBeVisible()
+		await expect(
+			page.getByText(/not ready to accept yet.*processing/i),
+		).toBeVisible()
+
+		await page.getByRole("radio", { name: /Crypto wallet/ }).check()
+		await page
+			.getByLabel("Stellar testnet wallet address")
+			.fill("GDEMOTESTNETADDRESSONLY000000000000000000000000000000000000")
+
+		await expect(page.getByTestId("claim-accept")).toBeDisabled()
+		await page.getByTestId("claim-accept").click({ force: true })
+		expect(counts.acceptCount()).toBe(0)
+		await expect(page.getByText("Claim Accepted")).toHaveCount(0)
+	})
+
+	test("409 invalid_state is shown and never treated as success", async ({
+		page,
+	}) => {
+		const counts = await mockClaimApi(page, {
+			acceptError: {
+				status: 409,
+				body: {
+					code: "invalid_state",
+					message: "Payment is not ready for claim accept.",
+				},
+			},
+		})
+		await openClaim(page)
+		await page.getByRole("radio", { name: /Crypto wallet/ }).check()
+		await page
+			.getByLabel("Stellar testnet wallet address")
+			.fill("GDEMOTESTNETADDRESSONLY000000000000000000000000000000000000")
+		await page.getByTestId("claim-accept").click()
+
+		await expect(page.getByTestId("claim-accept-error")).toHaveText(
+			"Payment is not ready for claim accept.",
+		)
 		await expect(page.getByText("Claim Accepted")).toHaveCount(0)
 		expect(counts.acceptCount()).toBe(1)
 	})

@@ -148,5 +148,11 @@ export const acceptClaim = (
 	})
 }
 
-export const describeClaimError = (error: ClaimApiError): string =>
-	error.message
+export const describeClaimError = (error: ClaimApiError): string => {
+	// Prefer the API message so 409 invalid_state / state_conflict are never shown as success.
+	if (error.message.trim()) return error.message
+	if (error.status === 409) {
+		return "This claim cannot be accepted in its current state. Refresh the claim first."
+	}
+	return claimMessage(error.status)
+}
