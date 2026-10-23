@@ -16,7 +16,7 @@ export {
 	QuoteSchema,
 } from "../domain/src/api/index.ts"
 
-export { PAYMENT_STATUSES } from "../domain/src/enums.ts"
+export { FEE_MODES, PAYMENT_STATUSES } from "../domain/src/enums.ts"
 
 export type {
 	AlternativeRoute,
@@ -40,6 +40,7 @@ export type {
 export type {
 	Delivery,
 	EndpointType,
+	FeeMode,
 	LegStatus,
 	PaymentStatus,
 	RecipientKind,

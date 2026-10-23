@@ -77,6 +77,7 @@ export function quoteFixture(validForMs = 120_000) {
 		expectedReceive: { amount: "6625000", currency: "PHP" },
 		priceRiskBearer: "sender",
 		policy: "cheapest",
+		feeMode: "PayerPays",
 		validUntil: now(validForMs),
 		alternatives: [
 			{

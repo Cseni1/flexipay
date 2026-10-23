@@ -23,6 +23,7 @@ async function mockApi(page: Page, options: MockOptions = {}) {
 		funds: 0,
 		paymentKey: "",
 		fundKey: "",
+		quoteBody: undefined as unknown,
 		quoteAuthHeader: undefined as string | undefined,
 		createAuthHeader: undefined as string | undefined,
 	}
@@ -37,6 +38,7 @@ async function mockApi(page: Page, options: MockOptions = {}) {
 	await page.route(/\/v1\/quotes$/, async (route) => {
 		if (route.request().method() !== "POST") return route.fallback()
 		counts.quotes += 1
+		counts.quoteBody = route.request().postDataJSON()
 		counts.quoteAuthHeader = route.request().headers()["authorization"]
 		if (options.quoteDelayMs) {
 			await new Promise((resolve) => setTimeout(resolve, options.quoteDelayMs))
@@ -87,6 +89,7 @@ async function fillQuoteForm(page: Page) {
 	await page.getByLabel("Destination country").selectOption("PH")
 	await page.getByLabel("Destination", { exact: true }).selectOption("ewallet")
 	await page.getByLabel("Recipient kind").selectOption("individual")
+	await page.getByLabel("Vault fee payer").selectOption("PayerPays")
 	await page.getByLabel("Amount (USD)").fill("1,250.00")
 	await page.getByLabel("Recipient", { exact: true }).fill("Worker A")
 }
@@ -116,6 +119,11 @@ test.describe("CF1 payments", () => {
 		await expect(
 			page.getByRole("heading", { name: "Chosen route" }),
 		).toBeVisible()
+		await expect(page.getByText("PayerPays", { exact: true })).toBeVisible()
+		expect(counts.quoteBody).toMatchObject({
+			feeMode: "PayerPays",
+			destination: { type: "ewallet", country: "PH" },
+		})
 		await expect(
 			page.getByText("stellar_usdc", { exact: true }).first(),
 		).toBeVisible()
@@ -144,6 +152,34 @@ test.describe("CF1 payments", () => {
 		expect(counts.fundKey).toBe("fund-pay_1")
 		expect(counts.quoteAuthHeader).toBeUndefined()
 		expect(counts.createAuthHeader).toBeUndefined()
+	})
+
+	test("an explicit crypto corridor and fee mode are sent without a default", async ({
+		page,
+	}) => {
+		const counts = await mockApi(page)
+		await page.goto("/")
+		await page.getByLabel("Destination country").selectOption("BR")
+		await page
+			.getByLabel("Destination", { exact: true })
+			.selectOption("crypto_wallet")
+		await page.getByLabel("Recipient kind").selectOption("individual")
+		await page.getByLabel("Vault fee payer").selectOption("RecipientPays")
+		await page.getByLabel("Amount (USD)").fill("25.00")
+		await page.getByLabel("Recipient", { exact: true }).fill("Worker B")
+		await page.getByRole("button", { name: "Get quote" }).click()
+
+		await expect(
+			page.getByRole("heading", { name: "Chosen route" }),
+		).toBeVisible()
+		expect(counts.quoteBody).toMatchObject({
+			feeMode: "RecipientPays",
+			destination: {
+				type: "crypto_wallet",
+				country: "BR",
+				currency: "USDC",
+			},
+		})
 	})
 
 	test("a 401 blocks real quote actions and shows the auth blocker", async ({

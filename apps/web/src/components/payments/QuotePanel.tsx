@@ -78,6 +78,15 @@ export function QuotePanel({
 							value={quote.priceRiskBearer}
 							hint="The sender bears price movement in this demo."
 						/>
+						<StaticField
+							label="Vault fee payer"
+							value={quote.feeMode ?? "No vault fee (no settle leg)"}
+							hint={
+								quote.feeMode
+									? "The accepted quote carries this mode into payment creation."
+									: undefined
+							}
+						/>
 					</div>
 
 					<Notice tone={expired ? "warning" : "info"}>

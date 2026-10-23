@@ -1,8 +1,10 @@
 import { parseUsdInput } from "@flexipay/web-lib"
 import {
+	FEE_MODES,
 	type CreateQuoteRequest,
 	type Delivery,
 	type EndpointType,
+	type FeeMode,
 	type Quote,
 	type RecipientKind,
 } from "@flexipay/web-lib/contract"
@@ -44,7 +46,8 @@ interface DestinationOption {
 	currency: string
 }
 
-const COUNTRIES: { value: Country; label: string }[] = [
+const COUNTRIES: { value: Country | ""; label: string }[] = [
+	{ value: "", label: "Select destination country" },
 	{ value: "US", label: "United States" },
 	{ value: "PH", label: "Philippines" },
 	{ value: "BR", label: "Brazil" },
@@ -70,18 +73,30 @@ const RECIPIENT_KINDS: { value: RecipientKind; label: string }[] = [
 	{ value: "company", label: "Company" },
 ]
 
+const FEE_MODE_OPTIONS: { value: FeeMode; label: string }[] = FEE_MODES.map(
+	(value) => ({
+		value,
+		label:
+			value === "PayerPays"
+				? "Payer pays the vault fee"
+				: "Recipient pays the vault fee",
+	}),
+)
+
 interface FormState {
-	country: Country
-	destinationType: DestinationType
+	country: Country | ""
+	destinationType: DestinationType | ""
 	recipientKind: RecipientKind
+	feeMode: FeeMode | ""
 	amount: string
 	recipientName: string
 }
 
 const INITIAL_FORM: FormState = {
-	country: "PH",
-	destinationType: "ewallet",
+	country: "",
+	destinationType: "",
 	recipientKind: "individual",
+	feeMode: "",
 	amount: "",
 	recipientName: "",
 }
@@ -121,16 +136,21 @@ export default function SendPayment() {
 		setCreateError(null)
 	}
 
-	const changeCountry = (country: Country) => {
-		const first = DESTINATIONS[country][0]
-		if (!first) return
-		update({ country, destinationType: first.value })
+	const changeCountry = (country: Country | "") => {
+		if (country === "") {
+			update({ country, destinationType: "" })
+			return
+		}
+		update({
+			country,
+			destinationType: DESTINATIONS[country][0]?.value ?? "",
+		})
 	}
 
-	const destination =
-		DESTINATIONS[form.country].find(
-			(option) => option.value === form.destinationType,
-		) ?? DESTINATIONS[form.country][0]
+	const destinationOptions = form.country ? DESTINATIONS[form.country] : []
+	const destination = destinationOptions.find(
+		(option) => option.value === form.destinationType,
+	)
 
 	const handleQuote = async (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault()
@@ -145,8 +165,16 @@ export default function SendPayment() {
 			setFormError("Enter a recipient name.")
 			return
 		}
+		if (!form.country) {
+			setFormError("Choose a destination country.")
+			return
+		}
 		if (!destination) {
 			setFormError("Choose a destination type.")
+			return
+		}
+		if (!form.feeMode) {
+			setFormError("Choose who pays the vault fee.")
 			return
 		}
 
@@ -160,17 +188,17 @@ export default function SendPayment() {
 		setFormError(null)
 		setCreateError(null)
 
-		const isCrypto = destination.value === "crypto_wallet"
 		const request: CreateQuoteRequest = {
 			source: { type: "bank_account", currency: "USD", country: "US" },
 			destination: {
 				type: destination.value,
 				currency: destination.currency,
-				country: isCrypto ? "" : form.country,
+				country: form.country,
 				recipientKind: form.recipientKind,
 			},
 			amount: { side: "send", value: { amount, currency: "USD" } },
 			policy: "cheapest",
+			feeMode: form.feeMode,
 		}
 
 		try {
@@ -278,17 +306,22 @@ export default function SendPayment() {
 								value={form.country}
 								options={COUNTRIES}
 								onChange={(event) =>
-									changeCountry(event.target.value as Country)
+									changeCountry(event.target.value as Country | "")
 								}
 							/>
 							<SelectField
 								id="destination-type"
 								label="Destination"
 								value={form.destinationType}
-								options={DESTINATIONS[form.country].map(({ value, label }) => ({
-									value,
-									label,
-								}))}
+								disabled={!form.country}
+								options={
+									destinationOptions.length > 0
+										? destinationOptions.map(({ value, label }) => ({
+												value,
+												label,
+											}))
+										: [{ value: "", label: "Select a country first" }]
+								}
 								onChange={(event) =>
 									update({
 										destinationType: event.target.value as DestinationType,
@@ -302,6 +335,19 @@ export default function SendPayment() {
 								options={RECIPIENT_KINDS}
 								onChange={(event) =>
 									update({ recipientKind: event.target.value as RecipientKind })
+								}
+							/>
+							<SelectField
+								id="fee-mode"
+								label="Vault fee payer"
+								value={form.feeMode}
+								options={[
+									{ value: "", label: "Select who pays the vault fee" },
+									...FEE_MODE_OPTIONS,
+								]}
+								hint="Required explicitly. Ignored only when the chosen route has no settle leg."
+								onChange={(event) =>
+									update({ feeMode: event.target.value as FeeMode | "" })
 								}
 							/>
 							<TextField
