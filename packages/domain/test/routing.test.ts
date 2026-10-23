@@ -936,11 +936,12 @@ describe("buildQuote corridors", () => {
 		expect(payer.quote.fees.flexiPayFee).not.toEqual(
 			recipient.quote.fees.flexiPayFee,
 		);
-		// Quote.route / fees.legs do not export settle amountIn/P — only fee + feeMode.
-		// Remainder is reason-text only (integration gap for lock/ledger; see PR).
-		expect(
-			Object.keys(settleP).sort().join(","),
-		).toBe("fee,kind,rail");
+		// CCR-13: PlannedLeg freezes settle principal; remainder is Money accounting.
+		const settleRoute = payer.quote.route.find((l) => l.kind === "settle")!;
+		expect(settleRoute.amountIn).toEqual(settleRoute.amountOut);
+		expect(payer.quote.fees.settleUnlockedRemainder).not.toBeNull();
+		expect(recipient.quote.fees.settleUnlockedRemainder).toBeNull();
+		expect(Object.keys(settleP).sort().join(",")).toBe("fee,kind,rail");
 	});
 
 	it("CCR-10: settle simulated follows settlementSimulated, not rail id alone", async () => {

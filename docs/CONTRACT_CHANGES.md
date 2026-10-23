@@ -156,3 +156,52 @@ Status: **approved** by the project owner on 23 Oct 2026. The documents `PRODUCT
 - **UI:** show “Simulated” only when the leg’s `simulated` is true.
 - **Who is affected:** A0, CC1 pricing, CC3 (`buildQuote` deps from `FP_SETTLEMENT`), web labels, OpenAPI.
 - **Out of scope:** inventing browser auth; changing claim-surface `simulated: true` labels.
+
+## CCR-11: restart-safe claim secret / hash (accepted, 23 Oct 2026)
+
+- **From:** CC2 draft #32 blocker list; integrator closure.
+- **Status:** **accepted** (schema + env name). CC2/CC3 implement seal/unseal and stop using process-local `Map` as sole storage.
+- **Durable fields on `ClaimLink` (Prisma):**
+  - `vaultClaimHashHex` — sha256 of the vault claim secret (hex). Same value passed as `LockRequest.claimHashHex`. **Not** a secret; required once a settle lock exists for `claim_link` delivery.
+  - `secretSealed` + `secretSealedNonce` — AES-256-GCM ciphertext of the raw claim secret (bytes). Decrypt only inside the API host for `SettlementAdapter.release`.
+- **Key:** env `FP_CLAIM_SEAL_KEY` — 32-byte key as 64 hex chars (name in root `.env.example`, value never committed).
+- **Forbidden:** plaintext secret in Event / Audit / API JSON / logs; returning sealed blob or secret on public ClaimView / Payment responses.
+- **Recovery:** after restart, load ClaimLink by paymentId → decrypt secret → `release({ payoutId, secretHex, destination })`.
+- **Escalation (security product):** MVP demo uses env-held seal key (not HSM/KMS). Production must replace with a host secret manager; until then treat as demo-grade. Owner may reject env-key later without changing column shapes.
+- **Who implements:** Csaba Cursor (CC2 persist on lock; CC3 claim accept decrypt). Integrator owns schema/migration this commit.
+
+## CCR-12: distinct durable settlement identifiers (accepted, 23 Oct 2026)
+
+- **From:** CC2 #32; prisma comment wrongly allowed tx hash in `Leg.externalRef`.
+- **Status:** **accepted and applied** (A0 + Prisma).
+- **Rules:**
+  - **Vault `payoutId`** — opaque contract id (decimal string). For **settle** legs, `Leg.externalRef` **MUST** be this payoutId only. It is **not** a transaction hash. Used for `status` / `release` / `refund`.
+  - **`Leg.lockTxRef`** — Stellar (or mock) transaction hash from `LockResult.txRef`. Nullable until lock succeeds.
+  - **`Leg.releaseTxRef`** — hash from `ReleaseResult.txRef` (or refund tx for cancel/refund path). Nullable until release/refund succeeds.
+  - Provider legs keep `externalRef` as the provider reference string; `lockTxRef` / `releaseTxRef` stay null.
+- **Acceptance scripts** may use public Horizon effects on `releaseTxRef` plus `externalRef` as payoutId; never require secrets.
+- **Who implements:** CC2 writes the three fields; do not overwrite `externalRef` with a tx hash.
+
+## CCR-13: quote → payment → lock frozen amounts (accepted, 23 Oct 2026)
+
+- **From:** #34 remainder gap + CC2 create-from-quote blocker.
+- **Status:** **accepted and applied** (A0 + CC1 wiring this commit).
+- **Contract:**
+  - Every `PlannedLeg` carries frozen `amountIn` and `amountOut` (Money).
+  - `FeeBreakdown.settleUnlockedRemainder`: Money in settlement asset, or `null` when no settle / RecipientPays / remainder is zero. **This is accounting**, not a substitute for `reasons` text.
+  - `Quote.feeMode` (already on A0) and Prisma `Quote.feeMode` persist the mode used to price settle.
+  - On payment create, copy each PlannedLeg’s amounts into `Leg.amountIn*` / `amountOut*`. **Do not re-price.**
+  - Lock request: `amount` = settle leg `amountIn` (= principal **P**), `feeMode` = `quote.feeMode`, fee must equal `fees.flexiPayFee` / `f(P)`. Locked on-chain = `P + f(P)` (PayerPays) or `P` (RecipientPays).
+  - **PayerPays remainder** `A − P − f(P)` stays in the payer’s **unlocked** vault balance (already deposited). It is **not** locked, **not** a fee, **not** sent to the recipient. No extra ledger row required beyond `settleUnlockedRemainder` on the quote and leaving funds unlocked.
+- **Stale quote:** if `validUntil` passed → 422, no payment (existing rule). Config/feeBps drift after quote: lock must still use **quoted** P and feeMode; startup adapter still checks live vault `feeBps` matches env (existing SC2). Do not expand into re-quote-on-fund in this CCR.
+- **Adapter evidence note:** testnet release of **1.0000000 USDC** net to Worker A with **0.0100000** treasury fee means principal **P = 1 USDC** and fee **f(P)** under PayerPays; payer vault debit for the lock was **P + f(P) = 1.01 USDC**, not a fixed 1 USDC all-in budget.
+- **Who implements:** integrator (schema + CC1 export); CC2 payment create + lock; CC3 routes.
+
+## CCR-14: exactly one payout retry under `processing` (accepted, 23 Oct 2026)
+
+- **From:** CC2 #32 SM workaround ask (option a).
+- **Status:** **accepted** — document, do not add `failed → processing`.
+- **Rule:** `decideOnFailure` returns `retry` while `attemptsOnProvider < 2` (first try counts as 1). On retry the orchestrator **keeps** leg status `processing`, sets `attempt = attempt + 1`, clears provider/settle ref fields as needed for the new attempt, and must **not** call `assertLegTransition(processing, processing)` as a status change (no-op status). Audit/event payload **must** record `attempt` before and after.
+- **Evidence:** attempt 1 failure → attempt 2 execution → on second failure `refund_vault` (no attempt 3). Durable `Leg.attempt` (Prisma + A0) is the source of truth.
+- **Forbidden:** undocumented bypass of other `assertLegTransition` paths; treating text-only timelines as proof.
+- **Who implements:** CC2 (already close); expose `attempt` on A0 `LegSchema` this commit.

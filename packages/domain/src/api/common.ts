@@ -59,12 +59,14 @@ export const QuoteAmountSchema = z
   })
   .strict();
 
-/** One planned leg on a quote route (§6.4, §8). Amounts live in `fees` / `expectedReceive`. */
+/** One planned leg on a quote route (§6.4, §8, CCR-13). Amounts are frozen for payment/lock. */
 export const PlannedLegSchema = z
   .object({
     kind: LegKindSchema,
     rail: RailId,
     providerId: RailId,
+    amountIn: MoneySchema,
+    amountOut: MoneySchema,
     /** Per-leg label (CCR-10): from provider quote or settlement execution mode — not rail id alone. */
     simulated: z.boolean(),
   })
@@ -72,7 +74,7 @@ export const PlannedLegSchema = z
 
 export type PlannedLeg = z.infer<typeof PlannedLegSchema>;
 
-/** Fee breakdown by leg plus the vault / FlexiPay fee (§6.4, CCR-3). */
+/** Fee breakdown by leg plus the vault / FlexiPay fee (§6.4, CCR-3, CCR-13). */
 export const FeeBreakdownSchema = z
   .object({
     legs: z.array(
@@ -87,6 +89,11 @@ export const FeeBreakdownSchema = z
     /** Vault fixed fee from `config()`; never a fees.json value (CCR-3). */
     flexiPayFee: MoneySchema,
     total: MoneySchema,
+    /**
+     * PayerPays unlocked remainder `A − P − f(P)` in the settlement asset (CCR-13).
+     * Null when no settle, RecipientPays, or remainder is zero. Not a fee.
+     */
+    settleUnlockedRemainder: MoneySchema.nullable(),
   })
   .strict();
 
@@ -111,7 +118,7 @@ export const LegErrorSchema = z
   })
   .strict();
 
-/** Executed (or planned-on-payment) leg as returned by the API (§6.6). */
+/** Executed (or planned-on-payment) leg as returned by the API (§6.6, CCR-12, CCR-14). */
 export const LegSchema = z
   .object({
     id: z.string().min(1),
@@ -122,7 +129,17 @@ export const LegSchema = z
     amountIn: MoneySchema,
     amountOut: MoneySchema,
     status: LegStatusSchema,
+    /** 1 on first try; increments on the single allowed payout retry (CCR-14). */
+    attempt: z.number().int().min(1),
+    /**
+     * Provider reference, or for settle legs the vault **payoutId** only (CCR-12).
+     * Never a Stellar transaction hash.
+     */
     externalRef: z.string().min(1).nullable(),
+    /** Settle lock transaction hash (CCR-12). Null for non-settle legs / before lock. */
+    lockTxRef: z.string().min(1).nullable(),
+    /** Settle release or refund transaction hash (CCR-12). */
+    releaseTxRef: z.string().min(1).nullable(),
     error: LegErrorSchema.nullable(),
     reversalOf: z.string().min(1).nullable(),
     simulated: z.boolean(),
