@@ -13,7 +13,9 @@ export {
 } from "./create.ts";
 export {
 	cancelPayment,
+	ClaimReleaseRefusedError,
 	completeClaimSettle,
+	FeeDriftError,
 	fundAndRun,
 	getPaymentView,
 	type FundResult,
