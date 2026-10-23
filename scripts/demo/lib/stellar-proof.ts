@@ -262,6 +262,9 @@ const nativeAddress = (value: unknown, where: string): string => {
 const lockExternalId = (paymentId: string, attempt = 1): string =>
 	createHash("sha256").update(`${paymentId}:${attempt}`, "utf8").digest("hex")
 
+const secretHash = (secretHex: string): string =>
+	createHash("sha256").update(Buffer.from(secretHex, "hex")).digest("hex")
+
 /** Verifies that `hash` is a successful transaction on the configured testnet. */
 export async function verifyStellarTransaction(options: {
 	hash: string
@@ -355,8 +358,8 @@ export async function verifyVaultRelease(options: {
 	if (lockInvocation.functionName !== "create_payout") {
 		fail(`lock invokes ${lockInvocation.functionName}, expected create_payout`)
 	}
-	if (lockInvocation.args.length < 2) {
-		fail("lock create_payout has no external id argument")
+	if (lockInvocation.args.length < 3) {
+		fail("lock create_payout has no external id or claim hash argument")
 	}
 	const expectedExternalId = lockExternalId(options.paymentId)
 	const seenExternalId = nativeHex(lockInvocation.args[1], "lock external id")
@@ -365,10 +368,20 @@ export async function verifyVaultRelease(options: {
 			`lock external id ${seenExternalId} is not sha256("${options.paymentId}:1")`,
 		)
 	}
+	const lockClaimHash = nativeHex(lockInvocation.args[2], "lock claim hash")
 	const payoutId = nativeId(
 		parseReturnValue(lock.resultMetaXdr),
 		"lock return value",
 	)
+
+	if (release.ledger < 1 || lock.ledger < 1) {
+		fail("lock and release must be included in a ledger")
+	}
+	if (release.ledger < lock.ledger) {
+		fail(
+			`release ledger ${release.ledger} precedes lock ledger ${lock.ledger}; the claim cannot predate the lock`,
+		)
+	}
 
 	const releaseInvocation = parseContractInvocation(
 		release.envelopeXdr,
@@ -392,6 +405,12 @@ export async function verifyVaultRelease(options: {
 	if (releasedPayoutId !== payoutId) {
 		fail(
 			`release claims payout ${releasedPayoutId}, expected the lock payout ${payoutId}`,
+		)
+	}
+	const releaseSecret = nativeHex(releaseInvocation.args[1], "release secret")
+	if (secretHash(releaseSecret) !== lockClaimHash) {
+		fail(
+			"release secret does not hash to the lock's claim hash; this is not the claim of this payment's payout",
 		)
 	}
 	const recipient = nativeAddress(

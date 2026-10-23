@@ -88,20 +88,27 @@ const resultMeta = (returnValue: xdr.ScVal): string => {
 const externalId = (paymentId: string): string =>
 	createHash("sha256").update(`${paymentId}:1`, "utf8").digest("hex")
 
-const createPayoutArgs = (paymentId: string): xdr.ScVal[] => [
+const CLAIM_SECRET = "2".repeat(64)
+const claimHash = (secret = CLAIM_SECRET): string =>
+	createHash("sha256").update(Buffer.from(secret, "hex")).digest("hex")
+
+const createPayoutArgs = (
+	paymentId: string,
+	secret = CLAIM_SECRET,
+): xdr.ScVal[] => [
 	addressValue(source.publicKey()),
 	bytesValue(externalId(paymentId)),
-	bytesValue("1".repeat(64)),
+	bytesValue(claimHash(secret)),
 	u64Value("10000000"),
 	xdr.ScVal.scvSymbol("PayerPays"),
 	u64Value("2000000000"),
 ]
 
-const claimArgs = (payoutId: string, to: string): xdr.ScVal[] => [
-	u64Value(payoutId),
-	bytesValue("2".repeat(64)),
-	addressValue(to),
-]
+const claimArgs = (
+	payoutId: string,
+	to: string,
+	secret = CLAIM_SECRET,
+): xdr.ScVal[] => [u64Value(payoutId), bytesValue(secret), addressValue(to)]
 
 const transaction = (
 	envelopeXdr: string,
@@ -169,6 +176,8 @@ const pairRpc = (
 		releaseFunction?: string
 		releaseStatus?: string
 		lockReturn?: string
+		lockLedger?: number
+		releaseLedger?: number
 	} = {},
 ) => {
 	const lockArgs = options.lockArgs ?? createPayoutArgs("pay_demo_1")
@@ -178,11 +187,14 @@ const pairRpc = (
 		[LOCK_HASH]: transaction(
 			envelope("create_payout", lockArgs),
 			resultMeta(u64Value(options.lockReturn ?? "42")),
+			"SUCCESS",
+			options.lockLedger ?? 100,
 		),
 		[RELEASE_HASH]: transaction(
 			envelope(options.releaseFunction ?? "claim", releaseArgs),
 			resultMeta(u64Value("10000000")),
 			options.releaseStatus,
+			options.releaseLedger ?? 100,
 		),
 	})
 }
@@ -239,6 +251,25 @@ describe("vault release proof", () => {
 	it("rejects a lock created for another payment", async () => {
 		vi.stubGlobal("fetch", pairRpc({ lockArgs: createPayoutArgs("pay_other") }))
 		await expect(verifyVaultRelease(releaseOptions())).rejects.toThrow(/sha256/)
+	})
+
+	it("rejects a release secret that is not the lock's claim hash", async () => {
+		vi.stubGlobal(
+			"fetch",
+			pairRpc({
+				releaseArgs: claimArgs("42", recipient.publicKey(), "3".repeat(64)),
+			}),
+		)
+		await expect(verifyVaultRelease(releaseOptions())).rejects.toThrow(
+			/does not hash to the lock's claim hash/,
+		)
+	})
+
+	it("rejects a release ledger before the lock ledger", async () => {
+		vi.stubGlobal("fetch", pairRpc({ lockLedger: 100, releaseLedger: 99 }))
+		await expect(verifyVaultRelease(releaseOptions())).rejects.toThrow(
+			/cannot predate the lock/,
+		)
 	})
 
 	it("rejects a release that is not a claim", async () => {

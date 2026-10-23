@@ -170,6 +170,8 @@ await execute(
 			}
 			// A0: one settle.externalRef. The release is the claim of the lock created for this
 			// payment; both envelopes and the lock's return value are checked on RPC.
+			expectTxRef(lockedRef, "stellar", "lock")
+			expectTxRef(releaseRef, "stellar", "release")
 			const proof = await verifyVaultRelease({
 				paymentId: payment.id,
 				lockHash: lockedRef,

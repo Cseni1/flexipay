@@ -16,8 +16,9 @@
  *    after SettlementAdapter.refund is not a separate A0 field; do not require settle.reversed.
  *
  * 4. Lock vs release refs — One `Leg.externalRef` on settle. Capture before accept (lock) and
- *    after (release). Release is verified on Stellar RPC; if refs coincide, release RPC proof
- *    still stands (ARCHITECTURE: release is the visible tx).
+ *    after (release). Both must be distinct, successful transactions on the configured testnet;
+ *    the lock's `create_payout` external id ties it to the payment, and the release's `claim`
+ *    payout id, secret hash and destination tie it to that lock and the intended recipient.
  *
  * 5. DF5 recipient-kind exclusion — No refusal-code enum in A0. The eligible quote's
  *    `reasons[]` and the 422 refusal both must name crypto and the company recipient kind.
@@ -32,7 +33,7 @@ export const A0_CONTRACT_ANSWERS = {
 	vaultRefund:
 		"payment.refunded + status refunded; collect/convert reversed; settle status not asserted.",
 	lockRelease:
-		"Single settle.externalRef; compare pre/post accept; lock create_payout external id and release claim of the same payout/recipient are verified via RPC.",
+		"Single settle.externalRef; compare pre/post accept; both hashes must be distinct and successful; lock create_payout external id and release claim payout id, secret hash and recipient are verified via RPC.",
 	df5Refusal:
 		"No stable reason code; non-empty reasons[] on quote and 422 refusal.",
 } as const

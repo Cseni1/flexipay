@@ -6,7 +6,7 @@ import {
 	expectPaid,
 	expectQuoteFeeMode,
 	expectRail,
-	expectReasons,
+	expectReasonExplaining,
 	expectSimulated,
 	fail,
 } from "./lib/assertions.ts"
@@ -60,7 +60,11 @@ await execute(
 			expected.legs,
 			"quote.route",
 		)
-		expectReasons(quote.reasons, EXCLUSION_REASONS, "ZA bank quote reasons")
+		expectReasonExplaining(
+			quote.reasons,
+			EXCLUSION_REASONS,
+			"ZA bank quote reasons",
+		)
 		expectSimulated(quote.simulated, "quote")
 		flow.check("bank route reason explains the crypto exclusion for a company")
 
@@ -86,7 +90,7 @@ await execute(
 			if (!(error instanceof ApiRejection)) throw error
 			if (error.status !== 422)
 				fail(`crypto quote was refused with HTTP ${error.status}, expected 422`)
-			expectReasons(
+			expectReasonExplaining(
 				error.reasons,
 				EXCLUSION_REASONS,
 				"ZA crypto quote refusal reasons",

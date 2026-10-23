@@ -5,6 +5,7 @@ import {
 	expectKinds,
 	expectNoEvent,
 	expectPaid,
+	expectReasonExplaining,
 	expectReasons,
 	expectTxRef,
 	expectWaitingForClaim,
@@ -152,6 +153,34 @@ describe("payment assertions", () => {
 		expect(() => expectReasons([], [/crypto/i], "reasons")).toThrow(/empty/)
 	})
 
+	it("requires one reason to explain the recipient-kind crypto exclusion", () => {
+		const exclusion = [/crypto/i, /compan/i, /not allowed/i]
+		expect(() =>
+			expectReasonExplaining(
+				["Crypto leg not allowed for companies in this corridor"],
+				exclusion,
+				"reasons",
+			),
+		).not.toThrow()
+		expect(() =>
+			expectReasonExplaining(
+				[
+					"Crypto is unavailable",
+					"Company recipients need a bank account",
+					"Not allowed on this corridor",
+				],
+				exclusion,
+				"reasons",
+			),
+		).toThrow(/no single reason/)
+		expect(() =>
+			expectReasonExplaining(["Best route"], exclusion, "reasons"),
+		).toThrow(/no single reason/)
+		expect(() => expectReasonExplaining([], exclusion, "reasons")).toThrow(
+			/empty/,
+		)
+	})
+
 	it("rejects an unexpected on-chain event", () => {
 		expect(() =>
 			expectNoEvent(["payment.paid"], "payment.onchain"),
@@ -164,6 +193,15 @@ describe("payment assertions", () => {
 
 const attemptRef = (attempt: number): string =>
 	`sim_bank_br_pix:pay_1:leg_5:${attempt}`
+
+const payoutFailureLeg = (ref: string) => ({
+	...brPayout,
+	externalRef: ref,
+	error: {
+		code: "sandbox_forced_failure",
+		message: "forced by sandbox",
+	},
+})
 
 const payoutFailureEvent = (ref: string): EventView => ({
 	type: "leg.failed",
@@ -184,14 +222,7 @@ const payoutFailureEvent = (ref: string): EventView => ({
 				externalRef: "mock-tx-1",
 			},
 			{ kind: "convert", rail: "sim_fx", status: "succeeded" },
-			{
-				...brPayout,
-				externalRef: ref,
-				error: {
-					code: "sandbox_forced_failure",
-					message: "forced by sandbox",
-				},
-			},
+			payoutFailureLeg(ref),
 		],
 	},
 })
@@ -200,24 +231,16 @@ const refundedPayment = () =>
 	payment({
 		id: "pay_1",
 		status: "refunded",
-		legs: [
-			collect,
-			convert,
-			settle,
-			convert,
-			{
-				...brPayout,
-				externalRef: attemptRef(2),
-				error: {
-					code: "sandbox_forced_failure",
-					message: "forced by sandbox",
-				},
-			},
-		],
+		legs: [collect, convert, settle, convert, payoutFailureLeg(attemptRef(2))],
 	})
 
 const twoFailures = (): EventView[] => [
-	{ type: "payment.funded" },
+	{
+		type: "payment.funded",
+		snapshot: {
+			legs: [{ kind: "payout", rail: "sim_bank_br_pix", status: "pending" }],
+		},
+	},
 	payoutFailureEvent(attemptRef(1)),
 	payoutFailureEvent(attemptRef(2)),
 	{ type: "payment.refunded" },
@@ -266,7 +289,7 @@ describe("DF4 payout attempt evidence", () => {
 				],
 				"sim_bank_br_pix",
 			),
-		).toThrow(/distinct Leg.externalRef/)
+		).toThrow(/distinct payout attempt/)
 	})
 
 	it("rejects attempt 2 and 3 instead of the first try and one retry", () => {
@@ -281,6 +304,144 @@ describe("DF4 payout attempt evidence", () => {
 				"sim_bank_br_pix",
 			),
 		).toThrow(/attempt 1 and retry 2/)
+	})
+
+	it("accepts cumulative snapshots but not a third ref or a third final leg", () => {
+		const cumulative = [
+			{
+				type: "leg.failed",
+				snapshot: { legs: [payoutFailureLeg(attemptRef(1))] },
+			},
+			{
+				type: "leg.failed",
+				snapshot: {
+					legs: [
+						payoutFailureLeg(attemptRef(1)),
+						payoutFailureLeg(attemptRef(2)),
+					],
+				},
+			},
+			{ type: "payment.refunded" },
+		]
+		expect(
+			assertExactlyTwoPayoutAttemptsThenRefund(
+				refundedPayment(),
+				cumulative,
+				"sim_bank_br_pix",
+			).refs,
+		).toEqual([attemptRef(1), attemptRef(2)])
+
+		expect(() =>
+			assertExactlyTwoPayoutAttemptsThenRefund(
+				refundedPayment(),
+				[
+					{
+						type: "leg.failed",
+						snapshot: {
+							legs: [
+								payoutFailureLeg(attemptRef(1)),
+								payoutFailureLeg(attemptRef(2)),
+								payoutFailureLeg(attemptRef(3)),
+							],
+						},
+					},
+					payoutFailureEvent(attemptRef(2)),
+					{ type: "payment.refunded" },
+				],
+				"sim_bank_br_pix",
+			),
+		).toThrow(/third attempt|distinct payout attempt/)
+
+		expect(() =>
+			assertExactlyTwoPayoutAttemptsThenRefund(
+				payment({
+					id: "pay_1",
+					status: "refunded",
+					legs: [
+						collect,
+						convert,
+						settle,
+						convert,
+						payoutFailureLeg(attemptRef(1)),
+						payoutFailureLeg(attemptRef(2)),
+						payoutFailureLeg(attemptRef(3)),
+					],
+				}),
+				twoFailures(),
+				"sim_bank_br_pix",
+			),
+		).toThrow(/third attempt is visible/)
+	})
+
+	it("rejects a successful payout in a snapshot and a refund before the failures", () => {
+		const succeeded = payoutFailureEvent(attemptRef(2))
+		const snapshot = succeeded.snapshot as {
+			legs: { status: string; externalRef?: string }[]
+		}
+		snapshot.legs[4].status = "succeeded"
+		expect(() =>
+			assertExactlyTwoPayoutAttemptsThenRefund(
+				refundedPayment(),
+				[
+					payoutFailureEvent(attemptRef(1)),
+					succeeded,
+					{ type: "payment.refunded" },
+				],
+				"sim_bank_br_pix",
+			),
+		).toThrow(/must not have a successful payout/)
+
+		expect(() =>
+			assertExactlyTwoPayoutAttemptsThenRefund(
+				refundedPayment(),
+				[
+					{ type: "payment.refunded" },
+					payoutFailureEvent(attemptRef(1)),
+					payoutFailureEvent(attemptRef(2)),
+				],
+				"sim_bank_br_pix",
+			),
+		).toThrow(/follows payment.refunded/)
+	})
+
+	it("rejects a ref with no snapshot evidence and mixed attempt numbering", () => {
+		expect(() =>
+			assertExactlyTwoPayoutAttemptsThenRefund(
+				payment({
+					id: "pay_1",
+					status: "refunded",
+					legs: [
+						collect,
+						payoutFailureLeg(attemptRef(2)),
+						payoutFailureLeg(attemptRef(3)),
+					],
+				}),
+				twoFailures(),
+				"sim_bank_br_pix",
+			),
+		).toThrow(/no leg\.failed snapshot evidence/)
+
+		expect(() =>
+			assertExactlyTwoPayoutAttemptsThenRefund(
+				refundedPayment(),
+				[
+					payoutFailureEvent(attemptRef(1)),
+					payoutFailureEvent("provider-ref-without-attempt"),
+					{ type: "payment.refunded" },
+				],
+				"sim_bank_br_pix",
+			),
+		).toThrow(/mix numbered and unnumbered/)
+	})
+
+	it("rejects duplicate refund events", () => {
+		expect(() =>
+			assertExactlyTwoPayoutAttemptsThenRefund(
+				refundedPayment(),
+				twoFailures().concat({ type: "payment.refunded" }),
+				"sim_bank_br_pix",
+			),
+		).toThrow(/2 payment\.refunded events/)
 	})
 
 	it("blocks when the snapshot cannot identify the attempt", () => {

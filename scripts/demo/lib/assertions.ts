@@ -189,6 +189,26 @@ export function expectReasons(
 	}
 }
 
+/**
+ * One reason must carry the whole explanation. Matching patterns across separate list items
+ * would accept unrelated fragments instead of a recipient-kind exclusion (DF5).
+ */
+export function expectReasonExplaining(
+	reasons: readonly string[],
+	patterns: readonly RegExp[],
+	where: string,
+): void {
+	if (reasons.length === 0) fail(`${where}: reasons are empty`)
+	for (const reason of reasons) {
+		if (patterns.every((pattern) => pattern.test(reason))) return
+	}
+	fail(
+		`${where}: no single reason explains the exclusion (${patterns
+			.map((pattern) => pattern.source)
+			.join(", ")}); got "${reasons.join(" | ")}"`,
+	)
+}
+
 export function expectEventTypes(
 	types: readonly string[],
 	required: readonly string[],
