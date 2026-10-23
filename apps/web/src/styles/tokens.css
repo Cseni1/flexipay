@@ -1,0 +1,58 @@
+:root {
+	--fp-canvas: #f4f8f7;
+	--fp-ink: #10201d;
+	--fp-muted: #5b6b68;
+	--fp-line: #dbe5e2;
+	--fp-teal-50: #edfbf7;
+	--fp-teal-100: #c8f2e9;
+	--fp-teal-600: #0f766e;
+	--fp-teal-700: #115e59;
+	--fp-teal-900: #134e4a;
+
+	--color-bg: #ffffff;
+	--color-surface: #f8fbfa;
+	--color-text: var(--fp-ink);
+	--color-text-muted: var(--fp-muted);
+	--color-border: var(--fp-line);
+	--color-accent: var(--fp-teal-600);
+	--color-accent-strong: var(--fp-teal-700);
+	--color-success: #157347;
+	--color-error: #b42318;
+	--color-warning: #b45309;
+
+	--radius: 10px;
+	--radius-sm: 7px;
+	--shadow-sm: 0 1px 2px rgba(16, 32, 29, 0.05);
+	--shadow-md: 0 18px 40px -26px rgba(16, 32, 29, 0.4);
+}
+
+html {
+	background: var(--fp-canvas);
+	color-scheme: light;
+}
+
+body {
+	min-width: 320px;
+	background: var(--fp-canvas);
+	color: var(--fp-ink);
+}
+
+#root {
+	min-height: 100vh;
+}
+
+button,
+input,
+select {
+	font: inherit;
+}
+
+a {
+	color: var(--color-accent);
+	text-underline-offset: 0.15em;
+}
+
+:focus-visible {
+	outline: 3px solid rgba(13, 148, 136, 0.35);
+	outline-offset: 2px;
+}
