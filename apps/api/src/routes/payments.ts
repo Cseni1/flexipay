@@ -48,6 +48,7 @@ export const paymentRoutes: RouteDef<any, any>[] = [
 					profile: body.profile,
 					externalId: body.externalId,
 					reference: body.reference,
+					now: ctx.runtime?.now(),
 				});
 			} catch (e) {
 				mapCreateError(e);

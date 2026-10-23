@@ -6,8 +6,10 @@ import { ApiError } from "./errors.ts";
 import { sha256Hex } from "./ids.ts";
 import { newId } from "./ids.ts";
 import type { Ctx, RouteDef } from "./routes.ts";
+import { batchRoutes } from "./routes/batches.ts";
 import { claimRoutes } from "./routes/claims.ts";
 import { coreRoutes } from "./routes/core.ts";
+import { endpointRoutes } from "./routes/endpoints.ts";
 import { eventRoutes } from "./routes/events.ts";
 import { paymentRoutes } from "./routes/payments.ts";
 import { quoteRoutes } from "./routes/quotes.ts";
@@ -16,6 +18,8 @@ import type { ApiRuntime } from "./runtime.ts";
 
 export const ROUTES: RouteDef<any, any>[] = [
 	...coreRoutes,
+	...endpointRoutes,
+	...batchRoutes,
 	...quoteRoutes,
 	...paymentRoutes,
 	...eventRoutes,

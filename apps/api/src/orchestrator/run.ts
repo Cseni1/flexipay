@@ -44,6 +44,7 @@ function sealKey(adapters: OrchestratorAdapters): Buffer {
 async function loadRuntime(
 	db: Db,
 	paymentId: string,
+	claimEndpointId?: string,
 ): Promise<{
 	payment: {
 		id: string;
@@ -74,6 +75,8 @@ async function loadRuntime(
 	/** Frozen vault fee from Quote.fees.flexiPayFee (CCR-13). */
 	quotedFlexiPayFee: Money | null;
 	claimWaitSettle: boolean;
+	/** ClaimLink status, null when the payment has no claim link row. */
+	claimStatus: string | null;
 	lockExpiresAt: Date;
 	payoutEndpoint:
 		| {
@@ -112,7 +115,7 @@ async function loadRuntime(
 	const payoutEndpoint =
 		dest.type === "bank_account" || dest.type === "ewallet"
 			? {
-					endpointId: "quote_dest",
+					endpointId: claimEndpointId ?? "quote_dest",
 					type: dest.type as "bank_account" | "ewallet",
 					country: dest.country,
 					currency: dest.currency,
@@ -124,6 +127,7 @@ async function loadRuntime(
 		feeMode,
 		quotedFlexiPayFee,
 		claimWaitSettle,
+		claimStatus: payment.claimLink?.status ?? null,
 		lockExpiresAt: payment.claimLink?.expiresAt ?? payment.quote.validUntil,
 		payoutEndpoint,
 	};
@@ -189,13 +193,29 @@ export async function fundAndRun(
 	return { paymentId, status: after.status as PaymentStatus };
 }
 
+/**
+ * Fiat claim link (ARCHITECTURE §7): collect, convert and settle run at funding; the payout leg
+ * stays `pending` until the recipient accepts and picks the endpoint.
+ */
+export async function continueAfterClaimAccept(
+	db: Db,
+	paymentId: string,
+	adapters: OrchestratorAdapters,
+	claimEndpointId: string,
+): Promise<{ status: PaymentStatus }> {
+	await runPendingLegs(db, paymentId, adapters, claimEndpointId);
+	const after = await db.payment.findUniqueOrThrow({ where: { id: paymentId } });
+	return { status: after.status as PaymentStatus };
+}
+
 async function runPendingLegs(
 	db: Db,
 	paymentId: string,
 	adapters: OrchestratorAdapters,
+	claimEndpointId?: string,
 ): Promise<void> {
 	for (;;) {
-		const rt = await loadRuntime(db, paymentId);
+		const rt = await loadRuntime(db, paymentId, claimEndpointId);
 		if (rt.payment.status !== "processing") return;
 
 		const states = legStates(rt.legs);
@@ -233,6 +253,16 @@ async function runPendingLegs(
 		}
 
 		const leg = rt.legs[idx]!;
+		// Fiat claim link: the payout waits for the recipient (ARCHITECTURE §7). The payment stays
+		// `processing` and the payout `pending` until accept supplies the endpoint.
+		if (
+			leg.kind === "payout" &&
+			leg.status === "pending" &&
+			rt.payment.delivery === "claim_link" &&
+			rt.claimStatus !== "accepted"
+		) {
+			return;
+		}
 		await executeLeg(db, rt, leg, adapters);
 
 		const refreshed = await db.leg.findUniqueOrThrow({ where: { id: leg.id } });
