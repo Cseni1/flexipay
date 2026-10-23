@@ -1,27 +1,359 @@
-import { Button, InfoPopover, SimulatedLabel } from "../components/ui"
+import {
+	type ClaimAcceptRequest,
+	type ClaimView,
+} from "@flexipay/web-lib/claim-contract"
+import { useEffect, useRef, useState } from "react"
+import { useParams } from "react-router-dom"
+import {
+	ClaimApiError,
+	acceptClaim,
+	describeClaimError,
+	getClaim,
+} from "../api/claimClient"
+import {
+	Button,
+	InfoPopover,
+	Notice,
+	SimulatedLabel,
+	TextField,
+} from "../components/ui"
 
-const receiveOptions = [
-	{
-		value: "bank",
-		title: "Bank account",
-		detail: "Local bank payout",
-		simulated: true,
-	},
-	{
-		value: "ewallet",
-		title: "E-wallet",
-		detail: "Mobile wallet payout",
-		simulated: true,
-	},
-	{
-		value: "crypto",
-		title: "Crypto wallet",
-		detail: "Stellar testnet address",
-		simulated: false,
-	},
-]
+type DestinationType = ClaimView["allowedDestinationTypes"][number]
+
+const CURRENCY_DECIMALS: Readonly<Record<string, number>> = {
+	USD: 2,
+	PHP: 2,
+	BRL: 2,
+	ZAR: 2,
+	USDC: 7,
+}
+
+// Public testnet address from scripts/testnet/testnet-ids.env. This is an address, never a
+// secret: the baseline custodial wallet key stays on the backend.
+const DEMO_TESTNET_ADDRESS =
+	"GAAN53RQP4YMHJCBSSPBRSX77HWEWHUL5AFOUSOJBNIKVR6VS63RPRX5"
+
+const PAYMENT_STATUS_LABELS: Readonly<Record<string, string>> = {
+	quoted: "Quoted",
+	awaiting_funding: "Awaiting funding",
+	funded: "Funded",
+	processing: "Processing",
+	paid: "Paid",
+	cancelled: "Cancelled",
+	failed: "Failed",
+	refunding: "Refunding",
+	refunded: "Refunded",
+	expired: "Expired",
+}
+
+const PAYMENT_READY_STATUSES = new Set(["funded", "processing"])
+
+const TERMINAL_PAYMENT_STATUSES = new Set([
+	"paid",
+	"cancelled",
+	"failed",
+	"refunded",
+	"expired",
+])
+
+const CLOSED_PAYMENT_STATUSES = new Set([
+	"cancelled",
+	"failed",
+	"refunded",
+	"expired",
+])
+
+const isCrypto = (type: DestinationType): boolean =>
+	type === "crypto_wallet" || type === "crypto_custodial"
+
+const optionCopy = (
+	type: DestinationType,
+): { title: string; detail: string } => {
+	switch (type) {
+		case "bank_account":
+			return { title: "Bank account", detail: "Local bank payout" }
+		case "ewallet":
+			return { title: "E-wallet", detail: "Mobile wallet payout" }
+		case "crypto_wallet":
+			return { title: "Crypto wallet", detail: "Stellar testnet address" }
+		case "crypto_custodial":
+			return {
+				title: "Custodial wallet",
+				detail: "Backend-held testnet wallet",
+			}
+	}
+}
+
+const detailLabel = (type: DestinationType): string => {
+	if (isCrypto(type)) return "Stellar testnet wallet address"
+	if (type === "ewallet") return "E-wallet number"
+	return "Bank account number"
+}
+
+const detailPlaceholder = (type: DestinationType): string =>
+	isCrypto(type) ? "G…" : "Account details"
+
+const detailKey = (type: DestinationType): string => {
+	if (isCrypto(type)) return "address"
+	if (type === "ewallet") return "phoneNumber"
+	return "accountNumber"
+}
+
+const formatAmount = (
+	amount: string,
+	currency: string,
+): { value: string; currency: string } => {
+	const decimals = CURRENCY_DECIMALS[currency] ?? 0
+	const padded = amount.padStart(decimals + 1, "0")
+	const whole = decimals === 0 ? padded : padded.slice(0, -decimals)
+	const fraction =
+		decimals === 0
+			? ""
+			: padded.slice(-decimals).replace(/0+$/, "").padEnd(2, "0")
+	const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+	return {
+		value: fraction ? `${grouped}.${fraction}` : grouped,
+		currency,
+	}
+}
+
+const formatTimestamp = (iso: string): string =>
+	new Intl.DateTimeFormat(undefined, {
+		dateStyle: "medium",
+		timeStyle: "short",
+	}).format(new Date(iso))
+
+const claimStatusTone = (status: ClaimView["status"]): string => {
+	if (status === "accepted") return "success"
+	if (status === "expired") return "danger"
+	return "warning"
+}
+
+const paymentStatusTone = (status: string): string => {
+	if (status === "paid") return "success"
+	if (status === "failed" || status === "expired") return "danger"
+	if (status === "cancelled" || status === "refunded") return "muted"
+	if (status === "processing" || status === "funded") return "warning"
+	return "neutral"
+}
+
+const claimStatusLabel = (status: ClaimView["status"]): string => {
+	if (status === "accepted") return "Accepted"
+	if (status === "expired") return "Expired"
+	return "Open"
+}
+
+const paymentStatusLabel = (status: string): string =>
+	PAYMENT_STATUS_LABELS[status] ?? status
+
+const closedClaimMessage = (claim: ClaimView): string => {
+	if (claim.status === "expired") {
+		return "This claim link has expired. No release was made by this page."
+	}
+	if (claim.paymentStatus === "paid") {
+		return "Paid: confirmed by the claim API after the release."
+	}
+	if (CLOSED_PAYMENT_STATUSES.has(claim.paymentStatus)) {
+		return `The claim API reports ${paymentStatusLabel(claim.paymentStatus)}. This page does not treat that as paid.`
+	}
+	return "Accepted. The payment is moving through the API; this page polls until it reaches a final state."
+}
+
+const notReadyMessage = (claim: ClaimView): string => {
+	if (
+		claim.paymentStatus === "quoted" ||
+		claim.paymentStatus === "awaiting_funding"
+	) {
+		return "This claim is open, but the payment is not funded yet. Ask the sender to fund it before accepting."
+	}
+	return `This claim cannot be accepted while the payment is ${paymentStatusLabel(claim.paymentStatus)}.`
+}
+
+const closedClaimTone = (claim: ClaimView): "info" | "warning" =>
+	claim.status === "expired" || CLOSED_PAYMENT_STATUSES.has(claim.paymentStatus)
+		? "warning"
+		: "info"
+
+const asClaimError = (cause: unknown): ClaimApiError =>
+	cause instanceof ClaimApiError
+		? cause
+		: new ClaimApiError(0, "unknown_error", "The claim could not be loaded.")
+
+const isAbortError = (cause: unknown): boolean =>
+	cause instanceof DOMException && cause.name === "AbortError"
 
 export default function ClaimPage() {
+	const { claimToken } = useParams<{ claimToken: string }>()
+	const [claim, setClaim] = useState<ClaimView | null>(null)
+	const [loading, setLoading] = useState(true)
+	const [loadError, setLoadError] = useState<ClaimApiError | null>(null)
+	const [pollError, setPollError] = useState<string | null>(null)
+	const [reloadKey, setReloadKey] = useState(0)
+	const [selectedType, setSelectedType] = useState<DestinationType | "">("")
+	const [detail, setDetail] = useState("")
+	const [accepting, setAccepting] = useState(false)
+	const [acceptError, setAcceptError] = useState<string | null>(null)
+	const acceptLock = useRef(false)
+	const acceptAbort = useRef<AbortController | null>(null)
+	const idempotencyKey = useRef<string | null>(null)
+
+	useEffect(() => {
+		if (!claimToken) {
+			setLoadError(
+				new ClaimApiError(
+					404,
+					"not_found",
+					"This claim link is invalid or no longer exists.",
+				),
+			)
+			setLoading(false)
+			return
+		}
+
+		const controller = new AbortController()
+		let active = true
+		setLoading(true)
+		setLoadError(null)
+		setClaim(null)
+
+		getClaim(claimToken, controller.signal)
+			.then((next) => {
+				if (active) setClaim(next)
+			})
+			.catch((cause: unknown) => {
+				if (!active || isAbortError(cause)) return
+				setLoadError(asClaimError(cause))
+			})
+			.finally(() => {
+				if (active) setLoading(false)
+			})
+
+		return () => {
+			active = false
+			controller.abort()
+		}
+	}, [claimToken, reloadKey])
+
+	useEffect(() => {
+		if (
+			!claim ||
+			!claimToken ||
+			claim.status !== "accepted" ||
+			TERMINAL_PAYMENT_STATUSES.has(claim.paymentStatus)
+		)
+			return
+
+		const controller = new AbortController()
+		let active = true
+		const timer = window.setInterval(() => {
+			void getClaim(claimToken, controller.signal)
+				.then((next) => {
+					if (!active) return
+					setClaim(next)
+					setPollError(null)
+				})
+				.catch((cause: unknown) => {
+					if (active && !isAbortError(cause))
+						setPollError(asClaimError(cause).message)
+				})
+		}, 2_000)
+
+		return () => {
+			active = false
+			window.clearInterval(timer)
+			controller.abort()
+		}
+	}, [claim?.paymentStatus, claim?.status, claimToken, claim])
+
+	useEffect(
+		() => () => {
+			acceptAbort.current?.abort()
+		},
+		[],
+	)
+
+	const updateSelection = (type: DestinationType) => {
+		setSelectedType(type)
+		setDetail("")
+		setAcceptError(null)
+		idempotencyKey.current = null
+	}
+
+	const updateDetail = (value: string) => {
+		setDetail(value)
+		setAcceptError(null)
+		idempotencyKey.current = null
+	}
+
+	const useDemoAddress = () => {
+		updateDetail(DEMO_TESTNET_ADDRESS)
+	}
+
+	const paymentReady = claim
+		? PAYMENT_READY_STATUSES.has(claim.paymentStatus)
+		: false
+	const canAccept =
+		Boolean(
+			claim && claim.status === "open" && selectedType && detail.trim(),
+		) &&
+		paymentReady &&
+		!accepting
+
+	const handleAccept = async () => {
+		if (
+			!claimToken ||
+			!claim ||
+			!selectedType ||
+			!canAccept ||
+			acceptLock.current
+		)
+			return
+
+		const cryptoDestination = isCrypto(selectedType)
+		const endpoint: ClaimAcceptRequest["endpoint"] = {
+			type: selectedType,
+			country: cryptoDestination ? "" : claim.corridor.to.country,
+			currency: claim.amount.currency,
+			network: cryptoDestination ? "stellar" : null,
+			details: { [detailKey(selectedType)]: detail.trim() },
+			simulated: true,
+		}
+
+		acceptLock.current = true
+		setAccepting(true)
+		setAcceptError(null)
+		const controller = new AbortController()
+		acceptAbort.current = controller
+		const key = idempotencyKey.current ?? `claim-accept-${crypto.randomUUID()}`
+		idempotencyKey.current = key
+
+		try {
+			const response = await acceptClaim(
+				claimToken,
+				{ endpoint },
+				key,
+				controller.signal,
+			)
+			setClaim(response.claim)
+		} catch (cause) {
+			if (controller.signal.aborted) return
+			setAcceptError(
+				cause instanceof ClaimApiError
+					? describeClaimError(cause)
+					: "The claim could not be accepted. Try again.",
+			)
+		} finally {
+			if (!controller.signal.aborted) {
+				setAccepting(false)
+				acceptLock.current = false
+			}
+		}
+	}
+
+	const amount = claim
+		? formatAmount(claim.amount.amount, claim.amount.currency)
+		: null
+
 	return (
 		<main className="phone-shell">
 			<div className="phone-frame">
@@ -40,41 +372,165 @@ export default function ClaimPage() {
 						</p>
 					</div>
 
-					<div className="amount-display">
-						<div>
-							<span className="amount-display__label">Amount</span>
-							<span className="amount-display__value">—</span>
-							<span className="amount-display__currency">USDC</span>
+					{loading ? (
+						<p className="muted" role="status">
+							Loading claim…
+						</p>
+					) : null}
+
+					{loadError && !claim ? (
+						<div className="stack">
+							<Notice tone="warning">{loadError.message}</Notice>
+							<Button
+								variant="secondary"
+								onClick={() => setReloadKey((value) => value + 1)}
+							>
+								Try again
+							</Button>
 						</div>
-						<InfoPopover label="Amount and fee">
-							The claim amount and the fixed vault fee appear here once the
-							claim is loaded from the API.
-						</InfoPopover>
-					</div>
+					) : null}
 
-					<fieldset className="option-list">
-						<legend className="field__label">Receive to</legend>
-						{receiveOptions.map((option) => (
-							<label className="option-card" key={option.value}>
-								<input
-									type="radio"
-									name="receive"
-									value={option.value}
-									defaultChecked={option.value === "crypto"}
-								/>
-								<span className="option-card__body">
-									<span className="option-card__title">{option.title}</span>
-									<span className="option-card__detail">{option.detail}</span>
+					{claim && amount ? (
+						<>
+							<div className="amount-display">
+								<div>
+									<span className="amount-display__label">Amount</span>
+									<span className="amount-display__value">{amount.value}</span>
+									<span className="amount-display__currency">
+										{amount.currency}
+									</span>
+								</div>
+								<InfoPopover label="Amount and fee">
+									The amount is the expected receive side from the payment
+									quote. The public claim response does not include a fee or net
+									amount, so none is inferred here.
+								</InfoPopover>
+							</div>
+							<p className="form-note">
+								Fee and net are not fields of the public claim view; no fee is
+								computed in the browser.
+							</p>
+
+							<div className="claim-status-row">
+								<span
+									className={`status-badge status-badge--${claimStatusTone(claim.status)}`}
+									data-claim-status={claim.status}
+								>
+									<span className="status-badge__dot" aria-hidden="true" />
+									Claim {claimStatusLabel(claim.status)}
 								</span>
-								{option.simulated ? <SimulatedLabel /> : null}
-							</label>
-						))}
-					</fieldset>
+								<span
+									className={`status-badge status-badge--${paymentStatusTone(claim.paymentStatus)}`}
+									data-payment-status={claim.paymentStatus}
+								>
+									<span className="status-badge__dot" aria-hidden="true" />
+									{paymentStatusLabel(claim.paymentStatus)}
+								</span>
+							</div>
 
-					<Button disabled>Accept payment</Button>
-					<p className="form-note">
-						Claim acceptance is wired in CF4. This screen is the CF0 shell.
-					</p>
+							<div className="claim-meta">
+								<p>
+									{claim.corridor.from.country} → {claim.corridor.to.country} ·{" "}
+									{claim.corridor.to.currency}
+								</p>
+								<p>
+									The claim link is valid until{" "}
+									{formatTimestamp(claim.expiresAt)}.
+								</p>
+							</div>
+
+							{claim.status === "open" ? (
+								<>
+									<fieldset className="option-list">
+										<legend className="field__label">Receive to</legend>
+										{claim.allowedDestinationTypes.map((type) => {
+											const copy = optionCopy(type)
+											return (
+												<label className="option-card" key={type}>
+													<input
+														type="radio"
+														name="receive"
+														value={type}
+														checked={selectedType === type}
+														disabled={accepting}
+														onChange={() => updateSelection(type)}
+													/>
+													<span className="option-card__body">
+														<span className="option-card__title">
+															{copy.title}
+														</span>
+														<span className="option-card__detail">
+															{copy.detail}
+														</span>
+													</span>
+												</label>
+											)
+										})}
+									</fieldset>
+
+									{selectedType ? (
+										<div className="claim-detail">
+											<TextField
+												id="claim-detail"
+												label={detailLabel(selectedType)}
+												placeholder={detailPlaceholder(selectedType)}
+												autoComplete="off"
+												value={detail}
+												disabled={accepting}
+												onChange={(event) => updateDetail(event.target.value)}
+												hint={
+													isCrypto(selectedType)
+														? "The baseline uses a labelled custodial testnet wallet. Its secret stays on the backend and never enters this page."
+														: "Only the endpoint type is defined by the claim contract; the details object is sent as provided."
+												}
+											/>
+											{isCrypto(selectedType) ? (
+												<div className="claim-demo">
+													{" "}
+													<Button
+														variant="secondary"
+														disabled={accepting}
+														onClick={useDemoAddress}
+													>
+														Use public demo testnet address
+													</Button>
+													<span className="form-note">
+														Worker A demo address; no key is present in the
+														browser.
+													</span>
+												</div>
+											) : null}
+										</div>
+									) : null}
+
+									{!paymentReady ? (
+										<Notice tone="warning">{notReadyMessage(claim)}</Notice>
+									) : null}
+
+									{acceptError ? (
+										<Notice tone="warning">{acceptError}</Notice>
+									) : null}
+
+									<Button
+										onClick={() => void handleAccept()}
+										disabled={!canAccept}
+									>
+										{accepting ? "Accepting…" : "Accept payment"}
+									</Button>
+									<p className="form-note">
+										Accepting sends one idempotent request. The payment is
+										marked paid only when the claim API returns that state.
+									</p>
+								</>
+							) : (
+								<Notice tone={closedClaimTone(claim)}>
+									{closedClaimMessage(claim)}
+								</Notice>
+							)}
+
+							{pollError ? <Notice tone="warning">{pollError}</Notice> : null}
+						</>
+					) : null}
 				</div>
 			</div>
 		</main>

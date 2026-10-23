@@ -29,6 +29,15 @@ test.describe("CF0 web shell", () => {
 
 	test("claim page works at phone width", async ({ page }) => {
 		await page.setViewportSize({ width: 390, height: 844 })
+		await page.route("**/v1/claims/demo-claim", (route) =>
+			route.fulfill({
+				status: 404,
+				json: {
+					code: "not_found",
+					message: "This claim link is invalid or no longer exists.",
+				},
+			}),
+		)
 		await page.goto("/claim/demo-claim")
 
 		await expect(
@@ -36,11 +45,11 @@ test.describe("CF0 web shell", () => {
 		).toBeVisible()
 		await expect(page.getByText("Simulated").first()).toBeVisible()
 		await expect(
-			page.getByRole("button", { name: "Accept payment" }),
-		).toBeDisabled()
+			page.getByText("This claim link is invalid or no longer exists."),
+		).toBeVisible()
 		await expect(
-			page.getByRole("radio", { name: /Crypto wallet/ }),
-		).toBeChecked()
+			page.getByRole("button", { name: "Accept payment" }),
+		).toHaveCount(0)
 	})
 
 	test("the (i) explanation opens", async ({ page }) => {
