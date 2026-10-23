@@ -1,177 +1,131 @@
 # Local demo runbook
 
-Concise operator notes for `main` **`e99f03a`**. Uses existing scripts only
-(`scripts/demo/offline.ts`, `scripts/seed/seed.ts`, DF scripts). No new
-launcher. Secrets are never printed or committed.
+Concise operator notes for `main` **`f4347bd`**. Uses existing scripts only
+(`scripts/demo/offline.ts`, `scripts/seed/seed.ts`, DF scripts, Vite CCR-19
+proxy). No new launcher. Secrets are never printed or committed.
 
 Lane-D detail lives in `scripts/demo/README.md` / `scripts/seed/README.md`
-(Freebuff). Sync status with those files when they refresh; this doc is the
-integrator snapshot for local setup.
+(Freebuff). This doc is the integrator snapshot for local setup.
 
 ## Prerequisites (verified)
 
 | Item | Value |
 | --- | --- |
-| Git tip | `e99f03a` (`origin/main`) |
-| Node | **v24** (verified `v24.21.0`; `@types/node` ^24) |
+| Git tip | `f4347bd` (`origin/main`) |
+| Node | **v24** (verified `v24.21.0`) |
 | Install | from repo root: `npm install` |
-| Prisma client | `npm run db:generate --workspace=@flexipay/api` (after pull / schema change) |
+| Prisma client | `npm run db:generate --workspace=@flexipay/api` |
 | Config check | `npm run validate:config` |
 
 ## Ports and processes
 
 | Process | How it starts | Default |
 | --- | --- | --- |
-| Embedded Postgres | owned by `npm run dev --workspace=@flexipay/api` → `node scripts/dev-db.ts serve` | `127.0.0.1:54329`, data dir `apps/api/.pgdata` |
-| API | same command; `PORT` / `FP_API_PORT` | **8788** → `http://127.0.0.1:8788` |
-| Web (Vite) | `npm run dev --workspace=@flexipay/web` | **5173** → `http://127.0.0.1:5173` |
+| Embedded Postgres | `npm run dev --workspace=@flexipay/api` → `dev-db.ts serve` | `127.0.0.1:54329`, `apps/api/.pgdata` |
+| API | same; `PORT` / `FP_API_PORT` | **8788** |
+| Web (Vite + CCR-19 proxy) | `npm run demo:offline` or web workspace | **5173**, prefer `--host 127.0.0.1` |
 
-Override: `FP_API_PORT`, `FP_WEB_PORT` (must differ). Readiness timeouts:
-`FP_OFFLINE_API_TIMEOUT_MS` (default 120000), `FP_OFFLINE_WEB_TIMEOUT_MS`
-(default 60000).
+Override: `FP_API_PORT`, `FP_WEB_PORT` (must differ). Timeouts:
+`FP_OFFLINE_API_TIMEOUT_MS` (120000), `FP_OFFLINE_WEB_TIMEOUT_MS` (60000).
 
 ## Environment names (values local only)
 
-Copy names from root `.env.example`. For a mock offline demo you typically set:
-
 | Name | Role |
 | --- | --- |
-| `FP_SETTLEMENT` | `mock` (offline launcher forces this) or `stellar` for online DF3 |
-| `FP_CLAIM_SEAL_KEY` | 64 hex chars (32-byte seal); required for claim flows |
-| `FP_API_URL` | e.g. `http://127.0.0.1:8788` |
-| `FP_API_KEY` | Demo Platform sandbox Bearer key (**never log/commit**) |
-| `FP_CONFIG_DIR` | defaults to repo `config/` via offline plan |
+| `FP_SETTLEMENT` | `mock` (offline forces this) or `stellar` for online DF3 |
+| `FP_CLAIM_SEAL_KEY` | 64 hex chars (claim seal) |
+| `FP_API_URL` | API **origin** for Vite proxy (e.g. `http://127.0.0.1:8788`) — server-side only |
+| `FP_API_KEY` | Demo Platform Bearer for **Vite server** / shell seed — never in browser bundle |
+| `FP_CONFIG_DIR` | defaults to repo `config/` |
 | `PORT` / `FP_API_PORT` / `FP_WEB_PORT` | as above |
-| `DATABASE_URL` | set automatically by `dev-db.ts serve` for embedded Postgres |
 
-Stellar / DF3 extras (online only; public ids from `scripts/testnet/testnet-ids.env`):
-`FP_STELLAR_RPC_URL`, `FP_STELLAR_NETWORK_PASSPHRASE`, `FP_PAYOUT_VAULT_ID`,
-`FP_RECIPIENT_A_ADDRESS`, plus secrets only in git-ignored
+Stellar extras: `FP_STELLAR_RPC_URL`, `FP_STELLAR_NETWORK_PASSPHRASE`,
+`FP_PAYOUT_VAULT_ID`, `FP_RECIPIENT_A_ADDRESS`; secrets only in
 `scripts/testnet/.env.secrets`.
 
-### Demo Platform key bootstrap
+### Demo Platform key
 
-There is **no** HTTP route that creates an organization or API key. Local keys
-are provisioned the same way API tests do: insert a Demo Platform
-`organization` + hashed `apiKey` row into the **local** database, then export
-`FP_API_KEY` in your shell (see `apps/api/test/helpers.ts` `newOrg`). Do not
-paste keys into git, evidence JSON, or chat.
+No HTTP bootstrap. Provision org+key in local DB (see `apps/api/test/helpers.ts`
+`newOrg`), export `FP_API_KEY` for Vite/seed. Never commit values.
 
-Until a key is set, `demo:offline` still starts API+web but **skips seed**.
+### Browser auth (CCR-19)
 
-### Browser vs API key (CCR-19)
-
-- Do not put `FP_API_KEY` in `apps/web` env or Vite `define`. Shell/demo scripts
-  may use the key; Freebuff owns the **local Vite proxy** on #29 (not a second
-  BFF; not static-deploy auth).
-- Protected `/v1/*`: proxy injects Bearer. Public `/v1/claims/*`: no Bearer.
-- Backend tip for live browser DF2/DF3 checks (after proxy lands): **`b219fdf`**
-  (includes CCR-15 recovery). Endpoint/batch **routes** still missing (#43).
+Local Vite plugin (`apps/web/vite.proxy.ts`) injects Bearer for protected
+`/v1/*` from server-side `FP_API_KEY`; public `/v1/claims/*` stay keyless.
+**Local-dev / `vite preview` only** — not authentication for a deployed static
+build. Clients use relative `/v1/...`.
 
 ## Launch (offline / mock)
 
 ```bash
-# 1) Inspect plan only (no processes; never prints FP_API_KEY)
-npm run demo:offline -- --print-plan
-# equivalent: node scripts/demo/offline.ts --print-plan
-
-# 2) Start embedded Postgres + API + web (mock settlement). Skip seed if no key yet.
-npm run demo:offline -- --no-seed
-
-# 3) With FP_API_KEY already exported, start and auto-seed after /healthz + Vite ready
+npm run demo:offline -- --print-plan          # no processes; no key printed
+npm run demo:offline -- --no-seed             # API + web; skip seed
+# with FP_API_KEY + FP_API_URL set for the Vite process:
 npm run demo:offline
 ```
 
-Ready when: `GET http://127.0.0.1:8788/healthz` → 200, and the Vite URL answers.
+Ready: `GET http://127.0.0.1:8788/healthz` → 200; Vite on 5173.
 
-### Clean shutdown
+### Shutdown
 
-Ctrl-C / SIGTERM on the offline launcher: it SIGTERMs its process groups, waits,
-then SIGKILLs. Do not leave orphan `node`/`vite` children. Stopping leaves
-`apps/api/.pgdata` intact for restart (same seal key required for claim
-restart tests).
+Ctrl-C / SIGTERM on the offline launcher (process-group cleanup). Keep
+`.pgdata` + same `FP_CLAIM_SEAL_KEY` for claim restart tests.
 
-### Manual split (same existing commands)
+### Manual split
 
 ```bash
-# terminal A — API (+ embedded Postgres on 54329)
+# terminal A
 FP_SETTLEMENT=mock FP_CLAIM_SEAL_KEY=… PORT=8788 npm run dev --workspace=@flexipay/api
 
-# terminal B — web
-npm run dev --workspace=@flexipay/web -- --host 127.0.0.1 --port 5173
+# terminal B (proxy reads FP_API_URL + FP_API_KEY from apps/web env / process env)
+FP_API_URL=http://127.0.0.1:8788 FP_API_KEY=… \
+  npm run dev --workspace=@flexipay/web -- --host 127.0.0.1 --port 5173
 ```
 
 ## Seed / reset
 
 ```bash
 export FP_API_URL=http://127.0.0.1:8788
-# export FP_API_KEY=…   # local only
-
-node scripts/seed/seed.ts reset   # POST /v1/sandbox/reset
-node scripts/seed/seed.ts         # reset + four recipients; then probes endpoints
-```
-
-**Status on `e99f03a` (do not claim PASS):**
-
-| Step | Result |
-| --- | --- |
-| `POST /v1/sandbox/reset` | mounted |
-| `POST /v1/recipients` ×4 | mounted |
-| Endpoint create / full seed | **BLOCKED** — `POST /v1/endpoints` **not mounted** (schemas on main since `ad9dc2c`; routes wait on #43) |
-| Exit | seed exits **2 BLOCKED** when endpoints missing |
-
-## Mock DF scripts
-
-```bash
-export FP_API_URL=http://127.0.0.1:8788
 # export FP_API_KEY=…
-export FP_SETTLEMENT=mock
-
-node scripts/demo/df1-batch.ts      # BLOCKED — needs POST /v1/batches (+ endpoints)
-node scripts/demo/df2-one-off.ts    # BLOCKED — needs seeded endpoints
-node scripts/demo/df3-claim.ts      # BLOCKED — needs endpoints / full seed path
-node scripts/demo/df4-failure.ts    # BLOCKED — same
-node scripts/demo/df5-za-company.ts # BLOCKED — same
-node scripts/demo/run-all.ts        # exits 2 unless every flow PASS
+node scripts/seed/seed.ts reset
+node scripts/seed/seed.ts
 ```
 
-Exit codes: `0` PASS, `1` FAIL, `2` BLOCKED. Evidence JSON under
-`scripts/demo/evidence/` is git-ignored per run; committed markdown evidence
-must not contain keys or secrets.
+On **`f4347bd`**: `POST /v1/sandbox/reset`, recipients, **and**
+`POST /v1/endpoints` are mounted. Full seed PASS is Freebuff’s acceptance to
+confirm — do not claim it here while they are mid-run.
 
-**CCR-15 (mock/public-API):** fee-drift claim bypass closed on **`b219fdf`**
-(fund 409 `fee_drift`, accept 409 `settle_failed`, never paid). Stellar drift
-path still **NOT VERIFIED**. Seed/DF still **BLOCKED** on #43 routes.
+## Mock DF / browser
+
+Shell DF scripts (after seed) and browser CF1/CF4 through the local proxy target
+**`f4347bd`**. Freebuff owns full acceptance evidence.
+
+**CCR-15 mock/public-API recovery:** PASS on `f4347bd` (Freebuff evidence
+`9d05609`). Refund-failure / crash-window: backend-test only. **Stellar:** NOT
+VERIFIED. Do not claim MVP complete until mandatory acceptance is recorded.
 
 ## Online Stellar (separate)
 
-Requires testnet setup (`scripts/testnet/setup.sh` → public
-`testnet-ids.env` + git-ignored secrets), `FP_SETTLEMENT=stellar`, and Worker A
-address. Example shape only:
-
 ```bash
-# export FP_API_URL=… FP_API_KEY=… FP_SETTLEMENT=stellar
-# export FP_RECIPIENT_A_ADDRESS=G… FP_STELLAR_RPC_URL=… \
-#   FP_STELLAR_NETWORK_PASSPHRASE='Test SDF Network ; September 2015' \
-#   FP_PAYOUT_VAULT_ID=C…
+# FP_SETTLEMENT=stellar + testnet ids/secrets + recipient address
 node scripts/demo/df3-claim.ts --mode stellar
-# or: node scripts/demo/run-all.ts --stellar
 ```
 
-**Not claimed run here.** Still **BLOCKED** on seed/endpoints (#43) and CCR-15
-recovery before treating online DF3 as acceptance.
+Not claimed in this runbook.
 
-## What is mounted vs missing (`e99f03a`)
+## Mounted routes (`f4347bd`)
 
-**Mounted:** `healthz`, corridors, recipients, quotes, payments (list/get/fund/cancel),
-events, claims get/accept, sandbox fail-next / provider-health / reset.
+`healthz`, corridors, recipients, **endpoints**, **batches**, quotes, payments
+(list/get/fund/cancel), events, claims get/accept, sandbox fail-next /
+provider-health / **advance-time** / reset.
 
-**Not mounted (schemas only):** `POST/GET /v1/endpoints`, `POST/GET /v1/batches`,
-`POST /v1/sandbox/advance-time`.
+## `releaseTxRef` note (CCR-12)
+
+Settle `releaseTxRef` may hold a **claim release** or a **vault refund** hash.
+Do not treat the field alone as “paid / claimed”; use `Payment.status`, settle
+leg status/`errorCode`, and `payment.onchain` `phase` (`release` vs `refund`).
 
 ## Offline fallback
 
-If network or Stellar is unavailable: use `npm run demo:offline -- --no-seed`
-(or with a local key + seed once endpoints land). Settlement stays **mock**;
-providers are simulated from `config/`. Plan-only:
-`node scripts/demo/offline.ts --print-plan`.
+`npm run demo:offline -- --no-seed` (or with key + seed). Settlement stays
+**mock**. Plan-only: `node scripts/demo/offline.ts --print-plan`.
