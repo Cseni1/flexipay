@@ -1,10 +1,14 @@
 import assert from "node:assert/strict"
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises"
 import {
 	createServer as createHttpServer,
 	type IncomingMessage,
 	type Server,
 } from "node:http"
 import { type AddressInfo } from "node:net"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { build } from "vite"
 import { afterAll, beforeAll, describe, test } from "vitest"
 import {
 	classifyProxyRequest,
@@ -237,4 +241,34 @@ describe("CCR-19 proxy upstream behaviour", () => {
 			}
 		}
 	})
+})
+
+describe("CCR-19 runtime key stays out of the browser bundle", () => {
+	test("a sentinel FP_API_KEY never appears in any built asset", async () => {
+		const sentinel = "fp-sentinel-6c1f0f4e9b2a47d8"
+		const previous = process.env.FP_API_KEY
+		process.env.FP_API_KEY = sentinel
+		const outDir = await mkdtemp(join(tmpdir(), "flexipay-bundle-"))
+		try {
+			await build({
+				root: import.meta.dirname,
+				configFile: join(import.meta.dirname, "vite.config.ts"),
+				logLevel: "silent",
+				build: { outDir, emptyOutDir: true },
+			})
+			const entries = await readdir(outDir, { recursive: true })
+			for (const entry of entries) {
+				if (!/\.(?:js|css|html|json|map)$/i.test(entry)) continue
+				const text = await readFile(join(outDir, entry), "utf8")
+				assert.ok(
+					!text.includes(sentinel),
+					`${entry} contains the server-side FP_API_KEY`,
+				)
+			}
+		} finally {
+			if (previous === undefined) delete process.env.FP_API_KEY
+			else process.env.FP_API_KEY = previous
+			await rm(outDir, { recursive: true, force: true })
+		}
+	}, 120_000)
 })
