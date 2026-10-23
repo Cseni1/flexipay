@@ -25,6 +25,7 @@ interface MockOptions {
 	getError?: { status: number; body: unknown }
 	failFirstGet?: boolean
 	acceptError?: { status: number; body: unknown }
+	acceptFailOnce?: boolean
 	acceptDelayMs?: number
 	alwaysProcessing?: boolean
 }
@@ -37,6 +38,7 @@ async function mockClaimApi(page: Page, options: MockOptions = {}) {
 	let recovered = false
 	let acceptBody: unknown
 	let acceptKey = ""
+	const acceptKeys: string[] = []
 
 	await page.route(/\/v1\/claims\/claim_token_1$/, async (route) => {
 		if (route.request().method() !== "GET") return route.fallback()
@@ -62,9 +64,10 @@ async function mockClaimApi(page: Page, options: MockOptions = {}) {
 		acceptCount += 1
 		acceptBody = route.request().postDataJSON()
 		acceptKey = route.request().headers()["idempotency-key"] ?? ""
+		acceptKeys.push(acceptKey)
 		if (options.acceptDelayMs)
 			await new Promise((resolve) => setTimeout(resolve, options.acceptDelayMs))
-		if (options.acceptError) {
+		if (options.acceptError && (!options.acceptFailOnce || acceptCount === 1)) {
 			await route.fulfill({
 				status: options.acceptError.status,
 				json: options.acceptError.body,
@@ -87,6 +90,7 @@ async function mockClaimApi(page: Page, options: MockOptions = {}) {
 		acceptCount: () => acceptCount,
 		acceptBody: () => acceptBody,
 		acceptKey: () => acceptKey,
+		acceptKeys: () => acceptKeys,
 		recover: () => {
 			recovered = true
 		},
@@ -282,6 +286,30 @@ test.describe("CF4 claim page", () => {
 		await expect(page.getByText("Claim is no longer open.")).toBeVisible()
 		await expect(page.getByText("Claim Accepted")).toHaveCount(0)
 		expect(counts.acceptCount()).toBe(1)
+	})
+
+	test("a retry reuses the accept idempotency key", async ({ page }) => {
+		const counts = await mockClaimApi(page, {
+			acceptError: {
+				status: 500,
+				body: { code: "internal", message: "Temporary accept failure." },
+			},
+			acceptFailOnce: true,
+		})
+		await openClaim(page)
+		await page.getByRole("radio", { name: /Crypto wallet/ }).check()
+		await page
+			.getByLabel("Stellar testnet wallet address")
+			.fill("GDEMOTESTNETADDRESSONLY000000000000000000000000000000000000")
+
+		await page.getByRole("button", { name: "Accept payment" }).click()
+		await expect(page.getByText("Temporary accept failure.")).toBeVisible()
+		await page.getByRole("button", { name: "Accept payment" }).click()
+		await expect(page.getByText("Claim Accepted")).toBeVisible()
+
+		expect(counts.acceptCount()).toBe(2)
+		expect(counts.acceptKeys()[0]).not.toBe("")
+		expect(counts.acceptKeys()[0]).toBe(counts.acceptKeys()[1])
 	})
 
 	test("polling stops when the claim page is left", async ({ page }) => {
