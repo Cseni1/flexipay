@@ -1,3 +1,4 @@
+import type { FeeMode } from "../enums.ts";
 import { compareMoney, money, toMinor, type Money } from "../money.ts";
 import type { FlexiPayConfig } from "../config/schemas.ts";
 import type { ProviderAdapter } from "../adapters.ts";
@@ -24,6 +25,11 @@ export interface BuildQuoteDeps {
 	 * Required when the chosen template includes settle; ignored otherwise.
 	 */
 	vaultFeeBps: number;
+	/**
+	 * Vault `FeeMode` for the settle leg (RULES.md / LockRequest). Required when the template
+	 * includes settle. No accepted MVP default exists in docs — caller must supply it.
+	 */
+	vaultFeeMode: FeeMode;
 	/** API clock; defaults to `() => new Date()`. */
 	now?: () => Date;
 	/** Quote id factory; defaults to a `quo_` + random hex id. */
@@ -45,6 +51,7 @@ function priceDeps(deps: BuildQuoteDeps): PriceDeps {
 		config: deps.config,
 		getProvider: deps.getProvider,
 		vaultFeeBps: deps.vaultFeeBps,
+		vaultFeeMode: deps.vaultFeeMode,
 	};
 }
 
@@ -191,16 +198,26 @@ export async function buildQuote(
 		return eligibility satisfies EligibilityFail;
 	}
 
-	if (
-		eligibility.template.includes("settle") &&
-		(!Number.isInteger(deps.vaultFeeBps) || deps.vaultFeeBps < 0)
-	) {
-		return {
-			ok: false,
-			reasons: [
-				"vaultFeeBps from SettlementAdapter.feeBps() is required for settle routes",
-			],
-		};
+	if (eligibility.template.includes("settle")) {
+		if (!Number.isInteger(deps.vaultFeeBps) || deps.vaultFeeBps < 0) {
+			return {
+				ok: false,
+				reasons: [
+					"vaultFeeBps from SettlementAdapter.feeBps() is required for settle routes",
+				],
+			};
+		}
+		if (
+			deps.vaultFeeMode !== "PayerPays" &&
+			deps.vaultFeeMode !== "RecipientPays"
+		) {
+			return {
+				ok: false,
+				reasons: [
+					"vaultFeeMode (PayerPays | RecipientPays) is required for settle routes; no MVP default is specified in ARCHITECTURE or A0",
+				],
+			};
+		}
 	}
 
 	const destination = {

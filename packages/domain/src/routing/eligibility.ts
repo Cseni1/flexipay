@@ -32,9 +32,13 @@ function findCorridor(
 }
 
 /**
- * Crypto endpoints may carry an empty country (§6.3). Prefer an explicit country when
- * present; otherwise take the first corridor from the source that allows this crypto type
- * and recipient kind (config order). Multiple corridors share the same settle-ending template.
+ * Corridor key in config is (`from.country`, `to.country`) — see CorridorSchema / corridors.json.
+ * A0 `QuoteDestination.country` is `CountryOrEmpty`: empty is allowed for crypto endpoints (§6.3).
+ *
+ * Disambiguation (no arbitrary first-match):
+ * - Non-empty destination.country → unique corridor from+to, or fail.
+ * - Empty country + crypto → all corridors from the source that allow this type/kind with a
+ *   settle rail. Exactly one → use it; zero → fail; two or more → fail (need destination.country).
  */
 function resolveCorridor(
 	req: CreateQuoteRequest,
@@ -62,21 +66,29 @@ function resolveCorridor(
 		};
 	}
 
-	const corridor = config.corridors.find(
+	const matches = config.corridors.filter(
 		(c) =>
 			c.from.country === from &&
 			c.allowedDestinationTypes.includes(req.destination.type) &&
 			c.cryptoLegAllowed[req.destination.recipientKind] &&
 			c.legsAvailable.settle.length > 0,
 	);
-	if (!corridor) {
+	if (matches.length === 0) {
 		return {
 			reasons: [
 				`No corridor from ${from} allows ${req.destination.type} for ${req.destination.recipientKind}`,
 			],
 		};
 	}
-	return { corridor };
+	if (matches.length > 1) {
+		const ids = matches.map((c) => corridorId(c)).join(", ");
+		return {
+			reasons: [
+				`Ambiguous crypto corridor from ${from}: ${ids}. Set destination.country to the corridor to-country (A0 CountryOrEmpty); empty country is only valid when exactly one corridor matches.`,
+			],
+		};
+	}
+	return { corridor: matches[0]! };
 }
 
 /** Exclusion / explanation strings that belong on every successful quote for this corridor. */
