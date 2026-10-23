@@ -73,8 +73,14 @@ function mapLeg(leg: Payment["legs"][number]) {
 	return {
 		kind: leg.kind,
 		rail: leg.rail,
+		providerId: leg.providerId,
+		amountIn: leg.amountIn,
+		amountOut: leg.amountOut,
 		status: leg.status,
+		attempt: leg.attempt,
 		...(leg.externalRef ? { externalRef: leg.externalRef } : {}),
+		...(leg.lockTxRef ? { lockTxRef: leg.lockTxRef } : {}),
+		...(leg.releaseTxRef ? { releaseTxRef: leg.releaseTxRef } : {}),
 		...(leg.error
 			? { error: { code: leg.error.code, message: leg.error.message } }
 			: {}),
@@ -89,6 +95,7 @@ function mapPayment(p: Payment | PaymentDetail): PaymentView {
 					type: e.type,
 					createdAt: e.createdAt,
 					paymentId: e.paymentId ?? undefined,
+					snapshot: e.snapshot,
 				}))
 			: undefined
 	return {
@@ -106,11 +113,20 @@ function mapPayment(p: Payment | PaymentDetail): PaymentView {
 function mapQuote(q: Quote): QuoteView {
 	return {
 		id: q.id,
-		route: q.route.map((leg) => ({ kind: leg.kind, rail: leg.rail })),
+		route: q.route.map((leg) => ({
+			kind: leg.kind,
+			rail: leg.rail,
+			providerId: leg.providerId,
+			amountIn: leg.amountIn,
+			amountOut: leg.amountOut,
+			simulated: leg.simulated,
+		})),
 		reasons: q.reasons,
+		amount: { side: q.amount.side, value: q.amount.value },
 		expectedReceive: q.expectedReceive,
 		validUntil: q.validUntil,
 		simulated: q.simulated,
+		feeMode: q.feeMode,
 		...(q.fxRate ? { fxRate: q.fxRate } : {}),
 		fees: q.fees,
 		alternatives: q.alternatives,
@@ -194,6 +210,8 @@ export function loadDemoApi(env: DemoEnv): DemoApi {
 					side: input.amountSide,
 					value: input.amount,
 				},
+				// Required by CreateQuoteRequestSchema for settle routes (CCR-8); never defaulted here.
+				feeMode: input.feeMode,
 				policy: input.policy ?? "cheapest",
 			})
 			const q = await ok("POST", "/v1/quotes", {
@@ -249,6 +267,7 @@ export function loadDemoApi(env: DemoEnv): DemoApi {
 					type: e.type,
 					createdAt: e.createdAt,
 					paymentId: e.paymentId ?? undefined,
+					snapshot: e.snapshot,
 				}))
 		},
 
@@ -284,10 +303,7 @@ export function loadDemoApi(env: DemoEnv): DemoApi {
 			}
 		},
 
-		async acceptClaim(
-			token: string,
-			input: AcceptInput,
-		): Promise<PaymentView> {
+		async acceptClaim(token: string, input: AcceptInput): Promise<PaymentView> {
 			const details = {
 				...(input.details ?? {}),
 				...(input.address ? { address: input.address } : {}),
@@ -315,7 +331,7 @@ export function loadDemoApi(env: DemoEnv): DemoApi {
 			})
 			const accepted = await ok(
 				"POST",
-				`/v1/claims/${encodeURIComponent(token)}`,
+				`/v1/claims/${encodeURIComponent(token)}/accept`,
 				{
 					auth: false,
 					body,

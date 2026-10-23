@@ -1,8 +1,12 @@
 import {
 	expectEventTypes,
+	expectFrozenAccounting,
 	expectKinds,
 	expectNoPayout,
 	expectPaid,
+	expectPayerPaysSizing,
+	expectPayoutId,
+	expectQuoteFeeMode,
 	expectRouteRail,
 	expectSimulated,
 	expectTxRef,
@@ -10,17 +14,19 @@ import {
 	fail,
 } from "./lib/assertions.ts"
 import { endpointOf, flowOf, workerOf } from "./lib/fixtures.ts"
+import { maskAddress } from "./lib/env.ts"
 import { BlockedError } from "./lib/report.ts"
 import { ROUTES } from "./lib/routes.ts"
 import { execute, modeArg } from "./lib/script.ts"
 import { setUpWorker } from "./lib/setup.ts"
-import { verifyStellarTransaction } from "./lib/stellar-proof.ts"
+import { verifyVaultRelease } from "./lib/stellar-proof.ts"
 import { waitForPayment } from "./lib/wait.ts"
 
 // DF3: public claim link to a crypto wallet. Funding may collect, convert and lock, but the funds
 // must stay locked until the recipient accepts; acceptance releases them and only then is the
 // payment paid. `--mode` selects which adapter the run asks for; it is not evidence of what
-// settled. On Stellar the release hash must be looked up on the configured testnet RPC.
+// settled. On Stellar the lock must be this payment's create_payout and the release must be its
+// claim to the intended recipient, checked from both envelopes on the configured testnet RPC.
 
 const runId = Date.now().toString(36)
 const requestedMode = modeArg(
@@ -52,8 +58,11 @@ await execute(
 			},
 			amount: spec.send,
 			amountSide: "send",
+			feeMode: spec.feeMode,
 			policy: "cheapest",
 		})
+		expectQuoteFeeMode(quote, spec.feeMode)
+		expectPayerPaysSizing(quote, "DF3")
 		expectKinds(
 			quote.route.map((leg) => leg.kind),
 			expected.legs,
@@ -87,9 +96,13 @@ await execute(
 		expectWaitingForClaim(funded)
 		expectWaitingForClaim(waiting)
 		flow.legs("funded", waiting.legs)
-		const lockedRef = waiting.legs.find(
-			(leg) => leg.kind === "settle",
-		)?.externalRef
+		const fundedSettle = waiting.legs.find((leg) => leg.kind === "settle")
+		if (!fundedSettle) fail("funded claim payment has no settle leg")
+		const payoutId = expectPayoutId(
+			fundedSettle.externalRef,
+			"funded settle.externalRef",
+		)
+		const lockTxRef = fundedSettle.lockTxRef
 		flow.check("funds are locked and the payment is not paid before acceptance")
 
 		flow.route("GET", "/v1/claims/{token}", "public claim view")
@@ -129,52 +142,112 @@ await execute(
 				: await api.payment(created.payment.id)
 		expectPaid(payment)
 		expectNoPayout(payment.legs, "payment.legs")
+		expectFrozenAccounting(quote, payment, "DF3")
 		flow.legs("accepted", payment.legs)
 		flow.check("acceptance released the funds and the payment is paid")
 
-		// The release reference is the settle leg's externalRef (ARCHITECTURE §6.6); the claim
-		// response has no network or txRef field in the shared contract.
+		// CCR-12: settle.externalRef is the payoutId; lockTxRef/releaseTxRef carry the hashes.
 		const settle = payment.legs.find((leg) => leg.kind === "settle")
-		const releaseRef = settle?.externalRef
-		if (!releaseRef)
-			fail("the accepted payment has no settle reference for the release")
+		if (!settle) fail("accepted payment has no settle leg")
+		const releasedPayoutId = expectPayoutId(
+			settle.externalRef,
+			"accepted settle.externalRef",
+		)
+		if (releasedPayoutId !== payoutId) {
+			fail(
+				`payoutId changed from ${payoutId} to ${releasedPayoutId} across acceptance`,
+			)
+		}
+		const releaseTxRef = settle.releaseTxRef
 
 		if (requestedMode === "stellar") {
-			if (!env.stellarRpcUrl || !env.stellarNetworkPassphrase) {
+			if (
+				!env.stellarRpcUrl ||
+				!env.stellarNetworkPassphrase ||
+				!env.payoutVaultId ||
+				!env.recipientAddress
+			) {
 				throw new BlockedError([
 					{
-						what: "FP_STELLAR_RPC_URL and FP_STELLAR_NETWORK_PASSPHRASE are required to verify a Stellar release",
+						what: "Stellar RPC, passphrase, vault id and recipient address are required to verify a vault release",
 						owner: "caller / Csaba (integration)",
 					},
 				])
 			}
-			// A0: one settle.externalRef. Release is the visible tx (§7); prove it on RPC.
-			const proof = await verifyStellarTransaction({
-				hash: releaseRef,
+			if (!lockTxRef) {
+				throw new BlockedError([
+					{
+						what: "the funding settle leg has no lockTxRef",
+						owner: "CC2 (orchestrator)",
+						detail:
+							"CCR-12 requires lockTxRef on the settle leg; externalRef alone is the payoutId, not a transaction hash",
+					},
+				])
+			}
+			if (!releaseTxRef) {
+				throw new BlockedError([
+					{
+						what: "the accepted settle leg has no releaseTxRef",
+						owner: "CC2 (orchestrator)",
+						detail:
+							"CCR-12 requires releaseTxRef; externalRef is the payoutId only",
+					},
+				])
+			}
+			if (!quote.fees || !quote.feeMode) {
+				fail("settle quote is missing fees or feeMode for the lock proof")
+			}
+			const quotedSettle = quote.route.find((leg) => leg.kind === "settle")
+			if (!quotedSettle?.amountIn || !quotedSettle.amountOut) {
+				fail("settle quote is missing frozen principal or net")
+			}
+			expectTxRef(lockTxRef, "stellar", "lock")
+			expectTxRef(releaseTxRef, "stellar", "release")
+			const proof = await verifyVaultRelease({
+				paymentId: payment.id,
+				payoutId,
+				lockHash: lockTxRef,
+				releaseHash: releaseTxRef,
+				recipientAddress: env.recipientAddress,
+				vaultContractId: env.payoutVaultId,
+				principal: quotedSettle.amountIn.amount,
+				feeMode: quote.feeMode,
+				fee: quote.fees.flexiPayFee.amount,
+				net: quotedSettle.amountOut.amount,
 				rpcUrl: env.stellarRpcUrl,
 				networkPassphrase: env.stellarNetworkPassphrase,
 				timeoutMs: env.timeoutMs,
 			})
+			console.log(`hash   lock    ${proof.lockHash}`)
 			console.log(`hash   release ${proof.hash}`)
 			console.log(
-				`chain  testnet ledger ${proof.ledger} status ${proof.status}`,
+				`chain  testnet ledger ${proof.ledger} status ${proof.status} payout ${proof.payoutId}`,
 			)
-			flow.check("release hash verified on the configured Stellar testnet")
-			if (lockedRef && lockedRef !== releaseRef) {
-				console.log(`hash   lock    ${lockedRef}`)
-				flow.check("lock and release are distinct transactions")
-			} else if (lockedRef && lockedRef === releaseRef) {
-				flow.note(
-					"settle.externalRef unchanged across accept; release still verified via RPC (A0 single-field)",
-				)
-			} else {
-				flow.note(
-					"lock reference not exposed before accept; release verified via RPC",
-				)
-			}
+			console.log(
+				`vault  ${proof.contractId}  recipient ${maskAddress(proof.recipient)}`,
+			)
+			console.log(
+				`ccr13 principal ${proof.principal} fee ${proof.fee} net ${proof.net} mode ${proof.feeMode}`,
+			)
+			flow.check(
+				"lock is create_payout for this payment; release claims the same payout id",
+			)
+			flow.check("release pays the intended Worker A recipient address")
+			flow.check("lock principal, feeMode, fee and net match the frozen quote")
 		} else {
-			expectTxRef(releaseRef, "mock", "release")
-			flow.check("release reference is a labelled mock reference")
+			if (!lockTxRef || !releaseTxRef) {
+				throw new BlockedError([
+					{
+						what: "mock claim payment is missing lockTxRef or releaseTxRef",
+						owner: "CC2 (orchestrator)",
+						detail:
+							"CCR-12 separates the payoutId from the mock transaction references",
+					},
+				])
+			}
+			expectTxRef(lockTxRef, "mock", "lock")
+			expectTxRef(releaseTxRef, "mock", "release")
+			flow.check("payoutId is distinct from the mock lock/release references")
 		}
 
 		const events = payment.events ?? (await api.events(payment.id))

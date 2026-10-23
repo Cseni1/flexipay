@@ -1,5 +1,6 @@
 import type {
 	EndpointType,
+	FeeMode,
 	LegKind,
 	LegStatus,
 	PaymentStatus,
@@ -18,8 +19,18 @@ export interface MoneyView {
 export interface LegView {
 	kind: LegKind
 	rail: string
+	providerId?: string
+	amountIn?: MoneyView
+	amountOut?: MoneyView
 	status: LegStatus
+	/** CCR-14 durable attempt; 1 on first try, 2 after the one retry. */
+	attempt?: number
+	/** Provider reference, or the vault payoutId on settle legs (CCR-12). */
 	externalRef?: string
+	/** Settle lock transaction hash (CCR-12). */
+	lockTxRef?: string
+	/** Settle release or refund transaction hash (CCR-12). */
+	releaseTxRef?: string
 	error?: { code?: string; message?: string }
 	simulated?: boolean
 }
@@ -28,11 +39,31 @@ export interface EventView {
 	type: string
 	createdAt?: string
 	paymentId?: string
+	/** Published Event.snapshot; used to attribute a leg.failed event to its attempt. */
+	snapshot?: unknown
 }
 
 export interface RouteLegView {
 	kind: LegKind
 	rail?: string
+	providerId?: string
+	amountIn?: MoneyView
+	amountOut?: MoneyView
+	simulated?: boolean
+}
+
+export interface FeeLegView {
+	kind: LegKind
+	rail: string
+	fee: MoneyView
+}
+
+export interface FeeView {
+	legs: FeeLegView[]
+	flexiPayFee: MoneyView
+	total: MoneyView
+	/** CCR-13 PayerPays unlocked remainder; null for RecipientPays/no settle/zero. */
+	settleUnlockedRemainder: MoneyView | null
 }
 
 export interface PaymentView {
@@ -51,11 +82,14 @@ export interface QuoteView {
 	id: string
 	route: RouteLegView[]
 	reasons: string[]
+	amount?: { side: "send" | "receive"; value: MoneyView }
 	expectedReceive: MoneyView
 	validUntil: string
 	simulated: boolean
+	/** Echo of the vault mode used to price settle; null when the route has no settle leg. */
+	feeMode: FeeMode | null
 	fxRate?: string
-	fees?: unknown
+	fees?: FeeView
 	alternatives?: unknown[]
 }
 
@@ -112,6 +146,8 @@ export interface QuoteInput {
 	destination: DestinationInput
 	amount: MoneyView
 	amountSide: "send" | "receive"
+	/** Required by the published schema whenever the chosen route settles; no demo default. */
+	feeMode: FeeMode
 	policy?: "cheapest"
 }
 

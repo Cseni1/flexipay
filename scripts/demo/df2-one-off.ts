@@ -1,8 +1,10 @@
 import {
 	expectEventTypes,
+	expectFrozenAccounting,
 	expectFutureWindow,
 	expectKinds,
 	expectPaid,
+	expectQuoteFeeMode,
 	expectRail,
 	expectRouteRail,
 	expectSimulated,
@@ -39,8 +41,10 @@ await execute(
 			},
 			amount: spec.send,
 			amountSide: "send",
+			feeMode: spec.feeMode,
 			policy: "cheapest",
 		})
+		expectQuoteFeeMode(quote, spec.feeMode)
 		expectKinds(
 			quote.route.map((leg) => leg.kind),
 			expected.legs,
@@ -79,6 +83,7 @@ await execute(
 		flow.route("POST", `/v1/payments/${created.payment.id}/fund`)
 		await api.fund(created.payment.id)
 		const payment = await waitForPayment(api, created.payment.id)
+		expectFrozenAccounting(quote, payment, "DF2")
 		expectPaid(payment)
 		if (payment.legs.at(-1)?.kind !== "payout")
 			fail("a paid direct payment must end at payout")

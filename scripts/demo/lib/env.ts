@@ -21,6 +21,13 @@ export interface DemoEnv {
 	/** Public testnet RPC used to verify a Stellar release; no key needed. */
 	stellarRpcUrl?: string
 	stellarNetworkPassphrase?: string
+	/** Public payout_vault contract id (FP_PAYOUT_VAULT_ID), never a key. */
+	payoutVaultId?: string
+	/**
+	 * Optional echo of the API/adapter boot env `FP_VAULT_FEE_BPS`. Acceptance accounting
+	 * does not use this as an independent fee source (CCR-13 uses the frozen quote fee).
+	 */
+	vaultFeeBps?: number
 }
 
 export interface EnvProblem {
@@ -74,6 +81,18 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): EnvResult {
 			owner: "lane D",
 		})
 	}
+	const rawVaultFeeBps = source.FP_VAULT_FEE_BPS?.trim()
+	const vaultFeeBps = rawVaultFeeBps ? Number(rawVaultFeeBps) : undefined
+	if (
+		rawVaultFeeBps &&
+		(!Number.isInteger(vaultFeeBps) || vaultFeeBps! < 0 || vaultFeeBps! > 1000)
+	) {
+		problems.push({
+			key: "FP_VAULT_FEE_BPS",
+			problem: "must be an integer between 0 and 1000",
+			owner: "caller / Csaba (integration)",
+		})
+	}
 	if (problems.length > 0) return { env: null, problems }
 
 	return {
@@ -103,6 +122,10 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): EnvResult {
 							source.FP_STELLAR_NETWORK_PASSPHRASE.trim(),
 					}
 				: {}),
+			...(source.FP_PAYOUT_VAULT_ID?.trim()
+				? { payoutVaultId: source.FP_PAYOUT_VAULT_ID.trim() }
+				: {}),
+			...(vaultFeeBps !== undefined ? { vaultFeeBps } : {}),
 		},
 	}
 }
