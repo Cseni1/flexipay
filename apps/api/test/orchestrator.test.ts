@@ -472,6 +472,8 @@ describe("CC2 orchestrator (CCR-11–14)", () => {
 	it("CCR-13: rejects settle when locked.fee drifts from quoted flexiPayFee", async () => {
 		sim.controls.reset();
 		const fee = "98268564";
+		let lockCalls = 0;
+		let fundCalls = 0;
 		const drifting = new MockSettlementAdapter({
 			token: "USDC",
 			treasury: "GDEMOTREASURY0000000000000000000000000000000000000000",
@@ -479,7 +481,13 @@ describe("CC2 orchestrator (CCR-11–14)", () => {
 			now: () => clock.now,
 		});
 		const origLock = drifting.lock.bind(drifting);
+		const origFund = drifting.fundVault.bind(drifting);
+		drifting.fundVault = async (payer, amount) => {
+			fundCalls += 1;
+			return origFund(payer, amount);
+		};
 		drifting.lock = async (req) => {
+			lockCalls += 1;
 			const locked = await origLock(req);
 			return { ...locked, fee: money("1", "USDC") };
 		};
@@ -512,14 +520,60 @@ describe("CC2 orchestrator (CCR-11–14)", () => {
 			delivery: "claim_link",
 			profile: "one_off",
 		});
-		await expect(
-			fundAndRun(db, paymentId, { ...adapters(), settlement: drifting }),
-		).rejects.toThrow(/lock fee drift/i);
+		const driftAdapters = { ...adapters(), settlement: drifting };
+		await expect(fundAndRun(db, paymentId, driftAdapters)).rejects.toThrow(
+			/lock fee drift/i,
+		);
 		const settle = await db.leg.findFirstOrThrow({
 			where: { paymentId, kind: "settle" },
 		});
-		expect(settle.externalRef).toBeNull();
-		expect(settle.lockTxRef).toBeNull();
+		// Refs must survive the fee-drift throw (CCR-12/13 replay safety).
+		expect(settle.externalRef).toBeTruthy();
+		expect(settle.lockTxRef).toBeTruthy();
+		expect(settle.status).toBe("processing");
+		const payment = await db.payment.findUniqueOrThrow({ where: { id: paymentId } });
+		expect(payment.status).not.toBe("paid");
+		expect(lockCalls).toBe(1);
+		expect(fundCalls).toBe(1);
+
+		// Replay: durable refs → CCR-12 status path; no second lock/funding; still not paid.
+		const replay = await fundAndRun(db, paymentId, driftAdapters);
+		expect(replay.status).not.toBe("paid");
+		const settleReplay = await db.leg.findFirstOrThrow({
+			where: { paymentId, kind: "settle" },
+		});
+		expect(settleReplay.externalRef).toBe(settle.externalRef);
+		expect(settleReplay.lockTxRef).toBe(settle.lockTxRef);
+		expect(settleReplay.status).toBe("processing");
+		expect(lockCalls).toBe(1);
+		expect(fundCalls).toBe(1);
+
+		// New application instance (same durable DB + settlement): still no re-lock/re-fund.
+		const freshProcess: OrchestratorAdapters = {
+			...adapters(),
+			settlement: drifting,
+			claimSealKey: Buffer.from("a".repeat(64), "hex"),
+		};
+		const again = await fundAndRun(db, paymentId, freshProcess);
+		expect(again.status).not.toBe("paid");
+		expect(lockCalls).toBe(1);
+		expect(fundCalls).toBe(1);
+
+		// Crash window: refs lost in DB but vault lock remains → findLock recovers, no second lock.
+		const pay = await db.payment.findUniqueOrThrow({ where: { id: paymentId } });
+		await db.leg.update({
+			where: { id: settle.id },
+			data: { externalRef: null, lockTxRef: null },
+		});
+		const viaFindLock = await fundAndRun(db, paymentId, freshProcess);
+		expect(viaFindLock.status).not.toBe("paid");
+		const recovered = await db.leg.findFirstOrThrow({
+			where: { paymentId, kind: "settle" },
+		});
+		expect(recovered.externalRef).toBe(settle.externalRef);
+		expect(lockCalls).toBe(1);
+		expect(fundCalls).toBe(1);
+		expect(pay.lockAttempt).toBeGreaterThan(0);
 	});
 
 	it("exactly one payout retry then success; no third execute", async () => {

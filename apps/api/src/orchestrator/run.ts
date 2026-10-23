@@ -478,17 +478,27 @@ async function executeSettle(
 	const payment = rt.payment;
 	const feeMode = rt.feeMode as FeeMode;
 
-	// Replay: externalRef is vault payoutId (CCR-12) — never re-lock.
+	// Replay: externalRef is vault payoutId (CCR-12) — never re-lock / re-fund.
 	if (leg.externalRef) {
-		if (rt.claimWaitSettle) return;
-		const st = await adapters.settlement.status(leg.externalRef);
-		if (st.state === "claimed") {
-			await transitionLeg(db, payment.id, leg.id, "processing", "succeeded", "replay");
-			await emitPaymentEvent(db, payment.organizationId, payment.id, "leg.succeeded", {
-				legId: leg.id,
-			});
-		}
+		await resumeAfterSettleLock(db, rt, leg, adapters, leg.externalRef);
 		return;
+	}
+
+	// Lost lock response: recover payoutId for the current attempt (RULES payout_by_external).
+	if (payment.lockAttempt > 0) {
+		const recovered = await adapters.settlement.findLock(
+			adapters.vaultPayer,
+			payment.id,
+			payment.lockAttempt,
+		);
+		if (recovered) {
+			await db.leg.update({
+				where: { id: leg.id },
+				data: { externalRef: recovered },
+			});
+			await resumeAfterSettleLock(db, rt, leg, adapters, recovered);
+			return;
+		}
 	}
 
 	const attempt = payment.lockAttempt + 1;
@@ -496,6 +506,23 @@ async function executeSettle(
 		where: { id: payment.id },
 		data: { lockAttempt: attempt },
 	});
+
+	// Crash window after lockAttempt bump: findLock before creating a second lock.
+	{
+		const recovered = await adapters.settlement.findLock(
+			adapters.vaultPayer,
+			payment.id,
+			attempt,
+		);
+		if (recovered) {
+			await db.leg.update({
+				where: { id: leg.id },
+				data: { externalRef: recovered },
+			});
+			await resumeAfterSettleLock(db, rt, leg, adapters, recovered);
+			return;
+		}
+	}
 
 	const claimHashHex = await ensureClaimSeal(
 		db,
@@ -537,16 +564,7 @@ async function executeSettle(
 		claimHashHex,
 	});
 
-	if (
-		locked.fee.amount !== quotedFee.amount ||
-		locked.fee.currency !== quotedFee.currency
-	) {
-		throw new Error(
-			`lock fee drift: locked.fee=${locked.fee.amount} ${locked.fee.currency} != quoted flexiPayFee=${quotedFee.amount} ${quotedFee.currency} (CCR-13)`,
-		);
-	}
-
-	// CCR-12: externalRef = payoutId; lockTxRef = lock transaction hash.
+	// CCR-12: persist payoutId + lockTxRef immediately so a fee-drift throw cannot orphan the lock.
 	await db.leg.update({
 		where: { id: leg.id },
 		data: {
@@ -562,12 +580,52 @@ async function executeSettle(
 		legId: leg.id,
 	});
 
+	if (
+		locked.fee.amount !== quotedFee.amount ||
+		locked.fee.currency !== quotedFee.currency
+	) {
+		// Do not accept drifted fee or mark paid. Refund/recovery of the pending lock is not
+		// contracted beyond CCR-12 replay (keep refs; never re-lock) — leave payout pending.
+		throw new Error(
+			`lock fee drift: locked.fee=${locked.fee.amount} ${locked.fee.currency} != quoted flexiPayFee=${quotedFee.amount} ${quotedFee.currency} (CCR-13)`,
+		);
+	}
+
 	if (rt.claimWaitSettle) return;
 
 	await transitionLeg(db, payment.id, leg.id, "processing", "succeeded");
 	await emitPaymentEvent(db, payment.organizationId, payment.id, "leg.succeeded", {
 		legId: leg.id,
 	});
+}
+
+/** After a durable settle lock ref exists: never re-lock; succeed only if already claimed. */
+async function resumeAfterSettleLock(
+	db: Db,
+	rt: Awaited<ReturnType<typeof loadRuntime>>,
+	leg: Awaited<ReturnType<typeof loadRuntime>>["legs"][number],
+	adapters: OrchestratorAdapters,
+	payoutId: string,
+): Promise<void> {
+	if (rt.claimWaitSettle) return;
+	const st = await adapters.settlement.status(payoutId);
+	if (st.state === "claimed") {
+		await transitionLeg(
+			db,
+			rt.payment.id,
+			leg.id,
+			"processing",
+			"succeeded",
+			"replay",
+		);
+		await emitPaymentEvent(
+			db,
+			rt.payment.organizationId,
+			rt.payment.id,
+			"leg.succeeded",
+			{ legId: leg.id },
+		);
+	}
 }
 
 async function releasePendingSettle(
