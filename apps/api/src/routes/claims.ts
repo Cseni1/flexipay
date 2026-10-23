@@ -6,7 +6,7 @@ import {
 } from "@flexipay/domain";
 import { ApiError } from "../errors.ts";
 import { sha256Hex } from "../ids.ts";
-import { completeClaimSettle } from "../orchestrator/index.ts";
+import { ClaimReleaseRefusedError, completeClaimSettle } from "../orchestrator/index.ts";
 import { defineRoute, type RouteDef } from "../routes.ts";
 
 async function loadClaimByToken(db: import("../db.ts").Db, token: string) {
@@ -147,6 +147,14 @@ export const claimRoutes: RouteDef<any, any>[] = [
 			}
 
 			const settle = link.payment.legs.find((l) => l.kind === "settle");
+			// CCR-15 step 3: a failed / drift-failed settle leg is never released or marked paid.
+			if (settle && (settle.status === "failed" || settle.errorCode === "fee_drift")) {
+				throw new ApiError(
+					409,
+					"settle_failed",
+					"the funds for this payment were returned; the claim cannot be accepted",
+				);
+			}
 			if (!settle || settle.status !== "processing") {
 				throw new ApiError(
 					409,
@@ -170,6 +178,9 @@ export const claimRoutes: RouteDef<any, any>[] = [
 					{ destination: address },
 				);
 			} catch (e) {
+				if (e instanceof ClaimReleaseRefusedError) {
+					throw new ApiError(409, "settle_failed", e.message);
+				}
 				// Release failed: claim stays `open`; payment stays `processing` (accepted ≠ paid).
 				const msg = e instanceof Error ? e.message : "release failed";
 				throw new ApiError(502, "release_failed", msg);
