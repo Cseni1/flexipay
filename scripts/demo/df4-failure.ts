@@ -5,7 +5,8 @@ import {
 	expectStatus,
 	fail,
 } from "./lib/assertions.ts"
-import { requireRetryAndRefundEvidence } from "./lib/contract-gaps.ts"
+import { assertExactlyOneRetryThenRefund } from "./lib/contract-gaps.ts"
+import { A0_CONTRACT_ANSWERS } from "./lib/a0-answers.ts"
 import { endpointOf, flowOf, workerOf } from "./lib/fixtures.ts"
 import { ROUTES } from "./lib/routes.ts"
 import { execute } from "./lib/script.ts"
@@ -116,7 +117,8 @@ await execute(
 			fail("timeline has no payment.refunded")
 		flow.check("timeline shows a failed leg and the refund")
 
-		// Terminal state is documented; the retry count and vault-refund representation are not.
-		requireRetryAndRefundEvidence(payment)
+		assertExactlyOneRetryThenRefund(payment, events)
+		flow.check(`exactly one retry then refund (${A0_CONTRACT_ANSWERS.payoutAttempts})`)
+		flow.note(A0_CONTRACT_ANSWERS.vaultRefund)
 	},
 )

@@ -148,17 +148,7 @@ await execute(
 					},
 				])
 			}
-			if (lockedRef === releaseRef) {
-				throw new BlockedError([
-					{
-						what: "A0 does not define where the lock and release references are recorded",
-						owner: "Csaba (A0 / CC2)",
-						detail:
-							"The settle leg's externalRef is identical before and after acceptance, so lock and release cannot be told apart. " +
-							"ARCHITECTURE §7 says the release is the visible Stellar transaction and the lock reference is also recorded; name both fields.",
-					},
-				])
-			}
+			// A0: one settle.externalRef. Release is the visible tx (§7); prove it on RPC.
 			const proof = await verifyStellarTransaction({
 				hash: releaseRef,
 				rpcUrl: env.stellarRpcUrl,
@@ -170,12 +160,16 @@ await execute(
 				`chain  testnet ledger ${proof.ledger} status ${proof.status}`,
 			)
 			flow.check("release hash verified on the configured Stellar testnet")
-			if (lockedRef) {
+			if (lockedRef && lockedRef !== releaseRef) {
 				console.log(`hash   lock    ${lockedRef}`)
 				flow.check("lock and release are distinct transactions")
+			} else if (lockedRef && lockedRef === releaseRef) {
+				flow.note(
+					"settle.externalRef unchanged across accept; release still verified via RPC (A0 single-field)",
+				)
 			} else {
 				flow.note(
-					"lock reference not exposed by the API; only the release was verified",
+					"lock reference not exposed before accept; release verified via RPC",
 				)
 			}
 		} else {
