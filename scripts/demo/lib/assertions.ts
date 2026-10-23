@@ -1,6 +1,6 @@
-import type { LegKind, PaymentStatus } from "@flexipay/domain"
+import type { FeeMode, LegKind, PaymentStatus } from "@flexipay/domain"
 import { fail } from "./parse.ts"
-import type { LegView, PaymentView } from "./types.ts"
+import type { LegView, PaymentView, QuoteView } from "./types.ts"
 
 // Flow assertions over the semantic view. The shape parsers live in parse.ts and are re-exported
 // here so scripts and self-tests keep one import site.
@@ -152,6 +152,28 @@ export function expectTxRef(
 	}
 	if (!/^mock[-_]/i.test(ref))
 		fail(`${where}: "${ref}" is not a labelled mock reference`)
+}
+
+/**
+ * The quote must echo the mode used to price settle, and never invent one: a settle route
+ * carries the requested FeeMode; a route without settle carries null (CCR-8).
+ */
+export function expectQuoteFeeMode(
+	quote: QuoteView,
+	expected: FeeMode,
+	where = "quote",
+): void {
+	const settles = quote.route.some((leg) => leg.kind === "settle")
+	if (settles && quote.feeMode !== expected) {
+		fail(
+			`${where}: feeMode is ${quote.feeMode ?? "missing"}, expected the requested ${expected}`,
+		)
+	}
+	if (!settles && quote.feeMode !== null) {
+		fail(
+			`${where}: feeMode is ${quote.feeMode} on a route without settle, expected null`,
+		)
+	}
 }
 
 export function expectReasons(

@@ -1,5 +1,6 @@
 import type {
 	EndpointType,
+	FeeMode,
 	LegKind,
 	LegStatus,
 	PaymentStatus,
@@ -28,6 +29,8 @@ export interface EventView {
 	type: string
 	createdAt?: string
 	paymentId?: string
+	/** Published Event.snapshot; used to attribute a leg.failed event to its attempt. */
+	snapshot?: unknown
 }
 
 export interface RouteLegView {
@@ -54,6 +57,8 @@ export interface QuoteView {
 	expectedReceive: MoneyView
 	validUntil: string
 	simulated: boolean
+	/** Echo of the vault mode used to price settle; null when the route has no settle leg. */
+	feeMode: FeeMode | null
 	fxRate?: string
 	fees?: unknown
 	alternatives?: unknown[]
@@ -112,6 +117,8 @@ export interface QuoteInput {
 	destination: DestinationInput
 	amount: MoneyView
 	amountSide: "send" | "receive"
+	/** Required by the published schema whenever the chosen route settles; no demo default. */
+	feeMode: FeeMode
 	policy?: "cheapest"
 }
 

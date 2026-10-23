@@ -1,9 +1,15 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { maskAddress, maskPath, maskValue } from "../../scripts/demo/lib/env.ts"
 import {
 	routeGaps,
+	routeProbePath,
+	runtimeRouteGaps,
 	type ApiContract,
 } from "../../scripts/demo/lib/preflight.ts"
+
+afterEach(() => {
+	vi.unstubAllGlobals()
+})
 
 // Prerequisite and privacy helpers: a missing route must be reported as a gap, and a claim token
 // or wallet address must never be printed in full.
@@ -31,6 +37,47 @@ describe("route preflight", () => {
 				{ method: "GET", path: "/v1/quotes", purpose: "quote" },
 			]),
 		).toHaveLength(1)
+	})
+})
+
+describe("runtime route probe", () => {
+	it("turns a parameterised path into a concrete OPTIONS target", () => {
+		expect(routeProbePath("/v1/payments/{id}/fund")).toBe(
+			"/v1/payments/probe/fund",
+		)
+	})
+
+	it("reports a published stub the server answers 404 for", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response(null, { status: 404 })),
+		)
+		const gaps = await runtimeRouteGaps(
+			"http://127.0.0.1:1",
+			[
+				{ method: "POST", path: "/v1/quotes", purpose: "quote" },
+				{ method: "GET", path: "/v1/payments/{id}", purpose: "payment" },
+			],
+			1_000,
+		)
+		expect(gaps.map((gap) => gap.path)).toEqual([
+			"/v1/quotes",
+			"/v1/payments/{id}",
+		])
+	})
+
+	it("accepts a route Express answers for OPTIONS", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response(null, { status: 200 })),
+		)
+		expect(
+			await runtimeRouteGaps(
+				"http://127.0.0.1:1",
+				[{ method: "GET", path: "/v1/payments/{id}", purpose: "payment" }],
+				1_000,
+			),
+		).toEqual([])
 	})
 })
 

@@ -89,6 +89,7 @@ function mapPayment(p: Payment | PaymentDetail): PaymentView {
 					type: e.type,
 					createdAt: e.createdAt,
 					paymentId: e.paymentId ?? undefined,
+					snapshot: e.snapshot,
 				}))
 			: undefined
 	return {
@@ -111,6 +112,7 @@ function mapQuote(q: Quote): QuoteView {
 		expectedReceive: q.expectedReceive,
 		validUntil: q.validUntil,
 		simulated: q.simulated,
+		feeMode: q.feeMode,
 		...(q.fxRate ? { fxRate: q.fxRate } : {}),
 		fees: q.fees,
 		alternatives: q.alternatives,
@@ -194,6 +196,8 @@ export function loadDemoApi(env: DemoEnv): DemoApi {
 					side: input.amountSide,
 					value: input.amount,
 				},
+				// Required by CreateQuoteRequestSchema for settle routes (CCR-8); never defaulted here.
+				feeMode: input.feeMode,
 				policy: input.policy ?? "cheapest",
 			})
 			const q = await ok("POST", "/v1/quotes", {
@@ -249,6 +253,7 @@ export function loadDemoApi(env: DemoEnv): DemoApi {
 					type: e.type,
 					createdAt: e.createdAt,
 					paymentId: e.paymentId ?? undefined,
+					snapshot: e.snapshot,
 				}))
 		},
 
@@ -284,10 +289,7 @@ export function loadDemoApi(env: DemoEnv): DemoApi {
 			}
 		},
 
-		async acceptClaim(
-			token: string,
-			input: AcceptInput,
-		): Promise<PaymentView> {
+		async acceptClaim(token: string, input: AcceptInput): Promise<PaymentView> {
 			const details = {
 				...(input.details ?? {}),
 				...(input.address ? { address: input.address } : {}),

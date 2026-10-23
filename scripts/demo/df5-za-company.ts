@@ -4,7 +4,9 @@ import {
 	expectNoEvent,
 	expectNoSettle,
 	expectPaid,
+	expectQuoteFeeMode,
 	expectRail,
+	expectReasons,
 	expectSimulated,
 	fail,
 } from "./lib/assertions.ts"
@@ -16,9 +18,15 @@ import { setUpWorker } from "./lib/setup.ts"
 import { waitForPayment } from "./lib/wait.ts"
 
 // DF5: a ZA company is paid to its bank account. The quote must choose the bank route with no
-// settlement leg and carry a reason for the crypto exclusion; asking for a crypto destination for
-// that company is refused with a reason. The exact wording is TBD (A0), so only a non-empty
-// explanation is asserted, never a specific sentence.
+// settlement leg and explain the crypto exclusion; asking for a crypto destination for that
+// company is refused with the same explanation. The exact sentence stays free, but the reason
+// must name crypto and the company recipient kind: non-empty prose alone is not acceptance.
+
+const EXCLUSION_REASONS = [
+	/crypto/i,
+	/compan/i,
+	/not allowed|not eligible|excluded|exclusion|cannot|unavailable|not available|does not support|not supported|only .*bank/i,
+] as const
 
 const runId = Date.now().toString(36)
 
@@ -43,17 +51,18 @@ await execute(
 			destination,
 			amount: spec.send,
 			amountSide: "send",
+			feeMode: spec.feeMode,
 			policy: "cheapest",
 		})
+		expectQuoteFeeMode(quote, spec.feeMode)
 		expectKinds(
 			quote.route.map((leg) => leg.kind),
 			expected.legs,
 			"quote.route",
 		)
-		if (quote.reasons.length === 0)
-			fail("ZA bank quote carries no exclusion reason")
+		expectReasons(quote.reasons, EXCLUSION_REASONS, "ZA bank quote reasons")
 		expectSimulated(quote.simulated, "quote")
-		flow.check("bank route chosen with a non-empty exclusion reason")
+		flow.check("bank route reason explains the crypto exclusion for a company")
 
 		flow.route(
 			"POST",
@@ -69,6 +78,7 @@ await execute(
 				},
 				amount: spec.send,
 				amountSide: "send",
+				feeMode: spec.feeMode,
 				policy: "cheapest",
 			})
 			fail("a ZA company crypto quote was accepted")
@@ -76,12 +86,17 @@ await execute(
 			if (!(error instanceof ApiRejection)) throw error
 			if (error.status !== 422)
 				fail(`crypto quote was refused with HTTP ${error.status}, expected 422`)
-			if (error.reasons.length === 0)
-				fail("crypto quote refusal carries no reason")
+			expectReasons(
+				error.reasons,
+				EXCLUSION_REASONS,
+				"ZA crypto quote refusal reasons",
+			)
 		}
-		flow.check("crypto quote refused with a non-empty reason")
+		flow.check(
+			"crypto quote refused with an explanation naming crypto and company",
+		)
 		flow.note(
-			"refusal wording is not asserted; A0 defines no stable reason code",
+			"exact prose remains free; the reason must name crypto and the recipient kind",
 		)
 
 		const handles = await setUpWorker(api, flow, worker, endpoint)

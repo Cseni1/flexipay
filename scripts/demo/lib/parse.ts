@@ -1,7 +1,9 @@
 import {
+	FEE_MODES,
 	LEG_KINDS,
 	LEG_STATUSES,
 	PAYMENT_STATUSES,
+	type FeeMode,
 	type LegKind,
 	type LegStatus,
 	type PaymentStatus,
@@ -77,13 +79,15 @@ const oneOf = <T extends string>(
 export function leg(value: unknown, where: string): LegView {
 	const l = record(value, where)
 	const error =
-		l.error === undefined ? undefined : record(l.error, `${where}.error`)
+		l.error === undefined || l.error === null
+			? undefined
+			: record(l.error, `${where}.error`)
 	const out: LegView = {
 		kind: oneOf<LegKind>(l.kind, LEG_KINDS, `${where}.kind`),
 		rail: text(l.rail, `${where}.rail`),
 		status: oneOf<LegStatus>(l.status, LEG_STATUSES, `${where}.status`),
 	}
-	if (l.externalRef !== undefined)
+	if (l.externalRef !== undefined && l.externalRef !== null)
 		out.externalRef = text(l.externalRef, `${where}.externalRef`)
 	if (l.simulated !== undefined) out.simulated = l.simulated === true
 	if (error) {
@@ -151,6 +155,10 @@ export function quote(value: unknown, where = "quote"): QuoteView {
 		expectedReceive: money(q.expectedReceive, `${where}.expectedReceive`),
 		validUntil: text(q.validUntil, `${where}.validUntil`),
 		simulated: q.simulated === true,
+		feeMode:
+			q.feeMode === null
+				? null
+				: oneOf<FeeMode>(q.feeMode, FEE_MODES, `${where}.feeMode`),
 	}
 	if (q.fxRate !== undefined) out.fxRate = text(q.fxRate, `${where}.fxRate`)
 	if (q.fees !== undefined) out.fees = q.fees

@@ -1,8 +1,18 @@
+import { createHash } from "node:crypto"
+import {
+	FeeBumpTransaction,
+	StrKey,
+	TransactionBuilder,
+	scValToNative,
+	xdr,
+} from "@stellar/stellar-sdk"
 import { AssertionFailure, fail } from "./assertions.ts"
 import { BlockedError } from "./report.ts"
 
-// A 64-hex string only looks like a Stellar hash. DF3 proves a real testnet settlement by asking
-// the RPC for the transaction and checking the network passphrase and the operation result.
+// A 64-hex string only looks like a Stellar hash. DF3 proves the vault release, not merely a
+// successful transaction: the lock must be a create_payout for this payment, and the release must
+// be the claim of that same payout to the intended recipient. `getTransaction` returns the
+// envelope and result meta needed for both checks; no API field is invented.
 
 export interface StellarProof {
 	hash: string
@@ -12,8 +22,28 @@ export interface StellarProof {
 	passphrase: string
 }
 
+export interface VaultReleaseProof extends StellarProof {
+	lockHash: string
+	payoutId: string
+	recipient: string
+	contractId: string
+}
+
+export interface ContractInvocation {
+	functionName: string
+	contractId: string
+	args: unknown[]
+}
+
 interface JsonRpcError {
 	message?: string
+}
+
+interface TransactionEvidence {
+	status: string
+	ledger: number
+	envelopeXdr: string
+	resultMetaXdr: string
 }
 
 const call = async (
@@ -64,9 +94,8 @@ export function parseNetworkPassphrase(result: unknown): string {
 	if (typeof result !== "object" || result === null)
 		fail("RPC getNetwork returned no result")
 	const passphrase = (result as { passphrase?: unknown }).passphrase
-	if (typeof passphrase !== "string" || passphrase.length === 0) {
+	if (typeof passphrase !== "string" || passphrase.length === 0)
 		fail("RPC getNetwork returned no passphrase")
-	}
 	return passphrase
 }
 
@@ -81,6 +110,157 @@ export function parseTransactionResult(result: unknown): {
 	if (typeof ledger !== "number") fail("RPC getTransaction returned no ledger")
 	return { status, ledger }
 }
+
+function parseTransactionEvidence(
+	result: unknown,
+	label: string,
+): TransactionEvidence {
+	const { status, ledger } = parseTransactionResult(result)
+	if (status !== "SUCCESS") {
+		fail(`${label} transaction is ${status}, not SUCCESS`)
+	}
+	const record = result as {
+		envelopeXdr?: unknown
+		resultMetaXdr?: unknown
+	}
+	if (
+		typeof record.envelopeXdr !== "string" ||
+		record.envelopeXdr.length === 0
+	) {
+		fail(`${label} getTransaction returned no envelopeXdr`)
+	}
+	if (
+		typeof record.resultMetaXdr !== "string" ||
+		record.resultMetaXdr.length === 0
+	) {
+		fail(`${label} getTransaction returned no resultMetaXdr`)
+	}
+	return {
+		status,
+		ledger,
+		envelopeXdr: record.envelopeXdr,
+		resultMetaXdr: record.resultMetaXdr,
+	}
+}
+
+/** Decodes one Soroban contract invocation from the transaction envelope. */
+export function parseContractInvocation(
+	envelopeXdr: string,
+	networkPassphrase: string,
+): ContractInvocation {
+	let parsed: unknown
+	try {
+		parsed = TransactionBuilder.fromXDR(envelopeXdr, networkPassphrase)
+	} catch (error) {
+		throw new AssertionFailure(
+			`transaction envelope is not valid XDR: ${error instanceof Error ? error.message : String(error)}`,
+		)
+	}
+	const transaction =
+		parsed instanceof FeeBumpTransaction ? parsed.innerTransaction : parsed
+	if (
+		typeof transaction !== "object" ||
+		transaction === null ||
+		!("operations" in transaction) ||
+		!Array.isArray(transaction.operations)
+	) {
+		throw new AssertionFailure("transaction envelope has no operations")
+	}
+	if (transaction.operations.length !== 1) {
+		fail(
+			`transaction has ${transaction.operations.length} operations, expected one contract invocation`,
+		)
+	}
+	const operation = transaction.operations[0]
+	if (
+		!operation ||
+		operation.type !== "invokeHostFunction" ||
+		!operation.func
+	) {
+		fail("transaction is not a Soroban contract invocation")
+	}
+	const hostFunction = operation.func
+	if (hostFunction.switch().name !== "hostFunctionTypeInvokeContract") {
+		fail("transaction host function is not an invokeContract")
+	}
+	const invoke = hostFunction.invokeContract()
+	const address = invoke.contractAddress()
+	if (address.switch().name !== "scAddressTypeContract") {
+		fail("invocation target is not a contract address")
+	}
+	const contractId = StrKey.encodeContract(address.contractId())
+	const functionName = invoke.functionName().toString("utf8")
+	if (functionName.length === 0)
+		fail("contract invocation has no function name")
+	let args: unknown[]
+	try {
+		args = invoke.args().map((arg: xdr.ScVal) => scValToNative(arg))
+	} catch (error) {
+		throw new AssertionFailure(
+			`contract invocation arguments are not decodable: ${error instanceof Error ? error.message : String(error)}`,
+		)
+	}
+	return { functionName, contractId, args }
+}
+
+/** The Soroban return value from transaction result meta (protocol 23 uses v3/v4). */
+export function parseReturnValue(resultMetaXdr: string): unknown {
+	let meta: xdr.TransactionMeta
+	try {
+		meta = xdr.TransactionMeta.fromXDR(resultMetaXdr, "base64")
+	} catch (error) {
+		throw new AssertionFailure(
+			`transaction resultMetaXdr is not valid XDR: ${error instanceof Error ? error.message : String(error)}`,
+		)
+	}
+	const version = meta.switch()
+	const soroban =
+		version === 3
+			? meta.v3().sorobanMeta()
+			: version === 4
+				? meta.v4().sorobanMeta()
+				: undefined
+	if (!soroban) {
+		fail(
+			`transaction resultMeta version ${version} has no Soroban return value`,
+		)
+	}
+	const returnValue = soroban.returnValue()
+	if (!returnValue) fail("transaction resultMeta has no Soroban return value")
+	try {
+		return scValToNative(returnValue)
+	} catch (error) {
+		throw new AssertionFailure(
+			`Soroban return value is not decodable: ${error instanceof Error ? error.message : String(error)}`,
+		)
+	}
+}
+
+const nativeId = (value: unknown, where: string): string => {
+	if (typeof value === "bigint" && value >= 0n) return value.toString()
+	if (typeof value === "number" && Number.isInteger(value) && value >= 0)
+		return String(value)
+	if (typeof value === "string" && /^(0|[1-9][0-9]*)$/.test(value)) return value
+	return fail(`${where}: expected a non-negative integer payout id`)
+}
+
+const nativeHex = (value: unknown, where: string): string => {
+	if (value instanceof Uint8Array) return Buffer.from(value).toString("hex")
+	if (typeof value === "string" && /^[0-9a-fA-F]{64}$/.test(value)) {
+		return value.toLowerCase()
+	}
+	return fail(`${where}: expected 32 bytes`)
+}
+
+const nativeAddress = (value: unknown, where: string): string => {
+	if (typeof value === "string" && StrKey.isValidEd25519PublicKey(value)) {
+		return value
+	}
+	return fail(`${where}: expected a Stellar account address`)
+}
+
+const lockExternalId = (paymentId: string, attempt = 1): string =>
+	createHash("sha256").update(`${paymentId}:${attempt}`, "utf8").digest("hex")
 
 /** Verifies that `hash` is a successful transaction on the configured testnet. */
 export async function verifyStellarTransaction(options: {
@@ -109,4 +289,127 @@ export async function verifyStellarTransaction(options: {
 		fail(`testnet transaction ${options.hash} is ${status}, not SUCCESS`)
 	}
 	return { hash: options.hash, status, ledger, passphrase }
+}
+
+/**
+ * Proves the release is the vault claim of the lock created for this payment, paid to
+ * `recipientAddress`:
+ * - lock: create_payout on the configured vault, external id = sha256("<paymentId>:1"),
+ *   result payout id P;
+ * - release: claim(P, …, recipientAddress) on the same vault.
+ * Both transactions must be SUCCESS, distinct, and on the configured testnet.
+ */
+export async function verifyVaultRelease(options: {
+	paymentId: string
+	lockHash: string
+	releaseHash: string
+	recipientAddress: string
+	vaultContractId: string
+	rpcUrl: string
+	networkPassphrase: string
+	timeoutMs: number
+}): Promise<VaultReleaseProof> {
+	if (options.lockHash === options.releaseHash) {
+		fail(
+			"lock and release are the same transaction; a claim cannot be its own lock",
+		)
+	}
+	if (!StrKey.isValidContract(options.vaultContractId)) {
+		fail(`configured vault id is not a Stellar contract address`)
+	}
+
+	const passphrase = parseNetworkPassphrase(
+		await call(options.rpcUrl, "getNetwork", {}, options.timeoutMs),
+	)
+	if (passphrase !== options.networkPassphrase) {
+		fail(
+			`RPC reports network "${passphrase}", expected the configured testnet passphrase`,
+		)
+	}
+
+	const lock = parseTransactionEvidence(
+		await call(
+			options.rpcUrl,
+			"getTransaction",
+			{ hash: options.lockHash },
+			options.timeoutMs,
+		),
+		"lock",
+	)
+	const release = parseTransactionEvidence(
+		await call(
+			options.rpcUrl,
+			"getTransaction",
+			{ hash: options.releaseHash },
+			options.timeoutMs,
+		),
+		"release",
+	)
+
+	const lockInvocation = parseContractInvocation(lock.envelopeXdr, passphrase)
+	if (lockInvocation.contractId !== options.vaultContractId) {
+		fail(
+			`lock invokes ${lockInvocation.contractId}, expected vault ${options.vaultContractId}`,
+		)
+	}
+	if (lockInvocation.functionName !== "create_payout") {
+		fail(`lock invokes ${lockInvocation.functionName}, expected create_payout`)
+	}
+	if (lockInvocation.args.length < 2) {
+		fail("lock create_payout has no external id argument")
+	}
+	const expectedExternalId = lockExternalId(options.paymentId)
+	const seenExternalId = nativeHex(lockInvocation.args[1], "lock external id")
+	if (seenExternalId !== expectedExternalId) {
+		fail(
+			`lock external id ${seenExternalId} is not sha256("${options.paymentId}:1")`,
+		)
+	}
+	const payoutId = nativeId(
+		parseReturnValue(lock.resultMetaXdr),
+		"lock return value",
+	)
+
+	const releaseInvocation = parseContractInvocation(
+		release.envelopeXdr,
+		passphrase,
+	)
+	if (releaseInvocation.contractId !== options.vaultContractId) {
+		fail(
+			`release invokes ${releaseInvocation.contractId}, expected vault ${options.vaultContractId}`,
+		)
+	}
+	if (releaseInvocation.functionName !== "claim") {
+		fail(`release invokes ${releaseInvocation.functionName}, expected claim`)
+	}
+	if (releaseInvocation.args.length < 3) {
+		fail("release claim has no payout id or destination argument")
+	}
+	const releasedPayoutId = nativeId(
+		releaseInvocation.args[0],
+		"release payout id",
+	)
+	if (releasedPayoutId !== payoutId) {
+		fail(
+			`release claims payout ${releasedPayoutId}, expected the lock payout ${payoutId}`,
+		)
+	}
+	const recipient = nativeAddress(
+		releaseInvocation.args[2],
+		"release destination",
+	)
+	if (recipient !== options.recipientAddress) {
+		fail(`release pays ${recipient}, expected the claimed recipient address`)
+	}
+
+	return {
+		hash: options.releaseHash,
+		status: release.status,
+		ledger: release.ledger,
+		passphrase,
+		lockHash: options.lockHash,
+		payoutId,
+		recipient,
+		contractId: options.vaultContractId,
+	}
 }

@@ -1,10 +1,23 @@
+import { createHash } from "node:crypto"
+import {
+	Account,
+	Keypair,
+	Networks,
+	Operation,
+	StrKey,
+	TransactionBuilder,
+	xdr,
+} from "@stellar/stellar-sdk"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { AssertionFailure } from "../../scripts/demo/lib/assertions.ts"
 import { BlockedError } from "../../scripts/demo/lib/report.ts"
 import {
+	parseContractInvocation,
 	parseNetworkPassphrase,
+	parseReturnValue,
 	parseTransactionResult,
 	verifyStellarTransaction,
+	verifyVaultRelease,
 } from "../../scripts/demo/lib/stellar-proof.ts"
 
 // The verifier is what turns a 64-hex string into settlement evidence. These tests use a fake
@@ -12,6 +25,102 @@ import {
 
 const TESTNET = "Test SDF Network ; September 2015"
 const HASH = "b".repeat(64)
+const LOCK_HASH = "c".repeat(64)
+const RELEASE_HASH = "d".repeat(64)
+const VAULT = StrKey.encodeContract(Buffer.alloc(32, 7))
+const source = Keypair.random()
+const recipient = Keypair.random()
+const otherRecipient = Keypair.random()
+
+const contractAddress = (): xdr.ScAddress =>
+	xdr.ScAddress.scAddressTypeContract(
+		StrKey.decodeContract(VAULT) as unknown as xdr.Hash,
+	)
+
+const addressValue = (address: string): xdr.ScVal =>
+	xdr.ScVal.scvAddress(
+		xdr.ScAddress.scAddressTypeAccount(
+			Keypair.fromPublicKey(address).xdrAccountId(),
+		),
+	)
+
+const bytesValue = (hex: string): xdr.ScVal =>
+	xdr.ScVal.scvBytes(Buffer.from(hex, "hex"))
+
+const u64Value = (value: string): xdr.ScVal =>
+	xdr.ScVal.scvU64(xdr.Uint64.fromString(value))
+
+const envelope = (functionName: string, args: xdr.ScVal[]): string => {
+	const invocation = new xdr.InvokeContractArgs({
+		contractAddress: contractAddress(),
+		functionName,
+		args,
+	})
+	const host = xdr.HostFunction.hostFunctionTypeInvokeContract(invocation)
+	const operation = Operation.invokeHostFunction({ func: host, auth: [] })
+	const tx = new TransactionBuilder(new Account(source.publicKey(), "1"), {
+		fee: "100",
+		networkPassphrase: Networks.TESTNET,
+	})
+		.addOperation(operation)
+		.setTimeout(30)
+		.build()
+	return tx.toEnvelope().toXDR("base64")
+}
+
+const resultMeta = (returnValue: xdr.ScVal): string => {
+	const soroban = new xdr.SorobanTransactionMetaV2({
+		ext: new xdr.SorobanTransactionMetaExt(0),
+		returnValue,
+	})
+	const meta = new xdr.TransactionMetaV4({
+		ext: new xdr.ExtensionPoint(0),
+		txChangesBefore: [],
+		operations: [],
+		txChangesAfter: [],
+		sorobanMeta: soroban,
+		events: [],
+		diagnosticEvents: [],
+	})
+	return new xdr.TransactionMeta(4, meta).toXDR("base64")
+}
+
+const externalId = (paymentId: string): string =>
+	createHash("sha256").update(`${paymentId}:1`, "utf8").digest("hex")
+
+const createPayoutArgs = (paymentId: string): xdr.ScVal[] => [
+	addressValue(source.publicKey()),
+	bytesValue(externalId(paymentId)),
+	bytesValue("1".repeat(64)),
+	u64Value("10000000"),
+	xdr.ScVal.scvSymbol("PayerPays"),
+	u64Value("2000000000"),
+]
+
+const claimArgs = (payoutId: string, to: string): xdr.ScVal[] => [
+	u64Value(payoutId),
+	bytesValue("2".repeat(64)),
+	addressValue(to),
+]
+
+const transaction = (
+	envelopeXdr: string,
+	resultMetaXdr: string,
+	status = "SUCCESS",
+	ledger = 100,
+) => ({ status, ledger, envelopeXdr, resultMetaXdr })
+
+const rpc = (byHash: Record<string, unknown>) =>
+	vi.fn(async (_url: string, init: RequestInit) => {
+		const { method, params } = JSON.parse(String(init.body)) as {
+			method: string
+			params: { hash?: string }
+		}
+		if (method === "getNetwork") return response({ passphrase: TESTNET })
+		return response(
+			byHash[params.hash ?? ""] ?? { status: "NOT_FOUND", ledger: 0 },
+		)
+	})
 
 const response = (result: unknown): Response =>
 	new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
@@ -38,6 +147,124 @@ describe("Stellar RPC result parsing", () => {
 		expect(() => parseTransactionResult({ status: "SUCCESS" })).toThrow(
 			/no ledger/,
 		)
+	})
+})
+
+const releaseOptions = (overrides: Record<string, unknown> = {}) => ({
+	paymentId: "pay_demo_1",
+	lockHash: LOCK_HASH,
+	releaseHash: RELEASE_HASH,
+	recipientAddress: recipient.publicKey(),
+	vaultContractId: VAULT,
+	rpcUrl: "https://rpc.example",
+	networkPassphrase: TESTNET,
+	timeoutMs: 1_000,
+	...overrides,
+})
+
+const pairRpc = (
+	options: {
+		lockArgs?: xdr.ScVal[]
+		releaseArgs?: xdr.ScVal[]
+		releaseFunction?: string
+		releaseStatus?: string
+		lockReturn?: string
+	} = {},
+) => {
+	const lockArgs = options.lockArgs ?? createPayoutArgs("pay_demo_1")
+	const releaseArgs =
+		options.releaseArgs ?? claimArgs("42", recipient.publicKey())
+	return rpc({
+		[LOCK_HASH]: transaction(
+			envelope("create_payout", lockArgs),
+			resultMeta(u64Value(options.lockReturn ?? "42")),
+		),
+		[RELEASE_HASH]: transaction(
+			envelope(options.releaseFunction ?? "claim", releaseArgs),
+			resultMeta(u64Value("10000000")),
+			options.releaseStatus,
+		),
+	})
+}
+
+describe("vault release proof", () => {
+	it("decodes the contract invocation and the Soroban return value", () => {
+		const release = envelope("claim", claimArgs("42", recipient.publicKey()))
+		const invocation = parseContractInvocation(release, TESTNET)
+		expect(invocation.functionName).toBe("claim")
+		expect(invocation.contractId).toBe(VAULT)
+		expect(invocation.args[0]).toBe(42n)
+		expect(invocation.args[2]).toBe(recipient.publicKey())
+		expect(parseReturnValue(resultMeta(u64Value("42")))).toBe(42n)
+	})
+
+	it("ties the release claim to the payment lock and intended recipient", async () => {
+		const fetchMock = pairRpc()
+		vi.stubGlobal("fetch", fetchMock)
+
+		const proof = await verifyVaultRelease(releaseOptions())
+		expect(proof).toEqual({
+			hash: RELEASE_HASH,
+			status: "SUCCESS",
+			ledger: 100,
+			passphrase: TESTNET,
+			lockHash: LOCK_HASH,
+			payoutId: "42",
+			recipient: recipient.publicKey(),
+			contractId: VAULT,
+		})
+		expect(fetchMock).toHaveBeenCalledTimes(3)
+	})
+
+	it("rejects a release to another recipient", async () => {
+		vi.stubGlobal(
+			"fetch",
+			pairRpc({ releaseArgs: claimArgs("42", otherRecipient.publicKey()) }),
+		)
+		await expect(verifyVaultRelease(releaseOptions())).rejects.toThrow(
+			/expected the claimed recipient/,
+		)
+	})
+
+	it("rejects a release of another payout", async () => {
+		vi.stubGlobal(
+			"fetch",
+			pairRpc({ releaseArgs: claimArgs("43", recipient.publicKey()) }),
+		)
+		await expect(verifyVaultRelease(releaseOptions())).rejects.toThrow(
+			/expected the lock payout 42/,
+		)
+	})
+
+	it("rejects a lock created for another payment", async () => {
+		vi.stubGlobal("fetch", pairRpc({ lockArgs: createPayoutArgs("pay_other") }))
+		await expect(verifyVaultRelease(releaseOptions())).rejects.toThrow(/sha256/)
+	})
+
+	it("rejects a release that is not a claim", async () => {
+		vi.stubGlobal(
+			"fetch",
+			pairRpc({
+				releaseFunction: "create_payout",
+				releaseArgs: createPayoutArgs("pay_demo_1"),
+			}),
+		)
+		await expect(verifyVaultRelease(releaseOptions())).rejects.toThrow(
+			/expected claim/,
+		)
+	})
+
+	it("rejects a failed release and a lock/release reuse", async () => {
+		vi.stubGlobal("fetch", pairRpc({ releaseStatus: "FAILED" }))
+		await expect(verifyVaultRelease(releaseOptions())).rejects.toThrow(
+			/not SUCCESS/,
+		)
+
+		await expect(
+			verifyVaultRelease(
+				releaseOptions({ lockHash: RELEASE_HASH, releaseHash: RELEASE_HASH }),
+			),
+		).rejects.toThrow(/same transaction/)
 	})
 })
 

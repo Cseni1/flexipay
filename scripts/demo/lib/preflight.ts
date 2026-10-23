@@ -43,6 +43,35 @@ export function routeGaps(
 	return needs.filter((need) => !contractHas(contract, need))
 }
 
+/** `/v1/payments/{id}` → `/v1/payments/probe`; params need a concrete segment for OPTIONS. */
+export const routeProbePath = (path: string): string =>
+	path.replace(/\{[^}]+\}/g, "probe")
+
+/**
+ * OpenAPI contains A0 stubs that CC3 has not mounted. Express answers OPTIONS for a mounted
+ * route (200) and the catch-all 404 for an absent one, so this distinguishes a real route from a
+ * published stub without sending a mutation or requiring a valid key.
+ */
+export async function runtimeRouteGaps(
+	apiUrl: string,
+	needs: readonly RouteNeed[],
+	timeoutMs: number,
+): Promise<RouteNeed[]> {
+	const gaps: RouteNeed[] = []
+	for (const need of needs) {
+		try {
+			const response = await fetch(`${apiUrl}${routeProbePath(need.path)}`, {
+				method: "OPTIONS",
+				signal: AbortSignal.timeout(Math.min(timeoutMs, 3_000)),
+			})
+			if (response.status === 404) gaps.push(need)
+		} catch {
+			// The health blocker already covers an unreachable API; do not duplicate it per route.
+		}
+	}
+	return gaps
+}
+
 const A0_SCHEMAS = [
 	"quote request and response (POST /v1/quotes)",
 	"payment create and read (POST/GET /v1/payments, GET /v1/payments/{id})",
@@ -84,6 +113,7 @@ export async function preflight(
 	}
 
 	const contract = loadContract(env.openapiPath)
+	const contractGaps: RouteNeed[] = []
 	if (!contract) {
 		blockers.push({
 			what: "OpenAPI route inventory is missing or unreadable",
@@ -91,13 +121,19 @@ export async function preflight(
 			detail: `expected ${env.openapiPath}; regenerate with npm run openapi --workspace @flexipay/api`,
 		})
 	} else {
-		for (const gap of routeGaps(contract, options.needs)) {
-			blockers.push({
-				what: `route not available: ${gap.method} ${gap.path}`,
-				owner: "Csaba (CC3a/CC3b)",
-				detail: gap.purpose,
-			})
-		}
+		contractGaps.push(...routeGaps(contract, options.needs))
+	}
+	const runtimeGaps = await runtimeRouteGaps(
+		env.apiUrl,
+		options.needs.filter((need) => !contractGaps.includes(need)),
+		env.timeoutMs,
+	)
+	for (const gap of [...contractGaps, ...runtimeGaps]) {
+		blockers.push({
+			what: `route not available: ${gap.method} ${gap.path}`,
+			owner: "Csaba (CC3a/CC3b)",
+			detail: gap.purpose,
+		})
 	}
 
 	if (!existsSync(A0_DIR)) {

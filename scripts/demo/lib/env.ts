@@ -21,6 +21,8 @@ export interface DemoEnv {
 	/** Public testnet RPC used to verify a Stellar release; no key needed. */
 	stellarRpcUrl?: string
 	stellarNetworkPassphrase?: string
+	/** Public payout_vault contract id (FP_PAYOUT_VAULT_ID), never a key. */
+	payoutVaultId?: string
 }
 
 export interface EnvProblem {
@@ -102,6 +104,9 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): EnvResult {
 						stellarNetworkPassphrase:
 							source.FP_STELLAR_NETWORK_PASSPHRASE.trim(),
 					}
+				: {}),
+			...(source.FP_PAYOUT_VAULT_ID?.trim()
+				? { payoutVaultId: source.FP_PAYOUT_VAULT_ID.trim() }
 				: {}),
 		},
 	}

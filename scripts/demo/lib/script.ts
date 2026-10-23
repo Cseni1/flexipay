@@ -84,6 +84,21 @@ export async function execute(
 					"DF3 requires an RPC lookup of the release hash; a 64-hex string alone is not proof",
 			})
 		}
+		if (!parsed.env.stellarNetworkPassphrase) {
+			blockers.push({
+				what: "FP_STELLAR_NETWORK_PASSPHRASE is not set, so the RPC network cannot be checked",
+				owner: "caller / Csaba (integration)",
+				detail: "use the passphrase from scripts/testnet/testnet-ids.env",
+			})
+		}
+		if (!parsed.env.payoutVaultId) {
+			blockers.push({
+				what: "FP_PAYOUT_VAULT_ID is not set, so the release cannot be tied to the deployed vault",
+				owner: "caller / Csaba (integration)",
+				detail:
+					"DF3 checks the lock and release invoke this contract; a successful hash alone is not proof",
+			})
+		}
 	}
 	if (blockers.length > 0) return flow.finish("BLOCKED", blockers)
 

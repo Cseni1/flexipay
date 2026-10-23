@@ -1,11 +1,12 @@
 import {
 	expectKinds,
+	expectQuoteFeeMode,
 	expectRail,
 	expectRouteRail,
 	expectStatus,
 	fail,
 } from "./lib/assertions.ts"
-import { assertExactlyOneRetryThenRefund } from "./lib/contract-gaps.ts"
+import { assertExactlyTwoPayoutAttemptsThenRefund } from "./lib/contract-gaps.ts"
 import { A0_CONTRACT_ANSWERS } from "./lib/a0-answers.ts"
 import { endpointOf, flowOf, workerOf } from "./lib/fixtures.ts"
 import { ROUTES } from "./lib/routes.ts"
@@ -13,10 +14,11 @@ import { execute } from "./lib/script.ts"
 import { setUpWorker } from "./lib/setup.ts"
 import { waitForPayment } from "./lib/wait.ts"
 
-// DF4: the BR payout provider is forced to fail. The documented terminal state is: payout failed,
-// earlier collect/convert legs reversed, payment refunded. Proving "exactly one retry" and naming
-// the vault refund need attempt/refund evidence that A0 has not defined, so the flow ends BLOCKED
-// with that question instead of inventing a shape.
+// DF4: the BR payout provider is forced to fail twice. The documented terminal state is: payout
+// failed, earlier collect/convert legs reversed, payment refunded. Two attempts are proven from
+// the published Event.snapshot legs (two leg.failed events, each with a distinct failed payout
+// externalRef) followed by payment.refunded; no third failure or payout success is accepted. A
+// snapshot without legs/reference BLOCKS rather than inferring attempts from failCount.
 
 const runId = Date.now().toString(36)
 
@@ -39,8 +41,10 @@ await execute(
 			},
 			amount: spec.send,
 			amountSide: "send",
+			feeMode: spec.feeMode,
 			policy: "cheapest",
 		})
+		expectQuoteFeeMode(quote, spec.feeMode)
 		expectKinds(
 			quote.route.map((leg) => leg.kind),
 			expected.legs,
@@ -117,8 +121,14 @@ await execute(
 			fail("timeline has no payment.refunded")
 		flow.check("timeline shows a failed leg and the refund")
 
-		assertExactlyOneRetryThenRefund(payment, events)
-		flow.check(`exactly one retry then refund (${A0_CONTRACT_ANSWERS.payoutAttempts})`)
+		const attempts = assertExactlyTwoPayoutAttemptsThenRefund(
+			payment,
+			events,
+			expected.payoutRail!,
+		)
+		flow.check(
+			`two distinct payout attempts (${attempts.refs.join(", ")}), then refund; no third attempt`,
+		)
 		flow.note(A0_CONTRACT_ANSWERS.vaultRefund)
 	},
 )

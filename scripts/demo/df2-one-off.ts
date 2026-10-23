@@ -3,6 +3,7 @@ import {
 	expectFutureWindow,
 	expectKinds,
 	expectPaid,
+	expectQuoteFeeMode,
 	expectRail,
 	expectRouteRail,
 	expectSimulated,
@@ -39,8 +40,10 @@ await execute(
 			},
 			amount: spec.send,
 			amountSide: "send",
+			feeMode: spec.feeMode,
 			policy: "cheapest",
 		})
+		expectQuoteFeeMode(quote, spec.feeMode)
 		expectKinds(
 			quote.route.map((leg) => leg.kind),
 			expected.legs,
