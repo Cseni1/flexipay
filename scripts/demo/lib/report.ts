@@ -67,7 +67,7 @@ export class Flow {
 
 	header(): void {
 		console.log(`\n${this.info.id}  ${this.info.title} (${this.info.mode})`)
-		console.log(`commit ${commit()}  settlement ${this.info.mode}`)
+		console.log(`commit ${commit()}  requested ${this.info.mode}`)
 	}
 
 	route(method: "GET" | "POST", path: string, detail = ""): void {
@@ -78,14 +78,13 @@ export class Flow {
 
 	legs(label: string, legs: readonly LegView[]): void {
 		for (const l of legs) {
-			const attempt = l.attempt === undefined ? "" : ` #${l.attempt}`
 			const error = l.error?.code ? ` error=${l.error.code}` : ""
 			console.log(
-				`legs   ${label} ${l.kind} ${l.rail} ${l.status}${attempt}${error}${describeRef(l.externalRef)}`,
+				`legs   ${label} ${l.kind} ${l.rail} ${l.status}${error}${describeRef(l.externalRef)}`,
 			)
 			this.entries.push({
 				kind: "legs",
-				text: `${label} ${l.kind} ${l.rail} ${l.status}${attempt}${error}${describeRef(l.externalRef)}`,
+				text: `${label} ${l.kind} ${l.rail} ${l.status}${error}${describeRef(l.externalRef)}`,
 			})
 		}
 	}

@@ -4,11 +4,10 @@ import type {
 	LegStatus,
 	PaymentStatus,
 	RecipientKind,
-	SettlementNetwork,
 } from "@flexipay/domain"
 
 // Lane-D's internal view of a demo flow. These are semantic shapes: the fields documented in
-// ARCHITECTURE §6.4–§6.7, not request or envelope wire shapes. `lib/a0.ts` is the only place
+// ARCHITECTURE §6.4–§6.7, not request or envelope wire shapes. `lib/api.ts` is the only place
 // allowed to map them to A0 schemas; nothing here is sent to the API directly.
 
 export interface MoneyView {
@@ -22,7 +21,6 @@ export interface LegView {
 	status: LegStatus
 	externalRef?: string
 	error?: { code?: string; message?: string }
-	attempt?: number
 	simulated?: boolean
 }
 
@@ -46,8 +44,6 @@ export interface PaymentView {
 	quoteId?: string
 	batchId?: string
 	events?: EventView[]
-	/** Settlement network reported for this payment's settle leg, when the API exposes it. */
-	network?: SettlementNetwork
 	simulated?: boolean
 }
 
@@ -63,18 +59,10 @@ export interface QuoteView {
 	alternatives?: unknown[]
 }
 
-export interface BatchRowView {
-	paymentId: string
-	status: PaymentStatus
-	route?: RouteLegView[]
-	reasons?: string[]
-}
-
 export interface BatchView {
 	id: string
 	status: string
 	paymentIds: string[]
-	rows?: BatchRowView[]
 	totals?: unknown
 }
 
@@ -83,12 +71,6 @@ export interface ClaimView {
 	amount?: MoneyView
 	allowedEndpointTypes?: EndpointType[]
 	reasons?: string[]
-}
-
-export interface AcceptanceView {
-	payment: PaymentView
-	/** The release reference reported by the claim, when the API returns one. */
-	release?: { network: SettlementNetwork; txRef: string }
 }
 
 export interface RecipientView {
@@ -165,7 +147,7 @@ export interface AcceptInput {
 	details?: Record<string, string>
 }
 
-/** The operations every DF script needs. Implemented only by `lib/a0.ts`. */
+/** The operations every DF script needs. Implemented only by `lib/api.ts`. */
 export interface DemoApi {
 	createRecipient(input: RecipientInput): Promise<RecipientView>
 	createEndpoint(input: EndpointInput): Promise<EndpointView>
@@ -177,7 +159,7 @@ export interface DemoApi {
 	createBatch(rows: BatchRowInput[]): Promise<BatchView>
 	batch(batchId: string): Promise<BatchView>
 	claim(token: string): Promise<ClaimView>
-	acceptClaim(token: string, input: AcceptInput): Promise<AcceptanceView>
+	acceptClaim(token: string, input: AcceptInput): Promise<PaymentView>
 	failNext(providerId: string, count: number): Promise<void>
 	/** Moves the API clock; ledger time is not affected. */
 	advanceTime(seconds: number): Promise<void>

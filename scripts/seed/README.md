@@ -1,14 +1,15 @@
 # Seed fixtures (lane D)
 
 Neutral data for the DF1–DF5 acceptance scripts. Everything here is simulated,
-placeholder and synthetic:
+placeholder and synthetic:- `fixtures/workers.json` — Demo Platform, Worker A
+(PH e-wallet, bank, crypto endpoints), Worker B (BR bank), Worker C (US bank),
+Worker D (ZA company bank). Worker D is a necessary fourth neutral recipient:
+DF5 needs a company, and A/B/C are individuals for DF1.
 
-- `fixtures/workers.json` — Demo Platform, Worker A (PH e-wallet, bank, crypto
-  endpoints), Worker B (BR bank), Worker C (US bank), Supplier D (ZA company
-  bank).
 - `fixtures/flows.json` — per-flow amounts in integer minor units,
   delivery/profile, expected routes and rails from `tests/e2e/SCENARIOS.md`, the
-  DF4 fail-next target and the crypto destination placeholder.
+  DF4 fail-next target and the crypto destination placeholder
+  (`FP_RECIPIENT_A_ADDRESS` for Stellar).
 
 No account number, e-wallet id, wallet address, key or token is committed.
 `detailsRef` is a label only; the A0 adapter supplies an in-memory synthetic

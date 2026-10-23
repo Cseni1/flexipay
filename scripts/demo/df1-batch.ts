@@ -5,9 +5,9 @@ import {
 	expectNoSettle,
 	expectPaid,
 	expectRail,
-	expectReasons,
 	fail,
 } from "./lib/assertions.ts"
+import { requireBatchRouteReasons } from "./lib/contract-gaps.ts"
 import { endpointOf, flowOf, workerOf } from "./lib/fixtures.ts"
 import { ROUTES } from "./lib/routes.ts"
 import { execute } from "./lib/script.ts"
@@ -76,19 +76,6 @@ await execute(
 		}
 		flow.check("batch reported all rows settled")
 
-		const usIndex = prepared.findIndex((p) => p.endpoint.country === "US")
-		const usPayment = payments[usIndex]
-		const usReasons = batch.rows?.find(
-			(row) => row.paymentId === usPayment.id,
-		)?.reasons
-		if (!usReasons) fail("US domestic batch row has no route reasons")
-		expectReasons(
-			usReasons,
-			[/sim_bank_us_ach|ACH/i, /domestic|same country/i],
-			"US row",
-		)
-		flow.check("domestic rail chosen with a reason")
-
 		for (const [index, payment] of payments.entries()) {
 			const country = prepared[index].endpoint.country
 			const events = payment.events ?? (await api.events(payment.id))
@@ -105,6 +92,10 @@ await execute(
 				flow.check(`${country} payment emitted on-chain and paid events`)
 			}
 		}
+
+		// The US legs above show the domestic rail. Where a batch row reports the chosen route and
+		// its reasons is not in A0, so the explanation cannot be asserted yet.
+		requireBatchRouteReasons(batch)
 	},
 )
 

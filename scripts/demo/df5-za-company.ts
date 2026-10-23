@@ -5,7 +5,6 @@ import {
 	expectNoSettle,
 	expectPaid,
 	expectRail,
-	expectReasons,
 	expectSimulated,
 	fail,
 } from "./lib/assertions.ts"
@@ -17,8 +16,9 @@ import { setUpWorker } from "./lib/setup.ts"
 import { waitForPayment } from "./lib/wait.ts"
 
 // DF5: a ZA company is paid to its bank account. The quote must choose the bank route with no
-// settlement leg and must explain the crypto exclusion by recipient kind; asking for a crypto
-// destination for that company is refused, with the same explanation.
+// settlement leg and carry a reason for the crypto exclusion; asking for a crypto destination for
+// that company is refused with a reason. The exact wording is TBD (A0), so only a non-empty
+// explanation is asserted, never a specific sentence.
 
 const runId = Date.now().toString(36)
 
@@ -50,9 +50,10 @@ await execute(
 			expected.legs,
 			"quote.route",
 		)
-		expectReasons(quote.reasons, [/crypto/i, /compan(y|ies)/i], "quote.reasons")
+		if (quote.reasons.length === 0)
+			fail("ZA bank quote carries no exclusion reason")
 		expectSimulated(quote.simulated, "quote")
-		flow.check("bank route chosen with the crypto exclusion explained")
+		flow.check("bank route chosen with a non-empty exclusion reason")
 
 		flow.route(
 			"POST",
@@ -75,13 +76,13 @@ await execute(
 			if (!(error instanceof ApiRejection)) throw error
 			if (error.status !== 422)
 				fail(`crypto quote was refused with HTTP ${error.status}, expected 422`)
-			expectReasons(
-				error.reasons,
-				[/crypto/i, /compan(y|ies)/i],
-				"refusal reasons",
-			)
+			if (error.reasons.length === 0)
+				fail("crypto quote refusal carries no reason")
 		}
-		flow.check("crypto quote refused with a recipient-kind reason")
+		flow.check("crypto quote refused with a non-empty reason")
+		flow.note(
+			"refusal wording is not asserted; A0 defines no stable reason code",
+		)
 
 		const handles = await setUpWorker(api, flow, worker, endpoint)
 		flow.route(

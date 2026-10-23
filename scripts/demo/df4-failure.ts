@@ -5,16 +5,17 @@ import {
 	expectStatus,
 	fail,
 } from "./lib/assertions.ts"
+import { requireRetryAndRefundEvidence } from "./lib/contract-gaps.ts"
 import { endpointOf, flowOf, workerOf } from "./lib/fixtures.ts"
 import { ROUTES } from "./lib/routes.ts"
 import { execute } from "./lib/script.ts"
 import { setUpWorker } from "./lib/setup.ts"
 import { waitForPayment } from "./lib/wait.ts"
-import type { EventView } from "./lib/types.ts"
 
-// DF4: the BR payout provider is forced to fail. The engine must try the payout, retry it exactly
-// once, and then refund through the settlement adapter and reverse the earlier legs. Two failed
-// payout attempts and one refunded payment — never a third attempt and never a paid payment.
+// DF4: the BR payout provider is forced to fail. The documented terminal state is: payout failed,
+// earlier collect/convert legs reversed, payment refunded. Proving "exactly one retry" and naming
+// the vault refund need attempt/refund evidence that A0 has not defined, so the flow ends BLOCKED
+// with that question instead of inventing a shape.
 
 const runId = Date.now().toString(36)
 
@@ -69,7 +70,7 @@ await execute(
 		flow.route("POST", `/v1/payments/${created.payment.id}/fund`)
 		await api.fund(created.payment.id)
 		const payment = await waitForPayment(api, created.payment.id)
-		const events: EventView[] = payment.events ?? (await api.events(payment.id))
+		const events = payment.events ?? (await api.events(payment.id))
 		const types = events.map((event) => event.type)
 		flow.legs("final", payment.legs)
 
@@ -78,15 +79,8 @@ await execute(
 			fail("a refunded payment also emitted payment.paid")
 		flow.check("payment is refunded, not paid")
 
-		const failures = types.filter((type) => type === "leg.failed").length
-		if (failures !== expected.payoutAttempts) {
-			fail(
-				`timeline shows ${failures} leg.failed event(s), expected exactly ${expected.payoutAttempts}`,
-			)
-		}
 		const payouts = payment.legs.filter((leg) => leg.kind === "payout")
-		if (payouts.length === 0)
-			fail("no payout attempt is visible on the payment")
+		if (payouts.length === 0) fail("no failed payout is visible on the payment")
 		if (payouts.some((leg) => leg.status !== "failed")) {
 			fail(
 				`visible payout attempts are ${payouts.map((leg) => leg.status).join(", ")}, expected failed`,
@@ -94,29 +88,17 @@ await execute(
 		}
 		for (const [index, leg] of payouts.entries()) {
 			const code = leg.error?.code
-			if (!code) fail(`payout attempt ${index + 1} has no error code`)
+			if (!code) fail(`visible payout ${index + 1} has no error code`)
 			if (!["sandbox_forced_failure", "provider_down"].includes(code)) {
-				fail(`payout attempt ${index + 1} failed with ${code}`)
-			}
-			if (leg.attempt !== undefined && leg.attempt !== index + 1) {
-				fail(`payout attempt ${index + 1} reports attempt ${leg.attempt}`)
+				fail(`visible payout ${index + 1} failed with ${code}`)
 			}
 		}
-		if (payouts.length === 1) {
-			if (payouts[0].attempt !== 2) {
-				fail(
-					"one payout leg is visible but it does not report attempt 2: the attempt timeline is not exposed (CC0/CC2 gap)",
-				)
-			}
-		} else if (payouts.length !== expected.payoutAttempts) {
-			fail(
-				`payment shows ${payouts.length} payout attempts, expected ${expected.payoutAttempts}`,
-			)
-		}
-		flow.check("exactly one retry: two failed payout attempts, no third")
-
 		expectRail(payment.legs, "payout", expected.payoutRail!, "payment.legs")
-		for (const kind of ["collect", "convert", "settle"] as const) {
+		flow.check("payout failed on the routed provider")
+
+		// ARCHITECTURE §7 reverses the earlier legs. The settle leg is not asserted: neither the
+		// architecture nor SCENARIOS.md fixes its status after a vault refund.
+		for (const kind of ["collect", "convert"] as const) {
 			const legs = payment.legs.filter((leg) => leg.kind === kind)
 			if (legs.length === 0) fail(`missing ${kind} leg on the refunded route`)
 			if (legs.some((leg) => leg.status !== "reversed")) {
@@ -125,12 +107,16 @@ await execute(
 				)
 			}
 		}
-		flow.check("vault refund reversed collect, convert and settle")
+		flow.check(
+			"collect and convert legs reversed; settle status is not asserted",
+		)
 
-		const refundAt = types.indexOf("payment.refunded")
-		if (refundAt < 0) fail("timeline has no payment.refunded")
-		if (types.lastIndexOf("leg.failed") > refundAt)
-			fail("refund was recorded before the failed retry")
-		flow.check("timeline shows two failures, then the refund")
+		if (!types.includes("leg.failed")) fail("timeline has no leg.failed event")
+		if (!types.includes("payment.refunded"))
+			fail("timeline has no payment.refunded")
+		flow.check("timeline shows a failed leg and the refund")
+
+		// Terminal state is documented; the retry count and vault-refund representation are not.
+		requireRetryAndRefundEvidence(payment)
 	},
 )

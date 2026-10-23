@@ -3,7 +3,7 @@
 	"placeholder": true,
 	"organization": "Demo Platform",
 	"notes": [
-		"Neutral demo data only: Demo Platform, Worker A, Worker B, Worker C, Supplier D.",
+		"Neutral demo data only: Demo Platform and Worker A to Worker D.",
 		"Every endpoint is synthetic. No account number, e-wallet id or wallet address is committed; detailsRef is filled with an in-memory synthetic value by the A0 adapter.",
 		"Worker A carries the PH e-wallet, PH bank and PH crypto destinations used by DF1, DF2 and DF3."
 	],
@@ -69,13 +69,13 @@
 			]
 		},
 		{
-			"ref": "supplier-d",
-			"name": "Supplier D",
+			"ref": "worker-d",
+			"name": "Worker D",
 			"kind": "company",
 			"country": "ZA",
 			"endpoints": [
 				{
-					"ref": "supplier-d-bank",
+					"ref": "worker-d-bank",
 					"type": "bank_account",
 					"country": "ZA",
 					"currency": "ZAR",

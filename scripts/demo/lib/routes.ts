@@ -6,7 +6,7 @@ import type { RouteNeed } from "./preflight.ts"
 const recipients: RouteNeed = {
 	method: "POST",
 	path: "/v1/recipients",
-	purpose: "create Worker A/B/C and Supplier D",
+	purpose: "create Worker A to Worker D",
 }
 const endpoints: RouteNeed = {
 	method: "POST",

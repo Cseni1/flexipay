@@ -2,17 +2,23 @@
 
 One script per acceptance flow from `tests/e2e/SCENARIOS.md` and ARCHITECTURE
 §15. Each script calls the same API the UI calls, prints the route, the legs and
-the result, and exits non-zero on failure. Fixtures are neutral: Demo Platform,
-Worker A/B/C, Supplier D.
+the result, and exits non-zero on failure. Fixtures are neutral: Demo Platform
+and Worker A to Worker D (Worker D is the ZA company that DF5 needs).
 
 ## Status (23 Oct 2026)
 
 **Prepared, not yet executed end to end.** At the tested commit the API exposes
 only `healthz`, `corridors` and `recipients`; the A0 schemas and the
 quote/payment/batch/claim/sandbox routes do not exist yet. A run therefore ends
-as **BLOCKED** with the missing item and its owner, never as PASS.See
-`scripts/demo/evidence/2026-10-23-d1.md` for the recorded blocker. Per-run JSON
-evidence is written to the same folder and git-ignored.
+as **BLOCKED** with the missing item and its owner, never as PASS. See
+`scripts/demo/evidence/2026-10-23-d1.md` for the recorded blocker and
+`2026-10-23-d1-review.md` for the review fixes. Per-run JSON evidence is written
+to the same folder and git-ignored.
+
+Two evidence gaps keep DF1 and DF4 blocked even after the routes land:
+`lib/contract-gaps.ts` refuses to invent a batch-row reason field, a payout
+attempt count or the settle leg's status after a refund. Those are A0 questions,
+not test knobs.
 
 | Flow                   | Script              | Mock    | Stellar                |
 | ---------------------- | ------------------- | ------- | ---------------------- |
@@ -28,9 +34,11 @@ evidence is written to the same folder and git-ignored.
 # one flow
 FP_API_URL=http://127.0.0.1:3000 FP_API_KEY=... node scripts/demo/df2-one-off.ts
 
-# DF3 on Stellar (needs a funded testnet address)
+# DF3 on Stellar (needs Worker A's published address and a testnet RPC)
 FP_API_URL=... FP_API_KEY=... FP_SETTLEMENT=stellar \
-FP_DEMO_CRYPTO_ADDRESS=G... node scripts/demo/df3-claim.ts --mode stellar
+FP_RECIPIENT_A_ADDRESS=G... FP_STELLAR_RPC_URL=https://... \
+FP_STELLAR_NETWORK_PASSPHRASE='Test SDF Network ; September 2015' \
+node scripts/demo/df3-claim.ts --mode stellar
 
 # every mock flow, plus DF3 on Stellar
 node scripts/demo/run-all.ts --stellar
@@ -38,14 +46,16 @@ node scripts/demo/run-all.ts --stellar
 
 Prerequisites are read from the environment; nothing is committed.
 
-| Variable                 | Purpose                                                            |
-| ------------------------ | ------------------------------------------------------------------ |
-| `FP_API_URL`             | Base URL of the integrated API                                     |
-| `FP_API_KEY`             | Sandbox API key for the Demo Platform organization (never printed) |
-| `FP_SETTLEMENT`          | `mock` or `stellar`; DF3's `--mode` overrides it for one run       |
-| `FP_OPENAPI_PATH`        | Route inventory, default `apps/api/openapi.json`                   |
-| `FP_HTTP_TIMEOUT_MS`     | Per-request timeout, default 15000                                 |
-| `FP_DEMO_CRYPTO_ADDRESS` | Claim destination for DF3 on Stellar only                          |
+| Variable                        | Purpose                                                            |
+| ------------------------------- | ------------------------------------------------------------------ |
+| `FP_API_URL`                    | Base URL of the integrated API                                     |
+| `FP_API_KEY`                    | Sandbox API key for the Demo Platform organization (never printed) |
+| `FP_SETTLEMENT`                 | `mock` or `stellar`; DF3's `--mode` overrides it for one run       |
+| `FP_OPENAPI_PATH`               | Route inventory, default `apps/api/openapi.json`                   |
+| `FP_HTTP_TIMEOUT_MS`            | Per-request timeout, default 15000                                 |
+| `FP_RECIPIENT_A_ADDRESS`        | Worker A's published testnet address; DF3 claim destination        |
+| `FP_STELLAR_RPC_URL`            | Public testnet RPC used to verify the release hash                 |
+| `FP_STELLAR_NETWORK_PASSPHRASE` | Expected testnet passphrase, checked against the RPC               |
 
 `FP_API_URL` and `FP_API_KEY` are missing from the root `.env.example`; that
 file is owned by the integrator. Until they are added, pass them inline or
@@ -65,24 +75,30 @@ passed.
 ## What each flow proves
 
 - **DF1** — three rows in one JSON batch; per-payment funding; US row has
-  exactly `collect` and `payout` on `sim_bank_us_ach`, no convert/settle, no
-  on-chain event, and its reasons name the domestic rail; PH and BR rows have
-  the five-leg stablecoin route with their payout rails.
+  exactly `collect` and `payout` on `sim_bank_us_ach`, no convert/settle and no
+  on-chain event; PH and BR rows have the five-leg stablecoin route with their
+  payout rails. The domestic explanation is blocked on A0: reasons belong to a
+  quote, and no batch-row reason field is defined.
 - **DF2** — quote exposes route, fee breakdown, FX, expected receive and
   validity; the payment is created `awaiting_funding` with legs pending; after
   funding every leg succeeds in order and the paid route equals the quote.
 - **DF3** — funding locks but does not release; the claim view is public;
-  accepting releases, the payment becomes paid, the route has no payout leg, and
-  the release reference is a mock reference in mock mode or a 64-hex testnet
-  hash in Stellar mode (distinct from the lock hash).
-- **DF4** — `fail-next` makes the first payout and its single retry fail; the
-  timeline shows exactly two `leg.failed` events, the payout stays failed,
-  collect/convert/settle reverse and the payment is refunded. A third attempt, a
-  paid payment or a missing attempt timeline fails the run.
+  accepting releases, the payment becomes paid, the route has no payout leg. The
+  release reference is the settle leg's `externalRef`. Mock mode requires a
+  labelled mock reference; Stellar mode verifies the hash through the testnet
+  RPC (`getNetwork` passphrase + `getTransaction` SUCCESS + ledger). A 64-hex
+  string alone is never treated as proof, and `--mode` only says what was
+  requested.
+- **DF4** — `fail-next` makes the first payout and its retry fail; the payout
+  stays failed, collect and convert reverse, and the payment is refunded. The
+  flow then blocks: neither A0 nor SCENARIOS.md defines how attempts are exposed
+  (repeated legs, an attempts array, or one leg), the `leg.failed` cardinality,
+  or the settle leg's status after a vault refund.
 - **DF5** — ZA company quote takes `collect → convert → payout` on
-  `sim_bank_za_eft` with no settle leg, explains the crypto exclusion by
-  recipient kind, and refuses a crypto quote with 422 and the same reason; the
-  paid payment has no on-chain event.
+  `sim_bank_za_eft` with no settle leg and a non-empty exclusion reason, and a
+  crypto quote is refused with 422 and a non-empty reason. The exact prose and
+  the recipient-kind wording are not asserted; no stable reason code exists yet.
+  The paid payment has no on-chain event.
 
 ## Structure
 
@@ -90,10 +106,13 @@ passed.
   and evidence.
 - `lib/api.ts` — the only seam that may build a request body. It refuses to
   return a client while A0 is absent, so no field is guessed.
+- `lib/contract-gaps.ts` — blocked seams for evidence A0 has not defined.
+- `lib/stellar-proof.ts` — testnet RPC verification of a release hash.
 - `scripts/seed/fixtures/` — neutral workers, endpoints and per-flow
-  amounts/expectations.- `scripts/demo/evidence/` — the committed blocker
-  record, plus one generated JSON per run: commit, command, exit code, steps,
-  blockers. No key, token, account number or address.
+  amounts/expectations.
+- `scripts/demo/evidence/` — committed blocker/review records, plus one
+  generated JSON per run: commit, command, exit code, steps, blockers. No key,
+  token, account number or address.
 
 ## Known integration needs (owner: Csaba)
 
@@ -105,3 +124,9 @@ passed.
    CCR-5 §5).
 5. `FP_API_URL` and `FP_API_KEY` names in the root `.env.example`.
 6. SC2's adapter and `FP_SETTLEMENT` wiring for DF3 on Stellar.
+7. A0 answers for the blocked evidence: the batch-row route/reason field, how
+   payout attempts are exposed (and `leg.failed` cardinality), the settle leg's
+   status after a vault refund, and whether lock and release references are
+   separate fields.
+8. A stable refusal-reason code if DF5 must prove the recipient-kind wording
+   rather than only a non-empty explanation.

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest"
 import type { LegKind } from "@flexipay/domain"
 import {
 	AssertionFailure,
-	expectAttempts,
 	expectKinds,
 	expectNoEvent,
 	expectPaid,
@@ -125,31 +124,6 @@ describe("payment assertions", () => {
 				"route",
 			),
 		).toThrow(/leg kinds/)
-	})
-
-	it("counts attempts instead of trusting the final status", () => {
-		const attempts = payment({
-			id: "pay_1",
-			status: "refunded",
-			legs: [
-				{
-					kind: "payout",
-					rail: "sim_bank_br_pix",
-					status: "failed",
-					attempt: 1,
-				},
-				{
-					kind: "payout",
-					rail: "sim_bank_br_pix",
-					status: "failed",
-					attempt: 2,
-				},
-			],
-		}).legs
-		expect(() => expectAttempts(attempts, "payout", 2, "legs")).not.toThrow()
-		expect(() => expectAttempts(attempts, "payout", 1, "legs")).toThrow(
-			/exactly 1/,
-		)
 	})
 
 	it("requires an explanatory reason", () => {

@@ -67,13 +67,23 @@ export async function execute(
 	}
 
 	const blockers = await preflight(parsed.env, { needs: options.needs, mode })
-	if (mode === "stellar" && !parsed.env.cryptoAddress) {
-		blockers.push({
-			what: "FP_DEMO_CRYPTO_ADDRESS is not set for a Stellar claim release",
-			owner: "caller / Csaba (integration)",
-			detail:
-				"no wallet address is committed; DF3 on Stellar needs a funded testnet address",
-		})
+	if (mode === "stellar") {
+		if (!parsed.env.recipientAddress) {
+			blockers.push({
+				what: "FP_RECIPIENT_A_ADDRESS is not set for a Stellar claim release",
+				owner: "caller / Csaba (integration)",
+				detail:
+					"the published Worker A testnet address; no address is committed to the repo",
+			})
+		}
+		if (!parsed.env.stellarRpcUrl) {
+			blockers.push({
+				what: "FP_STELLAR_RPC_URL is not set, so a Stellar release cannot be verified",
+				owner: "caller / Csaba (integration)",
+				detail:
+					"DF3 requires an RPC lookup of the release hash; a 64-hex string alone is not proof",
+			})
+		}
 	}
 	if (blockers.length > 0) return flow.finish("BLOCKED", blockers)
 

@@ -8,8 +8,8 @@
 	],
 	"cryptoDestination": {
 		"mock": "MOCK-DESTINATION-DEMO",
-		"stellarEnv": "FP_DEMO_CRYPTO_ADDRESS",
-		"note": "No wallet address is committed. Stellar mode requires FP_DEMO_CRYPTO_ADDRESS in the caller's environment and prints it masked."
+		"stellarEnv": "FP_RECIPIENT_A_ADDRESS",
+		"note": "No wallet address is committed. Stellar mode uses Worker A's published FP_RECIPIENT_A_ADDRESS and prints it masked."
 	},
 	"flows": {
 		"df1": {
@@ -53,8 +53,8 @@
 		},
 		"df5": {
 			"profile": "one_off",
-			"workerRef": "supplier-d",
-			"endpointRef": "supplier-d-bank",
+			"workerRef": "worker-d",
+			"endpointRef": "worker-d-bank",
 			"send": { "amount": "60000", "currency": "USD" }
 		}
 	},

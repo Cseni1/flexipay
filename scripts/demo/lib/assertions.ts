@@ -131,6 +131,10 @@ export function expectRail(
 	}
 }
 
+/**
+ * Format check only. A 64-hex string is not proof of a Stellar settlement: DF3 on Stellar must
+ * also verify the hash against the testnet RPC (`lib/stellar-proof.ts`).
+ */
 export function expectTxRef(
 	ref: string | undefined,
 	network: "mock" | "stellar",
@@ -148,17 +152,6 @@ export function expectTxRef(
 	}
 	if (!/^mock[-_]/i.test(ref))
 		fail(`${where}: "${ref}" is not a labelled mock reference`)
-}
-
-export function expectAttempts(
-	legs: readonly LegView[],
-	kind: LegKind,
-	count: number,
-	where: string,
-): void {
-	const attempts = legs.filter((l) => l.kind === kind).length
-	if (attempts !== count)
-		fail(`${where}: ${attempts} ${kind} attempt(s), expected exactly ${count}`)
 }
 
 export function expectReasons(

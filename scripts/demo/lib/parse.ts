@@ -85,15 +85,6 @@ export function leg(value: unknown, where: string): LegView {
 	}
 	if (l.externalRef !== undefined)
 		out.externalRef = text(l.externalRef, `${where}.externalRef`)
-	if (l.attempt !== undefined) {
-		const attempt =
-			typeof l.attempt === "number"
-				? l.attempt
-				: Number(integerString(l.attempt, `${where}.attempt`))
-		if (!Number.isInteger(attempt) || attempt < 1)
-			fail(`${where}.attempt: expected a positive integer`)
-		out.attempt = attempt
-	}
 	if (l.simulated !== undefined) out.simulated = l.simulated === true
 	if (error) {
 		out.error = {
@@ -133,13 +124,6 @@ export function payment(value: unknown, where = "payment"): PaymentView {
 	if (p.quoteId !== undefined) out.quoteId = text(p.quoteId, `${where}.quoteId`)
 	if (p.batchId !== undefined) out.batchId = text(p.batchId, `${where}.batchId`)
 	if (p.simulated !== undefined) out.simulated = p.simulated === true
-	if (p.network !== undefined) {
-		out.network = oneOf(
-			p.network,
-			["mock", "stellar"] as const,
-			`${where}.network`,
-		)
-	}
 	if (p.events !== undefined) out.events = events(p.events, `${where}.events`)
 	return out
 }

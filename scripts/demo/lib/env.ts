@@ -16,8 +16,11 @@ export interface DemoEnv {
 	openapiPath: string
 	timeoutMs: number
 	evidenceDir: string
-	/** Address for a Stellar claim release; absent in mock mode, never committed. */
-	cryptoAddress?: string
+	/** Worker A's published testnet address (FP_RECIPIENT_A_ADDRESS), never a secret. */
+	recipientAddress?: string
+	/** Public testnet RPC used to verify a Stellar release; no key needed. */
+	stellarRpcUrl?: string
+	stellarNetworkPassphrase?: string
 }
 
 export interface EnvProblem {
@@ -88,8 +91,17 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): EnvResult {
 				REPO_ROOT,
 				source.FP_EVIDENCE_DIR?.trim() || "scripts/demo/evidence",
 			),
-			...(source.FP_DEMO_CRYPTO_ADDRESS?.trim()
-				? { cryptoAddress: source.FP_DEMO_CRYPTO_ADDRESS.trim() }
+			...(source.FP_RECIPIENT_A_ADDRESS?.trim()
+				? { recipientAddress: source.FP_RECIPIENT_A_ADDRESS.trim() }
+				: {}),
+			...(source.FP_STELLAR_RPC_URL?.trim()
+				? { stellarRpcUrl: source.FP_STELLAR_RPC_URL.trim() }
+				: {}),
+			...(source.FP_STELLAR_NETWORK_PASSPHRASE?.trim()
+				? {
+						stellarNetworkPassphrase:
+							source.FP_STELLAR_NETWORK_PASSPHRASE.trim(),
+					}
 				: {}),
 		},
 	}
