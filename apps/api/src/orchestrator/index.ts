@@ -1,12 +1,19 @@
 export type {
-	CreatePaymentInput,
-	ExecutionLegPlan,
-	ExecutionPlan,
+	CreatePaymentFromQuoteInput,
 	OrchestratorAdapters,
 } from "./types.ts";
 export {
+	claimSealKeyFromEnv,
+	sealClaimSecret,
+	unsealClaimSecret,
+} from "./claim-seal.ts";
+export {
+	createPaymentFromQuote,
+	isClaimWaitRoute,
+} from "./create.ts";
+export {
+	cancelPayment,
 	completeClaimSettle,
-	createPaymentFromPlan,
 	fundAndRun,
 	getPaymentView,
 	type FundResult,

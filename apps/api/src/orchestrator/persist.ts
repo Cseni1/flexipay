@@ -8,6 +8,7 @@ import {
 import type { Db } from "../db.ts";
 import { newId } from "../ids.ts";
 
+/** Public payment snapshot — never includes claim secrets or seal blobs (CCR-11). */
 export async function paymentSnapshot(db: Db, paymentId: string) {
 	const payment = await db.payment.findUniqueOrThrow({
 		where: { id: paymentId },
@@ -25,14 +26,25 @@ export async function paymentSnapshot(db: Db, paymentId: string) {
 			rail: l.rail,
 			status: l.status,
 			attempt: l.attempt,
+			/** Vault payoutId for settle; provider ref otherwise (CCR-12). */
 			externalRef: l.externalRef,
+			lockTxRef: l.lockTxRef,
+			releaseTxRef: l.releaseTxRef,
 			providerId: l.providerId,
 			errorCode: l.errorCode,
 		})),
 		claimLink: payment.claimLink
-			? { status: payment.claimLink.status, expiresAt: payment.claimLink.expiresAt.toISOString() }
+			? {
+					status: payment.claimLink.status,
+					expiresAt: payment.claimLink.expiresAt.toISOString(),
+					// vaultClaimHashHex is not secret but omit from public event noise; never seal.
+				}
 			: null,
 	};
+}
+
+export async function getPaymentView(db: Db, paymentId: string) {
+	return paymentSnapshot(db, paymentId);
 }
 
 export async function transitionPayment(
@@ -83,6 +95,8 @@ export async function transitionLeg(
 	reason?: string,
 	extra?: {
 		externalRef?: string | null;
+		lockTxRef?: string | null;
+		releaseTxRef?: string | null;
 		errorCode?: string | null;
 		errorMessage?: string | null;
 		attempt?: number;
@@ -95,6 +109,10 @@ export async function transitionLeg(
 			status: to,
 			...(extra?.externalRef !== undefined
 				? { externalRef: extra.externalRef }
+				: {}),
+			...(extra?.lockTxRef !== undefined ? { lockTxRef: extra.lockTxRef } : {}),
+			...(extra?.releaseTxRef !== undefined
+				? { releaseTxRef: extra.releaseTxRef }
 				: {}),
 			...(extra?.errorCode !== undefined ? { errorCode: extra.errorCode } : {}),
 			...(extra?.errorMessage !== undefined

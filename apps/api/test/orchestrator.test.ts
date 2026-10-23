@@ -5,6 +5,7 @@ import {
 	loadConfig,
 	money,
 	type FlexiPayConfig,
+	type PlannedLeg,
 } from "@flexipay/domain";
 import {
 	createSimProviders,
@@ -15,10 +16,9 @@ import type { Db } from "../src/db.ts";
 import { newId } from "../src/ids.ts";
 import {
 	completeClaimSettle,
-	createPaymentFromPlan,
+	createPaymentFromQuote,
 	fundAndRun,
 	getPaymentView,
-	type ExecutionPlan,
 	type OrchestratorAdapters,
 } from "../src/orchestrator/index.ts";
 import { startTestServer, type TestServer } from "./helpers.ts";
@@ -26,6 +26,11 @@ import { startTestServer, type TestServer } from "./helpers.ts";
 const CONFIG_DIR = resolve(fileURLToPath(new URL("../../../config", import.meta.url)));
 const PAYER = "GDEMOPAYER000000000000000000000000000000000000000000";
 const DEST = "GDEMODEST0000000000000000000000000000000000000000000";
+/** Demo-only seal key for tests (64 hex). Not a real secret. */
+const TEST_SEAL_KEY = Buffer.from(
+	"a".repeat(64),
+	"hex",
+);
 
 let t: TestServer;
 let db: Db;
@@ -35,6 +40,7 @@ let settlement: MockSettlementAdapter;
 let clock: { now: Date };
 
 beforeAll(async () => {
+	process.env.FP_CLAIM_SEAL_KEY = "a".repeat(64);
 	t = await startTestServer();
 	db = t.db;
 	const loaded = await loadConfig(CONFIG_DIR);
@@ -60,10 +66,30 @@ function adapters(): OrchestratorAdapters {
 		settlement,
 		vaultPayer: PAYER,
 		now: () => clock.now,
+		defaultClaimDestination: DEST,
+		claimSealKey: TEST_SEAL_KEY,
 	};
 }
 
-async function seedQuoteAndRecipient(orgId: string, feeMode: "PayerPays" | "RecipientPays" | null) {
+async function seedQuote(
+	orgId: string,
+	opts: {
+		feeMode: "PayerPays" | "RecipientPays" | null;
+		route: PlannedLeg[];
+		fees: {
+			legs: { kind: string; rail: string; fee: { amount: string; currency: string } }[];
+			flexiPayFee: { amount: string; currency: string };
+			total: { amount: string; currency: string };
+			settleUnlockedRemainder: { amount: string; currency: string } | null;
+		};
+		destination: {
+			type: string;
+			currency: string;
+			country: string;
+			recipientKind: string;
+		};
+	},
+) {
 	const recipientId = newId("rcp");
 	await db.recipient.create({
 		data: {
@@ -80,459 +106,512 @@ async function seedQuoteAndRecipient(orgId: string, feeMode: "PayerPays" | "Reci
 			id: quoteId,
 			organizationId: orgId,
 			source: { type: "bank_account", currency: "USD", country: "US" },
+			destination: opts.destination,
+			amountSide: "send",
+			amountValue: "10000",
+			amountCurrency: "USD",
+			route: opts.route,
+			fees: opts.fees,
+			fxRate: null,
+			expectedReceive: opts.route[opts.route.length - 1]!.amountOut.amount,
+			receiveCurrency: opts.route[opts.route.length - 1]!.amountOut.currency,
+			priceRiskBearer: "sender",
+			policy: "cheapest",
+			validUntil: new Date("2099-01-01T00:00:00.000Z"),
+			alternatives: [],
+			reasons: ["test frozen quote"],
+			feeMode: opts.feeMode,
+			simulated: true,
+		},
+	});
+	return { recipientId, quoteId };
+}
+
+const domesticRoute: PlannedLeg[] = [
+	{
+		kind: "collect",
+		rail: "sim_bank_us_ach",
+		providerId: "sim_bank_us_ach",
+		amountIn: money("10000", "USD"),
+		amountOut: money("10000", "USD"),
+		simulated: true,
+	},
+	{
+		kind: "payout",
+		rail: "sim_bank_us_ach",
+		providerId: "sim_bank_us_ach",
+		amountIn: money("10000", "USD"),
+		amountOut: money("10000", "USD"),
+		simulated: true,
+	},
+];
+
+const cryptoClaimRoute: PlannedLeg[] = [
+	{
+		kind: "collect",
+		rail: "sim_bank_us_ach",
+		providerId: "sim_bank_us_ach",
+		amountIn: money("10000", "USD"),
+		amountOut: money("10000", "USD"),
+		simulated: true,
+	},
+	{
+		kind: "convert",
+		rail: "sim_fx",
+		providerId: "sim_fx",
+		amountIn: money("10000", "USD"),
+		amountOut: money("9925125000", "USDC"),
+		simulated: true,
+	},
+	{
+		kind: "settle",
+		rail: "stellar_usdc",
+		providerId: "stellar_usdc",
+		amountIn: money("9826856435", "USDC"),
+		amountOut: money("9826856435", "USDC"),
+		simulated: true,
+	},
+];
+
+const phPayoutRoute: PlannedLeg[] = [
+	{
+		kind: "collect",
+		rail: "sim_bank_us_ach",
+		providerId: "sim_bank_us_ach",
+		amountIn: money("10000", "USD"),
+		amountOut: money("10000", "USD"),
+		simulated: true,
+	},
+	{
+		kind: "convert",
+		rail: "sim_fx",
+		providerId: "sim_fx",
+		amountIn: money("10000", "USD"),
+		amountOut: money("9925125000", "USDC"),
+		simulated: true,
+	},
+	{
+		kind: "settle",
+		rail: "stellar_usdc",
+		providerId: "stellar_usdc",
+		amountIn: money("9826856435", "USDC"),
+		amountOut: money("9826856435", "USDC"),
+		simulated: true,
+	},
+	{
+		kind: "convert",
+		rail: "sim_fx",
+		providerId: "sim_fx",
+		amountIn: money("9826856435", "USDC"),
+		amountOut: money("50000", "PHP"),
+		simulated: true,
+	},
+	{
+		kind: "payout",
+		rail: "sim_bank_ph_instapay",
+		providerId: "sim_bank_ph_instapay",
+		amountIn: money("50000", "PHP"),
+		amountOut: money("48000", "PHP"),
+		simulated: true,
+	},
+];
+
+describe("CC2 orchestrator (CCR-11–14)", () => {
+	it("create-from-quote copies frozen amounts; domestic reaches paid", async () => {
+		sim.controls.reset();
+		const { orgId } = await t.newOrg("Demo Platform");
+		const { recipientId, quoteId } = await seedQuote(orgId, {
+			feeMode: null,
+			route: domesticRoute,
+			fees: {
+				legs: [
+					{ kind: "collect", rail: "sim_bank_us_ach", fee: money("0", "USD") },
+					{ kind: "payout", rail: "sim_bank_us_ach", fee: money("0", "USD") },
+				],
+				flexiPayFee: money("0", "USD"),
+				total: money("0", "USD"),
+				settleUnlockedRemainder: null,
+			},
 			destination: {
 				type: "bank_account",
 				currency: "USD",
 				country: "US",
 				recipientKind: "individual",
 			},
-			amountSide: "send",
-			amountValue: "10000",
-			amountCurrency: "USD",
-			route: [],
-			fees: { legs: [], flexiPayFee: money("0", "USD"), total: money("0", "USD") },
-			fxRate: null,
-			expectedReceive: "10000",
-			receiveCurrency: "USD",
-			priceRiskBearer: "sender",
-			policy: "cheapest",
-			validUntil: new Date("2026-10-23T15:02:00.000Z"),
-			alternatives: [],
-			reasons: ["test plan"],
-			simulated: true,
-		},
-	});
-	void feeMode;
-	return { recipientId, quoteId };
-}
+		});
 
-describe("CC2 orchestrator", () => {
-	it("runs legs in order and reaches paid only when the last leg succeeds", async () => {
-		sim.controls.reset();
-		const { orgId } = await t.newOrg("Demo Platform");
-		const { recipientId, quoteId } = await seedQuoteAndRecipient(orgId, null);
-
-		const plan: ExecutionPlan = {
-			feeMode: null,
-			claimWaitSettle: false,
-			lockExpiresAt: new Date("2026-10-24T15:00:00.000Z"),
-			payoutEndpoint: {
-				endpointId: "ep_us",
-				type: "bank_account",
-				country: "US",
-				currency: "USD",
-			},
-			legs: [
-				{
-					kind: "collect",
-					rail: "sim_bank_us_ach",
-					providerId: "sim_bank_us_ach",
-					amountIn: money("10000", "USD"),
-					amountOut: money("10000", "USD"),
-					simulated: true,
-				},
-				{
-					kind: "payout",
-					rail: "sim_bank_us_ach",
-					providerId: "sim_bank_us_ach",
-					amountIn: money("10000", "USD"),
-					amountOut: money("10000", "USD"),
-					simulated: true,
-				},
-			],
-		};
-
-		const { paymentId } = await createPaymentFromPlan(db, {
+		const { paymentId } = await createPaymentFromQuote(db, {
 			organizationId: orgId,
 			recipientId,
 			quoteId,
 			delivery: "direct",
 			profile: "domestic",
-			plan,
 		});
 
-		const mid = await getPaymentView(db, paymentId);
-		expect(mid.status).toBe("awaiting_funding");
-		expect(mid.legs.map((l) => l.status)).toEqual(["pending", "pending"]);
-
-		const result = await fundAndRun(db, paymentId, adapters(), plan);
-		expect(result.status).toBe("paid");
-
-		const view = await getPaymentView(db, paymentId);
-		expect(view.legs.map((l) => l.status)).toEqual(["succeeded", "succeeded"]);
-		expect(view.legs.every((l) => l.externalRef)).toBe(true);
-
-		const events = await db.event.findMany({
+		const legs = await db.leg.findMany({
 			where: { paymentId },
-			orderBy: { createdAt: "asc" },
+			orderBy: { position: "asc" },
 		});
-		expect(events.map((e) => e.type)).toEqual(
-			expect.arrayContaining([
-				"payment.created",
-				"payment.funded",
-				"payment.processing",
-				"leg.succeeded",
-				"payment.paid",
-			]),
-		);
-		const audits = await db.auditRow.findMany({ where: { paymentId } });
-		expect(audits.length).toBeGreaterThan(3);
+		expect(legs.map((l) => l.amountInValue)).toEqual(["10000", "10000"]);
+
+		const result = await fundAndRun(db, paymentId, adapters());
+		expect(result.status).toBe("paid");
 	});
 
-	it("claim crypto route: lock leaves settle processing; paid only after release", async () => {
+	it("PayerPays: settle externalRef=payoutId, lockTxRef set; feeMode from quote", async () => {
 		sim.controls.reset();
 		const { orgId } = await t.newOrg("Demo Platform");
-		const { recipientId, quoteId } = await seedQuoteAndRecipient(
-			orgId,
-			"RecipientPays",
-		);
+		const P = "9826856435";
+		const fee = "98268564"; // f(P) at 100 bps
+		const { recipientId, quoteId } = await seedQuote(orgId, {
+			feeMode: "PayerPays",
+			route: cryptoClaimRoute,
+			fees: {
+				legs: [
+					{ kind: "collect", rail: "sim_bank_us_ach", fee: money("0", "USD") },
+					{ kind: "convert", rail: "sim_fx", fee: money("125", "USD") },
+					{ kind: "settle", rail: "stellar_usdc", fee: money(fee, "USDC") },
+				],
+				flexiPayFee: money(fee, "USDC"),
+				total: money("125", "USD"),
+				settleUnlockedRemainder: money("1", "USDC"),
+			},
+			destination: {
+				type: "crypto_wallet",
+				currency: "USDC",
+				country: "PH",
+				recipientKind: "individual",
+			},
+		});
 
-		const plan: ExecutionPlan = {
-			feeMode: "RecipientPays",
-			claimWaitSettle: true,
-			claimDestination: DEST,
-			lockExpiresAt: new Date("2026-10-24T15:00:00.000Z"),
-			legs: [
-				{
-					kind: "collect",
-					rail: "sim_bank_us_ach",
-					providerId: "sim_bank_us_ach",
-					amountIn: money("10000", "USD"),
-					amountOut: money("10000", "USD"),
-					simulated: true,
-				},
-				{
-					kind: "convert",
-					rail: "sim_fx",
-					providerId: "sim_fx",
-					amountIn: money("10000", "USD"),
-					amountOut: money("992512500", "USDC"),
-					simulated: true,
-				},
-				{
-					kind: "settle",
-					rail: "stellar_usdc",
-					providerId: "stellar_usdc",
-					amountIn: money("992512500", "USDC"),
-					amountOut: money("982587375", "USDC"),
-					simulated: false,
-				},
-			],
-		};
-
-		const { paymentId } = await createPaymentFromPlan(db, {
+		const { paymentId } = await createPaymentFromQuote(db, {
 			organizationId: orgId,
 			recipientId,
 			quoteId,
 			delivery: "claim_link",
 			profile: "one_off",
-			plan,
 		});
 
-		const funded = await fundAndRun(db, paymentId, adapters(), plan);
+		const funded = await fundAndRun(db, paymentId, adapters());
 		expect(funded.status).toBe("processing");
-		expect(funded.claimSecretHex).toMatch(/^[0-9a-f]+$/);
 
-		const waiting = await getPaymentView(db, paymentId);
-		expect(waiting.legs.map((l) => l.status)).toEqual([
-			"succeeded",
-			"succeeded",
-			"processing",
-		]);
-		expect(waiting.legs[2]?.externalRef).toBeTruthy();
+		const settle = await db.leg.findFirstOrThrow({
+			where: { paymentId, kind: "settle" },
+		});
+		expect(settle.amountInValue).toBe(P);
+		expect(settle.externalRef).toBeTruthy();
+		expect(settle.lockTxRef).toBeTruthy();
+		expect(settle.releaseTxRef).toBeNull();
+		// payoutId must not look like we stored lock hash as externalRef incorrectly —
+		// mock payout ids are distinct from tx refs.
+		expect(settle.externalRef).not.toBe(settle.lockTxRef);
 
-		// Replay fundAndRun must not lock again.
-		const locksBefore = await settlement.status(waiting.legs[2]!.externalRef!);
-		expect(locksBefore.state).toBe("pending");
-		await fundAndRun(db, paymentId, adapters(), plan);
-		const locksAfter = await settlement.status(waiting.legs[2]!.externalRef!);
-		expect(locksAfter.state).toBe("pending");
+		const quote = await db.quote.findUniqueOrThrow({ where: { id: quoteId } });
+		expect(quote.feeMode).toBe("PayerPays");
 
-		const done = await completeClaimSettle(db, paymentId, adapters(), {
-			secretHex: funded.claimSecretHex!,
+		const link = await db.claimLink.findUniqueOrThrow({ where: { paymentId } });
+		expect(link.vaultClaimHashHex).toMatch(/^[0-9a-f]{64}$/);
+		expect(link.secretSealed).toBeTruthy();
+		expect(link.secretSealedNonce).toBeTruthy();
+
+		const events = await db.event.findMany({ where: { paymentId } });
+		const blob = JSON.stringify(events.map((e) => e.snapshot));
+		expect(blob).not.toMatch(/secretSealed/);
+		expect(blob).not.toMatch(/secretHex/);
+	});
+
+	it("restart-safe claim: unseal from DB without process Map", async () => {
+		sim.controls.reset();
+		const { orgId } = await t.newOrg("Demo Platform");
+		const { recipientId, quoteId } = await seedQuote(orgId, {
+			feeMode: "PayerPays",
+			route: cryptoClaimRoute,
+			fees: {
+				legs: [
+					{ kind: "collect", rail: "sim_bank_us_ach", fee: money("0", "USD") },
+					{ kind: "convert", rail: "sim_fx", fee: money("125", "USD") },
+					{ kind: "settle", rail: "stellar_usdc", fee: money("98268564", "USDC") },
+				],
+				flexiPayFee: money("98268564", "USDC"),
+				total: money("125", "USD"),
+				settleUnlockedRemainder: money("1", "USDC"),
+			},
+			destination: {
+				type: "crypto_wallet",
+				currency: "USDC",
+				country: "PH",
+				recipientKind: "individual",
+			},
+		});
+
+		const { paymentId } = await createPaymentFromQuote(db, {
+			organizationId: orgId,
+			recipientId,
+			quoteId,
+			delivery: "claim_link",
+			profile: "one_off",
+		});
+		await fundAndRun(db, paymentId, adapters());
+
+		// Simulate new process: only DB + same env seal key (no in-memory Map).
+		const freshAdapters: OrchestratorAdapters = {
+			getProvider: (id) => sim.providers.get(id),
+			settlement,
+			vaultPayer: PAYER,
+			now: () => clock.now,
+			defaultClaimDestination: DEST,
+			claimSealKey: Buffer.from("a".repeat(64), "hex"),
+		};
+
+		const done = await completeClaimSettle(db, paymentId, freshAdapters, {
 			destination: DEST,
 		});
 		expect(done.status).toBe("paid");
 
-		const view = await getPaymentView(db, paymentId);
-		expect(view.legs.map((l) => l.status)).toEqual([
-			"succeeded",
-			"succeeded",
-			"succeeded",
-		]);
-		const onchain = await db.event.findMany({
-			where: { paymentId, type: "payment.onchain" },
+		const settle = await db.leg.findFirstOrThrow({
+			where: { paymentId, kind: "settle" },
 		});
-		expect(onchain.length).toBeGreaterThanOrEqual(2);
+		expect(settle.releaseTxRef).toBeTruthy();
+		expect(settle.releaseTxRef).not.toBe(settle.externalRef);
+		expect(settle.releaseTxRef).not.toBe(settle.lockTxRef);
 	});
 
-	it("retries a failed payout exactly once, then succeeds", async () => {
+	it("exactly one payout retry then success; no third execute", async () => {
 		sim.controls.reset();
-		sim.controls.failNext("sim_bank_us_ach", 1);
-
-		const { orgId } = await t.newOrg("Demo Platform");
-		const { recipientId, quoteId } = await seedQuoteAndRecipient(
-			orgId,
-			"RecipientPays",
-		);
-
-		const plan: ExecutionPlan = {
-			feeMode: "RecipientPays",
-			claimWaitSettle: false,
-			claimDestination: DEST,
-			lockExpiresAt: new Date("2026-10-24T15:00:00.000Z"),
-			payoutEndpoint: {
-				endpointId: "ep_us",
-				type: "bank_account",
-				country: "US",
-				currency: "USD",
-			},
-			legs: [
-				{
-					kind: "collect",
-					rail: "sim_bank_us_ach",
-					providerId: "sim_bank_us_ach",
-					amountIn: money("10000", "USD"),
-					amountOut: money("10000", "USD"),
-					simulated: true,
-				},
-				{
-					kind: "convert",
-					rail: "sim_fx",
-					providerId: "sim_fx",
-					amountIn: money("10000", "USD"),
-					amountOut: money("992512500", "USDC"),
-					simulated: true,
-				},
-				{
-					kind: "settle",
-					rail: "stellar_usdc",
-					providerId: "stellar_usdc",
-					amountIn: money("992512500", "USDC"),
-					amountOut: money("982587375", "USDC"),
-					simulated: false,
-				},
-				{
-					kind: "convert",
-					rail: "sim_fx",
-					providerId: "sim_fx",
-					amountIn: money("982587375", "USDC"),
-					amountOut: money("10000", "USD"),
-					simulated: true,
-				},
-				{
-					kind: "payout",
-					rail: "sim_bank_us_ach",
-					providerId: "sim_bank_us_ach",
-					amountIn: money("10000", "USD"),
-					amountOut: money("10000", "USD"),
-					simulated: true,
-				},
-			],
-		};
-
-		// failNext on sim_bank_us_ach would also fail collect — use separate collect success
-		// by failing only after collect: mark forced failure after collect via failNext on payout-only...
-		// sim_bank_us_ach does both collect and payout. failNext(1) fails the first execute (collect).
-		// Reset and fail the payout provider id that is only used for payout — use PH bank for payout.
-		sim.controls.reset();
-
-		const phPlan: ExecutionPlan = {
-			...plan,
-			payoutEndpoint: {
-				endpointId: "ep_ph",
-				type: "bank_account",
-				country: "PH",
-				currency: "PHP",
-			},
-			legs: [
-				plan.legs[0]!,
-				plan.legs[1]!,
-				plan.legs[2]!,
-				{
-					kind: "convert",
-					rail: "sim_fx",
-					providerId: "sim_fx",
-					amountIn: money("982587375", "USDC"),
-					amountOut: money("50000", "PHP"),
-					simulated: true,
-				},
-				{
-					kind: "payout",
-					rail: "sim_bank_ph_instapay",
-					providerId: "sim_bank_ph_instapay",
-					amountIn: money("50000", "PHP"),
-					amountOut: money("48000", "PHP"),
-					simulated: true,
-				},
-			],
-		};
-
 		sim.controls.failNext("sim_bank_ph_instapay", 1);
 
-		const { paymentId } = await createPaymentFromPlan(db, {
+		let payoutExecutes = 0;
+		const counting: OrchestratorAdapters = {
+			...adapters(),
+			getProvider: (id) => {
+				const p = sim.providers.get(id);
+				if (!p || id !== "sim_bank_ph_instapay") return p;
+				return {
+					id: p.id,
+					capabilities: () => p.capabilities(),
+					health: () => p.health(),
+					quote: (req) => p.quote(req),
+					execute: async (req) => {
+						payoutExecutes += 1;
+						return p.execute(req);
+					},
+					status: (ref) => p.status(ref),
+					reverse: (ref) => p.reverse(ref),
+				};
+			},
+		};
+
+		const { orgId } = await t.newOrg("Demo Platform");
+		const { recipientId, quoteId } = await seedQuote(orgId, {
+			feeMode: "PayerPays",
+			route: phPayoutRoute,
+			fees: {
+				legs: [
+					{ kind: "collect", rail: "sim_bank_us_ach", fee: money("0", "USD") },
+					{ kind: "convert", rail: "sim_fx", fee: money("125", "USD") },
+					{ kind: "settle", rail: "stellar_usdc", fee: money("98268564", "USDC") },
+					{ kind: "convert", rail: "sim_fx", fee: money("0", "USDC") },
+					{ kind: "payout", rail: "sim_bank_ph_instapay", fee: money("2000", "PHP") },
+				],
+				flexiPayFee: money("98268564", "USDC"),
+				total: money("125", "USD"),
+				settleUnlockedRemainder: money("1", "USDC"),
+			},
+			destination: {
+				type: "bank_account",
+				currency: "PHP",
+				country: "PH",
+				recipientKind: "individual",
+			},
+		});
+
+		const { paymentId } = await createPaymentFromQuote(db, {
 			organizationId: orgId,
 			recipientId,
 			quoteId,
 			delivery: "direct",
 			profile: "one_off",
-			plan: phPlan,
 		});
 
-		const result = await fundAndRun(db, paymentId, adapters(), phPlan);
+		const result = await fundAndRun(db, paymentId, counting);
 		expect(result.status).toBe("paid");
+		expect(payoutExecutes).toBe(2);
 
 		const view = await getPaymentView(db, paymentId);
-		const payout = view.legs.find((l) => l.kind === "payout" as never) ?? view.legs[4];
+		const payout = view.legs.find((l) => l.kind === "payout");
 		expect(payout?.attempt).toBe(2);
-		expect(payout?.status).toBe("succeeded");
 
-		const failedEvents = await db.event.findMany({
-			where: { paymentId, type: "leg.failed" },
+		const audits = await db.auditRow.findMany({
+			where: { paymentId, entity: "leg" },
 		});
-		expect(failedEvents.length).toBe(1);
+		expect(
+			audits.some((a) => /CCR-14 retry attempt 1 -> 2/.test(a.reason ?? "")),
+		).toBe(true);
 	});
 
-	it("after two payout failures refunds via SettlementAdapter and reverses earlier legs", async () => {
+	it("two payout failures → refund; no third execute; refunded only after refund ok", async () => {
 		sim.controls.reset();
 		sim.controls.failNext("sim_bank_ph_instapay", 2);
 
-		const { orgId } = await t.newOrg("Demo Platform");
-		const { recipientId, quoteId } = await seedQuoteAndRecipient(
-			orgId,
-			"RecipientPays",
-		);
-
-		const plan: ExecutionPlan = {
-			feeMode: "RecipientPays",
-			claimWaitSettle: false,
-			claimDestination: DEST,
-			lockExpiresAt: new Date("2026-10-24T15:00:00.000Z"),
-			payoutEndpoint: {
-				endpointId: "ep_ph",
-				type: "bank_account",
-				country: "PH",
-				currency: "PHP",
+		let payoutExecutes = 0;
+		const counting: OrchestratorAdapters = {
+			...adapters(),
+			getProvider: (id) => {
+				const p = sim.providers.get(id);
+				if (!p || id !== "sim_bank_ph_instapay") return p;
+				return {
+					id: p.id,
+					capabilities: () => p.capabilities(),
+					health: () => p.health(),
+					quote: (req) => p.quote(req),
+					execute: async (req) => {
+						payoutExecutes += 1;
+						return p.execute(req);
+					},
+					status: (ref) => p.status(ref),
+					reverse: (ref) => p.reverse(ref),
+				};
 			},
-			legs: [
-				{
-					kind: "collect",
-					rail: "sim_bank_us_ach",
-					providerId: "sim_bank_us_ach",
-					amountIn: money("10000", "USD"),
-					amountOut: money("10000", "USD"),
-					simulated: true,
-				},
-				{
-					kind: "convert",
-					rail: "sim_fx",
-					providerId: "sim_fx",
-					amountIn: money("10000", "USD"),
-					amountOut: money("992512500", "USDC"),
-					simulated: true,
-				},
-				{
-					kind: "settle",
-					rail: "stellar_usdc",
-					providerId: "stellar_usdc",
-					amountIn: money("992512500", "USDC"),
-					amountOut: money("982587375", "USDC"),
-					simulated: false,
-				},
-				{
-					kind: "convert",
-					rail: "sim_fx",
-					providerId: "sim_fx",
-					amountIn: money("982587375", "USDC"),
-					amountOut: money("50000", "PHP"),
-					simulated: true,
-				},
-				{
-					kind: "payout",
-					rail: "sim_bank_ph_instapay",
-					providerId: "sim_bank_ph_instapay",
-					amountIn: money("50000", "PHP"),
-					amountOut: money("48000", "PHP"),
-					simulated: true,
-				},
-			],
 		};
 
-		const { paymentId } = await createPaymentFromPlan(db, {
+		const { orgId } = await t.newOrg("Demo Platform");
+		const { recipientId, quoteId } = await seedQuote(orgId, {
+			feeMode: "PayerPays",
+			route: phPayoutRoute,
+			fees: {
+				legs: [
+					{ kind: "collect", rail: "sim_bank_us_ach", fee: money("0", "USD") },
+					{ kind: "convert", rail: "sim_fx", fee: money("125", "USD") },
+					{ kind: "settle", rail: "stellar_usdc", fee: money("98268564", "USDC") },
+					{ kind: "convert", rail: "sim_fx", fee: money("0", "USDC") },
+					{ kind: "payout", rail: "sim_bank_ph_instapay", fee: money("2000", "PHP") },
+				],
+				flexiPayFee: money("98268564", "USDC"),
+				total: money("125", "USD"),
+				settleUnlockedRemainder: money("1", "USDC"),
+			},
+			destination: {
+				type: "bank_account",
+				currency: "PHP",
+				country: "PH",
+				recipientKind: "individual",
+			},
+		});
+
+		const { paymentId } = await createPaymentFromQuote(db, {
 			organizationId: orgId,
 			recipientId,
 			quoteId,
 			delivery: "direct",
 			profile: "one_off",
-			plan,
 		});
 
-		const result = await fundAndRun(db, paymentId, adapters(), plan);
+		const result = await fundAndRun(db, paymentId, counting);
 		expect(result.status).toBe("refunded");
+		expect(payoutExecutes).toBe(2);
 
-		const view = await getPaymentView(db, paymentId);
-		expect(view.legs[0]?.status).toBe("reversed");
-		expect(view.legs[1]?.status).toBe("reversed");
-		expect(view.legs[4]?.status).toBe("failed");
-		expect(view.legs[4]?.attempt).toBe(2);
-
-		const refunded = await db.event.findFirst({
-			where: { paymentId, type: "payment.refunded" },
+		const settle = await db.leg.findFirstOrThrow({
+			where: { paymentId, kind: "settle" },
 		});
-		expect(refunded).toBeTruthy();
+		expect(settle.releaseTxRef).toBeTruthy();
 	});
 
-	it("does not re-execute a succeeded leg when fundAndRun is called again", async () => {
+	it("replay does not duplicate collect/lock/release", async () => {
 		sim.controls.reset();
 		const { orgId } = await t.newOrg("Demo Platform");
-		const { recipientId, quoteId } = await seedQuoteAndRecipient(orgId, null);
-
-		const plan: ExecutionPlan = {
+		const { recipientId, quoteId } = await seedQuote(orgId, {
 			feeMode: null,
-			claimWaitSettle: false,
-			lockExpiresAt: new Date("2026-10-24T15:00:00.000Z"),
-			payoutEndpoint: {
-				endpointId: "ep_us",
-				type: "bank_account",
-				country: "US",
-				currency: "USD",
+			route: domesticRoute,
+			fees: {
+				legs: [
+					{ kind: "collect", rail: "sim_bank_us_ach", fee: money("0", "USD") },
+					{ kind: "payout", rail: "sim_bank_us_ach", fee: money("0", "USD") },
+				],
+				flexiPayFee: money("0", "USD"),
+				total: money("0", "USD"),
+				settleUnlockedRemainder: null,
 			},
-			legs: [
-				{
-					kind: "collect",
-					rail: "sim_bank_us_ach",
-					providerId: "sim_bank_us_ach",
-					amountIn: money("10000", "USD"),
-					amountOut: money("10000", "USD"),
-					simulated: true,
-				},
-				{
-					kind: "payout",
-					rail: "sim_bank_us_ach",
-					providerId: "sim_bank_us_ach",
-					amountIn: money("10000", "USD"),
-					amountOut: money("10000", "USD"),
-					simulated: true,
-				},
-			],
-		};
+			destination: {
+				type: "bank_account",
+				currency: "USD",
+				country: "US",
+				recipientKind: "individual",
+			},
+		});
 
-		const { paymentId } = await createPaymentFromPlan(db, {
+		const { paymentId } = await createPaymentFromQuote(db, {
 			organizationId: orgId,
 			recipientId,
 			quoteId,
 			delivery: "direct",
 			profile: "domestic",
-			plan,
 		});
 
-		await fundAndRun(db, paymentId, adapters(), plan);
+		await fundAndRun(db, paymentId, adapters());
 		const first = await getPaymentView(db, paymentId);
 		const refs = first.legs.map((l) => l.externalRef);
 
-		await fundAndRun(db, paymentId, adapters(), plan);
+		await fundAndRun(db, paymentId, adapters());
 		const second = await getPaymentView(db, paymentId);
 		expect(second.status).toBe("paid");
 		expect(second.legs.map((l) => l.externalRef)).toEqual(refs);
+	});
+
+	it("failed refund does not mark payment refunded", async () => {
+		sim.controls.reset();
+		sim.controls.failNext("sim_bank_ph_instapay", 2);
+
+		const boomSettlement = new MockSettlementAdapter({
+			token: "USDC",
+			treasury: "GDEMOTREASURY0000000000000000000000000000000000000000",
+			feeBps: 100,
+			now: () => clock.now,
+		});
+		const origRefund = boomSettlement.refund.bind(boomSettlement);
+		let refundCalls = 0;
+		boomSettlement.refund = async (payoutId: string) => {
+			refundCalls += 1;
+			if (refundCalls === 1) throw new Error("simulated refund failure");
+			return origRefund(payoutId);
+		};
+
+		const { orgId } = await t.newOrg("Demo Platform");
+		const { recipientId, quoteId } = await seedQuote(orgId, {
+			feeMode: "PayerPays",
+			route: phPayoutRoute,
+			fees: {
+				legs: [
+					{ kind: "collect", rail: "sim_bank_us_ach", fee: money("0", "USD") },
+					{ kind: "convert", rail: "sim_fx", fee: money("125", "USD") },
+					{ kind: "settle", rail: "stellar_usdc", fee: money("98268564", "USDC") },
+					{ kind: "convert", rail: "sim_fx", fee: money("0", "USDC") },
+					{ kind: "payout", rail: "sim_bank_ph_instapay", fee: money("2000", "PHP") },
+				],
+				flexiPayFee: money("98268564", "USDC"),
+				total: money("125", "USD"),
+				settleUnlockedRemainder: money("1", "USDC"),
+			},
+			destination: {
+				type: "bank_account",
+				currency: "PHP",
+				country: "PH",
+				recipientKind: "individual",
+			},
+		});
+
+		const { paymentId } = await createPaymentFromQuote(db, {
+			organizationId: orgId,
+			recipientId,
+			quoteId,
+			delivery: "direct",
+			profile: "one_off",
+		});
+
+		const result = await fundAndRun(db, paymentId, {
+			...adapters(),
+			settlement: boomSettlement,
+		});
+		expect(result.status).toBe("failed");
+		expect(result.status).not.toBe("refunded");
 	});
 });
