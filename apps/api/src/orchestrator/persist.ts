@@ -84,6 +84,47 @@ export async function transitionPayment(
 			},
 		});
 	}
+	if (to === "paid") await emitBatchCompletedIfDone(db, paymentId, organizationId);
+}
+
+/** `batch.completed` (§9): once, when the last payment of a batch becomes paid. */
+async function emitBatchCompletedIfDone(
+	db: Db,
+	paymentId: string,
+	organizationId: string,
+): Promise<void> {
+	const payment = await db.payment.findUnique({
+		where: { id: paymentId },
+		select: { batchId: true },
+	});
+	if (!payment?.batchId) return;
+	const siblings = await db.payment.findMany({
+		where: { batchId: payment.batchId },
+		select: { id: true, status: true },
+		orderBy: { createdAt: "asc" },
+	});
+	if (!siblings.every((p) => p.status === "paid")) return;
+	const existing = await db.event.findFirst({
+		where: {
+			organizationId,
+			type: "batch.completed",
+			snapshot: { path: ["batchId"], equals: payment.batchId },
+		},
+	});
+	if (existing) return;
+	await db.event.create({
+		data: {
+			id: newId("evt"),
+			organizationId,
+			type: "batch.completed",
+			paymentId: null,
+			snapshot: {
+				batchId: payment.batchId,
+				status: "completed",
+				paymentIds: siblings.map((p) => p.id),
+			},
+		},
+	});
 }
 
 export async function transitionLeg(

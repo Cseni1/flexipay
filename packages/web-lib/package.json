@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./index.ts",
+    "./contract": "./contract.ts",
     "./claim-contract": "./claim-contract.ts",
     "./claim-endpoint": "./claim-endpoint.ts",
     "./styles.css": "./styles.css"
