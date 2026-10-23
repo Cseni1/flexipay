@@ -1,8 +1,8 @@
 import { formatMoney } from "@flexipay/web-lib"
+import { type ClaimLinkHandle } from "@flexipay/web-lib/contract"
 import { useEffect, useRef, useState } from "react"
-import { useParams } from "react-router-dom"
+import { useLocation, useParams } from "react-router-dom"
 import {
-	AUTH_NOT_CONFIGURED_MESSAGE,
 	ApiError,
 	describeApiError,
 	fundPayment,
@@ -32,8 +32,26 @@ const formatTimestamp = (iso: string): string =>
 		timeStyle: "short",
 	}).format(new Date(iso))
 
+// The API returns the claim token only on create. Map its /v1/claims/{token} path onto the
+// browser claim route; never persist or log the token.
+const claimPageHref = (link: ClaimLinkHandle): string => {
+	try {
+		const token = new URL(link.url, window.location.origin).pathname
+			.split("/")
+			.filter(Boolean)
+			.at(-1)
+		return token ? `/claim/${encodeURIComponent(token)}` : link.url
+	} catch {
+		return link.url
+	}
+}
+
 export default function PaymentDetail() {
 	const { paymentId } = useParams<{ paymentId: string }>()
+	const location = useLocation()
+	const handedOffClaimLink =
+		(location.state as { claimLink?: ClaimLinkHandle | null } | null)
+			?.claimLink ?? null
 	const { payment, error, loading, refresh } = usePaymentDetail(paymentId)
 	const [funding, setFunding] = useState(false)
 	const [fundError, setFundError] = useState<string | null>(null)
@@ -75,6 +93,7 @@ export default function PaymentDetail() {
 
 	const status = payment?.status
 	const firstLeg = payment?.legs[0]
+	const claimLink = payment?.claimLink ?? handedOffClaimLink
 	const settleLeg = payment?.legs.find((leg) => leg.kind === "settle")
 	const lastLeg = payment?.legs.at(-1)
 	const canFund =
@@ -94,7 +113,12 @@ export default function PaymentDetail() {
 				}
 			/>
 
-			<Notice tone="warning">{AUTH_NOT_CONFIGURED_MESSAGE}</Notice>
+			{authBlocked ? (
+				<Notice tone="warning">
+					The local API proxy could not authenticate. Set the server-side
+					FP_API_KEY for Vite, then restart the dev server.
+				</Notice>
+			) : null}
 
 			{error && !payment ? (
 				<Panel title="Payment">
@@ -194,12 +218,11 @@ export default function PaymentDetail() {
 								/>
 							</div>
 
-							{payment.claimLink ? (
+							{claimLink ? (
 								<Notice>
-									Claim link ready until{" "}
-									{formatTimestamp(payment.claimLink.expiresAt)}:{" "}
+									Claim link ready until {formatTimestamp(claimLink.expiresAt)}:{" "}
 									<a
-										href={payment.claimLink.url}
+										href={claimPageHref(claimLink)}
 										target="_blank"
 										rel="noreferrer"
 									>

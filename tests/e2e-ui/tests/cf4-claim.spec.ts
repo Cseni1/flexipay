@@ -39,11 +39,14 @@ async function mockClaimApi(page: Page, options: MockOptions = {}) {
 	let recovered = false
 	let acceptBody: unknown
 	let acceptKey = ""
+	let getAuthHeader: string | undefined
+	let acceptAuthHeader: string | undefined
 	const acceptKeys: string[] = []
 
 	await page.route(/\/v1\/claims\/claim_token_1$/, async (route) => {
 		if (route.request().method() !== "GET") return route.fallback()
 		getCount += 1
+		getAuthHeader = route.request().headers()["authorization"]
 		if (options.getError && (!options.failFirstGet || !recovered)) {
 			await route.fulfill({
 				status: options.getError.status,
@@ -67,6 +70,7 @@ async function mockClaimApi(page: Page, options: MockOptions = {}) {
 
 	await page.route(/\/v1\/claims\/claim_token_1\/accept$/, async (route) => {
 		acceptCount += 1
+		acceptAuthHeader = route.request().headers()["authorization"]
 		acceptBody = route.request().postDataJSON()
 		acceptKey = route.request().headers()["idempotency-key"] ?? ""
 		acceptKeys.push(acceptKey)
@@ -96,6 +100,8 @@ async function mockClaimApi(page: Page, options: MockOptions = {}) {
 		acceptBody: () => acceptBody,
 		acceptKey: () => acceptKey,
 		acceptKeys: () => acceptKeys,
+		getAuthHeader: () => getAuthHeader,
+		acceptAuthHeader: () => acceptAuthHeader,
 		recover: () => {
 			recovered = true
 		},
@@ -162,15 +168,21 @@ test.describe("CF4 claim page", () => {
 			},
 		})
 		expect(counts.acceptKey()).not.toBe("")
+		expect(counts.getAuthHeader()).toBeUndefined()
+		expect(counts.acceptAuthHeader()).toBeUndefined()
 
 		await expect(
 			page.getByText(/Paid: confirmed by the claim API/),
 		).toBeVisible({
 			timeout: 5_000,
 		})
-		expect(
-			await page.evaluate(() => localStorage.length + sessionStorage.length),
-		).toBe(0)
+		// Wallet-kit metadata may exist, but the raw claim token must not be stored.
+		const stored = await page.evaluate(() =>
+			[...Object.entries(localStorage), ...Object.entries(sessionStorage)].map(
+				([key, value]) => `${key}:${value}`,
+			),
+		)
+		expect(stored.some((entry) => entry.includes("claim_token_1"))).toBe(false)
 		expect(consoleMessages.join(" ")).not.toContain("claim_token_1")
 		expect(
 			await page.evaluate(

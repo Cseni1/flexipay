@@ -11,7 +11,6 @@ import {
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import {
-	AUTH_NOT_CONFIGURED_MESSAGE,
 	ApiError,
 	createPayment,
 	createQuote,
@@ -254,7 +253,10 @@ export default function SendPayment() {
 				`payment-${quote.id}`,
 				controller.signal,
 			)
-			void navigate(`/payments/${encodeURIComponent(payment.id)}`)
+			void navigate(`/payments/${encodeURIComponent(payment.id)}`, {
+				// The claim token is returned only on create; GET /payments does not reissue it.
+				state: payment.claimLink ? { claimLink: payment.claimLink } : null,
+			})
 		} catch (cause) {
 			if (controller.signal.aborted) return
 			if (isAuthRequired(cause)) setAuthBlocked(true)
@@ -286,7 +288,12 @@ export default function SendPayment() {
 				}
 			/>
 
-			<Notice tone="warning">{AUTH_NOT_CONFIGURED_MESSAGE}</Notice>
+			{authBlocked ? (
+				<Notice tone="warning">
+					The local API proxy could not authenticate. Set the server-side
+					FP_API_KEY for Vite, then restart the dev server.
+				</Notice>
+			) : null}
 
 			<Grid>
 				<Panel

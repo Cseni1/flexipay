@@ -16,4 +16,9 @@ export default [
 			},
 		},
 	},
+	{
+		// Vite config, proxy and its Node tests run outside the browser.
+		files: ["vite.config.ts", "vite.proxy*.ts"],
+		languageOptions: { globals: globals.node },
+	},
 ]

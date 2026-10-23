@@ -13,6 +13,7 @@ interface MockOptions {
 	startProcessing?: boolean
 	detailStatus?: "failed"
 	detail?: ReturnType<typeof paymentDetailFixture>
+	createClaimLink?: boolean
 }
 
 async function mockApi(page: Page, options: MockOptions = {}) {
@@ -62,7 +63,18 @@ async function mockApi(page: Page, options: MockOptions = {}) {
 		if (options.createDelayMs) {
 			await new Promise((resolve) => setTimeout(resolve, options.createDelayMs))
 		}
-		await route.fulfill({ json: paymentFromDetail(paymentDetailFixture()) })
+		const created = paymentFromDetail(paymentDetailFixture())
+		await route.fulfill({
+			json: options.createClaimLink
+				? {
+						...created,
+						claimLink: {
+							url: "http://api.local/v1/claims/claim_token_1",
+							expiresAt: new Date(Date.now() + 120_000).toISOString(),
+						},
+					}
+				: created,
+		})
 	})
 
 	await page.route(/\/v1\/payments\/pay_1$/, async (route) => {
@@ -162,6 +174,25 @@ test.describe("CF1 payments", () => {
 		expect(counts.createAuthHeader).toBeUndefined()
 	})
 
+	test("a created claim link is handed off to the detail route", async ({
+		page,
+	}) => {
+		await mockApi(page, { createClaimLink: true })
+		await page.goto("/")
+		await fillQuoteForm(page)
+		await page.getByRole("button", { name: "Get quote" }).click()
+		await expect(
+			page.getByRole("heading", { name: "Chosen route" }),
+		).toBeVisible()
+		await page.getByRole("radio", { name: "Claim link" }).check()
+		await page.getByRole("button", { name: "Create payment" }).click()
+
+		await expect(page).toHaveURL(/\/payments\/pay_1$/)
+		const link = page.getByRole("link", { name: "open claim page" })
+		await expect(link).toBeVisible()
+		await expect(link).toHaveAttribute("href", "/claim/claim_token_1")
+	})
+
 	test("an explicit crypto corridor and fee mode are sent without a default", async ({
 		page,
 	}) => {
@@ -204,7 +235,7 @@ test.describe("CF1 payments", () => {
 		await page.getByRole("button", { name: "Get quote" }).click()
 
 		await expect(
-			page.getByText(/Frontend API authentication is not configured/).first(),
+			page.getByText(/API rejected the server-side key/).first(),
 		).toBeVisible()
 		await expect(
 			page.getByRole("button", { name: "Authentication required" }),
