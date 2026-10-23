@@ -1,0 +1,273 @@
+.app-shell {
+	display: grid;
+	grid-template-columns: 15.5rem minmax(0, 1fr);
+	min-height: 100vh;
+}
+
+.app-sidebar {
+	position: sticky;
+	top: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 1.5rem;
+	height: 100vh;
+	padding: 1.5rem 1.1rem;
+	border-right: 1px solid var(--fp-line);
+	background: #ffffff;
+}
+
+.app-brand {
+	display: inline-flex;
+	color: var(--fp-ink);
+	text-decoration: none;
+}
+
+.app-brand__name {
+	margin: 0;
+	font-size: 1.35rem;
+	letter-spacing: -0.03em;
+}
+
+.app-brand__name::before {
+	display: inline-block;
+	width: 0.62rem;
+	height: 0.62rem;
+	margin-right: 0.5rem;
+	border-radius: 50%;
+	background: var(--color-accent);
+	content: "";
+	vertical-align: 0.08em;
+}
+
+.app-brand__note {
+	margin: 0.35rem 0 0;
+	color: var(--fp-muted);
+	font-size: 0.78rem;
+}
+
+.app-nav {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+}
+
+.nav-link {
+	display: flex;
+	align-items: center;
+	gap: 0.65rem;
+	padding: 0.6rem 0.7rem;
+	border-radius: var(--radius-sm);
+	color: var(--fp-muted);
+	font-size: 0.92rem;
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.nav-link:hover {
+	background: var(--fp-teal-50);
+	color: var(--fp-ink);
+}
+
+.nav-link.active {
+	background: var(--fp-teal-50);
+	color: var(--color-accent-strong);
+}
+
+.nav-link__dot {
+	width: 0.45rem;
+	height: 0.45rem;
+	border-radius: 50%;
+	background: currentColor;
+}
+
+.app-sidebar__footer {
+	display: grid;
+	gap: 0.55rem;
+	margin-top: auto;
+	padding-top: 1rem;
+	border-top: 1px solid var(--fp-line);
+}
+
+.env-row {
+	display: flex;
+	align-items: center;
+	gap: 0.45rem;
+}
+
+.app-sidebar__caption {
+	margin: 0;
+	color: var(--fp-muted);
+	font-size: 0.76rem;
+	line-height: 1.45;
+}
+
+.app-body {
+	min-width: 0;
+}
+
+.app-main {
+	width: 100%;
+	max-width: 76rem;
+	margin: 0 auto;
+	padding: 2rem clamp(1rem, 3vw, 2.5rem) 4rem;
+}
+
+.page {
+	display: grid;
+	gap: 1.5rem;
+}
+
+.page-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 1.5rem;
+}
+
+.eyebrow {
+	margin: 0 0 0.35rem;
+	color: var(--color-accent);
+	font-size: 0.74rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.page-header__title {
+	margin: 0;
+	font-size: clamp(1.6rem, 2.4vw, 2.25rem);
+	letter-spacing: -0.035em;
+	line-height: 1.15;
+}
+
+.page-header__description {
+	max-width: 44rem;
+	margin: 0.55rem 0 0;
+	color: var(--fp-muted);
+	line-height: 1.55;
+}
+
+.page-header__actions {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.grid {
+	display: grid;
+	align-items: start;
+	gap: 1.25rem;
+}
+
+.grid--2 {
+	grid-template-columns: minmax(0, 1.55fr) minmax(18rem, 0.9fr);
+}
+
+.grid--3 {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.stack {
+	display: grid;
+	gap: 1rem;
+}
+
+.muted {
+	margin: 0;
+	color: var(--fp-muted);
+	line-height: 1.55;
+}
+
+.phone-shell {
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	min-height: 100vh;
+	padding: clamp(1rem, 4vw, 3rem);
+	background:
+		radial-gradient(circle at 15% 0%, #dff7f0 0, transparent 32rem),
+		var(--fp-canvas);
+}
+
+.phone-frame {
+	display: grid;
+	gap: 1.25rem;
+	width: min(100%, 27rem);
+	padding: 1.35rem;
+	border: 1px solid var(--fp-line);
+	border-radius: 1.75rem;
+	background: #ffffff;
+	box-shadow: var(--shadow-md);
+}
+
+.phone-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	padding-bottom: 0.9rem;
+	border-bottom: 1px solid var(--fp-line);
+}
+
+.phone-brand {
+	color: var(--color-accent-strong);
+	font-weight: 800;
+	letter-spacing: -0.03em;
+}
+
+.phone-title {
+	margin: 0.3rem 0 0.5rem;
+	font-size: 1.55rem;
+	letter-spacing: -0.03em;
+	line-height: 1.15;
+}
+
+@media (max-width: 900px) {
+	.app-shell {
+		grid-template-columns: 1fr;
+	}
+
+	.app-sidebar {
+		position: static;
+		height: auto;
+		padding: 1rem;
+		border-right: 0;
+		border-bottom: 1px solid var(--fp-line);
+	}
+
+	.app-nav {
+		flex-direction: row;
+	}
+
+	.app-sidebar__footer {
+		margin-top: 0;
+	}
+
+	.grid--2,
+	.grid--3 {
+		grid-template-columns: 1fr;
+	}
+}
+
+@media (max-width: 640px) {
+	.page-header {
+		flex-direction: column;
+	}
+
+	.app-main {
+		padding-top: 1.25rem;
+	}
+
+	.phone-shell {
+		padding: 0;
+	}
+
+	.phone-frame {
+		min-height: 100vh;
+		padding: 1rem;
+		border: 0;
+		border-radius: 0;
+		box-shadow: none;
+	}
+}
