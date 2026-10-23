@@ -91,13 +91,15 @@ Status: **approved** by the project owner on 23 Oct 2026. The documents `PRODUCT
 8. **API contract first (task A0):** the zod schemas for quote, payment, claim, event and sandbox bodies are added to `packages/domain` before the other lanes build against them.
 9. **Lanes** replace named owners (DEV_PLAN section 2). Acceptance is a demo script per flow.
 
-## CCR-6: sandbox `advance-time` request body (proposed; identifier preserved, 22–23 Oct 2026)
+## CCR-6: sandbox `advance-time` request body (accepted, 23 Oct 2026)
 
-- **From:** A0 / sandbox stubs (`packages/domain/src/api/sandbox.ts`, OpenAPI).
-- **Status:** **proposed — not contracted.** Identifier **CCR-6 stays with advance-time** (do not reuse for simulation flags).
-- **What:** accept an explicit request body for `POST /v1/sandbox/advance-time` (e.g. seconds or target clock) so N1/N3 expiry demos are typed. Until accepted, the route may exist as a stub without a success/request schema on main.
-- **Why:** ARCHITECTURE §10 and SCENARIOS N1/N3 move the API clock for quote/claim expiry; ledger time is separate (CCR-5).
-- **Who is affected:** A0, CC3 sandbox routes, D1 negative cases.
+- **From:** A0 / sandbox stubs (`packages/domain/src/api/sandbox.ts`, OpenAPI); #43 ask.
+- **Status:** **accepted and applied.** Identifier **CCR-6 stays with advance-time** (do not reuse for simulation flags).
+- **Accepted shape:**
+  - **Request:** `{ seconds: int 1..86400 }` (strict).
+  - **Response:** `{ now: IsoTimestamp }` — API clock **after** the advance.
+  - Moves **API clock only** (quote/claim expiry). Does **not** move Stellar ledger time (CCR-5).
+- **Who implements:** A0 schemas (this commit); CC3b sandbox route mounts the schemas.
 - **Note:** An earlier draft briefly labelled per-leg `simulated` as “CCR-6”; that topic is **CCR-10** below. Both requests remain under distinct ids.
 
 ## CCR-7: `Quote.fees.total` aggregation (accepted; option A rates applied, 23 Oct 2026)
@@ -205,3 +207,45 @@ Status: **approved** by the project owner on 23 Oct 2026. The documents `PRODUCT
 - **Evidence:** attempt 1 failure → attempt 2 execution → on second failure `refund_vault` (no attempt 3). Durable `Leg.attempt` (Prisma + A0) is the source of truth.
 - **Forbidden:** undocumented bypass of other `assertLegTransition` paths; treating text-only timelines as proof.
 - **Who implements:** CC2 (already close); expose `attempt` on A0 `LegSchema` this commit.
+
+## CCR-15: orphan-lock recovery after fee-drift (accepted, 23 Oct 2026)
+
+- **From:** integrator review of CC2 fee-drift path (`run.ts`); #32 follow-up.
+- **Status:** **accepted.** Persisting refs alone does **not** complete recovery.
+- **Required behavior:**
+  1. **Persist first:** immediately after `lock` returns, write settle `externalRef = locked.payoutId` and `lockTxRef = locked.txRef` (and emit `payment.onchain` lock phase). **Then** compare `locked.fee` to quoted `flexiPayFee`.
+  2. **On fee mismatch after persist:** keep those refs; mark the settle leg **failed** (durable error); do **not** clear refs. Call **`refund_vault`** for that `payoutId` (same adapter path as payout failure) so funds are not left Pending forever. Then surface the drift error to the caller.
+  3. **Crash window** (lock succeeded, persist not yet written): before calling `lock` when `externalRef` is null, if this payment already advanced `lockAttempt`, call `SettlementAdapter.findLock(vaultPayer, paymentId, attempt)`. If a payout id is found, adopt it into `externalRef`/`lockTxRef` (`txRef` may stay null if unknown) and **skip** create/lock; continue with fee check / claim-wait. Never call `lock` again for the same `(paymentId, attempt)`.
+  4. **Replay when `externalRef` is set:** CCR-12 status/release path only; never re-lock.
+- **Who implements:** CC2 orchestrator (Csaba). Integrator reviews; does not duplicate CC2.
+
+## CCR-16: `POST/GET /v1/endpoints` (accepted, 23 Oct 2026)
+
+- **From:** #43 contract asks.
+- **Status:** **accepted and applied** (A0 schemas this commit).
+- **Auth:** `api_key`.
+- **POST body:** `{ recipientId, type, country, currency, network, details, simulated: true }` with §6.3 country/network rules.
+  - crypto (`crypto_wallet` | `crypto_custodial`): `country=""`, `network:"stellar"`, `details.address` (string).
+  - `bank_account`: country ISO, `network:null`, `details.accountNumber` (string).
+  - `ewallet`: country ISO, `network:null`, `details.phoneNumber` (string).
+  - No other detail keys; no `syntheticRef` in the contract (map fixture refs into these keys at the caller).
+- **Response:** `EndpointSchema` (`id`, `organizationId`, `recipientId`, type/country/currency/network, `details` masked strings, `simulated`, `createdAt`).
+- **GET** `/v1/endpoints?recipientId=` optional → `{ endpoints: Endpoint[] }`.
+- **Who implements:** A0 schemas (integrator); CC3b routes (Csaba).
+
+## CCR-17: claim-accept `details` keys (accepted, 23 Oct 2026)
+
+- **From:** #43; unblocks fiat claim accept.
+- **Status:** **accepted and applied.**
+- **Rule:** `ClaimAcceptEndpointSchema.details` uses the **same type-specific keys** as CCR-16 (`address` | `accountNumber` | `phoneNumber`). Values are opaque strings.
+- **Who implements:** A0 (integrator); CC3 claims route removes the temporary fiat/details block once schemas land.
+
+## CCR-18: `POST/GET /v1/batches` (accepted, 23 Oct 2026)
+
+- **From:** #43 contract asks.
+- **Status:** **accepted and applied** (A0 schemas this commit).
+- **Auth:** `api_key`.
+- **POST body:** `{ feeMode, rows: [{ recipientId, endpointId, amount (Money), externalId, profile: "batch" }] }` (1..50 rows).
+- **Implementation rule:** create quote + payment **per row via the existing CC3a payment engine** (no second orchestrator).
+- **Response / GET** `/v1/batches/{id}`: `{ id, organizationId, status, paymentIds, totals: { count }, createdAt }` with `status ∈ open|processing|completed|failed`.
+- **Who implements:** A0 schemas (integrator); CC3b routes (Csaba).
