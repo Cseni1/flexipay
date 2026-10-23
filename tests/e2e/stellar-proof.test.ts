@@ -305,6 +305,11 @@ describe("vault release proof", () => {
 			verifyVaultRelease(releaseOptions({ fee: "7" })),
 		).rejects.toThrow(/not f\(P\)=floor\(P\*bps\/10000\)/)
 		vi.unstubAllGlobals()
+		vi.stubGlobal("fetch", pairRpc())
+		await expect(
+			verifyVaultRelease(releaseOptions({ vaultFeeBps: 50, fee: "1" })),
+		).rejects.toThrow(/not f\(P\)=.*at deployed 50 bps/)
+		vi.unstubAllGlobals()
 	})
 
 	it("rejects a release to another recipient", async () => {

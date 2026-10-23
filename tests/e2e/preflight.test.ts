@@ -1,5 +1,13 @@
-import { afterEach, describe, expect, it, vi } from "vitest"
-import { maskAddress, maskPath, maskValue } from "../../scripts/demo/lib/env.ts"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest"
+import {
+	maskAddress,
+	maskPath,
+	maskValue,
+	readVaultEvidence,
+} from "../../scripts/demo/lib/env.ts"
 import {
 	probeRoutes,
 	routeGaps,
@@ -154,6 +162,23 @@ describe("runtime route probe", () => {
 		expect(probe.methodMismatches).toEqual([])
 	})
 
+	it("does not treat a generic 404 as proof the route is absent", async () => {
+		for (const body of [undefined, { code: "not_found" }]) {
+			stub(options(404, undefined, body))
+			const probe = await probeRoutes("http://127.0.0.1:1", [QUOTE], 1_000)
+			expect(probe.missing, JSON.stringify(body)).toEqual([])
+		}
+	})
+
+	it("confirms a missing GET route from the catch-all on a safe GET probe", async () => {
+		stub(
+			options(204),
+			options(404, undefined, { code: "not_found", message: "No such route" }),
+		)
+		const probe = await probeRoutes("http://127.0.0.1:1", [PAYMENT], 1_000)
+		expect(probe.missing.map((gap) => gap.path)).toEqual(["/v1/payments/{id}"])
+	})
+
 	it("skips the probe when the API is unreachable", async () => {
 		vi.stubGlobal(
 			"fetch",
@@ -163,6 +188,30 @@ describe("runtime route probe", () => {
 		)
 		const probe = await probeRoutes("http://127.0.0.1:1", [QUOTE], 1_000)
 		expect(probe).toEqual({ missing: [], methodMismatches: [] })
+	})
+})
+
+describe("vault fee evidence", () => {
+	const dir = mkdtempSync(join(tmpdir(), "flexipay-ids-"))
+	afterAll(() => rmSync(dir, { recursive: true, force: true }))
+
+	it("reads the deployed vault id and fee from existing public evidence", () => {
+		const file = join(dir, "ids.env")
+		writeFileSync(file, 'FP_PAYOUT_VAULT_ID="CVAULT"\nFP_VAULT_FEE_BPS=100\n')
+		expect(readVaultEvidence(file)).toEqual({
+			ok: true,
+			evidence: { vaultId: "CVAULT", feeBps: 100, source: file },
+		})
+	})
+
+	it("refuses absent or out-of-range fee evidence instead of defaulting", () => {
+		expect(readVaultEvidence(join(dir, "missing.env")).ok).toBe(false)
+		const file = join(dir, "bad.env")
+		writeFileSync(file, "FP_PAYOUT_VAULT_ID=CVAULT\nFP_VAULT_FEE_BPS=2000\n")
+		expect(readVaultEvidence(file)).toMatchObject({
+			ok: false,
+			problem: /0\.\.1000/,
+		})
 	})
 })
 

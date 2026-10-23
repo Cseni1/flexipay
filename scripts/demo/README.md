@@ -47,7 +47,7 @@ FP_API_URL=http://127.0.0.1:3000 FP_API_KEY=... node scripts/demo/df2-one-off.ts
 FP_API_URL=... FP_API_KEY=... FP_SETTLEMENT=stellar \
 FP_RECIPIENT_A_ADDRESS=G... FP_STELLAR_RPC_URL=https://... \
 FP_STELLAR_NETWORK_PASSPHRASE='Test SDF Network ; September 2015' \
-FP_PAYOUT_VAULT_ID=C... FP_VAULT_FEE_BPS=100 \
+FP_PAYOUT_VAULT_ID=C... \
 node scripts/demo/df3-claim.ts --mode stellar
 
 # every mock flow, plus DF3 on Stellar
@@ -67,7 +67,13 @@ Prerequisites are read from the environment; nothing is committed.
 | `FP_STELLAR_RPC_URL`            | Public testnet RPC used to verify the release hash                 |
 | `FP_STELLAR_NETWORK_PASSPHRASE` | Expected testnet passphrase, checked against the RPC               |
 | `FP_PAYOUT_VAULT_ID`            | Public payout_vault contract id the lock/release must invoke       |
-| `FP_VAULT_FEE_BPS`              | Optional; API/adapter boot only — acceptance fee checks use the frozen quote |
+
+DF3 does not take a vault fee from its own environment. On Stellar it reads the
+deployed fee recorded in `scripts/testnet/testnet-ids.env` (the same public
+evidence the API validates against on-chain `config()`) and refuses to run if
+that file names a different vault. Mock mode checks frozen-quote vault-math
+identities only. A separate caller `FP_VAULT_FEE_BPS` is not an acceptance
+input.
 
 `FP_API_URL` and `FP_API_KEY` are missing from the root `.env.example`; that
 file is owned by the integrator. Until they are added, pass them inline or
@@ -125,12 +131,12 @@ passed.
   claim hash, the release must be `claim` of that payout id to
   `FP_RECIPIENT_A_ADDRESS`, and the release secret must hash to the lock's claim
   hash. It also checks CCR-13: lock principal = quoted settle `amountIn`,
-  `feeMode` = quote, `fee` = quoted `f(P)` (vault math, not a script-chosen
-  `FP_VAULT_FEE_BPS`), release net = `P` (PayerPays) or `P - f(P)` (RecipientPays),
-  and PayerPays
-  `P = floor(A * 10000 / (10000 + bps))`. Both transactions must be successful,
-  distinct and in non-decreasing ledger order. A 64-hex string alone is never
-  treated as proof, and `--mode` only says what was requested.
+  `feeMode` = quote, `fee` = `f(P)` at the deployed fee in
+  `scripts/testnet/testnet-ids.env` (Stellar) or quote-identity vault math
+  (mock), release net = `P` (PayerPays) or `P - f(P)` (RecipientPays), and
+  PayerPays `P = floor(A * 10000 / (10000 + bps))`. Both transactions must be
+  successful, distinct and in non-decreasing ledger order. A 64-hex string alone
+  is never treated as proof, and `--mode` only says what was requested.
 - **DF4** — `fail-next` makes the first payout and its retry fail; the payout
   stays failed, collect and convert reverse, and the payment is refunded.
   CCR-14: the two attempts are proven from the durable `Leg.attempt` in two

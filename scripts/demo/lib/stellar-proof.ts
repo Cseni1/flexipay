@@ -327,6 +327,12 @@ export async function verifyVaultRelease(options: {
 	feeMode: FeeMode
 	fee: string
 	net: string
+	/**
+	 * Deployed vault fee bps from public testnet evidence (`testnet-ids.env`). When set, fee must
+	 * equal f(P) at that rate. When omitted, fee must equal f(P) for some 0..1000 bps (mock).
+	 * Never a caller-chosen acceptance env override.
+	 */
+	vaultFeeBps?: number
 	rpcUrl: string
 	networkPassphrase: string
 	timeoutMs: number
@@ -416,21 +422,33 @@ export async function verifyVaultRelease(options: {
 		)
 	}
 
-	// Fee comes from the frozen quote (CCR-13), not an independently chosen FP_VAULT_FEE_BPS.
-	// It must equal f(P)=floor(P*bps/10000) for some vault bps in 0..1000.
+	// Frozen quote fee (CCR-13). Against deployed evidence use that bps; otherwise any 0..1000.
 	const principalMinor = BigInt(options.principal)
 	const feeMinor = BigInt(options.fee)
-	let feeMatchesVaultMath = false
-	for (let bps = 0; bps <= 1000; bps++) {
-		if ((principalMinor * BigInt(bps)) / 10_000n === feeMinor) {
-			feeMatchesVaultMath = true
-			break
+	if (options.vaultFeeBps !== undefined) {
+		const bps = options.vaultFeeBps
+		if (!Number.isInteger(bps) || bps < 0 || bps > 1000) {
+			fail(`vault fee bps ${bps} is outside 0..1000`)
 		}
-	}
-	if (!feeMatchesVaultMath) {
-		fail(
-			`frozen fee ${options.fee} is not f(P)=floor(P*bps/10000) for any vault fee 0..1000 bps`,
-		)
+		const computedFee = ((principalMinor * BigInt(bps)) / 10_000n).toString()
+		if (computedFee !== options.fee) {
+			fail(
+				`frozen fee ${options.fee} is not f(P)=${computedFee} at deployed ${bps} bps`,
+			)
+		}
+	} else {
+		let feeMatchesVaultMath = false
+		for (let bps = 0; bps <= 1000; bps++) {
+			if ((principalMinor * BigInt(bps)) / 10_000n === feeMinor) {
+				feeMatchesVaultMath = true
+				break
+			}
+		}
+		if (!feeMatchesVaultMath) {
+			fail(
+				`frozen fee ${options.fee} is not f(P)=floor(P*bps/10000) for any vault fee 0..1000 bps`,
+			)
+		}
 	}
 	const computedNet =
 		options.feeMode === "PayerPays"

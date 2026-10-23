@@ -536,6 +536,15 @@ describe("CCR-13 PayerPays sizing", () => {
 		).toThrow(/not consistent with vault sizing/)
 	})
 
+	it("when deployed bps is supplied, requires exact P and f(P)", () => {
+		expect(() =>
+			expectPayerPaysSizing(sizedQuote("10000", "100"), 100, "test"),
+		).not.toThrow()
+		expect(() =>
+			expectPayerPaysSizing(sizedQuote("10000", "100"), 50, "test"),
+		).toThrow(/is not floor\(A\*10000\/\(10000\+50\)\)/)
+	})
+
 	it("skips a RecipientPays quote and rejects an inconsistent fee", () => {
 		expect(() =>
 			expectPayerPaysSizing(frozenQuote({ feeMode: "RecipientPays" }), "test"),
