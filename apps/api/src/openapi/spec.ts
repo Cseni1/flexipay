@@ -1,9 +1,6 @@
 import { z } from "zod";
 import { A0_OPENAPI_STUBS, type ApiOpenApiStub } from "@flexipay/domain";
-import { coreRoutes } from "../routes/core.ts";
-
-/** Mounted routes only — keep OpenAPI generation free of the Express app entrypoint. */
-const ROUTES = coreRoutes;
+import { ROUTES } from "../app.ts";
 
 // OpenAPI 3.1: mounted Express routes plus A0 contract stubs (DEV_PLAN A0) so web/script lanes
 // can build against the same document before CC3 implements handlers.
