@@ -67,7 +67,7 @@ Prerequisites are read from the environment; nothing is committed.
 | `FP_STELLAR_RPC_URL`            | Public testnet RPC used to verify the release hash                 |
 | `FP_STELLAR_NETWORK_PASSPHRASE` | Expected testnet passphrase, checked against the RPC               |
 | `FP_PAYOUT_VAULT_ID`            | Public payout_vault contract id the lock/release must invoke       |
-| `FP_VAULT_FEE_BPS`              | Public vault fee rate; checks fee and PayerPays principal sizing   |
+| `FP_VAULT_FEE_BPS`              | Optional; API/adapter boot only — acceptance fee checks use the frozen quote |
 
 `FP_API_URL` and `FP_API_KEY` are missing from the root `.env.example`; that
 file is owned by the integrator. Until they are added, pass them inline or
@@ -125,8 +125,9 @@ passed.
   claim hash, the release must be `claim` of that payout id to
   `FP_RECIPIENT_A_ADDRESS`, and the release secret must hash to the lock's claim
   hash. It also checks CCR-13: lock principal = quoted settle `amountIn`,
-  `feeMode` = quote, `fee` = `f(P)` at `FP_VAULT_FEE_BPS`, release net = `P`
-  (PayerPays) or `P - f(P)` (RecipientPays), and PayerPays
+  `feeMode` = quote, `fee` = quoted `f(P)` (vault math, not a script-chosen
+  `FP_VAULT_FEE_BPS`), release net = `P` (PayerPays) or `P - f(P)` (RecipientPays),
+  and PayerPays
   `P = floor(A * 10000 / (10000 + bps))`. Both transactions must be successful,
   distinct and in non-decreasing ledger order. A 64-hex string alone is never
   treated as proof, and `--mode` only says what was requested.

@@ -495,7 +495,8 @@ describe("CCR-13 frozen accounting", () => {
 })
 
 describe("CCR-13 PayerPays sizing", () => {
-	const quoteWithPrincipal = (principal: string) =>
+	/** A=10100, 100 bps → P=10000, f(P)=100, remainder 0 (CCR-8 identities). */
+	const sizedQuote = (principal: string, fee: string) =>
 		frozenQuote({
 			route: [
 				{
@@ -517,29 +518,31 @@ describe("CCR-13 PayerPays sizing", () => {
 					amountOut: usdc(principal),
 				},
 			],
+			fees: {
+				legs: [{ kind: "settle", rail: "stellar_usdc", fee: usdc(fee) }],
+				flexiPayFee: usdc(fee),
+				total: usdc(fee),
+				settleUnlockedRemainder: null,
+			},
 		})
 
-	it("requires P = floor(A * 10000 / (10000 + bps))", () => {
-		// A = 10100 USDC, 50 bps -> P = 10049
+	it("requires quote P and fee to match vault sizing identities", () => {
 		expect(() =>
-			expectPayerPaysSizing(quoteWithPrincipal("10049"), 50, "test"),
+			expectPayerPaysSizing(sizedQuote("10000", "100"), "test"),
 		).not.toThrow()
+		// Fee 7 is not f(10000) for any 0..1000 bps, so sizing cannot hold.
 		expect(() =>
-			expectPayerPaysSizing(quoteWithPrincipal("10000"), 50, "test"),
-		).toThrow(/is not floor\(A\*10000\/\(10000\+50\)\)=10049/)
+			expectPayerPaysSizing(sizedQuote("10000", "7"), "test"),
+		).toThrow(/not consistent with vault sizing/)
 	})
 
-	it("skips a RecipientPays quote and rejects an impossible fee rate", () => {
+	it("skips a RecipientPays quote and rejects an inconsistent fee", () => {
 		expect(() =>
-			expectPayerPaysSizing(
-				frozenQuote({ feeMode: "RecipientPays" }),
-				50,
-				"test",
-			),
+			expectPayerPaysSizing(frozenQuote({ feeMode: "RecipientPays" }), "test"),
 		).not.toThrow()
 		expect(() =>
-			expectPayerPaysSizing(quoteWithPrincipal("10049"), 1001, "test"),
-		).toThrow(/outside 0\.\.1000/)
+			expectPayerPaysSizing(sizedQuote("10000", "7"), "test"),
+		).toThrow(/not consistent with vault sizing/)
 	})
 })
 

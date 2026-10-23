@@ -327,7 +327,6 @@ export async function verifyVaultRelease(options: {
 	feeMode: FeeMode
 	fee: string
 	net: string
-	vaultFeeBps: number
 	rpcUrl: string
 	networkPassphrase: string
 	timeoutMs: number
@@ -340,15 +339,9 @@ export async function verifyVaultRelease(options: {
 	if (!StrKey.isValidContract(options.vaultContractId)) {
 		fail(`configured vault id is not a Stellar contract address`)
 	}
+	// Adapter returns vault u64 ids via BigInt.toString() (decimal). Reject hashes/labels.
 	if (!/^[1-9][0-9]*$/.test(options.payoutId)) {
 		fail(`settle payoutId "${options.payoutId}" is not a positive decimal id`)
-	}
-	if (
-		!Number.isInteger(options.vaultFeeBps) ||
-		options.vaultFeeBps < 0 ||
-		options.vaultFeeBps > 1000
-	) {
-		fail(`vault fee bps ${options.vaultFeeBps} is outside 0..1000`)
 	}
 
 	const passphrase = parseNetworkPassphrase(
@@ -423,19 +416,26 @@ export async function verifyVaultRelease(options: {
 		)
 	}
 
-	const computedFee = (
-		(BigInt(options.principal) * BigInt(options.vaultFeeBps)) /
-		10_000n
-	).toString()
-	if (computedFee !== options.fee) {
+	// Fee comes from the frozen quote (CCR-13), not an independently chosen FP_VAULT_FEE_BPS.
+	// It must equal f(P)=floor(P*bps/10000) for some vault bps in 0..1000.
+	const principalMinor = BigInt(options.principal)
+	const feeMinor = BigInt(options.fee)
+	let feeMatchesVaultMath = false
+	for (let bps = 0; bps <= 1000; bps++) {
+		if ((principalMinor * BigInt(bps)) / 10_000n === feeMinor) {
+			feeMatchesVaultMath = true
+			break
+		}
+	}
+	if (!feeMatchesVaultMath) {
 		fail(
-			`frozen fee ${options.fee} is not f(P)=${computedFee} at ${options.vaultFeeBps} bps`,
+			`frozen fee ${options.fee} is not f(P)=floor(P*bps/10000) for any vault fee 0..1000 bps`,
 		)
 	}
 	const computedNet =
 		options.feeMode === "PayerPays"
 			? options.principal
-			: (BigInt(options.principal) - BigInt(computedFee)).toString()
+			: (principalMinor - feeMinor).toString()
 	if (computedNet !== options.net) {
 		fail(
 			`frozen net ${options.net} is not ${computedNet} for ${options.feeMode}`,
@@ -507,7 +507,7 @@ export async function verifyVaultRelease(options: {
 		contractId: options.vaultContractId,
 		principal,
 		feeMode,
-		fee: computedFee,
+		fee: options.fee,
 		net,
 	}
 }

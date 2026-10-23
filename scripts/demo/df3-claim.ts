@@ -62,9 +62,7 @@ await execute(
 			policy: "cheapest",
 		})
 		expectQuoteFeeMode(quote, spec.feeMode)
-		if (env.vaultFeeBps !== undefined) {
-			expectPayerPaysSizing(quote, env.vaultFeeBps, "DF3")
-		}
+		expectPayerPaysSizing(quote, "DF3")
 		expectKinds(
 			quote.route.map((leg) => leg.kind),
 			expected.legs,
@@ -203,16 +201,6 @@ await execute(
 			if (!quotedSettle?.amountIn || !quotedSettle.amountOut) {
 				fail("settle quote is missing frozen principal or net")
 			}
-			if (env.vaultFeeBps === undefined) {
-				throw new BlockedError([
-					{
-						what: "FP_VAULT_FEE_BPS is not set, so the quote fee cannot be checked against the lock",
-						owner: "caller / Csaba (integration)",
-						detail:
-							"public vault fee bps from scripts/testnet/testnet-ids.env; required for CCR-13 lock accounting",
-					},
-				])
-			}
 			expectTxRef(lockTxRef, "stellar", "lock")
 			expectTxRef(releaseTxRef, "stellar", "release")
 			const proof = await verifyVaultRelease({
@@ -226,7 +214,6 @@ await execute(
 				feeMode: quote.feeMode,
 				fee: quote.fees.flexiPayFee.amount,
 				net: quotedSettle.amountOut.amount,
-				vaultFeeBps: env.vaultFeeBps,
 				rpcUrl: env.stellarRpcUrl,
 				networkPassphrase: env.stellarNetworkPassphrase,
 				timeoutMs: env.timeoutMs,

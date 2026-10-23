@@ -23,7 +23,10 @@ export interface DemoEnv {
 	stellarNetworkPassphrase?: string
 	/** Public payout_vault contract id (FP_PAYOUT_VAULT_ID), never a key. */
 	payoutVaultId?: string
-	/** Public vault fee bps (FP_VAULT_FEE_BPS), needed to check CCR-13 fee accounting. */
+	/**
+	 * Optional echo of the API/adapter boot env `FP_VAULT_FEE_BPS`. Acceptance accounting
+	 * does not use this as an independent fee source (CCR-13 uses the frozen quote fee).
+	 */
 	vaultFeeBps?: number
 }
 

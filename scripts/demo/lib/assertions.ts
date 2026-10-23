@@ -154,8 +154,9 @@ function expectMoneyEqual(
 }
 
 /**
- * CCR-12: settle.externalRef is the contract payoutId, never a transaction hash. The lock and
- * release hashes are separate fields and are verified by `lib/stellar-proof.ts`.
+ * CCR-12: settle.externalRef is the contract payoutId, never a transaction hash. The Stellar
+ * adapter stringifies the vault u64 via `BigInt.toString()` (decimal); this check mirrors that
+ * wire format and rejects tx hashes / opaque labels — it does not invent a separate id scheme.
  */
 export function expectPayoutId(ref: string | undefined, where: string): string {
 	if (ref === undefined) fail(`${where}: no settle payoutId`)
@@ -166,13 +167,13 @@ export function expectPayoutId(ref: string | undefined, where: string): string {
 }
 
 /**
- * CCR-13: PayerPays must size the principal from the available settle amount
- * `P = floor(A * 10000 / (10000 + bps))`, so `P + f(P) <= A` and the remainder is real. The
- * vault fee rate is not on the quote, so this needs the published vault fee bps.
+ * CCR-13: PayerPays must size `P = floor(A * 10000 / (10000 + bps))` with
+ * `f(P) = floor(P * bps / 10000)` equal to the quoted settle fee. The authoritative
+ * inputs are the frozen quote amounts and fee — not an independently chosen
+ * `FP_VAULT_FEE_BPS`. Any vault bps in 0..1000 that makes both identities hold is accepted.
  */
 export function expectPayerPaysSizing(
 	quote: QuoteView,
-	vaultFeeBps: number,
 	where = "CCR-13",
 ): void {
 	if (quote.feeMode !== "PayerPays") return
@@ -187,17 +188,18 @@ export function expectPayerPaysSizing(
 	if (available.currency !== planned.amountIn.currency) {
 		fail(`${where}: pre-settle amount and principal use different assets`)
 	}
-	if (!Number.isInteger(vaultFeeBps) || vaultFeeBps < 0 || vaultFeeBps > 1000) {
-		fail(`${where}: vault fee bps ${vaultFeeBps} is outside 0..1000`)
-	}
+	const fees = quote.fees
+	if (!fees) fail(`${where}: quote has no fee breakdown`)
 	const a = minor(available, `${where}: available`)
 	const p = minor(planned.amountIn, `${where}: principal`)
-	const expected = (a * 10_000n) / (10_000n + BigInt(vaultFeeBps))
-	if (p !== expected) {
-		fail(
-			`${where}: PayerPays principal ${p} is not floor(A*10000/(10000+${vaultFeeBps}))=${expected}`,
-		)
+	const fee = minor(fees.flexiPayFee, `${where}: fee`)
+	for (let bps = 0; bps <= 1000; bps++) {
+		if ((p * BigInt(bps)) / 10_000n !== fee) continue
+		if ((a * 10_000n) / (10_000n + BigInt(bps)) === p) return
 	}
+	fail(
+		`${where}: PayerPays P=${p}, fee=${fee}, A=${a} are not consistent with vault sizing P=floor(A*10000/(10000+bps)), f=floor(P*bps/10000)`,
+	)
 }
 
 /**

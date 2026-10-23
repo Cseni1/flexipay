@@ -1,10 +1,12 @@
 # D3 acceptance evidence — 23 October 2026 (CCR-11–14 reconciliation)
 
-Lane-D worktree `/Users/csenike/Projects/FlexiPay/flexipay-laned`, branch
-`csenge-freebuff/D3-acceptance`. The branch is merged with `origin/main` at
-**`e6429fe`**, which carries the CCR-11–14 contracts from #36 (`b3d77a7`); the
-tested tree is commit **`9e38c9c`** (this evidence commit follows it). This file
-is committed after the run; per-run JSON records the tested commit.
+**Integrated flow acceptance: BLOCKED** (CC2/CC3 routes unmounted). Self-tests
+are harness rules only — not DF1–DF5 flow acceptance.
+
+Lane-D Freebuff branch `csenge-freebuff/D3-acceptance`. Ancestry verified:
+`e6429fe` (main) ⊂ merge **`9e38c9c`** ⊂ align commit **`c3ea2a9`** (Freebuff HEAD
+at review). Integrator fee-source fix commits land on top before merge to main.
+Do not assume `c3ea2a9` precedes `9e38c9c`.
 
 D2 #27 stays integrated. This worktree did not edit D2-owned files:
 `scripts/demo/offline.ts`, `scripts/seed/**` (except the lane-D fixture
@@ -43,9 +45,10 @@ Read from `origin/main`:
   the chain proof. `verifyVaultRelease` now also checks CCR-13: lock principal =
   quoted settle `amountIn`, lock `feeMode` = quote,
   `fee = floor(P * bps / 10000)`, release net = `P` or `P - f(P)`, and release
-  return value. A new `expectPayerPaysSizing` checks
-  `P = floor(A * 10000 / (10000 + bps))` from the leg before settle. The claim
-  accept call now uses the published `POST /v1/claims/{token}/accept` path.
+  return value. `expectPayerPaysSizing` checks quote P and fee against vault
+  sizing identities (authoritative frozen quote — not a script-chosen
+  `FP_VAULT_FEE_BPS`). The claim accept call uses
+  `POST /v1/claims/{token}/accept`.
 - **DF4** — `assertExactlyTwoPayoutAttemptsThenRefund` reads durable
   `Leg.attempt` from every `Event.snapshot` leg. It requires attempts 1 and 2,
   rejects attempt 3 anywhere, allows cumulative snapshots, and no longer needs
