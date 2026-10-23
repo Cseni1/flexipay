@@ -28,6 +28,10 @@ export interface CreatePaymentFromQuoteInput {
 	profile: string;
 	externalId?: string;
 	reference?: string;
+	/** API clock for quote/claim expiry (CCR-6); defaults to wall time. */
+	now?: Date;
+	/** Set by POST /v1/batches (CCR-18): the batch this payment belongs to. */
+	batchId?: string;
 }
 
 export type { FeeMode, EndpointType };

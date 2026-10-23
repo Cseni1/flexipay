@@ -61,11 +61,12 @@ Until a key is set, `demo:offline` still starts API+web but **skips seed**.
 
 ### Browser vs API key (CCR-19)
 
-- **No merged BFF yet.** Do not put `FP_API_KEY` in `apps/web` env or Vite
-  `define`. Demo scripts and seed use the key in the **shell** only.
-- Accepted minimal path (Freebuff owns implementation): Vite/same-origin proxy
-  injects Bearer for protected `/v1/*`; public `/v1/claims/*` stay unauthenticated.
-  See `docs/CONTRACT_CHANGES.md` CCR-19.
+- Do not put `FP_API_KEY` in `apps/web` env or Vite `define`. Shell/demo scripts
+  may use the key; Freebuff owns the **local Vite proxy** on #29 (not a second
+  BFF; not static-deploy auth).
+- Protected `/v1/*`: proxy injects Bearer. Public `/v1/claims/*`: no Bearer.
+- Backend tip for live browser DF2/DF3 checks (after proxy lands): **`b219fdf`**
+  (includes CCR-15 recovery). Endpoint/batch **routes** still missing (#43).
 
 ## Launch (offline / mock)
 
@@ -138,9 +139,9 @@ Exit codes: `0` PASS, `1` FAIL, `2` BLOCKED. Evidence JSON under
 `scripts/demo/evidence/` is git-ignored per run; committed markdown evidence
 must not contain keys or secrets.
 
-**Also open (not a DF route gap):** CCR-15 claim-accept after fee-drift can still
-mark `paid` on `e99f03a` — see `scripts/demo/evidence/2026-10-23-orphan-lock-286d044.md`.
-Do not treat mock DF as acceptance until that is fixed and Freebuff re-verifies.
+**CCR-15 (mock/public-API):** fee-drift claim bypass closed on **`b219fdf`**
+(fund 409 `fee_drift`, accept 409 `settle_failed`, never paid). Stellar drift
+path still **NOT VERIFIED**. Seed/DF still **BLOCKED** on #43 routes.
 
 ## Online Stellar (separate)
 

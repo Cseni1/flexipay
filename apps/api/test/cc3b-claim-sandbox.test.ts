@@ -188,7 +188,7 @@ describe("CC3b claim + sandbox", () => {
 		expect(bare.status).toBe(404);
 	});
 
-	it("expired claim cannot accept; uncontracted details keys rejected; release failure leaves claim open", async () => {
+	it("expired claim cannot accept; wrong details keys rejected (CCR-17); release failure leaves claim open", async () => {
 		const { key } = await t.newOrg("Demo Platform");
 		await fetch(`${t.base}/v1/sandbox/reset`, {
 			method: "POST",
@@ -263,7 +263,8 @@ describe("CC3b claim + sandbox", () => {
 				},
 			}),
 		});
-		expect(badKeys.status).toBe(422);
+		// CCR-17: the schema now rejects detail keys that do not belong to the endpoint type.
+		expect(badKeys.status).toBe(400);
 
 		await t.db.claimLink.update({
 			where: { paymentId: payment.id },

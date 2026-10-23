@@ -12,8 +12,15 @@ export {
 	isClaimWaitRoute,
 } from "./create.ts";
 export {
+	acceptFiatClaim,
+	ClaimNotWaitingError,
+	expireClaimIfDue,
+} from "./claim-flow.ts";
+export {
 	cancelPayment,
+	ClaimReleaseRefusedError,
 	completeClaimSettle,
+	FeeDriftError,
 	fundAndRun,
 	getPaymentView,
 	type FundResult,
