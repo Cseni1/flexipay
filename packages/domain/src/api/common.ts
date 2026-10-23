@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   DELIVERIES,
   ENDPOINT_TYPES,
+  FEE_MODES,
   LEG_KINDS,
   LEG_STATUSES,
   PAYMENT_STATUSES,
@@ -28,6 +29,8 @@ export const PaymentStatusSchema = z.enum(PAYMENT_STATUSES);
 export const DeliverySchema = z.enum(DELIVERIES);
 export const ProfileSchema = z.enum(PROFILES);
 export const PriceRiskBearerSchema = z.enum(PRICE_RISK_BEARERS);
+/** Vault lock fee side (RULES.md / CCR-3). Required on settle quotes (CCR-8). */
+export const FeeModeSchema = z.enum(FEE_MODES);
 
 /** Provider or rail id from config (e.g. sim_bank_us_ach, stellar_usdc). */
 export const RailId = z.string().regex(/^[a-z][a-z0-9_]*$/, "snake_case rail or provider id");

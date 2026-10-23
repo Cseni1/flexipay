@@ -100,3 +100,44 @@ Status: **approved** by the project owner on 23 Oct 2026. The documents `PRODUCT
 - **Who is affected:** `packages/domain` A0 (Csaba), CC1 route selection (must set `simulated` from provider/rail config), lane C/D clients that display per-leg labels, OpenAPI.
 - **Out of scope:** changing `ClaimViewSchema.simulated` / claim-accept endpoint `simulated: true` (demo claim UX stays labelled simulated at the surface); settlement adapter behaviour.
 - **Acceptance once applied:** a US→PH crypto quote’s settle leg has `rail: stellar_usdc` and `simulated: false`; collect/convert/payout (when present) remain `simulated: true`. Unit test in `packages/domain/test/api-contract.test.ts` covers both.
+
+## CCR-7: `Quote.fees.total` aggregation (accepted algorithm; rates gap open, 23 Oct 2026)
+
+- **From:** integrator, after CC1 follow-up PR #28 (`d371241`).
+- **Status:** **algorithm accepted.** Unblocking PH/BR/ZA payout fees **needs owner choice** (below). No inverse rates and no new rate *values* may be invented by any lane.
+- **Accepted rule (matches #28 / CCR-4):**
+  1. `fees.total` is a single `Money` in the **send / source currency**.
+  2. Sum every positive non-settle leg fee plus `flexiPayFee`, each converted into send currency with a **configured directional** `fxRates` entry only (`convertMoney`).
+  3. Zero fees need no rate. Settle fee is counted once via `flexiPayFee`, not again from the settle row.
+  4. If any positive fee lacks `fee.currency > sendCurrency`, the quote **fails** with an explicit reason. Silent omission is forbidden.
+- **Gap (config today):** approved rates are USD↔USDC, USDC→PHP/BRL/ZAR, USD→ZAR. There is **no** PHP→USD, BRL→USD, or ZAR→USD. Real PH/BR/ZA payout fees therefore correctly block quotes under the accepted rule.
+- **Owner decision required (pick exactly one; reply on this CCR):**
+  - **A.** Supply three placeholder directional rate strings (major units of USD per one major unit of foreign) for `PHP>USD`, `BRL>USD`, `ZAR>USD`. Integrator adds them to `config/providers.json` only after the values are written here.
+  - **B.** Authorise MVP placeholder payout fees of `fixed: 0` and `bps: 0` on `sim_bank_ph_instapay`, `sim_ewallet_ph`, `sim_bank_br_pix`, `sim_bank_za_eft` until reverse rates exist (fees stay visible as zero; DF fee assertions stay attribution-only per SCENARIOS).
+- **Who is affected:** CC1 pricing (done in #28), config owner, DF1/DF2/DF5 scripts, web quote panel.
+- **Not accepted:** deriving `1/56` (or any inverse) from USDC→PHP / USDC→BRL / USDC→ZAR / USD→ZAR.
+
+## CCR-8: vault `FeeMode` on quote → payment → lock (accepted; no silent default, 23 Oct 2026)
+
+- **From:** integrator, after PR #28. Sources: `contracts/payout_vault/RULES.md`, CCR-3, `config/drafts/fees.md` Q-fee-side (was open), A0 had no field.
+- **Status:** **accepted — no MVP product default.** Caller must choose. A0 gains `feeMode` (this commit).
+- **Contract:**
+  - `CreateQuoteRequest.feeMode` optional in the schema; **required by CC1/CC3 whenever the chosen template includes settle** (422 / quote fail otherwise) — same as #28 `vaultFeeMode`.
+  - `Quote.feeMode`: `PayerPays` | `RecipientPays` when settle is on the route; `null` when it is not.
+  - `CreatePayment` does not re-specify mode; payment + `SettlementAdapter.lock` **must reuse `quote.feeMode` unchanged**.
+- **Money conservation (binding on CC1 pricing and CC2 lock; both modes):**
+  Let `A` be the settlement-asset amount available at the settle leg after prior legs (send-fixed path). Let `bps` be vault `feeBps`, `f(P) = floor(P * bps / 10000)`.
+  - **RecipientPays:** settle `amountIn = A`, `fee = f(A)`, `amountOut = A − fee` (fail if `fee ≥ A`), lock `locked = A`, `net = A − fee`. Same send envelope never yields lock principal above `A`.
+  - **PayerPays:** fee is **not** created from thin air. Choose principal `P = floor(A * 10000 / (10000 + bps))` so `P + f(P) ≤ A`. Settle `amountIn = P`, `amountOut = P`, `fee = f(P)`, lock `locked = P + fee`, `net = P`. `#28` currently prices PayerPays as `amountOut = amountIn` without reducing `P` from `A` — **Csaba Cursor must apply this sizing in CC1** before CC2 locks, or lock will demand more than the funded vault balance.
+- **Owner decision (optional product default for demos):** if the pitch wants a default when the client omits `feeMode`, pick **PayerPays** or **RecipientPays** explicitly. Until then demos/API clients pass it. Integrator will not invent one.
+- **Who is affected:** A0 (this commit), CC1 (pricing + sizing), CC2/CC3 (persist and lock), SC2 (already takes `feeMode`), DF3 (assert claimed `net`).
+
+## CCR-9: crypto `destination.country` disambiguation (accepted, 23 Oct 2026)
+
+- **From:** integrator, confirming PR #28 against ARCHITECTURE §6.3 (`CountryOrEmpty`) and corridor keys `(from.country, to.country)`.
+- **Status:** **accepted.**
+- **Rule:**
+  - Non-empty `destination.country` → unique corridor `from+to`, or fail.
+  - Empty country + crypto destination → corridors from the source that allow the type/kind and have a settle rail. **Exactly one** match → use it; **zero** → fail; **two or more** → fail with an explicit ambiguous-corridor reason (require `destination.country`). **No arbitrary first-match.**
+- **MVP implication:** US→crypto with both PH and BR eligible must send `destination.country` (`PH` or `BR`). Empty country remains valid only when a single corridor matches.
+- **Who is affected:** CC1 (done in #28), web send form, D1 fixtures (set country on crypto quotes).

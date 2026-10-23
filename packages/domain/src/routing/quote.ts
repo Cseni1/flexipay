@@ -73,6 +73,7 @@ function assembleQuote(
 		),
 	];
 
+	const hasSettle = priced.legs.some((l) => l.kind === "settle");
 	const quote: Quote = {
 		id: (deps.quoteId ?? defaultQuoteId)(),
 		source: req.source,
@@ -85,6 +86,8 @@ function assembleQuote(
 		expectedReceive: priced.expectedReceive,
 		priceRiskBearer: deps.config.fees.priceRiskBearer,
 		policy: "cheapest",
+		// CCR-8: echo the mode used to price settle; null when the route has no settle leg.
+		feeMode: hasSettle ? deps.vaultFeeMode : null,
 		validUntil,
 		alternatives: [],
 		reasons,
@@ -214,7 +217,7 @@ export async function buildQuote(
 			return {
 				ok: false,
 				reasons: [
-					"vaultFeeMode (PayerPays | RecipientPays) is required for settle routes; no MVP default is specified in ARCHITECTURE or A0",
+					"vaultFeeMode (PayerPays | RecipientPays) is required for settle routes (CCR-8); pass CreateQuoteRequest.feeMode — no silent MVP default",
 				],
 			};
 		}

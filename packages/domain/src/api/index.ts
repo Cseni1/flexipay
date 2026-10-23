@@ -5,6 +5,7 @@ export {
   DeliverySchema,
   EndpointTypeSchema,
   FeeBreakdownSchema,
+  FeeModeSchema,
   IsoTimestamp,
   LegErrorSchema,
   LegKindSchema,
