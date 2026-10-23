@@ -23,8 +23,24 @@ type PathOp = {
   summary: string;
   auth: "api_key" | "none";
   body?: z.ZodType;
+  query?: z.ZodType;
   success: { status: 200 | 201; schema?: z.ZodType };
 };
+
+/** Query parameters come from the route's own zod query schema, so docs cannot drift. */
+function queryParameters(query: z.ZodType | undefined): unknown[] {
+  if (!query) return [];
+  const schema = z.toJSONSchema(query, { target: "draft-2020-12", io: "input", unrepresentable: "any" }) as {
+    properties?: Record<string, unknown>;
+    required?: string[];
+  };
+  return Object.entries(schema.properties ?? {}).map(([name, propSchema]) => ({
+    name,
+    in: "query",
+    required: (schema.required ?? []).includes(name),
+    schema: propSchema,
+  }));
+}
 
 function addPath(
   paths: Record<string, Record<string, unknown>>,
@@ -56,16 +72,22 @@ function addPath(
       content: { "application/json": { schema: ERROR_SCHEMA } },
     };
   }
+  const parameters: unknown[] = [
+    ...[...r.path.matchAll(/\{(\w+)\}/g)].map((m) => ({
+      name: m[1],
+      in: "path",
+      required: true,
+      schema: { type: "string" },
+    })),
+    ...queryParameters(r.query),
+    ...(r.method === "post"
+      ? [{ name: "Idempotency-Key", in: "header", required: false, schema: { type: "string" } }]
+      : []),
+  ];
   const pathItem = {
     summary: r.summary,
     security: r.auth === "api_key" ? [{ bearerAuth: [] }] : [],
-    ...(r.method === "post"
-      ? {
-          parameters: [
-            { name: "Idempotency-Key", in: "header", required: false, schema: { type: "string" } },
-          ],
-        }
-      : {}),
+    ...(parameters.length > 0 ? { parameters } : {}),
     ...(r.body ? { requestBody: { required: true, content: json(r.body) } } : {}),
     responses,
   };

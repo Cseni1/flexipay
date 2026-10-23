@@ -1,10 +1,9 @@
 import { z } from "zod";
-import { RailId } from "./common.ts";
+import { IsoTimestamp, RailId } from "./common.ts";
 
 // POST /v1/sandbox/* (ARCHITECTURE §10, CCR-4 SandboxControls). Demo-only controls.
-// Only request fields named in those sources are contracted here. No response bodies are
-// accepted for sandbox routes on main — OpenAPI stubs omit success schemas.
-// advance-time request body: see CCR-6 (sandbox clock). Not yet contracted.
+// Only request fields named in those sources / accepted CCRs are contracted here.
+// Sandbox routes still omit success schemas except CCR-6 advance-time.
 
 /**
  * fail-next (ARCHITECTURE §10 + CCR-4): next `count` execute() calls fail; optional
@@ -36,3 +35,28 @@ export type SandboxProviderHealthRequest = z.infer<
 export const SandboxResetRequestSchema = z.object({}).strict();
 
 export type SandboxResetRequest = z.infer<typeof SandboxResetRequestSchema>;
+
+/**
+ * advance-time (CCR-6 accepted): move the **API clock** only (quote/claim expiry).
+ * Does not move Stellar ledger time (CCR-5).
+ */
+export const SandboxAdvanceTimeRequestSchema = z
+	.object({
+		seconds: z.number().int().min(1).max(86400),
+	})
+	.strict();
+
+export type SandboxAdvanceTimeRequest = z.infer<
+	typeof SandboxAdvanceTimeRequestSchema
+>;
+
+/** Clock after the advance (ISO-8601). */
+export const SandboxAdvanceTimeResponseSchema = z
+	.object({
+		now: IsoTimestamp,
+	})
+	.strict();
+
+export type SandboxAdvanceTimeResponse = z.infer<
+	typeof SandboxAdvanceTimeResponseSchema
+>;

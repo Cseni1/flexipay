@@ -44,6 +44,7 @@ function sealKey(adapters: OrchestratorAdapters): Buffer {
 async function loadRuntime(
 	db: Db,
 	paymentId: string,
+	claimEndpointId?: string,
 ): Promise<{
 	payment: {
 		id: string;
@@ -74,6 +75,8 @@ async function loadRuntime(
 	/** Frozen vault fee from Quote.fees.flexiPayFee (CCR-13). */
 	quotedFlexiPayFee: Money | null;
 	claimWaitSettle: boolean;
+	/** ClaimLink status, null when the payment has no claim link row. */
+	claimStatus: string | null;
 	lockExpiresAt: Date;
 	payoutEndpoint:
 		| {
@@ -112,7 +115,7 @@ async function loadRuntime(
 	const payoutEndpoint =
 		dest.type === "bank_account" || dest.type === "ewallet"
 			? {
-					endpointId: "quote_dest",
+					endpointId: claimEndpointId ?? "quote_dest",
 					type: dest.type as "bank_account" | "ewallet",
 					country: dest.country,
 					currency: dest.currency,
@@ -124,6 +127,7 @@ async function loadRuntime(
 		feeMode,
 		quotedFlexiPayFee,
 		claimWaitSettle,
+		claimStatus: payment.claimLink?.status ?? null,
 		lockExpiresAt: payment.claimLink?.expiresAt ?? payment.quote.validUntil,
 		payoutEndpoint,
 	};
@@ -189,13 +193,29 @@ export async function fundAndRun(
 	return { paymentId, status: after.status as PaymentStatus };
 }
 
+/**
+ * Fiat claim link (ARCHITECTURE §7): collect, convert and settle run at funding; the payout leg
+ * stays `pending` until the recipient accepts and picks the endpoint.
+ */
+export async function continueAfterClaimAccept(
+	db: Db,
+	paymentId: string,
+	adapters: OrchestratorAdapters,
+	claimEndpointId: string,
+): Promise<{ status: PaymentStatus }> {
+	await runPendingLegs(db, paymentId, adapters, claimEndpointId);
+	const after = await db.payment.findUniqueOrThrow({ where: { id: paymentId } });
+	return { status: after.status as PaymentStatus };
+}
+
 async function runPendingLegs(
 	db: Db,
 	paymentId: string,
 	adapters: OrchestratorAdapters,
+	claimEndpointId?: string,
 ): Promise<void> {
 	for (;;) {
-		const rt = await loadRuntime(db, paymentId);
+		const rt = await loadRuntime(db, paymentId, claimEndpointId);
 		if (rt.payment.status !== "processing") return;
 
 		const states = legStates(rt.legs);
@@ -233,6 +253,16 @@ async function runPendingLegs(
 		}
 
 		const leg = rt.legs[idx]!;
+		// Fiat claim link: the payout waits for the recipient (ARCHITECTURE §7). The payment stays
+		// `processing` and the payout `pending` until accept supplies the endpoint.
+		if (
+			leg.kind === "payout" &&
+			leg.status === "pending" &&
+			rt.payment.delivery === "claim_link" &&
+			rt.claimStatus !== "accepted"
+		) {
+			return;
+		}
 		await executeLeg(db, rt, leg, adapters);
 
 		const refreshed = await db.leg.findUniqueOrThrow({ where: { id: leg.id } });
@@ -478,17 +508,27 @@ async function executeSettle(
 	const payment = rt.payment;
 	const feeMode = rt.feeMode as FeeMode;
 
-	// Replay: externalRef is vault payoutId (CCR-12) — never re-lock.
+	// Replay: externalRef is vault payoutId (CCR-12) — never re-lock / re-fund.
 	if (leg.externalRef) {
-		if (rt.claimWaitSettle) return;
-		const st = await adapters.settlement.status(leg.externalRef);
-		if (st.state === "claimed") {
-			await transitionLeg(db, payment.id, leg.id, "processing", "succeeded", "replay");
-			await emitPaymentEvent(db, payment.organizationId, payment.id, "leg.succeeded", {
-				legId: leg.id,
-			});
-		}
+		await resumeAfterSettleLock(db, rt, leg, adapters, leg.externalRef);
 		return;
+	}
+
+	// Lost lock response: recover payoutId for the current attempt (RULES payout_by_external).
+	if (payment.lockAttempt > 0) {
+		const recovered = await adapters.settlement.findLock(
+			adapters.vaultPayer,
+			payment.id,
+			payment.lockAttempt,
+		);
+		if (recovered) {
+			await db.leg.update({
+				where: { id: leg.id },
+				data: { externalRef: recovered },
+			});
+			await resumeAfterSettleLock(db, rt, leg, adapters, recovered);
+			return;
+		}
 	}
 
 	const attempt = payment.lockAttempt + 1;
@@ -496,6 +536,23 @@ async function executeSettle(
 		where: { id: payment.id },
 		data: { lockAttempt: attempt },
 	});
+
+	// Crash window after lockAttempt bump: findLock before creating a second lock.
+	{
+		const recovered = await adapters.settlement.findLock(
+			adapters.vaultPayer,
+			payment.id,
+			attempt,
+		);
+		if (recovered) {
+			await db.leg.update({
+				where: { id: leg.id },
+				data: { externalRef: recovered },
+			});
+			await resumeAfterSettleLock(db, rt, leg, adapters, recovered);
+			return;
+		}
+	}
 
 	const claimHashHex = await ensureClaimSeal(
 		db,
@@ -537,16 +594,7 @@ async function executeSettle(
 		claimHashHex,
 	});
 
-	if (
-		locked.fee.amount !== quotedFee.amount ||
-		locked.fee.currency !== quotedFee.currency
-	) {
-		throw new Error(
-			`lock fee drift: locked.fee=${locked.fee.amount} ${locked.fee.currency} != quoted flexiPayFee=${quotedFee.amount} ${quotedFee.currency} (CCR-13)`,
-		);
-	}
-
-	// CCR-12: externalRef = payoutId; lockTxRef = lock transaction hash.
+	// CCR-12: persist payoutId + lockTxRef immediately so a fee-drift throw cannot orphan the lock.
 	await db.leg.update({
 		where: { id: leg.id },
 		data: {
@@ -562,12 +610,103 @@ async function executeSettle(
 		legId: leg.id,
 	});
 
+	if (
+		locked.fee.amount !== quotedFee.amount ||
+		locked.fee.currency !== quotedFee.currency
+	) {
+		// CCR-15: refs are already durable. Fail the leg (never leave it `processing`: that is
+		// the claim-accept bypass), refund the vault lock, then surface the drift to the caller.
+		const message = `lock fee drift: locked.fee=${locked.fee.amount} ${locked.fee.currency} != quoted flexiPayFee=${quotedFee.amount} ${quotedFee.currency} (CCR-13)`;
+		await failSettleForDrift(db, payment, leg, adapters, message);
+		throw new FeeDriftError(message);
+	}
+
 	if (rt.claimWaitSettle) return;
 
 	await transitionLeg(db, payment.id, leg.id, "processing", "succeeded");
 	await emitPaymentEvent(db, payment.organizationId, payment.id, "leg.succeeded", {
 		legId: leg.id,
 	});
+}
+
+/** Claim release refused because the settle leg failed (CCR-15 step 3). Maps to 409. */
+export class ClaimReleaseRefusedError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "ClaimReleaseRefusedError";
+	}
+}
+
+/** Thrown to the caller (fund → 409) after a drifted lock was failed and refunded (CCR-15). */
+export class FeeDriftError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "FeeDriftError";
+	}
+}
+
+/**
+ * CCR-15 steps 2 and 4: keep the refs, fail the settle leg with a durable error, then run the
+ * vault refund path. A refund failure leaves the payment `failed` (never `refunded`) and the
+ * leg error records both the drift and the refund failure.
+ */
+async function failSettleForDrift(
+	db: Db,
+	payment: { id: string; organizationId: string },
+	leg: { id: string; externalRef: string | null },
+	adapters: OrchestratorAdapters,
+	message: string,
+): Promise<void> {
+	await transitionLeg(db, payment.id, leg.id, "processing", "failed", "fee_drift", {
+		errorCode: "fee_drift",
+		errorMessage: message,
+	});
+	await emitPaymentEvent(db, payment.organizationId, payment.id, "leg.failed", {
+		legId: leg.id,
+		payoutId: leg.externalRef,
+		errorCode: "fee_drift",
+		errorMessage: message,
+	});
+	await handleLegFailure(db, payment.id, leg.id, adapters);
+}
+
+/** After a durable settle lock ref exists: never re-lock; succeed only if already claimed. */
+async function resumeAfterSettleLock(
+	db: Db,
+	rt: Awaited<ReturnType<typeof loadRuntime>>,
+	leg: Awaited<ReturnType<typeof loadRuntime>>["legs"][number],
+	adapters: OrchestratorAdapters,
+	payoutId: string,
+): Promise<void> {
+	// Crash window between persisting the refs and the fee check: compare the vault's net with
+	// the frozen settle amountOut before anything can be released (CCR-15 step 5).
+	const st = await adapters.settlement.status(payoutId);
+	if (
+		st.state === "pending" &&
+		(st.net.amount !== leg.amountOutValue || st.net.currency !== leg.amountOutCurrency)
+	) {
+		const message = `lock fee drift on replay: vault net=${st.net.amount} ${st.net.currency} != quoted settle amountOut=${leg.amountOutValue} ${leg.amountOutCurrency} (CCR-13)`;
+		await failSettleForDrift(db, rt.payment, leg, adapters, message);
+		throw new FeeDriftError(message);
+	}
+	if (rt.claimWaitSettle) return;
+	if (st.state === "claimed") {
+		await transitionLeg(
+			db,
+			rt.payment.id,
+			leg.id,
+			"processing",
+			"succeeded",
+			"replay",
+		);
+		await emitPaymentEvent(
+			db,
+			rt.payment.organizationId,
+			rt.payment.id,
+			"leg.succeeded",
+			{ legId: leg.id },
+		);
+	}
 }
 
 async function releasePendingSettle(
@@ -621,10 +760,17 @@ export async function completeClaimSettle(
 		where: { id: paymentId },
 		include: { legs: { orderBy: { position: "asc" } }, claimLink: true },
 	});
+	const settle = payment.legs.find((l) => l.kind === "settle");
+	// CCR-15 step 3: a failed / drift-failed settle leg is never released, whatever the payment
+	// status reads. Checked first so the refusal names the real reason.
+	if (settle && (settle.status === "failed" || settle.errorCode === "fee_drift")) {
+		throw new ClaimReleaseRefusedError(
+			`settle leg failed (${settle.errorCode ?? "failed"}); claim release refused (CCR-15)`,
+		);
+	}
 	if (payment.status !== "processing") {
 		throw new Error(`completeClaimSettle requires processing, got ${payment.status}`);
 	}
-	const settle = payment.legs.find((l) => l.kind === "settle");
 	if (!settle || settle.status !== "processing" || !settle.externalRef) {
 		throw new Error("settle leg is not waiting for release");
 	}
@@ -698,12 +844,17 @@ async function handleLegFailure(
 		include: { legs: { orderBy: { position: "asc" } } },
 	});
 	const failed = payment.legs.find((l) => l.id === failedLegId)!;
-	const action = decideOnFailure({
-		failedKind: failed.kind as LegKind,
-		legs: legStates(payment.legs),
-		attemptsOnProvider: failed.attempt,
-		untriedProviders: [],
-	});
+	// A settle leg that failed after the lock exists (fee drift, CCR-15) must be refunded through
+	// the vault: decideOnFailure only sees `settle` as settled once it succeeded.
+	const action =
+		failed.kind === "settle" && failed.externalRef
+			? ({ action: "refund_vault" } as const)
+			: decideOnFailure({
+					failedKind: failed.kind as LegKind,
+					legs: legStates(payment.legs),
+					attemptsOnProvider: failed.attempt,
+					untriedProviders: [],
+				});
 
 	// CCR-14 retry is applied in onProviderLegFailed while status stays `processing`.
 	// Never failed→processing here (no SM edge / no undocumented bypass).
@@ -745,13 +896,25 @@ async function handleLegFailure(
 					},
 				);
 			} catch (e) {
+				const reason = e instanceof Error ? e.message : "refund failed";
+				// CCR-15 step 4: refs stay; the leg error records the original failure and the
+				// refund failure. Never `refunded`, never re-lock on replay.
+				await db.leg.update({
+					where: { id: settle.id },
+					data: {
+						errorCode: settle.errorCode ?? "refund_failed",
+						errorMessage: [settle.errorMessage, `refund failed: ${reason}`]
+							.filter(Boolean)
+							.join("; "),
+					},
+				});
 				await transitionPayment(
 					db,
 					paymentId,
 					payment.organizationId,
 					"refunding",
 					"failed",
-					e instanceof Error ? e.message : "refund failed",
+					reason,
 				);
 				return;
 			}

@@ -15,8 +15,10 @@ import {
 import type { Db } from "../src/db.ts";
 import { newId } from "../src/ids.ts";
 import {
+	ClaimReleaseRefusedError,
 	completeClaimSettle,
 	createPaymentFromQuote,
+	FeeDriftError,
 	fundAndRun,
 	getPaymentView,
 	type OrchestratorAdapters,
@@ -469,34 +471,36 @@ describe("CC2 orchestrator (CCR-11–14)", () => {
 		await runMode("RecipientPays");
 	});
 
-	it("CCR-13: rejects settle when locked.fee drifts from quoted flexiPayFee", async () => {
-		sim.controls.reset();
+	/** CCR-15 fixture: a crypto claim_link payment whose settle lock can drift from the quote. */
+	async function seedDriftPayment(feeMode: "PayerPays" | "RecipientPays") {
 		const fee = "98268564";
-		const drifting = new MockSettlementAdapter({
-			token: "USDC",
-			treasury: "GDEMOTREASURY0000000000000000000000000000000000000000",
-			feeBps: 100,
-			now: () => clock.now,
-		});
-		const origLock = drifting.lock.bind(drifting);
-		drifting.lock = async (req) => {
-			const locked = await origLock(req);
-			return { ...locked, fee: money("1", "USDC") };
-		};
-
+		const route =
+			feeMode === "PayerPays"
+				? cryptoClaimRoute
+				: [
+						cryptoClaimRoute[0]!,
+						cryptoClaimRoute[1]!,
+						{
+							...cryptoClaimRoute[2]!,
+							amountIn: money("9925125000", "USDC"),
+							amountOut: money("9825873750", "USDC"),
+						},
+					];
+		const flexi =
+			feeMode === "PayerPays" ? money(fee, "USDC") : money("99251250", "USDC");
 		const { orgId } = await t.newOrg("Demo Platform");
 		const { recipientId, quoteId } = await seedQuote(orgId, {
-			feeMode: "PayerPays",
-			route: cryptoClaimRoute,
+			feeMode,
+			route,
 			fees: {
 				legs: [
 					{ kind: "collect", rail: "sim_bank_us_ach", fee: money("0", "USD") },
 					{ kind: "convert", rail: "sim_fx", fee: money("125", "USD") },
-					{ kind: "settle", rail: "stellar_usdc", fee: money(fee, "USDC") },
+					{ kind: "settle", rail: "stellar_usdc", fee: flexi },
 				],
-				flexiPayFee: money(fee, "USDC"),
+				flexiPayFee: flexi,
 				total: money("125", "USD"),
-				settleUnlockedRemainder: money("1", "USDC"),
+				settleUnlockedRemainder: feeMode === "PayerPays" ? money("1", "USDC") : null,
 			},
 			destination: {
 				type: "crypto_wallet",
@@ -512,14 +516,170 @@ describe("CC2 orchestrator (CCR-11–14)", () => {
 			delivery: "claim_link",
 			profile: "one_off",
 		});
-		await expect(
-			fundAndRun(db, paymentId, { ...adapters(), settlement: drifting }),
-		).rejects.toThrow(/lock fee drift/i);
-		const settle = await db.leg.findFirstOrThrow({
-			where: { paymentId, kind: "settle" },
+		return { orgId, paymentId };
+	}
+
+	/** A vault that counts calls; options inject the CCR-15 failure modes. */
+	function countingVault(opts: {
+		feeBps?: number;
+		lieAboutFee?: boolean;
+		refundThrows?: boolean;
+	}) {
+		const calls = { fund: 0, lock: 0, refund: 0, release: 0 };
+		const vault = new MockSettlementAdapter({
+			token: "USDC",
+			treasury: "GDEMOTREASURY0000000000000000000000000000000000000000",
+			feeBps: opts.feeBps ?? 100,
+			now: () => clock.now,
 		});
-		expect(settle.externalRef).toBeNull();
-		expect(settle.lockTxRef).toBeNull();
+		const control = { crashAfterLock: false, refundThrows: opts.refundThrows ?? false };
+		const origFund = vault.fundVault.bind(vault);
+		const origLock = vault.lock.bind(vault);
+		const origRefund = vault.refund.bind(vault);
+		const origRelease = vault.release.bind(vault);
+		vault.fundVault = async (payer, amount) => {
+			calls.fund += 1;
+			return origFund(payer, amount);
+		};
+		vault.lock = async (req) => {
+			calls.lock += 1;
+			const locked = await origLock(req);
+			if (control.crashAfterLock) throw new Error("simulated crash after lock");
+			return opts.lieAboutFee ? { ...locked, fee: money("1", "USDC") } : locked;
+		};
+		vault.refund = async (payoutId) => {
+			calls.refund += 1;
+			if (control.refundThrows) throw new Error("simulated refund outage");
+			return origRefund(payoutId);
+		};
+		vault.release = async (req) => {
+			calls.release += 1;
+			return origRelease(req);
+		};
+		return { vault, calls, control };
+	}
+
+	it("CCR-15: fee drift fails the settle leg, refunds the lock, never pays; claim release refused", async () => {
+		sim.controls.reset();
+		const { vault, calls } = countingVault({ lieAboutFee: true });
+		const { paymentId } = await seedDriftPayment("PayerPays");
+		const driftAdapters = { ...adapters(), settlement: vault };
+
+		const failure = await fundAndRun(db, paymentId, driftAdapters).catch((e) => e);
+		expect(failure).toBeInstanceOf(FeeDriftError);
+		expect((failure as Error).message).toMatch(/lock fee drift/i);
+
+		const settle = await db.leg.findFirstOrThrow({ where: { paymentId, kind: "settle" } });
+		// Refs survive (CCR-12/13); the leg is failed with a durable drift error, never `processing`.
+		expect(settle.status).toBe("failed");
+		expect(settle.errorCode).toBe("fee_drift");
+		expect(settle.errorMessage).toMatch(/fee drift/i);
+		expect(settle.externalRef).toBeTruthy();
+		expect(settle.lockTxRef).toBeTruthy();
+		expect(settle.releaseTxRef).toBeTruthy();
+		expect(settle.releaseTxRef).not.toBe(settle.externalRef);
+		expect((await vault.status(settle.externalRef!)).state).toBe("refunded");
+		expect(calls.refund).toBe(1);
+
+		const payment = await db.payment.findUniqueOrThrow({ where: { id: paymentId } });
+		expect(payment.status).toBe("refunded");
+		const failedEvents = await db.event.findMany({
+			where: { paymentId, type: "leg.failed" },
+		});
+		expect(
+			failedEvents.some(
+				(e) => (e.snapshot as { errorCode?: string }).errorCode === "fee_drift",
+			),
+		).toBe(true);
+
+		// Step 3: claim release is refused and nothing is released or marked paid.
+		await expect(
+			completeClaimSettle(db, paymentId, driftAdapters, { destination: DEST }),
+		).rejects.toBeInstanceOf(ClaimReleaseRefusedError);
+		expect(calls.release).toBe(0);
+
+		// Step 5: replay (same and fresh adapter object) never re-funds, re-locks or pays.
+		const replay = await fundAndRun(db, paymentId, driftAdapters);
+		expect(replay.status).toBe("refunded");
+		const fresh = await fundAndRun(db, paymentId, {
+			...driftAdapters,
+			claimSealKey: Buffer.from("a".repeat(64), "hex"),
+		});
+		expect(fresh.status).toBe("refunded");
+		expect(calls).toEqual({ fund: 1, lock: 1, refund: 1, release: 0 });
+		const after = await db.leg.findFirstOrThrow({ where: { paymentId, kind: "settle" } });
+		expect(after.externalRef).toBe(settle.externalRef);
+		expect(after.lockTxRef).toBe(settle.lockTxRef);
+	});
+
+	it("CCR-15: refund failure after drift keeps refs, leaves the payment failed (not refunded), refuses claim", async () => {
+		sim.controls.reset();
+		const { vault, calls } = countingVault({ lieAboutFee: true, refundThrows: true });
+		const { paymentId } = await seedDriftPayment("PayerPays");
+		const driftAdapters = { ...adapters(), settlement: vault };
+
+		await expect(fundAndRun(db, paymentId, driftAdapters)).rejects.toBeInstanceOf(
+			FeeDriftError,
+		);
+		const settle = await db.leg.findFirstOrThrow({ where: { paymentId, kind: "settle" } });
+		expect(settle.status).toBe("failed");
+		expect(settle.errorCode).toBe("fee_drift");
+		// The durable error records both the drift and the refund failure.
+		expect(settle.errorMessage).toMatch(/fee drift/i);
+		expect(settle.errorMessage).toMatch(/refund failed: simulated refund outage/);
+		expect(settle.externalRef).toBeTruthy();
+		expect(settle.lockTxRef).toBeTruthy();
+		expect(settle.releaseTxRef).toBeNull();
+		expect((await vault.status(settle.externalRef!)).state).toBe("pending");
+
+		const payment = await db.payment.findUniqueOrThrow({ where: { id: paymentId } });
+		expect(payment.status).toBe("failed");
+		expect(payment.status).not.toBe("refunded");
+		expect(payment.status).not.toBe("paid");
+
+		await expect(
+			completeClaimSettle(db, paymentId, driftAdapters, { destination: DEST }),
+		).rejects.toBeInstanceOf(ClaimReleaseRefusedError);
+		expect(calls.release).toBe(0);
+
+		// Replay must not re-lock or re-fund, and must not pay.
+		await expect(fundAndRun(db, paymentId, driftAdapters)).rejects.toThrow(
+			/cannot fund payment in status failed/,
+		);
+		expect(calls.lock).toBe(1);
+		expect(calls.fund).toBe(1);
+		const still = await db.payment.findUniqueOrThrow({ where: { id: paymentId } });
+		expect(still.status).toBe("failed");
+	});
+
+	it("CCR-15: crash after lock, real vault drift found on replay via findLock → failed, refunded, no re-lock", async () => {
+		sim.controls.reset();
+		// Quote priced at 100 bps; the vault now charges 50 bps (RecipientPays: net differs).
+		const { vault, calls, control } = countingVault({ feeBps: 50 });
+		const { paymentId } = await seedDriftPayment("RecipientPays");
+		const crashAdapters = { ...adapters(), settlement: vault };
+
+		control.crashAfterLock = true;
+		await expect(fundAndRun(db, paymentId, crashAdapters)).rejects.toThrow(
+			/simulated crash after lock/,
+		);
+		const mid = await db.leg.findFirstOrThrow({ where: { paymentId, kind: "settle" } });
+		expect(mid.externalRef).toBeNull();
+		expect(mid.status).toBe("processing");
+
+		control.crashAfterLock = false;
+		const failure = await fundAndRun(db, paymentId, crashAdapters).catch((e) => e);
+		expect(failure).toBeInstanceOf(FeeDriftError);
+		expect((failure as Error).message).toMatch(/on replay/);
+
+		const settle = await db.leg.findFirstOrThrow({ where: { paymentId, kind: "settle" } });
+		expect(settle.status).toBe("failed");
+		expect(settle.errorCode).toBe("fee_drift");
+		expect(settle.externalRef).toBeTruthy();
+		expect((await vault.status(settle.externalRef!)).state).toBe("refunded");
+		const payment = await db.payment.findUniqueOrThrow({ where: { id: paymentId } });
+		expect(payment.status).toBe("refunded");
+		expect(calls).toMatchObject({ fund: 1, lock: 1, refund: 1, release: 0 });
 	});
 
 	it("exactly one payout retry then success; no third execute", async () => {

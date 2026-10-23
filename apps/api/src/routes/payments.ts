@@ -8,6 +8,7 @@ import { ApiError } from "../errors.ts";
 import {
 	cancelPayment,
 	createPaymentFromQuote,
+	FeeDriftError,
 	fundAndRun,
 } from "../orchestrator/index.ts";
 import { defineRoute, type RouteDef } from "../routes.ts";
@@ -48,6 +49,7 @@ export const paymentRoutes: RouteDef<any, any>[] = [
 					profile: body.profile,
 					externalId: body.externalId,
 					reference: body.reference,
+					now: ctx.runtime?.now(),
 				});
 			} catch (e) {
 				mapCreateError(e);
@@ -118,6 +120,8 @@ export const paymentRoutes: RouteDef<any, any>[] = [
 				});
 			} catch (e) {
 				const msg = e instanceof Error ? e.message : "fund failed";
+				// CCR-15: the drifted lock was failed and refunded; the payment is never paid.
+				if (e instanceof FeeDriftError) throw new ApiError(409, "fee_drift", msg);
 				throw new ApiError(409, "invalid_state", msg);
 			}
 			return loadPaymentApi(ctx.db, payment.id, org.id);

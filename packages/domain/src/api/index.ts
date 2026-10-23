@@ -70,12 +70,39 @@ export {
 } from "./events.ts";
 
 export {
+  SandboxAdvanceTimeRequestSchema,
+  SandboxAdvanceTimeResponseSchema,
   SandboxFailNextRequestSchema,
   SandboxProviderHealthRequestSchema,
   SandboxResetRequestSchema,
+  type SandboxAdvanceTimeRequest,
+  type SandboxAdvanceTimeResponse,
   type SandboxFailNextRequest,
   type SandboxProviderHealthRequest,
   type SandboxResetRequest,
 } from "./sandbox.ts";
+
+export {
+  CreateEndpointRequestSchema,
+  EndpointListResponseSchema,
+  EndpointSchema,
+  endpointDetailsSchemaFor,
+  type CreateEndpointRequest,
+  type Endpoint,
+  type EndpointListResponse,
+} from "./endpoints.ts";
+
+export {
+  BATCH_STATUSES,
+  BatchSchema,
+  BatchStatusSchema,
+  BatchTotalsSchema,
+  CreateBatchRequestSchema,
+  CreateBatchRowSchema,
+  type Batch,
+  type BatchStatus,
+  type CreateBatchRequest,
+  type CreateBatchRow,
+} from "./batches.ts";
 
 export { A0_OPENAPI_STUBS, type ApiOpenApiStub } from "./openapi-stubs.ts";

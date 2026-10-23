@@ -5,9 +5,17 @@ import {
 	type ClaimView,
 } from "@flexipay/domain";
 import { ApiError } from "../errors.ts";
-import { sha256Hex } from "../ids.ts";
-import { completeClaimSettle } from "../orchestrator/index.ts";
+import { newId, sha256Hex } from "../ids.ts";
+import {
+	acceptFiatClaim,
+	ClaimNotWaitingError,
+	ClaimReleaseRefusedError,
+	completeClaimSettle,
+	expireClaimIfDue,
+	type OrchestratorAdapters,
+} from "../orchestrator/index.ts";
 import { defineRoute, type RouteDef } from "../routes.ts";
+import type { ApiRuntime } from "../runtime.ts";
 
 async function loadClaimByToken(db: import("../db.ts").Db, token: string) {
 	const tokenHash = sha256Hex(token);
@@ -25,9 +33,9 @@ async function loadClaimByToken(db: import("../db.ts").Db, token: string) {
 	return link;
 }
 
-function toClaimView(
-	link: NonNullable<Awaited<ReturnType<typeof loadClaimByToken>>>,
-): ClaimView {
+type LoadedClaim = NonNullable<Awaited<ReturnType<typeof loadClaimByToken>>>;
+
+function toClaimView(link: LoadedClaim, now: Date): ClaimView {
 	const q = link.payment.quote;
 	const dest = q.destination as {
 		type: string;
@@ -36,7 +44,7 @@ function toClaimView(
 	};
 	const source = q.source as { country: string; currency: string };
 	let status = link.status as "open" | "accepted" | "expired";
-	if (status === "open" && link.expiresAt.getTime() <= Date.now()) {
+	if (status === "open" && link.expiresAt.getTime() <= now.getTime()) {
 		status = "expired";
 	}
 	const allowed =
@@ -61,6 +69,16 @@ function toClaimView(
 	});
 }
 
+function adaptersOf(runtime: ApiRuntime): OrchestratorAdapters {
+	return {
+		getProvider: runtime.getProvider,
+		settlement: runtime.settlement,
+		vaultPayer: runtime.vaultPayer,
+		now: runtime.now,
+		claimSealKey: runtime.claimSealKey,
+	};
+}
+
 export const claimRoutes: RouteDef<any, any>[] = [
 	defineRoute({
 		method: "get",
@@ -69,16 +87,17 @@ export const claimRoutes: RouteDef<any, any>[] = [
 		auth: "none",
 		success: { status: 200, schema: ClaimViewSchema },
 		handler: async (ctx, { params }) => {
-			const link = await loadClaimByToken(ctx.db, params.token!);
+			let link = await loadClaimByToken(ctx.db, params.token!);
 			if (!link) throw new ApiError(404, "not_found", "Claim not found");
-			if (link.status === "open" && link.expiresAt.getTime() <= Date.now()) {
-				await ctx.db.claimLink.update({
-					where: { paymentId: link.paymentId },
-					data: { status: "expired" },
-				});
-				link.status = "expired";
+			const now = ctx.runtime?.now() ?? new Date();
+			// Lazy expiry (ARCHITECTURE §7): an expired open link refunds the lock on first read.
+			if (
+				ctx.runtime &&
+				(await expireClaimIfDue(ctx.db, link.paymentId, adaptersOf(ctx.runtime), now))
+			) {
+				link = (await loadClaimByToken(ctx.db, params.token!)) ?? link;
 			}
-			return toClaimView(link);
+			return toClaimView(link, now);
 		},
 	}),
 	defineRoute({
@@ -92,13 +111,15 @@ export const claimRoutes: RouteDef<any, any>[] = [
 			if (!ctx.runtime) {
 				throw new ApiError(500, "internal_error", "runtime not configured");
 			}
+			const runtime = ctx.runtime;
+			const now = runtime.now();
 			const link = await loadClaimByToken(ctx.db, params.token!);
 			if (!link) throw new ApiError(404, "not_found", "Claim not found");
 
 			// Idempotent replay: accepted ≠ automatically paid, but both fields are returned.
 			if (link.status === "accepted") {
 				return {
-					claim: toClaimView(link),
+					claim: toClaimView(link, now),
 					paymentId: link.paymentId,
 					paymentStatus: link.payment.status,
 				};
@@ -106,82 +127,137 @@ export const claimRoutes: RouteDef<any, any>[] = [
 			if (link.status !== "open") {
 				throw new ApiError(409, "invalid_state", `claim is ${link.status}`);
 			}
-			if (link.expiresAt.getTime() <= Date.now()) {
-				await ctx.db.claimLink.update({
-					where: { paymentId: link.paymentId },
-					data: { status: "expired" },
-				});
+			if (await expireClaimIfDue(ctx.db, link.paymentId, adaptersOf(runtime), now)) {
 				throw new ApiError(409, "expired", "claim link expired");
 			}
 
 			const ep = body.endpoint;
-			const crypto =
-				ep.type === "crypto_wallet" || ep.type === "crypto_custodial";
-			if (!crypto) {
+			const crypto = ep.type === "crypto_wallet" || ep.type === "crypto_custodial";
+			const dest = link.payment.quote.destination as {
+				type: string;
+				country: string;
+				currency: string;
+			};
+			const destIsCrypto =
+				dest.type === "crypto_wallet" || dest.type === "crypto_custodial";
+			if (crypto !== destIsCrypto) {
 				throw new ApiError(
 					422,
-					"unsupported",
-					"Fiat claim accept blocked until POST /v1/endpoints + ClaimAcceptEndpoint.details keys are contracted",
+					"endpoint_mismatch",
+					"the chosen endpoint type does not match what this payment was quoted for",
 				);
 			}
-			// Do not invent keys from the web UI. Only `address` is used for crypto release
-			// until the integrator contracts details (address | accountNumber | phoneNumber | …).
+
+			if (crypto) {
+				// Validation (CCR-17) already guarantees details = { address }.
+				const address = ep.details.address!;
+				const settle = link.payment.legs.find((l) => l.kind === "settle");
+				// CCR-15: a failed / drift-failed settle leg is never released.
+				if (settle && (settle.status === "failed" || settle.errorCode === "fee_drift")) {
+					throw new ApiError(
+						409,
+						"settle_failed",
+						"the funds for this payment were returned; the claim cannot be accepted",
+					);
+				}
+				if (!settle || settle.status !== "processing") {
+					throw new ApiError(
+						409,
+						"invalid_state",
+						"settle leg is not waiting for claim release (fund payment first)",
+					);
+				}
+				let result: { status: string };
+				try {
+					result = await completeClaimSettle(ctx.db, link.paymentId, adaptersOf(runtime), {
+						destination: address,
+					});
+				} catch (e) {
+					if (e instanceof ClaimReleaseRefusedError) {
+						throw new ApiError(409, "settle_failed", e.message);
+					}
+					// Release failed: claim stays `open`; payment stays `processing` (accepted ≠ paid).
+					const msg = e instanceof Error ? e.message : "release failed";
+					throw new ApiError(502, "release_failed", msg);
+				}
+				const refreshed = await loadClaimByToken(ctx.db, params.token!);
+				if (!refreshed) throw new ApiError(404, "not_found", "Claim not found");
+				// ClaimLink.status and Payment.status are independent fields in the response.
+				return {
+					claim: toClaimView(refreshed, now),
+					paymentId: link.paymentId,
+					paymentStatus: result.status,
+				};
+			}
+
+			// Fiat (CCR-17): the endpoint must be the type/country/currency the quote priced.
 			if (
-				ep.details.accountNumber !== undefined ||
-				ep.details.phoneNumber !== undefined
+				ep.type !== dest.type ||
+				ep.currency !== dest.currency ||
+				ep.country !== dest.country
 			) {
 				throw new ApiError(
 					422,
-					"uncontracted_details",
-					"details.accountNumber/phoneNumber are not an accepted claim-accept contract yet",
+					"endpoint_mismatch",
+					"the chosen endpoint does not match the quoted destination",
 				);
 			}
-			const address =
-				typeof ep.details.address === "string" ? ep.details.address : null;
-			if (!address) {
+			const settleLeg = link.payment.legs.find((l) => l.kind === "settle");
+			if (settleLeg && (settleLeg.status === "failed" || settleLeg.errorCode === "fee_drift")) {
 				throw new ApiError(
-					400,
-					"validation_error",
-					"crypto endpoint details.address required (string)",
+					409,
+					"settle_failed",
+					"the funds for this payment were returned; the claim cannot be accepted",
 				);
 			}
-
-			const settle = link.payment.legs.find((l) => l.kind === "settle");
-			if (!settle || settle.status !== "processing") {
+			if (link.payment.status !== "processing" || settleLeg?.status !== "succeeded") {
 				throw new ApiError(
 					409,
 					"invalid_state",
-					"settle leg is not waiting for claim release (fund payment first)",
+					"payout is not waiting for this claim (fund payment first)",
 				);
 			}
-
-			let result: { status: string };
+			const endpointId = newId("end");
+			await ctx.db.endpoint.create({
+				data: {
+					id: endpointId,
+					organizationId: link.payment.organizationId,
+					recipientId: link.payment.recipientId,
+					type: ep.type,
+					country: ep.country,
+					currency: ep.currency,
+					network: ep.network,
+					details: ep.details,
+					simulated: true,
+				},
+			});
+			let status: string;
 			try {
-				result = await completeClaimSettle(
-					ctx.db,
-					link.paymentId,
-					{
-						getProvider: ctx.runtime.getProvider,
-						settlement: ctx.runtime.settlement,
-						vaultPayer: ctx.runtime.vaultPayer,
-						now: ctx.runtime.now,
-						claimSealKey: ctx.runtime.claimSealKey,
-					},
-					{ destination: address },
-				);
+				status = (
+					await acceptFiatClaim(ctx.db, link.paymentId, adaptersOf(runtime), {
+						endpointId,
+					})
+				).status;
 			} catch (e) {
-				// Release failed: claim stays `open`; payment stays `processing` (accepted ≠ paid).
-				const msg = e instanceof Error ? e.message : "release failed";
-				throw new ApiError(502, "release_failed", msg);
+				if (e instanceof ClaimReleaseRefusedError) {
+					throw new ApiError(409, "settle_failed", e.message);
+				}
+				if (e instanceof ClaimNotWaitingError) {
+					throw new ApiError(
+						409,
+						"invalid_state",
+						"payout is not waiting for this claim (fund payment first)",
+					);
+				}
+				const msg = e instanceof Error ? e.message : "payout failed";
+				throw new ApiError(502, "payout_failed", msg);
 			}
-
 			const refreshed = await loadClaimByToken(ctx.db, params.token!);
 			if (!refreshed) throw new ApiError(404, "not_found", "Claim not found");
-			// ClaimLink.status and Payment.status are independent fields in the response.
 			return {
-				claim: toClaimView(refreshed),
+				claim: toClaimView(refreshed, now),
 				paymentId: link.paymentId,
-				paymentStatus: result.status,
+				paymentStatus: status,
 			};
 		},
 	}),

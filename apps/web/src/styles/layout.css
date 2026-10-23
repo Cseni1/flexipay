@@ -192,6 +192,7 @@
 
 .phone-frame {
 	display: grid;
+	align-content: start;
 	gap: 1.25rem;
 	width: min(100%, 27rem);
 	padding: 1.35rem;
