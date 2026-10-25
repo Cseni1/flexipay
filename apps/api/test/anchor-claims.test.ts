@@ -613,8 +613,11 @@ describe("CCR-22 anchor claim routes (review fix)", () => {
 			),
 		]);
 		const codes = [p1.status, p2.status].sort();
+		// One request wins the reservation and submits. The other sees an unsettled attempt
+		// (409 in progress), an unresolved hash (202) or the finished payment (200),
+		// depending on timing. Whatever it sees, it must not submit.
 		expect(codes[0]).toBe(200);
-		expect([200, 202]).toContain(codes[1]);
+		expect([200, 202, 409]).toContain(codes[1]);
 		expect(payCounts.pays).toBe(1);
 	});
 
