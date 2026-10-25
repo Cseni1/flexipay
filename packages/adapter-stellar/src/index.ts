@@ -59,8 +59,17 @@ export { sanitiseHostedUrl, redactUrlQuery, maskBearerToken } from "./anchor-url
 export { loadAnchorEventEnv, ANCHOR_ENV_NAMES } from "./anchor-env.ts";
 export type { AnchorEventEnv } from "./anchor-env.ts";
 
-export { submitClassicPaymentWithMemo } from "./anchor-classic-payment.ts";
+export {
+	buildAndSignClassicPaymentWithMemo,
+	submitSignedClassicPayment,
+	submitClassicPaymentWithMemo,
+} from "./anchor-classic-payment.ts";
 export type {
 	ClassicPaymentResult,
+	ClassicPaymentTimeBounds,
+	SignedClassicPayment,
+	ClassicPaymentHorizon,
+	BuildClassicPaymentOptions,
 	SubmitClassicPaymentOptions,
+	SubmitSignedClassicPaymentOptions,
 } from "./anchor-classic-payment.ts";
