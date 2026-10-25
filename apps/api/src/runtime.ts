@@ -92,11 +92,18 @@ export async function createApiRuntime(
 
 	const anchorMode = env.FP_ANCHOR_MODE?.trim() === "1";
 	if (anchorMode) {
+		// Anchor mode releases real testnet funds to the recipient's classic account. On the
+		// in-memory mock nothing would reach the chain, so refuse rather than mislabel it.
+		if (settlementModeFromEnv(env) !== "stellar") {
+			throw new Error(
+				"FP_ANCHOR_MODE=1 requires FP_SETTLEMENT=stellar (the reference-anchor route needs a real vault release; the mock cannot provide one)",
+			);
+		}
 		const { adapter, mapping } = await createAnchorSettlement({ env });
 		return {
 			getProvider: (id) => sim.providers.get(id),
 			settlement: adapter,
-			settlementSimulated: false,
+			settlementSimulated: adapter.network === "mock",
 			vaultPayer,
 			now: () => clock.now(),
 			clock,
