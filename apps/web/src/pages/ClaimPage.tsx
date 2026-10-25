@@ -488,7 +488,58 @@ export default function ClaimPage() {
 												</label>
 											)
 										})}
+										{/* Prepared, not shipped: the passkey claim (M2) and the reference anchor cash-out
+										    (M1) have no accepted API contract or backend route yet, so both stay visible
+										    and disabled. The G-address crypto flow below is the working fallback. */}
+										<label
+											className="option-card option-card--unavailable"
+											data-testid="claim-passkey-option"
+										>
+											<input
+												type="radio"
+												name="receive"
+												value="passkey"
+												disabled
+												checked={false}
+												readOnly
+											/>
+											<span className="option-card__body">
+												<span className="option-card__title">
+													Create passkey wallet
+												</span>
+												<span className="option-card__detail">
+													Not available yet: the passkey claim API contract is
+													not accepted.
+												</span>
+											</span>
+										</label>
+										<label
+											className="option-card option-card--unavailable"
+											data-testid="claim-anchor-option"
+										>
+											<input
+												type="radio"
+												name="receive"
+												value="anchor"
+												disabled
+												checked={false}
+												readOnly
+											/>
+											<span className="option-card__body">
+												<span className="option-card__title">
+													Cash out to bank (reference anchor)
+												</span>
+												<span className="option-card__detail">
+													Not available in this build.
+												</span>
+											</span>
+										</label>
 									</fieldset>
+									<p className="form-note">
+										A crypto wallet address works today. The passkey wallet and
+										the reference anchor cash-out appear once their API
+										contracts are accepted and the backend is available.
+									</p>
 									{claim.allowedDestinationTypes.some(
 										(type) => !supportsClaimAccept(type),
 									) ? (
