@@ -18,6 +18,9 @@ import {
 } from "../../api/claimClient"
 import {
 	PasskeyWalletError,
+	abandonPasskeyCreationAuth,
+	bindPasskeyWallet,
+	confirmPasskeyCreationAuth,
 	createPasskeyWallet,
 	forgetPasskeyWallet,
 	rememberPasskeyDeploy,
@@ -29,8 +32,8 @@ import {
 	passkeyClaimReducer,
 } from "./passkey-claim-flow"
 
-// Controller for the CCR-21 passkey claim: one passkey ceremony, one deploy carrier, one
-// prepare, one signature and one submit idempotency key per prepare.
+// Controller for the CCR-21 passkey claim: create → deploy → Bind (explicit click) → prepare →
+// sign → submit. Binding never auto-starts after create; Bind retries reuse the same credential.
 //
 // Secret-bearing values (unsigned and signed auth entries) live only in this controller's
 // in-memory refs: never React state, never logs, never browser storage. A network retry of the
@@ -61,6 +64,9 @@ interface PreparedClaim {
 export interface PasskeyClaimController {
 	flow: ReturnType<typeof passkeyClaimReducer>
 	create: () => void
+	/** Confirm with passkey — real startAuthentication from this click (same createWallet). */
+	confirmCreation: () => void
+	bind: () => void
 	prepare: () => void
 	approve: () => void
 	checkRelease: () => void
@@ -95,7 +101,9 @@ export function usePasskeyClaim({
 	// Monotonic attempt id: a result that belongs to a cancelled attempt is ignored.
 	const attempt = useRef(0)
 	const creating = useRef(false)
+	const confirmingCreation = useRef(false)
 	const deploying = useRef(false)
+	const binding = useRef(false)
 	const preparing = useRef(false)
 	const signing = useRef(false)
 	const submitting = useRef(false)
@@ -167,7 +175,12 @@ export function usePasskeyClaim({
 			if (creating.current) return
 			creating.current = true
 			try {
-				const wallet = await createPasskeyWallet()
+				const wallet = await createPasskeyWallet({
+					onAwaitingCreationConfirm: () => {
+						if (attempt.current !== attemptId) return
+						dispatch({ type: "creation_confirm_needed" })
+					},
+				})
 				if (attempt.current !== attemptId) return
 				const pending: DeployCarrier = {
 					key: `claim-passkey-deploy-${crypto.randomUUID()}`,
@@ -399,20 +412,103 @@ export function usePasskeyClaim({
 		void runCreate(attemptId)
 	}, [runCreate])
 
+	/**
+	 * Confirm with passkey click: starts the real startAuthentication in this gesture and
+	 * continues the same createWallet. Never calls createWallet / startRegistration again.
+	 */
+	const confirmCreation = useCallback(() => {
+		if (confirmingCreation.current) return
+		if (flow.phase !== "awaiting_creation_confirm") return
+		confirmingCreation.current = true
+		dispatch({ type: "creation_confirm_started" })
+		void confirmPasskeyCreationAuth()
+			.then((outcome) => {
+				if (outcome === "dismissed") {
+					dispatch({
+						type: "creation_confirm_dismissed",
+						message:
+							"Confirmation was dismissed. The same passkey is still available — tap Confirm with passkey again. No new credential is created.",
+					})
+					return
+				}
+				if (outcome === "failed") {
+					dispatch({
+						type: "creation_confirm_failed",
+						message:
+							"Confirmation failed. Tap Confirm with passkey to retry with the same registration. No new credential is created.",
+					})
+					return
+				}
+				// completed | busy | idle: createWallet continues or nothing to do
+			})
+			.finally(() => {
+				confirmingCreation.current = false
+			})
+	}, [flow.phase])
+
+	/**
+	 * Explicit Bind wallet click. Starts the binding ceremony on the click stack without an
+	 * intervening module-load await (kit already held from create). Never calls createWallet.
+	 */
+	const bind = useCallback(() => {
+		if (binding.current || creating.current || deploying.current) return
+		if (
+			flow.phase !== "deployed" &&
+			flow.phase !== "binding_failed" &&
+			flow.phase !== "binding"
+		)
+			return
+		if (flow.phase === "binding") return
+		if (!flow.contractId || !flow.deployTxHash) return
+
+		binding.current = true
+		const attemptId = attempt.current
+		dispatch({ type: "bind_started" })
+		// Kick off immediately from the gesture; first awaits are confirm/connect only.
+		void bindPasskeyWallet()
+			.then(() => {
+				if (attempt.current !== attemptId) return
+				dispatch({ type: "bind_succeeded" })
+			})
+			.catch((cause: unknown) => {
+				if (attempt.current !== attemptId) return
+				if (cause instanceof PasskeyWalletError && cause.code === "cancelled") {
+					dispatch({
+						type: "bind_cancelled",
+						message:
+							"The bind prompt was dismissed. The same passkey is still available — tap Bind wallet to try again.",
+					})
+					return
+				}
+				dispatch({
+					type: "bind_failed",
+					message:
+						cause instanceof PasskeyWalletError
+							? cause.message
+							: "The passkey wallet could not be bound on this device.",
+				})
+			})
+			.finally(() => {
+				binding.current = false
+			})
+	}, [flow.phase, flow.contractId, flow.deployTxHash])
+
 	const prepare = useCallback(() => {
-		if (!flow.contractId || preparing.current) return
+		if (flow.phase !== "bound" && flow.phase !== "retryable_error") return
+		if (!flow.contractId || preparing.current || binding.current) return
 		const attemptId = ++attempt.current
 		prepared.current = null
 		dispatch({ type: "prepare_started" })
 		void runPrepare(attemptId, flow.contractId)
-	}, [flow.contractId, runPrepare])
+	}, [flow.phase, flow.contractId, runPrepare])
 
 	const approve = useCallback(() => {
-		if (signing.current || submitting.current) return
+		if (signing.current || submitting.current || binding.current) return
+		if (flow.phase !== "awaiting_signature" && flow.phase !== "signing") return
 		const attemptId = attempt.current
 		dispatch({ type: "signing_started" })
 		void runSignAndSubmit(attemptId)
-	}, [runSignAndSubmit])
+	}, [flow.phase, runSignAndSubmit])
 
 	const checkRelease = useCallback(() => {
 		if (flow.phase !== "processing" || submitting.current) return
@@ -422,7 +518,13 @@ export function usePasskeyClaim({
 	}, [flow.phase, sendSubmit])
 
 	const retry = useCallback(() => {
-		if (creating.current || deploying.current || preparing.current) return
+		if (
+			creating.current ||
+			deploying.current ||
+			binding.current ||
+			preparing.current
+		)
+			return
 		if (flow.phase === "deploy_failed" && flow.retry === "create") {
 			const attemptId = ++attempt.current
 			carrier.current = null
@@ -436,6 +538,7 @@ export function usePasskeyClaim({
 			void sendDeploy(attempt.current)
 			return
 		}
+		// Binding retries go through bind(), never createWallet.
 		if (flow.phase !== "retryable_error") return
 		if (flow.retry === "prepare") {
 			if (!flow.contractId) return
@@ -465,10 +568,23 @@ export function usePasskeyClaim({
 		abort.current?.abort()
 		abort.current = null
 		creating.current = false
+		confirmingCreation.current = false
+		binding.current = false
+		abandonPasskeyCreationAuth()
 		carrier.current = null
 		prepared.current = null
 		dispatch({ type: "cancelled" })
 	}, [])
 
-	return { flow, create, prepare, approve, checkRelease, retry, cancel }
+	return {
+		flow,
+		create,
+		confirmCreation,
+		bind,
+		prepare,
+		approve,
+		checkRelease,
+		retry,
+		cancel,
+	}
 }

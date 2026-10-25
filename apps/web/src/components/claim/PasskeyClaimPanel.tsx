@@ -8,7 +8,9 @@ import {
 } from "../ui"
 import {
 	canApprovePasskeyClaim,
+	canBindPasskeyWallet,
 	canCheckPasskeyRelease,
+	canConfirmPasskeyCreation,
 	canCreatePasskeyWallet,
 	canPreparePasskeyClaim,
 	canRetryPasskeyStep,
@@ -18,8 +20,8 @@ import {
 
 // Rendering for the passkey claim (M2). Deliberately separate from ClaimPage and presentational:
 // it reads flow state and calls handlers, it never talks to the API itself. The claim page renders
-// it for the real CCR-21 chain (create → deploy → prepare → sign → submit); the DEV-only state
-// gallery renders every phase from fixtures.
+// it for the real CCR-21 chain (create → deploy → Bind → prepare → sign → submit); the DEV-only
+// state gallery renders every phase from fixtures.
 
 export interface PasskeyClaimPanelProps {
 	flow: PasskeyClaimFlowState
@@ -28,6 +30,8 @@ export interface PasskeyClaimPanelProps {
 	/** The claim is no longer open at all (accepted, cancelled or payment not processing). */
 	claimClosed?: boolean
 	onCreate?: () => void
+	onConfirmCreation?: () => void
+	onBind?: () => void
 	onPrepare?: () => void
 	onApprove?: () => void
 	onCheckRelease?: () => void
@@ -48,6 +52,8 @@ export function PasskeyClaimPanel({
 	claimExpired,
 	claimClosed = false,
 	onCreate,
+	onConfirmCreation,
+	onBind,
 	onPrepare,
 	onApprove,
 	onCheckRelease,
@@ -70,7 +76,9 @@ export function PasskeyClaimPanel({
 	// Cancelling is safe before a deploy is sent: the ceremony result is ignored and no request
 	// leaves the page. Once deploying, the page must not hide an in-flight wallet deploy.
 	const cancellable =
-		flow.phase === "creating_wallet" || (!busy && flow.phase !== "deployed")
+		flow.phase === "creating_wallet" ||
+		flow.phase === "awaiting_creation_confirm" ||
+		(!busy && flow.phase !== "deployed")
 	const cancel =
 		onCancel && cancellable ? (
 			<Button variant="ghost" onClick={onCancel} data-testid="passkey-cancel">
@@ -140,11 +148,42 @@ export function PasskeyClaimPanel({
 				return (
 					<>
 						<Notice tone="info">
-							Waiting for your device: approve with your fingerprint or face.
-							Your device may ask twice — once to create the passkey, once to
-							authorise the wallet.
+							Waiting for your device: create the passkey with your fingerprint
+							or face. Confirmation is a separate step on this page.
 						</Notice>
 						{cancel}
+					</>
+				)
+
+			case "awaiting_creation_confirm":
+				return (
+					<>
+						<Notice tone="info" data-testid="passkey-creation-confirm-needed">
+							Passkey created. Confirm with your passkey to finish wallet setup.
+							This continues the same creation — it does not register a new
+							credential.
+						</Notice>
+						{flow.message ? (
+							<p
+								className="form-note"
+								data-testid="passkey-creation-confirm-note"
+							>
+								{flow.message}
+							</p>
+						) : null}
+						<div className="claim-demo">
+							<Button
+								onClick={onConfirmCreation}
+								disabled={
+									expired || claimClosed || !canConfirmPasskeyCreation(flow)
+								}
+								data-testid="passkey-confirm-creation"
+							>
+								Confirm with passkey
+							</Button>
+							{cancel}
+							{fallback}
+						</div>
 					</>
 				)
 
@@ -165,7 +204,77 @@ export function PasskeyClaimPanel({
 				return (
 					<>
 						<Notice tone="info" data-testid="passkey-deployed">
-							Wallet deployed on testnet.
+							Wallet deployed on testnet. Bind it with your passkey before any
+							claim signature.
+						</Notice>
+						<p className="claim-meta">
+							Contract account{" "}
+							{flow.contractId ? truncated(flow.contractId) : ""}
+						</p>
+						{flow.deployTxHash ? (
+							<p className="claim-meta" data-testid="passkey-deploy-hash">
+								Deploy transaction {truncated(flow.deployTxHash)}
+							</p>
+						) : null}
+						<PhaseCopy>
+							Binding confirms the deployed wallet with your device. It does not
+							start automatically after create, and it does not create a new
+							passkey.
+						</PhaseCopy>
+						<div className="claim-demo">
+							<Button
+								onClick={onBind}
+								disabled={expired || claimClosed || !canBindPasskeyWallet(flow)}
+								data-testid="passkey-bind"
+							>
+								Bind wallet
+							</Button>
+							{fallback}
+						</div>
+					</>
+				)
+
+			case "binding":
+				return (
+					<>
+						<Notice tone="info" data-testid="passkey-binding">
+							Waiting for your device: approve to bind the passkey to this
+							wallet. No new passkey is created.
+						</Notice>
+					</>
+				)
+
+			case "binding_failed":
+				return (
+					<>
+						<Notice tone="warning" data-testid="passkey-bind-error">
+							{flow.message ??
+								"The passkey wallet could not be bound on this device."}
+						</Notice>
+						<p className="form-note">
+							Retrying Bind wallet reuses the same passkey. It never creates a
+							new credential.
+						</p>
+						<div className="claim-demo">
+							<Button
+								onClick={onBind}
+								disabled={expired || claimClosed || !canBindPasskeyWallet(flow)}
+								data-testid="passkey-bind"
+							>
+								Bind wallet
+							</Button>
+							{cancel}
+							{fallback}
+						</div>
+					</>
+				)
+
+			case "bound":
+				return (
+					<>
+						<Notice tone="info" data-testid="passkey-bound">
+							Passkey bound to the deployed wallet. You can prepare the claim
+							release next.
 						</Notice>
 						<p className="claim-meta">
 							Contract account{" "}

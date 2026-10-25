@@ -44,7 +44,9 @@ type SubmitOutcome = "paid" | "pending" | "fail" | "auth_expired" | "mismatch"
 
 interface SignStubState {
 	creates: number
+	binds: number
 	signs: number
+	bind: "ok" | "cancel" | "error" | "hang"
 	sign: "ok" | "cancel" | "error" | "hang"
 	ledgers: number[]
 	entryCounts: number[]
@@ -81,6 +83,22 @@ export function rememberPasskeyDeploy(hash) {
 
 export function forgetPasskeyWallet() {}
 
+export async function bindPasskeyWallet() {
+	const state = window.__passkeySignTest
+	state.binds += 1
+	if (state.bind === "cancel")
+		throw new PasskeyWalletError("cancelled", "The bind prompt was dismissed.")
+	if (state.bind === "error")
+		throw new PasskeyWalletError("failed", "The passkey wallet could not be bound on this device.")
+	if (state.bind === "hang") return new Promise(() => {})
+}
+
+export async function confirmPasskeyCreationAuth() {
+	return "idle"
+}
+
+export function abandonPasskeyCreationAuth() {}
+
 export async function signPasskeyClaimAuthEntries({ authEntries, signatureExpirationLedger }) {
 	const state = window.__passkeySignTest
 	state.signs += 1
@@ -111,7 +129,9 @@ async function installStub(
 ): Promise<{ state: () => Promise<SignStubState> }> {
 	const initial: SignStubState = {
 		creates: 0,
+		binds: 0,
 		signs: 0,
+		bind: "ok",
 		sign: "ok",
 		ledgers: [],
 		entryCounts: [],
@@ -293,6 +313,13 @@ const openPasskey = async (page: Page) => {
 const createWallet = async (page: Page) => {
 	await page.getByTestId("passkey-create").click()
 	await expect(page.getByTestId("passkey-deployed")).toBeVisible()
+	await expect(page.getByTestId("passkey-bind")).toBeEnabled()
+	await expect(page.getByTestId("passkey-prepare")).toHaveCount(0)
+}
+
+const bindWallet = async (page: Page) => {
+	await page.getByTestId("passkey-bind").click()
+	await expect(page.getByTestId("passkey-bound")).toBeVisible()
 }
 
 const prepare = async (page: Page) => {
@@ -324,6 +351,7 @@ test.describe("CF8 passkey prepare, sign and submit", () => {
 
 		await openPasskey(page)
 		await createWallet(page)
+		await bindWallet(page)
 		await expect(page.getByTestId("passkey-panel")).not.toContainText(/\bPaid\b/)
 
 		await prepare(page)
@@ -353,6 +381,8 @@ test.describe("CF8 passkey prepare, sign and submit", () => {
 		expect(state.ledgers).toEqual([424242])
 		expect(state.entryCounts).toEqual([1])
 		expect(state.deployHashes).toEqual([DEPLOY_HASH])
+		expect(state.creates).toBe(1)
+		expect(state.binds).toBe(1)
 		expect(state.signs).toBe(1)
 
 		// No auth entry, credential id or claim token in storage or console.
@@ -379,6 +409,7 @@ test.describe("CF8 passkey prepare, sign and submit", () => {
 
 		await openPasskey(page)
 		await createWallet(page)
+		await bindWallet(page)
 		await prepare(page)
 		await approve(page)
 
@@ -409,6 +440,7 @@ test.describe("CF8 passkey prepare, sign and submit", () => {
 
 		await openPasskey(page)
 		await createWallet(page)
+		await bindWallet(page)
 		await prepare(page)
 		await approve(page)
 
@@ -436,6 +468,7 @@ test.describe("CF8 passkey prepare, sign and submit", () => {
 
 		await openPasskey(page)
 		await createWallet(page)
+		await bindWallet(page)
 		await prepare(page)
 		await approve(page)
 
@@ -466,6 +499,7 @@ test.describe("CF8 passkey prepare, sign and submit", () => {
 
 		await openPasskey(page)
 		await createWallet(page)
+		await bindWallet(page)
 		await prepare(page)
 		await approve(page)
 
@@ -486,6 +520,7 @@ test.describe("CF8 passkey prepare, sign and submit", () => {
 
 		await openPasskey(page)
 		await createWallet(page)
+		await bindWallet(page)
 		await prepare(page)
 		await approve(page)
 
@@ -511,6 +546,7 @@ test.describe("CF8 passkey prepare, sign and submit", () => {
 
 		await openPasskey(page)
 		await createWallet(page)
+		await bindWallet(page)
 		await page.getByTestId("passkey-prepare").click()
 
 		await expect(page.getByTestId("passkey-expired")).toBeVisible()
@@ -528,6 +564,7 @@ test.describe("CF8 passkey prepare, sign and submit", () => {
 
 		await openPasskey(page)
 		await createWallet(page)
+		await bindWallet(page)
 		await page.getByTestId("passkey-prepare").click()
 
 		await expect(page.getByTestId("passkey-error")).toBeVisible()
@@ -548,6 +585,7 @@ test.describe("CF8 passkey prepare, sign and submit", () => {
 
 		await openPasskey(page)
 		await createWallet(page)
+		await bindWallet(page)
 		await prepare(page)
 
 		await page.evaluate(() => {

@@ -55,6 +55,19 @@ export function rememberPasskeyDeploy(hash) {
 
 export function forgetPasskeyWallet() {}
 
+export async function bindPasskeyWallet() {
+	throw new PasskeyWalletError(
+		"failed",
+		"Binding is not part of this deploy fixture.",
+	)
+}
+
+export async function confirmPasskeyCreationAuth() {
+	return "idle"
+}
+
+export function abandonPasskeyCreationAuth() {}
+
 export async function signPasskeyClaimAuthEntries() {
 	throw new PasskeyWalletError("failed", "Signing is not part of this fixture.")
 }
@@ -238,8 +251,9 @@ test.describe("CF7 passkey wallet deploy", () => {
 
 		await expect(page.getByTestId("passkey-deployed")).toBeVisible()
 		await expect(page.getByTestId("passkey-deploy-hash")).toBeVisible()
-		// The chain continues with prepare; nothing is submitted until the user asks.
-		await expect(page.getByTestId("passkey-prepare")).toBeEnabled()
+		// Deploy waits for an explicit Bind; prepare/approve stay closed.
+		await expect(page.getByTestId("passkey-bind")).toBeEnabled()
+		await expect(page.getByTestId("passkey-prepare")).toHaveCount(0)
 		await expect(page.getByTestId("passkey-approve")).toHaveCount(0)
 
 		expect(await stub.creates()).toBe(1)

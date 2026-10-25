@@ -4,7 +4,9 @@ import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import {
 	canApprovePasskeyClaim,
+	canBindPasskeyWallet,
 	canCheckPasskeyRelease,
+	canPreparePasskeyClaim,
 	canRetryPasskeyStep,
 	initialPasskeyFlow,
 	passkeyClaimReducer,
@@ -102,6 +104,8 @@ const toAwaitingSignature = (): PasskeyClaimFlowState => {
 		type: "deploy_succeeded",
 		deployTxHash: DEPLOY_HASH,
 	})
+	flow = passkeyClaimReducer(flow, { type: "bind_started" })
+	flow = passkeyClaimReducer(flow, { type: "bind_succeeded" })
 	flow = passkeyClaimReducer(flow, { type: "prepare_started" })
 	flow = passkeyClaimReducer(flow, {
 		type: "prepared",
@@ -228,6 +232,62 @@ test.describe("CF6 passkey claim flow state", () => {
 		expect(flow.phase).toBe("creating_wallet")
 		expect(flow.contractId).toBeNull()
 		expect(flow.deployIdempotencyKey).toBeNull()
+	})
+
+	test("deploy success waits for Bind; prepare stays closed until bound", () => {
+		let flow = accepted()
+		flow = passkeyClaimReducer(flow, { type: "wallet_creation_started" })
+		flow = passkeyClaimReducer(flow, {
+			type: "wallet_created",
+			contractId: "CFIXTUREWALLET",
+			deployIdempotencyKey: "deploy-key-1",
+		})
+		flow = passkeyClaimReducer(flow, {
+			type: "deploy_succeeded",
+			deployTxHash: DEPLOY_HASH,
+		})
+		expect(flow.phase).toBe("deployed")
+		expect(canBindPasskeyWallet(flow)).toBe(true)
+		expect(canPreparePasskeyClaim(flow)).toBe(false)
+		expect(
+			passkeyClaimReducer(flow, { type: "prepare_started" }).phase,
+		).toBe("deployed")
+
+		flow = passkeyClaimReducer(flow, { type: "bind_started" })
+		expect(flow.phase).toBe("binding")
+		flow = passkeyClaimReducer(flow, { type: "bind_succeeded" })
+		expect(flow.phase).toBe("bound")
+		expect(canPreparePasskeyClaim(flow)).toBe(true)
+		expect(canBindPasskeyWallet(flow)).toBe(false)
+	})
+
+	test("bind cancel keeps the credential for Bind retry, not create", () => {
+		let flow = accepted()
+		flow = passkeyClaimReducer(flow, { type: "wallet_creation_started" })
+		flow = passkeyClaimReducer(flow, {
+			type: "wallet_created",
+			contractId: "CFIXTUREWALLET",
+			deployIdempotencyKey: "deploy-key-1",
+		})
+		flow = passkeyClaimReducer(flow, {
+			type: "deploy_succeeded",
+			deployTxHash: DEPLOY_HASH,
+		})
+		flow = passkeyClaimReducer(flow, { type: "bind_started" })
+		flow = passkeyClaimReducer(flow, {
+			type: "bind_cancelled",
+			message: "dismissed",
+		})
+		expect(flow.phase).toBe("binding_failed")
+		expect(flow.retry).toBe("bind")
+		expect(flow.contractId).toBe("CFIXTUREWALLET")
+		expect(flow.deployTxHash).toBe(DEPLOY_HASH)
+		expect(canBindPasskeyWallet(flow)).toBe(true)
+		expect(canPreparePasskeyClaim(flow)).toBe(false)
+
+		flow = passkeyClaimReducer(flow, { type: "retry" })
+		expect(flow.phase).toBe("binding")
+		expect(flow.contractId).toBe("CFIXTUREWALLET")
 	})
 
 	test("a non-retryable deploy rejection offers no retry button", () => {
@@ -464,9 +524,13 @@ test.describe("CF6 passkey state gallery", () => {
 			"unsupported",
 			"idle",
 			"creating_wallet",
+			"awaiting_creation_confirm",
 			"deploying",
 			"deployed",
 			"deploy_failed",
+			"binding",
+			"binding_failed",
+			"bound",
 			"preparing",
 			"awaiting_signature",
 			"submitting",
@@ -617,9 +681,13 @@ test.describe("CF6 passkey state gallery", () => {
 			"unsupported",
 			"idle",
 			"creating_wallet",
+			"awaiting_creation_confirm",
 			"deploying",
 			"deployed",
 			"deploy_failed",
+			"binding",
+			"binding_failed",
+			"bound",
 			"preparing",
 			"awaiting_signature",
 			"submitting",
@@ -767,6 +835,7 @@ test.describe("CF6 passkey source guards", () => {
 		const claimFiles = [
 			"apps/web/src/api/claimClient.ts",
 			"apps/web/src/api/passkeyWallet.ts",
+			"apps/web/src/api/passkeyWebAuthnGate.ts",
 			"apps/web/src/pages/ClaimPage.tsx",
 			"apps/web/src/components/claim/PasskeyClaimPanel.tsx",
 			"apps/web/src/components/claim/PasskeyClaimSection.tsx",

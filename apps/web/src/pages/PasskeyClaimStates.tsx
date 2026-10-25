@@ -40,6 +40,10 @@ const scenarios = [
 		...accepted(),
 		phase: "creating_wallet",
 	}),
+	scenario("awaiting_creation_confirm", {
+		...accepted(),
+		phase: "awaiting_creation_confirm",
+	}),
 	scenario("deploying", {
 		...accepted(),
 		phase: "deploying",
@@ -60,6 +64,29 @@ const scenarios = [
 		deployIdempotencyKey: "fixture-deploy-key",
 		retry: "deploy",
 		message: "The deploy request was not accepted by the claim API.",
+	}),
+	scenario("binding", {
+		...accepted(),
+		phase: "binding",
+		contractId: FIXTURE_CONTRACT_ID,
+		deployTxHash: FIXTURE_DEPLOY_HASH,
+		deployIdempotencyKey: "fixture-deploy-key",
+	}),
+	scenario("binding_failed", {
+		...accepted(),
+		phase: "binding_failed",
+		contractId: FIXTURE_CONTRACT_ID,
+		deployTxHash: FIXTURE_DEPLOY_HASH,
+		deployIdempotencyKey: "fixture-deploy-key",
+		retry: "bind",
+		message: "The bind prompt was dismissed.",
+	}),
+	scenario("bound", {
+		...accepted(),
+		phase: "bound",
+		contractId: FIXTURE_CONTRACT_ID,
+		deployTxHash: FIXTURE_DEPLOY_HASH,
+		deployIdempotencyKey: "fixture-deploy-key",
 	}),
 	scenario("preparing", {
 		...accepted(),
