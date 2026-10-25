@@ -9,7 +9,6 @@ import {
 import {
 	canApprovePasskeyClaim,
 	canCreatePasskeyWallet,
-	canPreparePasskeyClaim,
 	canRetryPasskeyStep,
 	isPasskeyBusy,
 	type PasskeyClaimFlowState,
@@ -17,8 +16,8 @@ import {
 
 // Rendering for the passkey claim (M2). Deliberately separate from ClaimPage and presentational:
 // it reads flow state and calls handlers, it never talks to the API itself. The claim page renders
-// it only in the `unavailable` state until an accepted contract and a backend route exist, and the
-// DEV-only state gallery renders every other state from fixtures.
+// it for the real CCR-20 deploy flow; the DEV-only state gallery renders the prepare/submit states
+// from fixtures because those routes are still stubs.
 
 export interface PasskeyClaimPanelProps {
 	flow: PasskeyClaimFlowState
@@ -27,17 +26,14 @@ export interface PasskeyClaimPanelProps {
 	/** The claim is no longer open at all (accepted, cancelled or payment not processing). */
 	claimClosed?: boolean
 	onCreate?: () => void
-	onPrepare?: () => void
 	onApprove?: () => void
 	onRetry?: () => void
 	onCancel?: () => void
 	onUseCryptoWallet?: () => void
 }
 
-const truncatedContract = (contractId: string): string =>
-	contractId.length > 16
-		? `${contractId.slice(0, 8)}…${contractId.slice(-6)}`
-		: contractId
+const truncated = (value: string): string =>
+	value.length > 16 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value
 
 const PhaseCopy = ({ children }: { children: string }) => (
 	<p className="form-note">{children}</p>
@@ -48,7 +44,6 @@ export function PasskeyClaimPanel({
 	claimExpired,
 	claimClosed = false,
 	onCreate,
-	onPrepare,
 	onApprove,
 	onRetry,
 	onCancel,
@@ -66,8 +61,12 @@ export function PasskeyClaimPanel({
 		</Button>
 	) : null
 
+	// Cancelling is safe before a deploy is sent: the ceremony result is ignored and no request
+	// leaves the page. Once deploying, the page must not hide an in-flight wallet deploy.
+	const cancellable =
+		flow.phase === "creating_wallet" || (!busy && flow.phase !== "deployed")
 	const cancel =
-		onCancel && !busy ? (
+		onCancel && cancellable ? (
 			<Button variant="ghost" onClick={onCancel} data-testid="passkey-cancel">
 				Cancel
 			</Button>
@@ -84,9 +83,10 @@ export function PasskeyClaimPanel({
 			case "unavailable":
 				return (
 					<>
-						<Notice tone="warning">
-							Passkey wallet is not available in this build: the passkey claim
-							API has no accepted contract yet. Your claim is unaffected.
+						<Notice tone="warning" data-testid="passkey-unavailable">
+							Passkey wallet is not available in this build: the public testnet
+							RPC URL or network passphrase is not configured. Your claim is
+							unaffected.
 						</Notice>
 						{fallback}
 					</>
@@ -135,6 +135,8 @@ export function PasskeyClaimPanel({
 					<>
 						<Notice tone="info">
 							Waiting for your device: approve with your fingerprint or face.
+							Your device may ask twice — once to create the passkey, once to
+							authorise the wallet.
 						</Notice>
 						{cancel}
 					</>
@@ -148,32 +150,32 @@ export function PasskeyClaimPanel({
 						</Notice>
 						<p className="claim-meta">
 							Contract account{" "}
-							{flow.contractId ? truncatedContract(flow.contractId) : "pending"}
+							{flow.contractId ? truncated(flow.contractId) : "pending"}
 						</p>
-						{cancel}
 					</>
 				)
 
 			case "deployed":
 				return (
 					<>
-						<Notice tone="info">Wallet deployed on testnet.</Notice>
+						<Notice tone="info" data-testid="passkey-deployed">
+							Wallet deployed on testnet.
+						</Notice>
 						<p className="claim-meta">
 							Contract account{" "}
-							{flow.contractId ? truncatedContract(flow.contractId) : ""}
+							{flow.contractId ? truncated(flow.contractId) : ""}
 						</p>
-						<div className="claim-demo">
-							<Button
-								onClick={onPrepare}
-								disabled={
-									expired || claimClosed || !canPreparePasskeyClaim(flow)
-								}
-								data-testid="passkey-prepare"
-							>
-								Prepare claim
-							</Button>
-							{cancel}
-						</div>
+						{flow.deployTxHash ? (
+							<p className="claim-meta" data-testid="passkey-deploy-hash">
+								Deploy transaction {truncated(flow.deployTxHash)}
+							</p>
+						) : null}
+						<Notice tone="warning" data-testid="passkey-signing-unavailable">
+							Claim signing is not available yet: the prepare and submit routes
+							are not enabled on this claim API. Nothing has been paid or
+							completed by this page; your claim is still open.
+						</Notice>
+						{fallback}
 					</>
 				)
 
@@ -184,12 +186,14 @@ export function PasskeyClaimPanel({
 							{flow.message ?? "The wallet could not be deployed on testnet."}
 						</Notice>
 						<p className="form-note">
-							Retrying sends the same deploy request with the same idempotency
-							key, so no second wallet is created.
+							{flow.retry === "create"
+								? "Retrying asks your device for a passkey again; the earlier attempt created no wallet."
+								: "Retrying sends the same deploy request with the same idempotency key, so no second wallet is created."}
 						</p>
 						<div className="claim-demo">
 							{retry}
 							{cancel}
+							{fallback}
 						</div>
 					</>
 				)

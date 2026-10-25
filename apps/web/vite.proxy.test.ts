@@ -66,6 +66,11 @@ describe("CCR-19 proxy route policy", () => {
 			classifyProxyRequest("POST", "/v1/claims/token_1/accept"),
 			"claim",
 		)
+		// CCR-20: the mounted deploy route is forwarded as a public claim route.
+		assert.equal(
+			classifyProxyRequest("POST", "/v1/claims/token_1/passkey/deploy"),
+			"claim",
+		)
 	})
 
 	test("rejects everything else", () => {
@@ -74,6 +79,10 @@ describe("CCR-19 proxy route policy", () => {
 			["GET", "/v1/admin"],
 			["GET", "/v1/claims/token_1/accept"],
 			["POST", "/v1/claims/token_1"],
+			// Not mounted on the API branch: the browser must not reach them through the proxy.
+			["POST", "/v1/claims/token_1/passkey/prepare"],
+			["POST", "/v1/claims/token_1/passkey/submit"],
+			["GET", "/v1/claims/token_1/passkey/deploy"],
 			["GET", "/v1/payments/pay_1/fund"],
 			["POST", "/v1/payments/pay_1/fund/extra"],
 			["GET", "/v1/payments/../claims/token_1"],

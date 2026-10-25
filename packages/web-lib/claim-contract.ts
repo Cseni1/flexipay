@@ -5,6 +5,10 @@ export {
 	ClaimAcceptRequestSchema,
 	ClaimAcceptResponseSchema,
 	ClaimViewSchema,
+	// CCR-20 deploy is mounted on the API; prepare/submit are not, so only the deploy wire
+	// schemas are re-exported here. They are the accepted shared schemas, not copies.
+	PasskeyDeployRequestSchema,
+	PasskeyDeployResponseSchema,
 } from "../domain/src/api/claims.ts"
 
 export type {
@@ -12,4 +16,6 @@ export type {
 	ClaimAcceptResponse,
 	ClaimLinkStatus,
 	ClaimView,
+	PasskeyDeployRequest,
+	PasskeyDeployResponse,
 } from "../domain/src/api/claims.ts"

@@ -11,8 +11,8 @@ import { PasskeyClaimPanel } from "../components/claim/PasskeyClaimPanel"
 // states, not a passkey run and not a claim: it is registered only when `import.meta.env.DEV`,
 // so a production build has no route to it. It never sends a request and holds no XDR payload.
 //
-// The M2 passkey interface is still a proposal (no accepted shared contract), so the flow here
-// is driven by fixture states and local reducer events only.
+// CCR-20 deploy is accepted and the real flow lives on the claim page; prepare/submit are still
+// stubs, so their states are fixture-only here.
 
 const scenario = (
 	name: string,
@@ -20,16 +20,20 @@ const scenario = (
 ): { name: string; flow: PasskeyClaimFlowState } => ({ name, flow })
 
 const accepted = () =>
-	initialPasskeyFlow({ contractAccepted: true, supported: true })
+	initialPasskeyFlow({ deployAvailable: true, supported: true })
+
+const FIXTURE_CONTRACT_ID =
+	"CFIXTUREWALLETCONTRACTACCOUNT00000000000000000000000000000"
+const FIXTURE_DEPLOY_HASH = "ab".repeat(32)
 
 const scenarios = [
 	scenario(
 		"unavailable",
-		initialPasskeyFlow({ contractAccepted: false, supported: true }),
+		initialPasskeyFlow({ deployAvailable: false, supported: true }),
 	),
 	scenario(
 		"unsupported",
-		initialPasskeyFlow({ contractAccepted: true, supported: false }),
+		initialPasskeyFlow({ deployAvailable: true, supported: false }),
 	),
 	scenario("idle", accepted()),
 	scenario("creating_wallet", {
@@ -45,7 +49,8 @@ const scenarios = [
 	scenario("deployed", {
 		...accepted(),
 		phase: "deployed",
-		contractId: "CFIXTUREWALLETCONTRACTACCOUNT00000000000000000000000000000",
+		contractId: FIXTURE_CONTRACT_ID,
+		deployTxHash: FIXTURE_DEPLOY_HASH,
 		deployIdempotencyKey: "fixture-deploy-key",
 	}),
 	scenario("deploy_failed", {
@@ -125,14 +130,15 @@ const LiveSupportScenario = () => {
 	const [flow] = useReducer(
 		passkeyClaimReducer,
 		initialPasskeyFlow({
-			contractAccepted: false,
+			deployAvailable: true,
 			supported: isPasskeySupported(),
 		}),
 	)
 	return (
 		<div className="stack" data-scenario="live-support">
 			<p className="muted">
-				Live browser detection, with the claim API contract still unaccepted.
+				Live browser detection with the accepted CCR-20 deploy route; prepare
+				and submit are still stubs.
 			</p>
 			<PasskeyClaimPanel flow={flow} claimExpired={false} />
 		</div>
@@ -159,7 +165,6 @@ const InteractiveScenario = ({
 				claimExpired={claimExpired}
 				claimClosed={claimClosed}
 				onCreate={() => dispatch({ type: "wallet_creation_started" })}
-				onPrepare={() => dispatch({ type: "prepare_started" })}
 				onApprove={() =>
 					dispatch({
 						type: "signature_approved",
@@ -190,7 +195,7 @@ export default function PasskeyClaimStates() {
 						<h1 className="phone-title">Passkey claim states</h1>
 						<p className="muted">
 							UI states for the passkey claim. Fixture states only: this is not
-							a passkey run, not a claim and not an accepted API contract.
+							a passkey run and not a testnet claim.
 						</p>
 					</div>
 					<LiveSupportScenario />

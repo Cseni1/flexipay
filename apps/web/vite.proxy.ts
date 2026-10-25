@@ -37,6 +37,8 @@ const claimRule = (method: string, path: RegExp): RouteRule => ({
 const ROUTES: readonly RouteRule[] = [
 	claimRule("GET", /^\/v1\/claims\/[^/]+\/?$/),
 	claimRule("POST", /^\/v1\/claims\/[^/]+\/accept\/?$/),
+	// CCR-20 deploy is mounted; prepare/submit are not, so they stay unproxied on purpose.
+	claimRule("POST", /^\/v1\/claims\/[^/]+\/passkey\/deploy\/?$/),
 	protectedRule("GET", /^\/v1\/corridors\/?$/),
 	protectedRule("GET", /^\/v1\/recipients\/?$/),
 	protectedRule("POST", /^\/v1\/recipients\/?$/),

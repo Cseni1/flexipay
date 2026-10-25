@@ -1,13 +1,16 @@
 // Passkey claim UI state for the M2 milestone.
 //
-// The M2 passkey routes are a PROPOSAL, not an accepted shared contract: this module therefore
-// holds UI state only. It contains no endpoint paths, request bodies, XDR fields or SDK calls,
-// and nothing here sends a request. The claim page keeps the option disabled until an accepted
-// contract and a deployed backend exist; the proposal shapes live only in the isolated browser
-// fixture `tests/e2e-ui/tests/passkey-m2-proposal.ts`.
+// CCR-20 is accepted and its deploy route is mounted on the event API branch. Wallet creation and
+// `POST /v1/claims/{token}/passkey/deploy` are wired through the hook next to this module; this
+// reducer stays pure and holds UI state only.
 //
-// Security rules encoded here: a submit is started once per signed prepare, a network retry of
-// the same submit reuses the same idempotency key, and expiry blocks approval and submit.
+// Prepare and submit are still stubs on that branch, so the deployed phase deliberately has no
+// prepare action: the UI says claim signing is unavailable and offers the working G-address
+// claim instead. The extra phases below stay so the eventual binding can reuse the reducer, and
+// the DEV gallery renders them from fixtures only.
+//
+// Security rules encoded here: a deploy or submit is started once per attempt, a network retry
+// reuses the same idempotency key, and expiry blocks approval and submit.
 
 export type PasskeyClaimPhase =
 	/** No accepted contract/backend yet: the production default. */
@@ -29,8 +32,8 @@ export type PasskeyClaimPhase =
 	| "expired"
 	| "retryable_error"
 
-/** Which step a retry would repeat. Never invents a new submit key. */
-export type PasskeyRetryTarget = "deploy" | "prepare" | "submit"
+/** Which step a retry would repeat. `create` needs a fresh passkey ceremony and a new key. */
+export type PasskeyRetryTarget = "create" | "deploy" | "prepare" | "submit"
 
 export interface PasskeyVerifiedClaim {
 	claimStatus: "accepted"
@@ -40,6 +43,8 @@ export interface PasskeyVerifiedClaim {
 export interface PasskeyClaimFlowState {
 	phase: PasskeyClaimPhase
 	contractId: string | null
+	/** Ledger-confirmed deploy hash returned by the API; never a fabricated one. */
+	deployTxHash: string | null
 	prepareId: string | null
 	deployIdempotencyKey: string | null
 	submitIdempotencyKey: string | null
@@ -55,8 +60,9 @@ export type PasskeyClaimEvent =
 			contractId: string
 			deployIdempotencyKey: string
 	  }
-	| { type: "deploy_succeeded" }
-	| { type: "deploy_failed"; message: string }
+	| { type: "deploy_succeeded"; deployTxHash: string }
+	| { type: "deploy_failed"; message: string; retryable?: boolean }
+	| { type: "wallet_creation_failed"; message: string }
 	| { type: "prepare_started" }
 	| { type: "prepared"; prepareId: string }
 	| { type: "signature_approved"; submitIdempotencyKey: string }
@@ -91,14 +97,15 @@ export const isPasskeySupported = (): boolean =>
 	typeof window.PublicKeyCredential === "function"
 
 export const initialPasskeyFlow = ({
-	contractAccepted,
+	deployAvailable,
 	supported,
 }: {
-	contractAccepted: boolean
+	deployAvailable: boolean
 	supported: boolean
 }): PasskeyClaimFlowState => ({
-	phase: !contractAccepted ? "unavailable" : supported ? "idle" : "unsupported",
+	phase: !deployAvailable ? "unavailable" : supported ? "idle" : "unsupported",
 	contractId: null,
+	deployTxHash: null,
 	prepareId: null,
 	deployIdempotencyKey: null,
 	submitIdempotencyKey: null,
@@ -160,21 +167,40 @@ export function passkeyClaimReducer(
 				...state,
 				phase: "deploying",
 				contractId: event.contractId,
+				deployTxHash: null,
 				deployIdempotencyKey: event.deployIdempotencyKey,
 				message: null,
 			}
 		}
 
+		case "wallet_creation_failed":
+			if (state.phase !== "creating_wallet") return unchanged(state)
+			// There is no deploy carrier to retry, so the next attempt is a new ceremony with a
+			// fresh passkey and a fresh deploy key; never a replay of an empty deploy.
+			return {
+				...state,
+				phase: "deploy_failed",
+				retry: "create",
+				message: event.message,
+			}
+
 		case "deploy_succeeded":
 			if (state.phase !== "deploying") return unchanged(state)
-			return { ...state, phase: "deployed", retry: null, message: null }
+			if (!event.deployTxHash.trim()) return unchanged(state)
+			return {
+				...state,
+				phase: "deployed",
+				deployTxHash: event.deployTxHash,
+				retry: null,
+				message: null,
+			}
 
 		case "deploy_failed":
 			if (state.phase !== "deploying") return unchanged(state)
 			return {
 				...state,
 				phase: "deploy_failed",
-				retry: "deploy",
+				retry: event.retryable === false ? null : "deploy",
 				message: event.message,
 			}
 
@@ -256,6 +282,18 @@ export function passkeyClaimReducer(
 
 		case "retry": {
 			if (state.phase === "deploy_failed") {
+				if (state.retry === "create") {
+					// No carrier exists yet: start a new wallet ceremony, not a deploy replay.
+					return {
+						...state,
+						phase: "creating_wallet",
+						contractId: null,
+						deployTxHash: null,
+						deployIdempotencyKey: null,
+						retry: null,
+						message: null,
+					}
+				}
 				if (!state.deployIdempotencyKey) return unchanged(state)
 				// Same deploy request, same idempotency key: it is a network retry, not a new wallet.
 				return {
