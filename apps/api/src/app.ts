@@ -4,10 +4,11 @@ import type { FlexiPayConfig } from "@flexipay/domain";
 import type { Db } from "./db.ts";
 import { ApiError } from "./errors.ts";
 import { sha256Hex } from "./ids.ts";
-import { newId } from "./ids.ts";
+import { withIdempotency } from "./idempotency.ts";
 import type { Ctx, RouteDef } from "./routes.ts";
 import { batchRoutes } from "./routes/batches.ts";
 import { claimRoutes } from "./routes/claims.ts";
+import { passkeyClaimRoutes, type CtxWithRequest } from "./routes/passkey-claims.ts";
 import { coreRoutes } from "./routes/core.ts";
 import { endpointRoutes } from "./routes/endpoints.ts";
 import { eventRoutes } from "./routes/events.ts";
@@ -24,6 +25,7 @@ export const ROUTES: RouteDef<any, any>[] = [
 	...paymentRoutes,
 	...eventRoutes,
 	...claimRoutes,
+	...passkeyClaimRoutes,
 	...sandboxRoutes,
 ];
 
@@ -49,46 +51,6 @@ async function authenticate(db: Db, req: Request): Promise<Ctx["org"]> {
 	return { id: key.organization.id, name: key.organization.name };
 }
 
-async function withIdempotency<T>(
-	db: Db,
-	req: Request,
-	orgId: string,
-	run: () => Promise<{ status: number; body: T }>,
-): Promise<{ status: number; body: unknown }> {
-	const key = req.header("idempotency-key");
-	if (!key) return run();
-	const requestHash = sha256Hex(
-		`${req.method} ${req.path} ${JSON.stringify(req.body ?? null)}`,
-	);
-	const found = await db.idempotencyRecord.findUnique({
-		where: { organizationId_key: { organizationId: orgId, key } },
-	});
-	if (found) {
-		if (found.requestHash !== requestHash) {
-			throw new ApiError(
-				409,
-				"idempotency_conflict",
-				"This Idempotency-Key was used with a different request",
-			);
-		}
-		return { status: found.responseStatus, body: found.responseBody };
-	}
-	const result = await run();
-	await db.idempotencyRecord
-		.create({
-			data: {
-				id: newId("idm"),
-				organizationId: orgId,
-				key,
-				requestHash,
-				responseStatus: result.status,
-				responseBody: result.body as object,
-			},
-		})
-		.catch(() => {});
-	return result;
-}
-
 export function createApp(deps: {
 	db: Db;
 	config: FlexiPayConfig;
@@ -104,12 +66,13 @@ export function createApp(deps: {
 			toExpressPath(route.path),
 			async (req: Request, res: Response, next: NextFunction) => {
 				try {
-					const ctx: Ctx = {
+					const ctx: CtxWithRequest = {
 						db: deps.db,
 						config: deps.config,
 						runtime: deps.runtime,
 					};
 					if (route.auth === "api_key") ctx.org = await authenticate(deps.db, req);
+					if (route.idempotency === "claim") ctx.req = req;
 					const run = async () => {
 						const body = route.body ? route.body.parse(req.body ?? {}) : undefined;
 						const query = route.query ? route.query.parse(req.query) : undefined;

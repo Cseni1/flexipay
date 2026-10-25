@@ -5028,6 +5028,147 @@
         }
       }
     },
+    "/v1/claims/{token}/passkey/deploy": {
+      "post": {
+        "summary": "Public: submit passkey-kit createWallet carrier; backend pays with FP_PAYER_DEMO",
+        "security": [],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "contractId": {
+                    "type": "string",
+                    "pattern": "^C[A-Z0-9]{55}$"
+                  },
+                  "keyIdBase64": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "signedTx": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_+/=-]+$"
+                  }
+                },
+                "required": [
+                  "contractId",
+                  "keyIdBase64",
+                  "signedTx"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "contractId": {
+                      "type": "string",
+                      "pattern": "^C[A-Z0-9]{55}$"
+                    },
+                    "deployTxHash": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "creationLedger": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "deployed"
+                    }
+                  },
+                  "required": [
+                    "contractId",
+                    "deployTxHash",
+                    "creationLedger",
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency or state conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sandbox/fail-next": {
       "post": {
         "summary": "Make the next count calls to a provider fail (also forced failure on or off)",
@@ -5546,173 +5687,9 @@
         }
       }
     },
-    "/v1/claims/{token}/passkey/deploy": {
-      "post": {
-        "summary": "Public (pending CCR-20): submit passkey-kit createWallet carrier; backend pays with FP_PAYER_DEMO",
-        "security": [],
-        "parameters": [
-          {
-            "name": "token",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object",
-                "properties": {
-                  "contractId": {
-                    "type": "string",
-                    "pattern": "^C[A-Z0-9]{55}$"
-                  },
-                  "keyIdBase64": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "signedTx": {
-                    "type": "string",
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9_+/=-]+$"
-                  }
-                },
-                "required": [
-                  "contractId",
-                  "keyIdBase64",
-                  "signedTx"
-                ],
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "type": "object",
-                  "properties": {
-                    "contractId": {
-                      "type": "string",
-                      "pattern": "^C[A-Z0-9]{55}$"
-                    },
-                    "deployTxHash": {
-                      "type": "string",
-                      "pattern": "^[a-f0-9]{64}$"
-                    },
-                    "creationLedger": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    "status": {
-                      "type": "string",
-                      "const": "deployed"
-                    }
-                  },
-                  "required": [
-                    "contractId",
-                    "deployTxHash",
-                    "creationLedger",
-                    "status"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Idempotency or state conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Not eligible or business-rule failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/claims/{token}/passkey/prepare": {
       "post": {
-        "summary": "Public (pending CCR-20): build vault claim auth entries for a C… passkey wallet",
+        "summary": "Public: build vault claim auth entries for a C… passkey wallet (M2 step 2)",
         "security": [],
         "parameters": [
           {
@@ -5875,7 +5852,7 @@
     },
     "/v1/claims/{token}/passkey/submit": {
       "post": {
-        "summary": "Public (pending CCR-20): submit passkey-signed claim auth; 200 released / 202 pending",
+        "summary": "Public: submit passkey-signed claim auth; 200 released / 202 pending (M2 step 2)",
         "security": [],
         "parameters": [
           {

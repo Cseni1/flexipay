@@ -23,10 +23,17 @@ export interface RouteDef<B = unknown, Q = unknown> {
 	path: string;
 	summary: string;
 	auth: "api_key" | "none";
+	/**
+	 * HTTP Idempotency-Key:
+	 * - omitted + api_key POST → org-scoped (optional key)
+	 * - "claim" → public claim-token routes; required key; org = payment.organizationId
+	 *   (handler uses withIdempotency; app.ts attaches req on ctx)
+	 */
+	idempotency?: "claim";
 	body?: ZodType<B>;
 	query?: ZodType<Q>;
 	/** Success status code and response schema. */
-	success: { status: 200 | 201; schema: ZodType };
+	success: { status: 200 | 201 | 202; schema: ZodType };
 	handler: (
 		ctx: Ctx,
 		input: { body: B; query: Q; params: Record<string, string> },

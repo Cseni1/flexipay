@@ -156,32 +156,32 @@ export const A0_OPENAPI_STUBS: readonly ApiOpenApiStub[] = [
 		success: { status: 200, schema: ClaimAcceptResponseSchema },
 	},
 	{
-		// CCR-20 ELFOGADÁSRA VÁR — passkey wallet deploy (M2). Not accepted until integrator ACK.
+		// CCR-20 ACK'd — passkey wallet deploy (M2). Mounted on event/csaba-cursor/m2-passkey.
 		method: "post",
 		path: "/v1/claims/{token}/passkey/deploy",
 		summary:
-			"Public (pending CCR-20): submit passkey-kit createWallet carrier; backend pays with FP_PAYER_DEMO",
+			"Public: submit passkey-kit createWallet carrier; backend pays with FP_PAYER_DEMO",
 		auth: "none",
 		body: PasskeyDeployRequestSchema,
 		success: { status: 200, schema: PasskeyDeployResponseSchema },
 	},
 	{
-		// CCR-20 ELFOGADÁSRA VÁR — prepare vault claim auth entries (secret-bearing XDR).
+		// CCR-20 ACK'd — prepare not mounted until M2 step 2.
 		method: "post",
 		path: "/v1/claims/{token}/passkey/prepare",
 		summary:
-			"Public (pending CCR-20): build vault claim auth entries for a C… passkey wallet",
+			"Public: build vault claim auth entries for a C… passkey wallet (M2 step 2)",
 		auth: "none",
 		body: PasskeyPrepareRequestSchema,
 		success: { status: 200, schema: PasskeyPrepareResponseSchema },
 	},
 	{
-		// CCR-20 ELFOGADÁSRA VÁR — submit signed auth; durable reserve before send.
+		// CCR-20 ACK'd — submit not mounted until M2 step 2.
 		// 200 only with Leg.releaseTxRef after RPC SUCCESS; 202 while pending (no releaseTxRef).
 		method: "post",
 		path: "/v1/claims/{token}/passkey/submit",
 		summary:
-			"Public (pending CCR-20): submit passkey-signed claim auth; 200 released / 202 pending",
+			"Public: submit passkey-signed claim auth; 200 released / 202 pending (M2 step 2)",
 		auth: "none",
 		body: PasskeySubmitRequestSchema,
 		success: { status: 200, schema: PasskeySubmitResponseSchema },

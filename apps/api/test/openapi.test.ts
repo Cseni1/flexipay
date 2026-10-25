@@ -6,9 +6,8 @@ import { A0_OPENAPI_STUBS } from "@flexipay/domain";
 import { ROUTES } from "../src/app.ts";
 import { buildOpenApi, stubsNotYetMounted } from "../src/openapi/spec.ts";
 
-/** CCR-20 contract stubs: documented in OpenAPI, Express handlers not mounted until ACK + impl. */
+/** CCR-20: deploy mounted (M2); prepare/submit still stubs until step 2. */
 const CCR20_UNMOUNTED_PASSKEY = [
-  "post /v1/claims/{token}/passkey/deploy",
   "post /v1/claims/{token}/passkey/prepare",
   "post /v1/claims/{token}/passkey/submit",
 ] as const;
@@ -45,12 +44,15 @@ describe("OpenAPI", () => {
     expect(stubs.length).toBe(unmounted.length);
   });
 
-  it("keeps CC3 routes mounted; only CCR-20 passkey stubs remain unmounted", () => {
-    // Contract PR: passkey paths are documented stubs until routes land. Do not
-    // weaken this to allow arbitrary unmounted surfaces — exact set only.
+  it("keeps CC3 + passkey deploy mounted; prepare/submit stubs remain unmounted", () => {
     expect(stubs.map((s) => `${s.method} ${s.path}`).sort()).toEqual(
       [...CCR20_UNMOUNTED_PASSKEY].sort(),
     );
+    expect(
+      ROUTES.some(
+        (r) => r.method === "post" && r.path === "/v1/claims/{token}/passkey/deploy",
+      ),
+    ).toBe(true);
   });
 
   it("documents passkey submit 200 released and 202 pending without releaseTxRef on 202", () => {

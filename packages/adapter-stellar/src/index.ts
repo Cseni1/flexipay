@@ -22,3 +22,31 @@ export {
 	loadTestnetEnvFiles,
 } from "./factory.ts";
 export type { SettlementMode, CreateStellarSettlementOptions } from "./factory.ts";
+
+export {
+	PASSKEY_DEFAULT_DEPLOYER_SEED,
+	PASSKEY_WALLET_WASM_HASH,
+} from "./passkey-constants.ts";
+export {
+	PasskeyDeployValidationError,
+	passkeyDefaultDeployerKeypair,
+	passkeyDefaultDeployerPublicKey,
+	decodeKeyIdBase64,
+	derivePasskeyContractId,
+	validatePasskeyDeployCarrier,
+	rebuildAndSignPasskeyDeploy,
+	transactionFromXdr,
+	sendSignedPasskeyDeploy,
+	resubmitPasskeyDeployEnvelope,
+	getPasskeyDeployTxOutcome,
+	waitPasskeyDeploySuccess,
+	loadPayerDemoKeypair,
+	hasPayerDemoSecret,
+} from "./passkey-deploy.ts";
+export type {
+	PasskeyDeployRejectCode,
+	ValidatedPasskeyDeploy,
+	PasskeyDeploySuccess,
+	SignedPasskeyDeployEnvelope,
+	DeployTxOutcome,
+} from "./passkey-deploy.ts";

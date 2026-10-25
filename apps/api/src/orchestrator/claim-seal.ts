@@ -52,3 +52,33 @@ export function unsealClaimSecret(
 		decipher.final(),
 	]).toString("utf8");
 }
+
+/** AES-256-GCM for arbitrary recovery bytes (passkey deploy / release envelopes). */
+export function sealBytes(
+	plaintext: Buffer,
+	key: Buffer,
+): { sealed: Buffer; nonce: Buffer } {
+	const nonce = randomBytes(NONCE_LEN);
+	const cipher = createCipheriv(ALGO, key, nonce);
+	const sealed = Buffer.concat([
+		cipher.update(plaintext),
+		cipher.final(),
+		cipher.getAuthTag(),
+	]);
+	return { sealed, nonce };
+}
+
+export function unsealBytes(
+	sealed: Buffer,
+	nonce: Buffer,
+	key: Buffer,
+): Buffer {
+	if (sealed.length < 16) {
+		throw new Error("sealed payload too short");
+	}
+	const authTag = sealed.subarray(sealed.length - 16);
+	const ciphertext = sealed.subarray(0, sealed.length - 16);
+	const decipher = createDecipheriv(ALGO, key, nonce);
+	decipher.setAuthTag(authTag);
+	return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+}

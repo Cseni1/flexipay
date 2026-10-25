@@ -276,11 +276,11 @@ Status: **approved** by the project owner on 23 Oct 2026. The documents `PRODUCT
 - **Who implements:** **Freebuff (web)** on #29. **Integrator** accepts this CCR; does not implement the proxy. **Csaba (API)** keeps Bearer auth as today; no CORS change required for the proxy path.
 - **Acceptance:** CF1 can create quote/payment/fund through the **local** proxy **without** the key appearing in built assets or browser page-JS request headers. Fixture-only e2e does **not** close DF2/DF3.
 
-## CCR-20: public passkey claim API (M2) — **ELFOGADÁSRA VÁR**
+## CCR-20: public passkey claim API (M2) — **ACK'd** (944cabb)
 
 - **From:** Csaba Cursor M2 plan (`event/csaba-cursor/m2-passkey`); EVENT_PLAN §4 E2.
-- **Status:** **ELFOGADÁSRA VÁR / pending acceptance.** Schemas + Prisma draft + OpenAPI stubs + domain contract tests are on the task branch for review. **Not** an accepted shared interface until the integrator explicitly ACKs this CCR. Routes must not mount on `main` before ACK.
-- **Who implements after ACK:** Csaba Cursor (API + `packages/adapter-stellar`); Freebuff wires `apps/web` / proxy allowlist against these paths; domain schemas stay under integrator ownership once accepted.
+- **Status:** **ACK'd** by Csaba (implementation base `944cabb`). Deploy route mounts on the event branch; prepare/submit follow on the same branch. Still **not** merged to `main` until the event gate.
+- **Who implements:** Csaba Cursor (API + `packages/adapter-stellar`); Freebuff wires `apps/web` / proxy allowlist against mounted paths.
 - **Out of scope:** E1 anchor, H1/H2, fee sponsorship, SEP-45 passkey→bank, web UI in this CCR.
 
 ### Public routes (`auth: none`)
