@@ -1,6 +1,11 @@
 // Reads the public FP_ settings that scripts/testnet/setup.sh writes to testnet-ids.env
 // (names listed in the root .env.example, CCR-1). Secrets are never read here.
 
+import {
+  parseSorobanTxFeeCeiling,
+  SOROBAN_TX_FEE_CEILING_ENV,
+} from "./vault-tx-fee.ts";
+
 export interface StellarEnv {
   network: string;
   rpcUrl: string;
@@ -10,6 +15,12 @@ export interface StellarEnv {
   payoutVaultId: string;
   vaultFeeBps: number;
   treasuryAddress: string;
+  /**
+   * Max total Soroban tx fee (inclusion + resource, once) in stroops.
+   * From FP_SOROBAN_TX_FEE_CEILING_STROOPS. null when unset — vault writes fail typed
+   * until Claude confirms a default; code never invents one.
+   */
+  sorobanTxFeeCeilingStroops: bigint | null;
 }
 
 const REQUIRED = {
@@ -42,8 +53,11 @@ export function loadStellarEnv(env: Record<string, string | undefined> = process
     payoutVaultId: get("payoutVaultId"),
     vaultFeeBps,
     treasuryAddress: get("treasuryAddress"),
+    sorobanTxFeeCeilingStroops: parseSorobanTxFeeCeiling(env),
   };
 }
+
+export { SOROBAN_TX_FEE_CEILING_ENV };
 
 /** Parses a KEY=value env file (comments, blank lines and surrounding quotes allowed). */
 export function parseEnvFile(text: string): Record<string, string> {

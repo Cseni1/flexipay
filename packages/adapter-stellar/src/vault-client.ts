@@ -2,6 +2,7 @@ import { contract, type Keypair } from "@stellar/stellar-sdk";
 import { VAULT_ERRORS, VaultError, toVaultError } from "./vault-errors.ts";
 import type { FeeMode } from "./vault-math.ts";
 import type { StellarEnv } from "./stellar-env.ts";
+import { rebuildAndValidateVaultWriteFee, VaultTxFeeError } from "./vault-tx-fee.ts";
 
 // Typed access to the deployed payout_vault (contracts/payout_vault/RULES.md). It knows the
 // chain, not payments: the settlement adapter (SC2) maps payments onto these calls once the
@@ -215,11 +216,38 @@ export class PayoutVault {
     // Fail before sending when the simulation already shows a contract error.
     unwrap<T>(tx.result, simulationError(tx));
     try {
-      const sent = await tx.signAndSend();
+      // Build-once fee path: avoid AssembledTransaction.sign()'s fee: built.fee override,
+      // which double-counts resourceFee and can overflow uint32 (M2 fee diagnosis).
+      let sorobanData;
+      try {
+        sorobanData = tx.simulationData.transactionData;
+      } catch (err) {
+        throw new VaultTxFeeError(
+          "missing_simulation_data",
+          `payout_vault ${method}: simulationData unavailable: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+      const timeoutInSeconds = tx.options.timeoutInSeconds ?? contract.DEFAULT_TIMEOUT;
+      const { tx: rebuilt } = rebuildAndValidateVaultWriteFee({
+        built: tx.built,
+        sorobanData,
+        ceilingStroops: this.env.sorobanTxFeeCeilingStroops,
+        timeoutInSeconds,
+      });
+
+      // Sign the rebuilt envelope directly (same end state as sign() after its rebuild),
+      // then send via AssembledTransaction.send without calling signAndSend.
+      rebuilt.sign(signer);
+      tx.built = rebuilt;
+      tx.signed = rebuilt;
+      const sent = await tx.send();
       const txHash = sent.sendTransactionResponse?.hash;
       if (!txHash) throw new Error(`payout_vault ${method}: no transaction hash returned`);
       return { result: unwrap<T>(sent.result), txHash };
     } catch (err) {
+      if (err instanceof VaultTxFeeError) throw err;
       throw toVaultError(err) ?? err;
     }
   }
@@ -243,4 +271,4 @@ export class PayoutVault {
   }
 }
 
-export { VaultError };
+export { VaultError, VaultTxFeeError };
