@@ -6,7 +6,7 @@ import { migrateDeploy, startEmbeddedDb } from "../src/dev/embedded-db.ts";
  * Disposable embedded Postgres only (no Docker, no shared DB).
  * Uses `pg` directly so migrate proof does not depend on a generated Prisma client.
  */
-describe("CCR-20 migration (embedded Postgres)", () => {
+describe("CCR-21 migration (embedded Postgres)", () => {
 	it("applies PasskeyClaimPrepare + ClaimLink passkey columns", async () => {
 		const embedded = await startEmbeddedDb();
 		try {

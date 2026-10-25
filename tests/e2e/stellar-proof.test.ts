@@ -15,9 +15,11 @@ import {
 	parseContractInvocation,
 	parseNetworkPassphrase,
 	parseReturnValue,
+	parseTokenTransfers,
 	parseTransactionResult,
+	parseVaultConfig,
 	verifyStellarTransaction,
-	verifyVaultRelease,
+	verifyVaultReleaseWithConfig as verifyVaultRelease,
 } from "../../scripts/demo/lib/stellar-proof.ts"
 
 // The verifier is what turns a 64-hex string into settlement evidence. These tests use a fake
@@ -28,9 +30,12 @@ const HASH = "b".repeat(64)
 const LOCK_HASH = "c".repeat(64)
 const RELEASE_HASH = "d".repeat(64)
 const VAULT = StrKey.encodeContract(Buffer.alloc(32, 7))
+const ASSET = StrKey.encodeContract(Buffer.alloc(32, 9))
+const OTHER_ASSET = StrKey.encodeContract(Buffer.alloc(32, 10))
 const source = Keypair.random()
 const recipient = Keypair.random()
 const otherRecipient = Keypair.random()
+const treasury = Keypair.random().publicKey()
 
 const contractAddress = (): xdr.ScAddress =>
 	xdr.ScAddress.scAddressTypeContract(
@@ -68,7 +73,59 @@ const envelope = (functionName: string, args: xdr.ScVal[]): string => {
 	return tx.toEnvelope().toXDR("base64")
 }
 
-const resultMeta = (returnValue: xdr.ScVal): string => {
+const accountValue = (address: string): xdr.ScVal =>
+	xdr.ScVal.scvAddress(
+		xdr.ScAddress.scAddressTypeAccount(
+			Keypair.fromPublicKey(address).xdrAccountId(),
+		),
+	)
+
+const contractValue = (address: string): xdr.ScVal =>
+	xdr.ScVal.scvAddress(
+		xdr.ScAddress.scAddressTypeContract(
+			StrKey.decodeContract(address) as unknown as xdr.Hash,
+		),
+	)
+
+const transferEvent = (
+	options: {
+		asset?: string
+		from?: string
+		to?: string
+		amount?: string
+	} = {},
+): xdr.ContractEvent => {
+	const asset = options.asset ?? ASSET
+	const from = options.from ?? VAULT
+	const to = options.to ?? recipient.publicKey()
+	const amount = options.amount ?? "10000000"
+	return new xdr.ContractEvent({
+		ext: new xdr.ExtensionPoint(0),
+		contractId: StrKey.decodeContract(asset) as unknown as xdr.Hash,
+		type: xdr.ContractEventType.contract(),
+		body: new xdr.ContractEventBody(
+			0,
+			new xdr.ContractEventV0({
+				topics: [
+					xdr.ScVal.scvSymbol("transfer"),
+					contractValue(from),
+					accountValue(to),
+				],
+				data: xdr.ScVal.scvI128(
+					new xdr.Int128Parts({
+						hi: new xdr.Int64(0),
+						lo: xdr.Uint64.fromString(amount),
+					}),
+				),
+			}),
+		),
+	})
+}
+
+const resultMeta = (
+	returnValue: xdr.ScVal,
+	events: xdr.ContractEvent[] = [],
+): string => {
 	const soroban = new xdr.SorobanTransactionMetaV2({
 		ext: new xdr.SorobanTransactionMetaExt(0),
 		returnValue,
@@ -79,7 +136,13 @@ const resultMeta = (returnValue: xdr.ScVal): string => {
 		operations: [],
 		txChangesAfter: [],
 		sorobanMeta: soroban,
-		events: [],
+		events: events.map(
+			(event) =>
+				new xdr.TransactionEvent({
+					stage: xdr.TransactionEventStage.transactionEventStageAfterTx(),
+					event,
+				}),
+		),
 		diagnosticEvents: [],
 	})
 	return new xdr.TransactionMeta(4, meta).toXDR("base64")
@@ -149,6 +212,27 @@ describe("Stellar RPC result parsing", () => {
 		})
 	})
 
+	it("parses a fixed vault config and its token-transfer event", () => {
+		expect(parseVaultConfig([ASSET, treasury, 100])).toEqual({
+			token: ASSET,
+			treasury,
+			feeBps: 100,
+		})
+		expect(
+			parseTokenTransfers(resultMeta(u64Value("1"), [transferEvent()])),
+		).toEqual([
+			{
+				contractId: ASSET,
+				from: VAULT,
+				to: recipient.publicKey(),
+				amount: "10000000",
+			},
+		])
+		expect(() => parseVaultConfig([ASSET, treasury, 1001])).toThrow(
+			/outside 0\.\.1000/,
+		)
+	})
+
 	it("rejects a missing passphrase, status or ledger", () => {
 		expect(() => parseNetworkPassphrase({})).toThrow(/no passphrase/)
 		expect(() => parseTransactionResult({ ledger: 1 })).toThrow(/no status/)
@@ -169,9 +253,11 @@ const releaseOptions = (
 	releaseHash: RELEASE_HASH,
 	recipientAddress: recipient.publicKey(),
 	vaultContractId: VAULT,
+	expectedAssetContractId: ASSET,
+	vaultConfig: { token: ASSET, treasury, feeBps: 100 },
 	principal: "10000000",
 	feeMode: "PayerPays",
-	fee: "50000",
+	fee: "100000",
 	net: "10000000",
 	rpcUrl: "https://rpc.example",
 	networkPassphrase: TESTNET,
@@ -189,11 +275,26 @@ const pairRpc = (
 		releaseReturn?: string
 		lockLedger?: number
 		releaseLedger?: number
+		releaseTransfer?: boolean
+		transferAsset?: string
+		transferTo?: string
+		transferAmount?: string
 	} = {},
 ) => {
 	const lockArgs = options.lockArgs ?? createPayoutArgs("pay_demo_1")
 	const releaseArgs =
 		options.releaseArgs ?? claimArgs("42", recipient.publicKey())
+	const releaseEvents =
+		options.releaseTransfer === false
+			? []
+			: [
+					transferEvent({
+						asset: options.transferAsset,
+						to: options.transferTo,
+						amount:
+							options.transferAmount ?? options.releaseReturn ?? "10000000",
+					}),
+				]
 	return rpc({
 		[LOCK_HASH]: transaction(
 			envelope("create_payout", lockArgs),
@@ -203,7 +304,7 @@ const pairRpc = (
 		),
 		[RELEASE_HASH]: transaction(
 			envelope(options.releaseFunction ?? "claim", releaseArgs),
-			resultMeta(u64Value(options.releaseReturn ?? "10000000")),
+			resultMeta(u64Value(options.releaseReturn ?? "10000000"), releaseEvents),
 			options.releaseStatus,
 			options.releaseLedger ?? 100,
 		),
@@ -235,10 +336,19 @@ describe("vault release proof", () => {
 			payoutId: "42",
 			recipient: recipient.publicKey(),
 			contractId: VAULT,
+			assetContractId: ASSET,
+			vaultFeeBps: 100,
+			treasuryAddress: treasury,
 			principal: "10000000",
 			feeMode: "PayerPays",
-			fee: "50000",
+			fee: "100000",
 			net: "10000000",
+			transfer: {
+				contractId: ASSET,
+				from: VAULT,
+				to: recipient.publicKey(),
+				amount: "10000000",
+			},
 		})
 		expect(fetchMock).toHaveBeenCalledTimes(3)
 	})
@@ -254,20 +364,20 @@ describe("vault release proof", () => {
 		]
 		vi.stubGlobal(
 			"fetch",
-			pairRpc({ lockArgs: recipientPaysArgs, releaseReturn: "9950000" }),
+			pairRpc({ lockArgs: recipientPaysArgs, releaseReturn: "9900000" }),
 		)
 		const proof = await verifyVaultRelease(
-			releaseOptions({ feeMode: "RecipientPays", net: "9950000" }),
+			releaseOptions({ feeMode: "RecipientPays", net: "9900000" }),
 		)
-		expect(proof.net).toBe("9950000")
-		expect(proof.fee).toBe("50000")
+		expect(proof.net).toBe("9900000")
+		expect(proof.fee).toBe("100000")
 
 		vi.unstubAllGlobals()
-		// the release result is net 10000000; a fee-paying recipient must receive 9995000
+		// the release result is net 10000000; a fee-paying recipient must receive 9900000
 		vi.stubGlobal("fetch", pairRpc({ lockArgs: recipientPaysArgs }))
 		await expect(
 			verifyVaultRelease(
-				releaseOptions({ feeMode: "RecipientPays", net: "9950000" }),
+				releaseOptions({ feeMode: "RecipientPays", net: "9900000" }),
 			),
 		).rejects.toThrow(/release returned net 10000000/)
 	})
@@ -287,8 +397,8 @@ describe("vault release proof", () => {
 			verifyVaultRelease(releaseOptions({ fee: "49999" })),
 		).rejects.toThrow(/not f\(P\)/)
 		await expect(
-			verifyVaultRelease(releaseOptions({ net: "9995000" })),
-		).rejects.toThrow(/frozen net 9995000 is not 10000000/)
+			verifyVaultRelease(releaseOptions({ net: "9900000" })),
+		).rejects.toThrow(/frozen net 9900000 is not 10000000/)
 	})
 
 	it("rejects a payout id that is not the lock's payout", async () => {
@@ -304,12 +414,17 @@ describe("vault release proof", () => {
 		vi.stubGlobal("fetch", pairRpc())
 		await expect(
 			verifyVaultRelease(releaseOptions({ fee: "7" })),
-		).rejects.toThrow(/not f\(P\)=floor\(P\*bps\/10000\)/)
+		).rejects.toThrow(/not f\(P\)=100000 at on-chain 100 bps/)
 		vi.unstubAllGlobals()
 		vi.stubGlobal("fetch", pairRpc())
 		await expect(
-			verifyVaultRelease(releaseOptions({ vaultFeeBps: 50, fee: "1" })),
-		).rejects.toThrow(/not f\(P\)=.*at deployed 50 bps/)
+			verifyVaultRelease(
+				releaseOptions({
+					vaultConfig: { token: ASSET, treasury, feeBps: 50 },
+					fee: "1",
+				}),
+			),
+		).rejects.toThrow(/not f\(P\)=.*at on-chain 50 bps/)
 		vi.unstubAllGlobals()
 	})
 
@@ -348,6 +463,40 @@ describe("vault release proof", () => {
 		await expect(verifyVaultRelease(releaseOptions())).rejects.toThrow(
 			/does not hash to the lock's claim hash/,
 		)
+	})
+
+	it("blocks when the release has no token-transfer evidence", async () => {
+		vi.stubGlobal("fetch", pairRpc({ releaseTransfer: false }))
+		await expect(verifyVaultRelease(releaseOptions())).rejects.toBeInstanceOf(
+			BlockedError,
+		)
+	})
+
+	it("rejects token transfers for another asset, recipient or amount", async () => {
+		vi.stubGlobal("fetch", pairRpc({ transferAsset: OTHER_ASSET }))
+		await expect(verifyVaultRelease(releaseOptions())).rejects.toThrow(
+			/no .* transfer from vault/,
+		)
+		vi.unstubAllGlobals()
+		vi.stubGlobal("fetch", pairRpc({ transferTo: otherRecipient.publicKey() }))
+		await expect(verifyVaultRelease(releaseOptions())).rejects.toThrow(
+			/no .* transfer from vault/,
+		)
+		vi.unstubAllGlobals()
+		vi.stubGlobal("fetch", pairRpc({ transferAmount: "9999999" }))
+		await expect(verifyVaultRelease(releaseOptions())).rejects.toThrow(
+			/no .* transfer from vault/,
+		)
+	})
+
+	it("rejects a vault whose on-chain token is not the expected asset", async () => {
+		await expect(
+			verifyVaultRelease(
+				releaseOptions({
+					vaultConfig: { token: OTHER_ASSET, treasury, feeBps: 100 },
+				}),
+			),
+		).rejects.toThrow(/vault config token/)
 	})
 
 	it("rejects a release ledger before the lock ledger", async () => {

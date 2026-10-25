@@ -834,7 +834,7 @@ export async function completeClaimSettle(
 }
 
 /**
- * CCR-20 passkey submit: after RPC SUCCESS for the passkey-authorized vault claim,
+ * CCR-21 passkey submit: after RPC SUCCESS for the passkey-authorized vault claim,
  * persist Leg.releaseTxRef and finish claim/payment the same way as custodial release.
  * Does not call SettlementAdapter.release (auth was already submitted on-chain).
  */

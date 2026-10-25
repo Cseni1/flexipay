@@ -79,13 +79,13 @@ function toDeployResponse(
 
 async function finishDeploySuccess(
 	db: Ctx["db"],
-	linkId: string,
+	paymentId: string,
 	contractId: string,
 	deployTxHash: string,
 	creationLedger: number,
 ): Promise<PasskeyDeployResponse> {
 	await db.claimLink.update({
-		where: { id: linkId },
+		where: { paymentId },
 		data: {
 			passkeyContractId: contractId,
 			passkeyDeployTxHash: deployTxHash,
@@ -188,7 +188,7 @@ async function recoverOrSubmitDeploy(input: {
 		throw new ApiError(502, "deploy_failed", "recorded deploy hash failed on-chain");
 	}
 
-	// Pending binding: recover same hash first (CCR-20 — no blind rebuild).
+	// Pending binding: recover same hash first (CCR-21 — no blind rebuild).
 	if (link.passkeyDeployPendingTxHash) {
 		const stellarEnv = requireStellarEnv(env);
 		const pendingHash = link.passkeyDeployPendingTxHash;
@@ -208,7 +208,7 @@ async function recoverOrSubmitDeploy(input: {
 		if (outcome.kind === "success") {
 			return finishDeploySuccess(
 				ctx.db,
-				link.id,
+				link.paymentId,
 				pendingContract,
 				outcome.txHash,
 				outcome.ledger,
@@ -216,7 +216,7 @@ async function recoverOrSubmitDeploy(input: {
 		}
 		if (outcome.kind === "failed") {
 			await ctx.db.claimLink.update({
-				where: { id: link.id },
+				where: { paymentId: link.paymentId },
 				data: {
 					passkeyDeployPendingContractId: null,
 					passkeyDeployPendingTxHash: null,
@@ -264,7 +264,7 @@ async function recoverOrSubmitDeploy(input: {
 				});
 				return finishDeploySuccess(
 					ctx.db,
-					link.id,
+					link.paymentId,
 					pendingContract,
 					waited.deployTxHash,
 					waited.creationLedger,
@@ -314,9 +314,9 @@ async function recoverOrSubmitDeploy(input: {
 		runtime.claimSealKey,
 	);
 
-	// Persist pending binding BEFORE send (CCR-20).
+	// Persist pending binding BEFORE send (CCR-21).
 	await ctx.db.claimLink.update({
-		where: { id: link.id },
+		where: { paymentId: link.paymentId },
 		data: {
 			passkeyDeployPendingContractId: validated.contractId,
 			passkeyDeployPendingTxHash: signed.txHash,
@@ -343,7 +343,7 @@ async function recoverOrSubmitDeploy(input: {
 		});
 		return finishDeploySuccess(
 			ctx.db,
-			link.id,
+			link.paymentId,
 			validated.contractId,
 			waited.deployTxHash,
 			waited.creationLedger,
@@ -361,7 +361,9 @@ async function recoverOrSubmitDeploy(input: {
 export type CtxWithRequest = Ctx & { req?: Request };
 
 function settleWaiting(link: LoadedClaim) {
-	const settle = link.payment.legs.find((l) => l.kind === "settle");
+	const settle = link.payment.legs.find(
+		(l: { kind: string }) => l.kind === "settle",
+	);
 	if (settle && (settle.status === "failed" || settle.errorCode === "fee_drift")) {
 		throw new ApiError(
 			409,
@@ -580,7 +582,7 @@ async function handleSubmit(
 		});
 	};
 
-	// Recovery: pendingTxHash set → getTransaction first (CCR-20).
+	// Recovery: pendingTxHash set → getTransaction first (CCR-21).
 	if (prepare.pendingTxHash) {
 		const outcome = await getPasskeyDeployTxOutcome(
 			prepare.pendingTxHash,
@@ -654,7 +656,7 @@ async function handleSubmit(
 		);
 	}
 
-	// Atomic open → reserved (CCR-20). Concurrent second reserve → 409.
+	// Atomic open → reserved (CCR-21). Concurrent second reserve → 409.
 	if (prepare.status === "open") {
 		const reserved = await ctx.db.passkeyClaimPrepare.updateMany({
 			where: { id: prepare.id, status: "open" },

@@ -144,7 +144,7 @@ function constructorContainsKeyId(
 }
 
 /**
- * Parse and verify a passkey-kit shared-deployer CreateWallet carrier (CCR-20).
+ * Parse and verify a passkey-kit shared-deployer CreateWallet carrier (CCR-21).
  * Does not send; does not require the payer secret.
  */
 export function validatePasskeyDeployCarrier(input: {
@@ -323,7 +323,7 @@ export function validatePasskeyDeployCarrier(input: {
 
 /**
  * Rebuild an invokeHostFunction as a payer-sourced envelope, simulate, assemble, sign.
- * Does not send. Caller must persist sealed XDR + hash before send (CCR-20).
+ * Does not send. Caller must persist sealed XDR + hash before send (CCR-21).
  */
 export async function rebuildAndSignInvokeHostFunction(input: {
 	func: xdr.HostFunction;
@@ -341,7 +341,12 @@ export async function rebuildAndSignInvokeHostFunction(input: {
 	const label = input.label ?? "invoke";
 	const server = input.server ?? new Server(input.rpcUrl);
 	const accountRecord = await server.getAccount(input.payer.publicKey());
-	const account = new Account(accountRecord.accountId, accountRecord.sequenceNumber());
+	// rpc AccountResponse exposes accountId/sequenceNumber as methods.
+	const acct = accountRecord as unknown as {
+		accountId: () => string;
+		sequenceNumber: () => string;
+	};
+	const account = new Account(acct.accountId(), acct.sequenceNumber());
 	const built = new TransactionBuilder(account, {
 		fee: input.fee ?? "1000000",
 		networkPassphrase: input.networkPassphrase,
@@ -371,7 +376,7 @@ export async function rebuildAndSignInvokeHostFunction(input: {
 
 /**
  * Rebuild the deploy carrier as a payer-sourced envelope, simulate, assemble, and sign.
- * Does not send. Caller must persist sealed XDR + hash before send (CCR-20).
+ * Does not send. Caller must persist sealed XDR + hash before send (CCR-21).
  */
 export async function rebuildAndSignPasskeyDeploy(input: {
 	validated: ValidatedPasskeyDeploy;
@@ -485,7 +490,7 @@ export async function getPasskeyDeployTxOutcome(
 		return { kind: "pending", txHash: normalized };
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : String(e);
-		// Timeouts / transport errors are not FAILED (CCR-20).
+		// Timeouts / transport errors are not FAILED (CCR-21).
 		return { kind: "unknown", txHash: normalized, detail: msg };
 	}
 }

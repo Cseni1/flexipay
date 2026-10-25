@@ -135,7 +135,7 @@ async function openClaimToken(key: string): Promise<string> {
 	return payment.claimLink!.url.split("/").pop()!;
 }
 
-describe("CCR-20 passkey deploy route", () => {
+describe("CCR-21 passkey deploy route", () => {
 	it("requires Idempotency-Key", async () => {
 		const { key } = await t.newOrg("Passkey Deploy Org");
 		const token = await openClaimToken(key);

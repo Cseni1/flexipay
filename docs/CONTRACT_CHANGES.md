@@ -276,10 +276,37 @@ Status: **approved** by the project owner on 23 Oct 2026. The documents `PRODUCT
 - **Who implements:** **Freebuff (web)** on #29. **Integrator** accepts this CCR; does not implement the proxy. **Csaba (API)** keeps Bearer auth as today; no CORS change required for the proxy path.
 - **Acceptance:** CF1 can create quote/payment/fund through the **local** proxy **without** the key appearing in built assets or browser page-JS request headers. Fixture-only e2e does **not** close DF2/DF3.
 
-## CCR-20: public passkey claim API (M2) — **ACK'd** (944cabb)
+## CCR-20: reference-anchor (M1) env names + client surface (**accepted** with renames, 25 Oct 2026)
+
+- **From:** Csenge Cursor (E1), event plan M1.
+- **Status:** **accepted** by Claude with name corrections (Cursor applied on #61).
+- **What:**
+  1. **Public env names** for the SDF reference anchor and an isolated second vault (anchor USDC issuer `GBBD47…`), without replacing baseline `FP_PAYOUT_VAULT_ID` / `FP_USDC_*` in `testnet-ids.env`:
+     - `FP_ANCHOR_HOME_DOMAIN`
+     - `FP_ANCHOR_USDC_ASSET` (full `CODE:ISSUER`)
+     - `FP_ANCHOR_USDC_CONTRACT_ID`
+     - `FP_ANCHOR_VAULT_ID` (was proposed `FP_EVENT_PAYOUT_VAULT_ID`)
+     - `FP_ANCHOR_VAULT_FEE_BPS` (was proposed `FP_EVENT_VAULT_FEE_BPS`)
+     - `FP_ANCHOR_VAULT_TREASURY_ADDRESS` (was proposed `FP_EVENT_TREASURY_ADDRESS`)
+     - `FP_ANCHOR_VAULT_PURPOSE` (was proposed `FP_EVENT_VAULT_PURPOSE`)
+  2. **Adapter exports** in `@flexipay/adapter-stellar`: `ReferenceAnchorClient` (SEP-10 / SEP-38 indicative `context=sep6` / SEP-24 interactive + poll), asset identity helpers, `sanitiseHostedUrl`. JWT and interactive URL query tokens stay out of logs/evidence; use `urlSanitised` only.
+  3. **M1 success rule:** SEP-24 status `completed` plus verified amount, asset identity, destination and memo. Persist **three** distinct refs: SEP-24 **anchor transaction id**, **anchor payment hash** (classic memo / `stellar_transaction_id`), and **vault release hash**. UI wording: “reference anchor on testnet, pays a US-dollar bank account in a sandbox”.
+- **Who is affected:** `packages/adapter-stellar` (Csenge); `apps/api` + claim UI (Csaba) for wiring; DF7 (Freebuff) consumes the client.
+- **HTTP:** Csaba proposes request shapes in his PR; no additional CCR wait for the three server calls (indicative price, start withdrawal/hosted URL, poll status).
+- **Out of scope here:** SEP-45 / passkey (M2); changing baseline vault on-chain config.
+
+## H1 Stellar fee-drift reproduction (**approved**, 25 Oct 2026)
+
+- **From:** Csenge Cursor (M3 / H1).
+- **Status:** **approved** by Claude (independent of CCR-20). Configuration drift between vaults (100 → 50 bps), not an on-chain fee mutation of the baseline vault.
+- **What:** Same-token vault at `fee_bps=50` (baseline GBBO6N SAC); baseline vault at 100 untouched; isolated DB; public API expects **409 `fee_drift`**, payment **`refunded`**, claim accept **409 `settle_failed`**, one lock + one refund on-chain, idempotent replays without duplicate funding/locks/refunds; prove payer vault balance conserved across lock→refund.
+- **Doc:** `scripts/demo/H1-REPRODUCTION.md`.
+- **Out of scope:** re-running E1/H2; changing CCR-15 wire shape; other chains.
+
+## CCR-21: public passkey claim API (M2) — **ACK'd** (944cabb / renumbered from draft CCR-20)
 
 - **From:** Csaba Cursor M2 plan (`event/csaba-cursor/m2-passkey`); EVENT_PLAN §4 E2.
-- **Status:** **ACK'd** by Csaba (implementation base `944cabb`). Deploy route mounts on the event branch; prepare/submit follow on the same branch. Still **not** merged to `main` until the event gate.
+- **Status:** **ACK'd** by Csaba (implementation base `944cabb`). Number **CCR-21** because **CCR-20** is the accepted reference-anchor surface on `main`. Deploy/prepare/submit mount on the event branch. Still **not** merged to `main` until the event gate.
 - **Who implements:** Csaba Cursor (API + `packages/adapter-stellar`); Freebuff wires `apps/web` / proxy allowlist against mounted paths.
 - **Out of scope:** E1 anchor, H1/H2, fee sponsorship, SEP-45 passkey→bank, web UI in this CCR.
 
@@ -338,7 +365,7 @@ Atomic prepare **reserve** and on-chain **pendingTx*** recovery remain separate 
 2. Validate each `signedAuthEntries[i]`: address, nonce, rootInvocation fingerprint, **signatureExpirationLedger** (length/order). Mismatch → `422 auth_mismatch`.
 3. Build release envelope. **Before send:** persist `pendingTxHash` + sealed `pendingTxSealed` / nonce on the prepare row.
 4. Send / recover per RPC rules below. **Do not** store a separate prepare `releaseTxHash`.
-5. **HTTP responses (ELFOGADÁSRA VÁR clarification):**
+5. **HTTP responses:**
    - **`200` + `PasskeySubmitResponseSchema`:** only when RPC reports **SUCCESS** for the release and settle **`Leg.releaseTxRef`** is written. Body includes required `releaseTxRef` (= that leg field).
    - **`202` + `PasskeySubmitPendingResponseSchema`:** when the envelope is persisted and/or submitted but release is **not** yet confirmed (`PENDING`, waiting, or re-query after NOT_FOUND/timeout while still bound to the same `pendingTxHash`). Body: `{ status: "pending", prepareId, paymentId, paymentStatus, pendingTxHash }`. **No `releaseTxRef`.** Client must not treat 202 as paid/released; poll `GET /v1/claims/{token}` or retry submit with the same Idempotency-Key.
    - Never return **200** with a required `releaseTxRef` before the release is verified.
@@ -350,7 +377,7 @@ Atomic prepare **reserve** and on-chain **pendingTx*** recovery remain separate 
 
 ### Persistence
 
-- `ClaimLink` passkey deploy columns + `PasskeyClaimPrepare` (migration `20261025112500_ccr20_passkey_prepare`).
+- `ClaimLink` passkey deploy columns + `PasskeyClaimPrepare` (migration `20261025112500_ccr20_passkey_prepare`; historical folder name, CCR-21 content).
 - Apply migration only after CCR ACK (or local M2 disposable DB).
 - No change to public `ClaimView` shape in this CCR.
 
@@ -359,3 +386,29 @@ Atomic prepare **reserve** and on-chain **pendingTx*** recovery remain separate 
 - Domain contract tests for the three request/response schemas and OpenAPI stubs.
 - Testnet: deploy hash + `Leg.releaseTxRef`; vault Claimed to `C…`; evidence without secrets/tokens.
 - Manual passkey ceremony on a real authenticator (virtual authenticator is not biometrics proof).
+
+## CCR-22: claim-link reference-anchor HTTP (M1 wiring) — **ELFOGADÁSRA VÁR**
+
+- **From:** CCR-20 (accepted): “Csaba proposes request shapes in his PR; no additional CCR wait for the three server calls.”
+- **Status:** **ELFOGADÁSRA VÁR.** Not an accepted shared interface until the integrator ACKs. Adapter client surface remains CCR-20; this CCR only proposes **public claim HTTP** for Csaba ↔ Freebuff/Csenge wiring.
+- **Out of scope:** DF7 script, `submitClassicPaymentWithMemo` refactor, SEP-45, changing CCR-20 env names.
+
+### Public routes (`auth: none`, claim token)
+
+| Method | Path | Idempotency-Key | Body | Success |
+|---|---|---|---|---|
+| POST | `/v1/claims/{token}/anchor/indicative-price` | not used | `{ sellAmount: string }` (USDC major units, 1–10) | `{ indicative: true, context: "sep6", sellAmount, buyAmount, buyAsset, sellAsset, price }` |
+| POST | `/v1/claims/{token}/anchor/withdraw` | required | `{ amount: string, type?: string }` | `{ anchorTxId: string, urlSanitised: string, kind: "withdrawal" }` — **never** raw hosted URL with query token in logs/evidence; open `url` only server-side if needed |
+| GET | `/v1/claims/{token}/anchor/withdraw/{anchorTxId}` | n/a | — | `{ anchorTxId, status, amountIn?, withdrawAnchorAccount?, withdrawMemoPresent: boolean, stellarTransactionId? }` |
+
+### Claim / settle connection (Csaba)
+
+1. Claim must be open; settle path uses **anchor vault** (`FP_ANCHOR_VAULT_*`) when the quote route selected reference-anchor cash-out (provider registration TBD — no routing rewrite in this CCR).
+2. After vault release to the recipient classic `G…`, server may call withdraw + (custodial) classic memo payment; persist **three** refs on the settle leg / payment events: SEP-24 `anchorTxId`, anchor payment hash (`stellar_transaction_id` / classic `txHash`), vault `Leg.releaseTxRef`.
+3. UI copy: “reference anchor on testnet, pays a US-dollar bank account in a sandbox”.
+4. Passkey (CCR-21) and anchor (CCR-20/22) remain separate claim options; no SEP-45 in this CCR.
+
+### Errors (stable codes, proposed)
+
+`404 not_found`; `409 expired` \| `invalid_state` \| `settle_failed`; `422 amount_out_of_range` \| `anchor_asset_mismatch`; `502 anchor_unavailable` \| `sep24_failed`.
+

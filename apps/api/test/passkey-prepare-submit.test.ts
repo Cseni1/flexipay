@@ -65,7 +65,7 @@ async function openClaimToken(key: string): Promise<{ token: string; paymentId: 
 /** Valid-looking C… for schema; not a real deployed wallet. */
 const FAKE_CONTRACT = "C".padEnd(56, "A");
 
-describe("CCR-20 passkey prepare/submit routes (no live testnet)", () => {
+describe("CCR-21 passkey prepare/submit routes (no live testnet)", () => {
 	it("prepare rejects when passkey wallet is not deployed on the claim", async () => {
 		const { key } = await t.newOrg("Passkey Prepare Org");
 		const { token } = await openClaimToken(key);
@@ -112,7 +112,7 @@ describe("CCR-20 passkey prepare/submit routes (no live testnet)", () => {
 			where: { id: paymentId },
 			include: { legs: true },
 		});
-		const settle = payment.legs.find((l) => l.kind === "settle");
+		const settle = payment.legs.find((l: { kind: string }) => l.kind === "settle");
 		if (settle) {
 			await t.db.payment.update({
 				where: { id: paymentId },
@@ -156,7 +156,7 @@ describe("CCR-20 passkey prepare/submit routes (no live testnet)", () => {
 				where: { id: paymentId },
 				include: { legs: true },
 			});
-			const settle = payment.legs.find((l) => l.kind === "settle");
+			const settle = payment.legs.find((l: { kind: string }) => l.kind === "settle");
 			if (settle) {
 				await t.db.payment.update({
 					where: { id: paymentId },

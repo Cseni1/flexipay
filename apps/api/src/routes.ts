@@ -34,7 +34,7 @@ export interface RouteDef<B = unknown, Q = unknown> {
 	query?: ZodType<Q>;
 	/** Success status code and response schema. */
 	success: { status: 200 | 201 | 202; schema: ZodType };
-	/** Optional alternate success (e.g. CCR-20 submit 202 pending). */
+	/** Optional alternate success (e.g. CCR-21 submit 202 pending). */
 	extraResponses?: ReadonlyArray<{
 		status: 202;
 		description: string;

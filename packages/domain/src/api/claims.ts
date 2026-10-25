@@ -113,7 +113,7 @@ export const ClaimAcceptResponseSchema = z
 export type ClaimAcceptResponse = z.infer<typeof ClaimAcceptResponseSchema>;
 
 // ---------------------------------------------------------------------------
-// CCR-20 (ELFOGADÁSRA VÁR — not accepted): public passkey claim routes (M2).
+// CCR-21 (ELFOGADÁSRA VÁR — not accepted): public passkey claim routes (M2).
 // auth: none. Wire encoding is exclusively base64 Stellar XDR (no alternate formats).
 // authEntries / signedAuthEntries carry vault claim(id,secret,to) args — treat as secret.
 // ---------------------------------------------------------------------------
@@ -171,7 +171,7 @@ export const PasskeyPrepareResponseSchema = z
     /**
      * Sole allowed Soroban auth signatureExpirationLedger (u32) for every entry.
      * Client must pass this exact value to signAuthEntry; kit-default / other ledgers
-     * are rejected on submit (CCR-20).
+     * are rejected on submit (CCR-21).
      */
     signatureExpirationLedger: z.number().int().positive(),
     /**
@@ -221,7 +221,7 @@ export type PasskeySubmitResponse = z.infer<typeof PasskeySubmitResponseSchema>;
 
 /**
  * HTTP 202 — release envelope was persisted/sent (or is awaiting confirmation) but
- * `Leg.releaseTxRef` is not yet written. No releaseTxRef field (ELFOGADÁSRA VÁR CCR-20).
+ * `Leg.releaseTxRef` is not yet written. No releaseTxRef field (ELFOGADÁSRA VÁR CCR-21).
  * Client polls GET /v1/claims/{token} or retries submit with the same Idempotency-Key.
  */
 export const PasskeySubmitPendingResponseSchema = z

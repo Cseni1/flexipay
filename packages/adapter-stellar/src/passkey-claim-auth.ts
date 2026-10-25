@@ -82,7 +82,7 @@ export interface PreparedAuthMeta {
 }
 
 /**
- * Validate signed auth entries against prepare metadata (CCR-20).
+ * Validate signed auth entries against prepare metadata (CCR-21).
  * Length/order, address, nonce, rootInvocation fingerprint, signatureExpirationLedger.
  */
 export function matchSignedAuthEntries(

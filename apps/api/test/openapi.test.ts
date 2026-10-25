@@ -6,7 +6,7 @@ import { A0_OPENAPI_STUBS } from "@flexipay/domain";
 import { ROUTES } from "../src/app.ts";
 import { buildOpenApi, stubsNotYetMounted } from "../src/openapi/spec.ts";
 
-/** CCR-20 M2: all three passkey routes mounted on the event branch. */
+/** CCR-21 M2: all three passkey routes mounted on the event branch. */
 const CCR20_UNMOUNTED_PASSKEY: readonly string[] = [];
 
 /** Repo root for this worktree: apps/api/test → ../../.. */
@@ -41,7 +41,7 @@ describe("OpenAPI", () => {
     expect(stubs.length).toBe(unmounted.length);
   });
 
-  it("keeps CC3 + all CCR-20 passkey routes mounted (no passkey stubs left)", () => {
+  it("keeps CC3 + all CCR-21 passkey routes mounted (no passkey stubs left)", () => {
     expect(stubs.map((s) => `${s.method} ${s.path}`).sort()).toEqual(
       [...CCR20_UNMOUNTED_PASSKEY].sort(),
     );

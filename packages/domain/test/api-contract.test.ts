@@ -389,7 +389,7 @@ describe("A0 sandbox schemas", () => {
   });
 });
 
-describe("CCR-20 passkey claim schemas (ELFOGADÁSRA VÁR)", () => {
+describe("CCR-21 passkey claim schemas (ELFOGADÁSRA VÁR)", () => {
   const contractId = "C" + "A".repeat(55);
   const fakeXdr = "AAAAAgAAAAA="; // non-empty base64 placeholder (not a real envelope)
 
@@ -537,7 +537,7 @@ describe("CCR-20 passkey claim schemas (ELFOGADÁSRA VÁR)", () => {
     ).toBe(4_500_000);
   });
 
-  it("stubs the three passkey paths as auth none with CCR-20 schemas", () => {
+  it("stubs the three passkey paths as auth none with CCR-21 schemas", () => {
     const passkey = A0_OPENAPI_STUBS.filter((s) =>
       s.path.includes("/passkey/"),
     );

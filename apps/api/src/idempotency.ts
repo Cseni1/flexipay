@@ -4,7 +4,7 @@ import { ApiError } from "./errors.ts";
 import { newId, sha256Hex } from "./ids.ts";
 
 /**
- * HTTP Idempotency-Key helper (CCR-20).
+ * HTTP Idempotency-Key helper (CCR-21).
  * requestHash = sha256(method + " " + path + " " + JSON.stringify(body)) — never stores bodies.
  * Scope is organizationId (for public passkey routes: claim payment's org).
  */
