@@ -1,0 +1,25 @@
+{
+  "testedAt": "2026-10-25T18:14:33.232Z",
+  "noSigning": true,
+  "noSubmission": true,
+  "vault": "CCG232ACW63XVUQGMMA6SWV46W2HIVR2ZSB5ENXHOIIITQBXUBHHIUMN",
+  "method": "create_payout",
+  "latestLedger_rpc": 5385697,
+  "minResourceFee_rpc": "692289",
+  "resourceFee_xdr": "692289",
+  "assembledFee_sdk": "692389",
+  "arith_legacy_assembled_plus_R": "1384678",
+  "legacy_sign_path_rebuild": {
+    "ok": true,
+    "fee": "1384678"
+  },
+  "build_once_rebuild": {
+    "ok": true,
+    "fee": "692389"
+  },
+  "uint32_max": "4294967295",
+  "legacy_overflows_uint32_arith": false,
+  "build_once_fits_uint32": true,
+  "claude_proposal_discrepancy": null,
+  "ceiling_note": "FP_SOROBAN_TX_FEE_CEILING_STROOPS default not set in this sim; Claude must confirm before writes."
+}

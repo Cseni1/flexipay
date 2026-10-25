@@ -101,6 +101,8 @@ describe("stellar env", () => {
     expect(env.payoutVaultId).toMatch(/^C[A-Z0-9]{55}$/);
     expect(env.networkPassphrase).toBe("Test SDF Network ; September 2015");
     expect(env.vaultFeeBps).toBe(100);
+    // Ceiling default intentionally unset until Claude confirms (never invented).
+    expect(env.sorobanTxFeeCeilingStroops).toBeNull();
   });
 
   it("names every missing setting", () => {
