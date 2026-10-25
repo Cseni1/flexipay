@@ -61,8 +61,20 @@ fi
 echo "anchor USDC SAC $USDC_ID"
 
 log "Build payout_vault WASM (same package as baseline)"
-stellar contract build --package payout-vault >/dev/null
-WASM=target/wasm32v1-none/release/payout_vault.wasm
+# Prefer a stable local target dir so deploy can read the wasm path.
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/target}"
+BUILD_OUT=$(stellar contract build --package payout-vault)
+echo "$BUILD_OUT"
+WASM="$CARGO_TARGET_DIR/wasm32v1-none/release/payout_vault.wasm"
+if [ ! -f "$WASM" ]; then
+	# stellar may print an optimized path under a temp cargo-target; recover it.
+	WASM=$(printf '%s' "$BUILD_OUT" | sed -n 's/.*Wasm File: //p' | head -1 | tr -d '[:space:]')
+fi
+if [ ! -f "$WASM" ]; then
+	echo "payout_vault.wasm not found after build" >&2
+	exit 1
+fi
+echo "using wasm $WASM"
 
 VAULT_ID=$(stellar contract alias show "$ALIAS" --network "$NET" 2>/dev/null || true)
 if [ -z "$VAULT_ID" ] || [ "${FP_REDEPLOY_EVENT_VAULT:-0}" = 1 ]; then

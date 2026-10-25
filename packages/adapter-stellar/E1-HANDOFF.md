@@ -1,83 +1,102 @@
 # E1 handoff — reference anchor + vault #2 (for Claude / Csaba / Freebuff)
 
 **Branch:** `event/csenge-cursor/E1-anchor-cashout`  
-**Owner (this package):** Csenge Cursor — `packages/adapter-stellar`, `scripts/testnet/setup-anchor-vault.sh`  
+**PR:** https://github.com/Cseni1/flexipay/pull/61  
+**Owner (this package):** Csenge Cursor — `packages/adapter-stellar`, `scripts/testnet/setup-anchor-vault.sh`, **`testnet-ids-anchor-vault.env`**  
 **Not owned here:** API routes, claim UI (Csaba); DF7 / H3 (Freebuff).
 
 M1 bank payout is **reference-anchor simulation** on SDF `testanchor.stellar.org`, not a real bank receipt. Vault release and anchor payment are recorded as **separate** hashes.
 
-## Exported client (ready for DF7)
+**Unit PASS ≠ M1 PASS.**
+
+## Shared accounts / tx windows
+
+See `scripts/testnet/EVENT-TX-WINDOWS.md`. Coordinate LOCK/UNLOCK on payer vs recipient A before live submissions. Cursor owns the event ids file; Freebuff consumes it — do not regenerate without notice.
+
+## Exported client (DF7 + deposit funding)
 
 Import from `@flexipay/adapter-stellar`:
 
 | Method / helper | Input | Output / behaviour |
 | --- | --- | --- |
-| `loadAnchorToml(homeDomain)` | domain string | endpoints + listed currencies |
-| `new ReferenceAnchorClient({ homeDomain, networkPassphrase, asset, fetch? })` | full `StellarAssetIdentity` (code+issuer+network[+SAC]) | client |
-| `connect()` | — | validates TOML network + asset listed |
-| `authenticate(keypair)` | classic `Keypair` | SEP-10; JWT **held only on the instance** |
-| `hasSession(account)` / `clearSession()` | G-address | boolean / void |
-| `indicativeWithdrawPrice({ sellAmount, buyFiat? })` | amount string, USD\|CAD | `{ indicative: true, context: "sep6", … }` |
-| `startWithdrawInteractive({ amount, type? })` | — | `{ id, url, urlSanitised, type }` — use `url` only server-side |
-| `getTransaction(id)` / `waitForTerminal(id)` | id | status + payment fields |
-| `paymentExpectationFromTx(tx)` | tx view | amount, destination, memo, asset |
-| `assertSuccessfulWithdraw({ tx, expected })` | — | throws unless status `completed` **and** amount/destination/memo match |
-| `evidenceSafeTx(tx)` | — | sanitised snapshot (memo presence only; no JWT) |
-| `sanitiseHostedUrl` / `isSep24Success` | — | evidence helpers |
+| `loadAnchorToml(homeDomain)` | domain | endpoints + currencies |
+| `new ReferenceAnchorClient({ homeDomain, networkPassphrase, asset, fetch? })` | full `StellarAssetIdentity` | client |
+| `connect()` | — | TOML network + asset listed |
+| `authenticate(keypair)` | classic `Keypair` | SEP-10; JWT **on instance only** |
+| `hasSession` / `clearSession` | — | — |
+| `indicativeWithdrawPrice({ sellAmount, buyFiat? })` | — | `{ indicative: true, context: "sep6", … }` |
+| **`startDepositInteractive({ amount, type? })`** | 1–10 USDC | hosted deposit session (`kind: "deposit"`) |
+| **`startWithdrawInteractive({ amount, type? })`** | — | hosted withdraw session (`kind: "withdrawal"`) |
+| `getTransaction` / `waitForTerminal` | id | status + memo/account fields |
+| `paymentExpectationFromTx(tx)` | withdraw tx | amount, destination, memo, asset |
+| **`submitClassicPaymentWithMemo({ source, expectation, networkPassphrase })`** | Keypair + expectation | `{ txHash, … }` Horizon payment **with memo** to anchor |
+| `assertSuccessfulWithdraw({ tx, expected })` | — | requires status **`completed`** + field match |
+| `evidenceSafeTx` / `sanitiseHostedUrl` | — | no JWT; memo presence only |
 
-**Errors:** `AnchorClientError` with `code` (`not_connected`, `not_authenticated`, `network_mismatch`, `asset_not_listed`, `sep10_*`, `sep38_price_failed`, `sep24_*`, `amount_mismatch`, …).
+**Errors:** `AnchorClientError.code` — `not_connected`, `not_authenticated`, `network_mismatch`, `asset_not_listed`, `sep10_*`, `sep38_price_failed`, `sep24_*`, `classic_payment_failed`, `amount_mismatch`, …
 
-**M1 PASS rule:** `isSep24Success(status)` (`completed` only) **plus** verified payment amount, asset identity, destination, memo. `error` / `expired` / etc. are terminal failures, not PASS. `pending_*` is not PASS.
+**M1 PASS:** `completed` + verified amount, asset (code+issuer+network), destination, memo; plus separate vault release hash and anchor `stellar_transaction_id` / classic `txHash`.
 
-## Configuration names (proposed — see CCR-20)
+### End-to-end stages (what is implemented vs not)
+
+| Stage | Implemented in adapter? | Notes |
+| --- | --- | --- |
+| Discover TOML / asset identity | **Yes** | |
+| SEP-10 classic | **Yes** | |
+| SEP-38 indicative price | **Yes** | `sep6` only |
+| SEP-24 **deposit** interactive | **Yes** | funds classic account with GBBD47 USDC |
+| Hosted deposit completion | **Manual / UI** | open `url` server-side; poll `waitForTerminal` |
+| Vault #2 deploy + ids file | **Script** | `setup-anchor-vault.sh` |
+| Vault #2 `deposit` (Soroban) | **Existing** `StellarSettlementAdapter.fundVault` once env points at event vault | needs funded classic SAC balance |
+| SEP-24 **withdraw** interactive | **Yes** | |
+| Classic payment + memo to anchor | **Yes** | `submitClassicPaymentWithMemo` |
+| Poll to `completed` + assert | **Yes** | |
+| API routes / claim UI | **No — Csaba** | |
+| DF7 script | **No — Freebuff** | consumes this client |
+
+## Configuration (CCR-20 — proposed)
 
 | Name | Role |
 | --- | --- |
-| `FP_ANCHOR_HOME_DOMAIN` | e.g. `testanchor.stellar.org` |
-| `FP_ANCHOR_USDC_ASSET` | **`USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`** (full issuer) |
-| `FP_ANCHOR_USDC_CONTRACT_ID` | SAC C… for that asset |
-| `FP_EVENT_PAYOUT_VAULT_ID` | second vault (anchor token) |
-| `FP_EVENT_VAULT_FEE_BPS` | must match on-chain config of vault #2 |
-| `FP_EVENT_TREASURY_ADDRESS` | treasury for vault #2 |
-| Baseline `FP_PAYOUT_VAULT_ID` / `FP_USDC_*` | **unchanged** (`testnet-ids.env`) |
+| `FP_ANCHOR_HOME_DOMAIN` | `testanchor.stellar.org` |
+| `FP_ANCHOR_USDC_ASSET` | `USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` |
+| `FP_ANCHOR_USDC_CONTRACT_ID` | SAC C… |
+| `FP_EVENT_PAYOUT_VAULT_ID` | vault #2 |
+| `FP_EVENT_VAULT_FEE_BPS` | must match on-chain |
+| `FP_EVENT_TREASURY_ADDRESS` | treasury |
+| Baseline `FP_PAYOUT_VAULT_ID` / `FP_USDC_*` | **unchanged** |
 
-Public file after setup: `scripts/testnet/testnet-ids-anchor-vault.env`.  
-Secrets overlay (ignored): `scripts/testnet/.env.secrets-anchor-vault`.
+Public: `scripts/testnet/testnet-ids-anchor-vault.env` (Cursor-owned).  
+Secrets overlay (gitignored): `.env.secrets-anchor-vault`.
 
-## Asks for Csaba (API / UI) — do not implement here
+**Isolated setup does not wait on CCR-20 HTTP fields** — only on Claude accepting env **names** if Csaba must load them in the API process. Script/file generation can proceed with the proposed names.
 
-1. Server-side route(s) that hold SEP-10 JWT and call this client (browser never sees the token).
-2. Claim UI: open `url` from `startWithdrawInteractive`; show indicative SEP-38 price labelled **indicative**.
-3. Optional: persist anchor tx id next to payment/claim for DF7.
-4. Wire provider id for “reference anchor” via existing `ProviderAdapter` when ready — no routing rewrite required from Cursor.
+## Asks for Csaba (API / UI)
 
-Resolve any new HTTP fields via `docs/CONTRACT_CHANGES.md` **before** binding.
+1. Server-side handlers holding SEP-10 JWT; never send token to the browser.
+2. Claim UI: indicative price label; open withdraw `url`; after memo fields appear, either call backend to `submitClassicPaymentWithMemo` (custodial) or show instructions.
+3. Optional persist anchor tx id + classic payment hash + vault release hash.
+4. Provider registration when ready — no routing rewrite from Cursor.
 
-## Asks for Freebuff (DF7)
+## Asks for Freebuff
 
-- Drive: connect → authenticate (custodial recipient key) → indicative price → interactive → (after hosted + classic payment) `waitForTerminal` → `assertSuccessfulWithdraw`.
-- Assert vault **release** tx and anchor **stellar_transaction_id** separately in evidence.
-- Use `urlSanitised` / `evidenceSafeTx` only in committed evidence.
-- Do not claim M1 PASS on non-`completed` terminals.
+- DF7: deposit may already be done by Cursor; if not, coordinate LOCK on payer first.
+- Withdraw path: LOCK recipient A → authenticate → interactive → classic memo payment → `waitForTerminal` → `assertSuccessfulWithdraw`.
+- Record vault release vs anchor payment separately; `urlSanitised` only in evidence.
 
-## H1 proposal for Claude (**do not execute until approved**)
+## H1 — Claude approval required (not executed)
 
-**Not yet a validated reproduction.** Startup validation (`PayoutVault.verifyConfig`) requires env token/treasury/`FP_VAULT_FEE_BPS` to match the vault pointed to by `FP_PAYOUT_VAULT_ID`. Quotes freeze `fees.flexiPayFee` from `settlement.feeBps()` at quote time (`apps/api/src/routes/quotes.ts`). Lock compares `locked.fee` to that frozen fee (`orchestrator/run.ts`).
+Same-token second vault at `fee_bps=50`, baseline vault untouched; quote on baseline (100) → restart API env to H1 vault → fund → expect `409 fee_drift` + refund + claim refuse via **public API**. Details in prior section of PR #61 / below.
 
-**Exact isolated setup to approve:**
+1. Deploy H1 vault: baseline token (GBBO6N SAC), fee 50, distinct id.  
+2. Process A: baseline env → claim_link payment. Isolated DB.  
+3. Process B: same DB, env → H1 vault (verifyConfig OK).  
+4. Fund → drift path. Restore baseline env.
 
-1. Deploy a **dedicated H1 vault** with the **same baseline token** (`FP_USDC_CONTRACT_ID` from `testnet-ids.env`, issuer GBBO6N…) but **`fee_bps=50`** (baseline remains 100). Distinct contract id; **do not** call `FP_REDEPLOY_VAULT` on the baseline alias; **do not** change baseline on-chain config.
-2. Process A: `FP_SETTLEMENT=stellar` + baseline vault env → create claim_link payment (frozen fee at 100 bps). Isolated DB.
-3. Stop A. Process B: same DB; env overlay so `FP_PAYOUT_VAULT_ID` / `FP_VAULT_FEE_BPS` / matching token+treasury point at the **H1 vault** (verifyConfig passes for B).
-4. `POST .../fund` → expect lock fee drift → `409 fee_drift`, settle failed, vault refund on H1 vault, claim accept `409 settle_failed`.
-5. Restore baseline env. Evidence via **public API**, not an adapter-only unit test.
+## H2 — Cursor later
 
-Reject alternatives that bypass `verifyConfig`, weaken fee assertions, or mutate the baseline vault.
-
-## H2 (later branch; design locked)
-
-Isolated persistent DB + dedicated claim. Wrong `FP_CLAIM_SEAL_KEY` → accept fails, no on-chain release. Restore original key → **same claim** accepts successfully.
+Isolated DB + dedicated claim; wrong seal key → fail, no release; restore key → **same claim** accepts.
 
 ## Sunday 17:30 Lisbon
 
-Checkpoint: indicative price + hosted interactive URL reached (sanitised in evidence). If withdraw not `completed`, M1 **PARTIAL** with furthest stage; keep documented fallback.
+Price + sanitised hosted URL minimum; else M1 PARTIAL.

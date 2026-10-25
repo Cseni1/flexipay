@@ -46,6 +46,7 @@ export {
 } from "./anchor-client.ts";
 export type {
 	IndicativePrice,
+	Sep24InteractiveSession,
 	Sep24InteractiveWithdraw,
 	Sep24TransactionView,
 	AnchorPaymentExpectation,
@@ -57,3 +58,9 @@ export { sanitiseHostedUrl, redactUrlQuery, maskBearerToken } from "./anchor-url
 
 export { loadAnchorEventEnv, ANCHOR_ENV_NAMES } from "./anchor-env.ts";
 export type { AnchorEventEnv } from "./anchor-env.ts";
+
+export { submitClassicPaymentWithMemo } from "./anchor-classic-payment.ts";
+export type {
+	ClassicPaymentResult,
+	SubmitClassicPaymentOptions,
+} from "./anchor-classic-payment.ts";

@@ -40,7 +40,7 @@ export interface IndicativePrice {
 	feeAsset?: string;
 }
 
-export interface Sep24InteractiveWithdraw {
+export interface Sep24InteractiveSession {
 	/** Anchor transaction id (safe for evidence). */
 	id: string;
 	/** Sanitised URL for evidence (no query/token). */
@@ -51,7 +51,12 @@ export interface Sep24InteractiveWithdraw {
 	 */
 	url: string;
 	type: string;
+	/** `deposit` funds the classic account with anchor USDC; `withdrawal` is M1 cash-out. */
+	kind: "deposit" | "withdrawal";
 }
+
+/** @deprecated Use {@link Sep24InteractiveSession}. */
+export type Sep24InteractiveWithdraw = Sep24InteractiveSession;
 
 export interface Sep24TransactionView {
 	id: string;
@@ -61,12 +66,17 @@ export interface Sep24TransactionView {
 	amountIn?: string;
 	amountOut?: string;
 	amountFee?: string;
-	/** Stellar account that should receive the payment (anchor). */
+	/** Stellar account that should receive the payment (anchor) — withdraw path. */
 	withdrawAnchorAccount?: string;
-	/** Memo the customer must include. */
+	/** Memo the customer must include on the classic payment to the anchor. */
 	withdrawMemo?: string;
 	withdrawMemoType?: string;
-	/** On-chain payment hash once the customer has paid, if published. */
+	/** Deposit: account the anchor will credit (often the authenticated account). */
+	to?: string;
+	/** Deposit memo fields when the anchor instructs an inbound Stellar payment. */
+	depositMemo?: string;
+	depositMemoType?: string;
+	/** On-chain payment hash once published by the anchor. */
 	stellarTransactionId?: string;
 	/** Raw status for evidence; interpret with {@link isSep24Success}. */
 	raw: Record<string, unknown>;
@@ -284,7 +294,19 @@ export class ReferenceAnchorClient {
 	}
 
 	/**
-	 * Starts a SEP-24 interactive withdraw. Requires {@link authenticate}.
+	 * Starts a SEP-24 interactive **deposit** (fund classic account with reference-anchor
+	 * USDC for vault #2). Requires {@link authenticate}. Hosted URL is server-side only.
+	 */
+	async startDepositInteractive(opts: {
+		amount: string;
+		type?: string;
+		lang?: string;
+	}): Promise<Sep24InteractiveSession> {
+		return this.startInteractive("deposit", opts);
+	}
+
+	/**
+	 * Starts a SEP-24 interactive **withdraw** (M1 cash-out). Requires {@link authenticate}.
 	 * Returns the full URL for the server to open; evidence must use urlSanitised.
 	 */
 	async startWithdrawInteractive(opts: {
@@ -292,46 +314,54 @@ export class ReferenceAnchorClient {
 		/** SEP-24 type; test anchor often accepts bank_account after interactive. */
 		type?: string;
 		lang?: string;
-	}): Promise<Sep24InteractiveWithdraw> {
+	}): Promise<Sep24InteractiveSession> {
+		return this.startInteractive("withdrawal", opts);
+	}
+
+	private async startInteractive(
+		kind: "deposit" | "withdrawal",
+		opts: { amount: string; type?: string; lang?: string },
+	): Promise<Sep24InteractiveSession> {
 		const endpoints = this.getEndpoints();
 		this.requireToken();
-		const url = new URL(
-			"transactions/withdraw/interactive",
-			ensureSlash(endpoints.transferServerSep24),
+		const path =
+			kind === "deposit"
+				? "transactions/deposit/interactive"
+				: "transactions/withdraw/interactive";
+		const url = new URL(path, ensureSlash(endpoints.transferServerSep24));
+		// SDF testanchor rejects application/x-www-form-urlencoded; use multipart.
+		const form = new FormData();
+		form.set(
+			"asset_code",
+			this.asset.code === "native" ? "native" : this.asset.code,
 		);
-		const form = new URLSearchParams();
-		form.set("asset_code", this.asset.code === "native" ? "native" : this.asset.code);
 		if (this.asset.issuer) form.set("asset_issuer", this.asset.issuer);
 		form.set("amount", opts.amount);
 		if (opts.type) form.set("type", opts.type);
 		if (opts.lang) form.set("lang", opts.lang);
 		const res = await this.fetchFn(url.toString(), {
 			method: "POST",
-			headers: {
-				...this.authHeaders(true),
-				"Content-Type": "application/x-www-form-urlencoded",
-			},
-			body: form.toString(),
+			headers: this.authHeaders(true),
+			body: form,
 		});
 		const body = await readJson(res);
 		if (!res.ok) {
 			throw new AnchorClientError(
 				"sep24_interactive_failed",
-				`SEP-24 withdraw/interactive HTTP ${res.status}: ${summariseBody(body)}`,
+				`SEP-24 ${kind}/interactive HTTP ${res.status}: ${summariseBody(body)}`,
 			);
 		}
-		const interactive = body as {
-			id?: string;
-			url?: string;
-			type?: string;
-		};
-		const id = strField(interactive as Record<string, unknown>, "id");
-		const interactiveUrl = strField(interactive as Record<string, unknown>, "url");
+		const id = strField(body, "id");
+		const interactiveUrl = strField(body, "url");
 		return {
 			id,
 			url: interactiveUrl,
 			urlSanitised: sanitiseHostedUrl(interactiveUrl),
-			type: typeof interactive.type === "string" ? interactive.type : "interactive_customer_info_needed",
+			type:
+				typeof body.type === "string"
+					? body.type
+					: "interactive_customer_info_needed",
+			kind,
 		};
 	}
 
@@ -366,6 +396,9 @@ export class ReferenceAnchorClient {
 			withdrawAnchorAccount: optStr(tx, "withdraw_anchor_account"),
 			withdrawMemo: optStr(tx, "withdraw_memo"),
 			withdrawMemoType: optStr(tx, "withdraw_memo_type"),
+			to: optStr(tx, "to"),
+			depositMemo: optStr(tx, "deposit_memo"),
+			depositMemoType: optStr(tx, "deposit_memo_type"),
 			stellarTransactionId: optStr(tx, "stellar_transaction_id"),
 			raw: tx,
 		};
