@@ -5,7 +5,9 @@
 **Owner (this package):** Csenge Cursor — `packages/adapter-stellar`, `scripts/testnet/setup-anchor-vault.sh`, **`testnet-ids-anchor-vault.env`**  
 **Not owned here:** API routes, claim UI (Csaba); DF7 / H3 (Freebuff).
 
-M1 bank payout is **reference-anchor simulation** on SDF `testanchor.stellar.org`, not a real bank receipt. Vault release and anchor payment are recorded as **separate** hashes.
+M1 bank payout is **reference-anchor simulation** on SDF `testanchor.stellar.org`, not a real bank receipt. Required UI wording: **“reference anchor on testnet, pays a US-dollar bank account in a sandbox”**.
+
+Persist **three** distinct references: SEP-24 **anchor transaction id**, **anchor payment hash** (classic memo / `stellar_transaction_id`), and **vault release hash**.
 
 **Unit PASS ≠ M1 PASS.**  
 **Package path (25 Oct):** deposit credit + vault #2 lock/release + classic memo withdraw → SEP-24 `completed` — see `scripts/demo/evidence/2026-10-25-e1-deposit-vault-withdraw.md`.  
@@ -49,36 +51,37 @@ Import from `@flexipay/adapter-stellar`:
 | SEP-24 **deposit** interactive | **Yes** | funds classic account with GBBD47 USDC |
 | Hosted deposit completion | **Manual / UI** | open `url` server-side; poll `waitForTerminal` |
 | Vault #2 deploy + ids file | **Script** | `setup-anchor-vault.sh` |
-| Vault #2 `deposit` (Soroban) | **Existing** `StellarSettlementAdapter.fundVault` once env points at event vault | needs funded classic SAC balance |
+| Vault #2 `deposit` (Soroban) | **Existing** `StellarSettlementAdapter.fundVault` once env points at anchor vault | needs funded classic SAC balance |
 | SEP-24 **withdraw** interactive | **Yes** | |
 | Classic payment + memo to anchor | **Yes** | `submitClassicPaymentWithMemo` |
 | Poll to `completed` + assert | **Yes** | |
 | API routes / claim UI | **No — Csaba** | |
 | DF7 script | **No — Freebuff** | consumes this client |
 
-## Configuration (CCR-20 — proposed)
+## Configuration (CCR-20 — **accepted**)
 
 | Name | Role |
 | --- | --- |
 | `FP_ANCHOR_HOME_DOMAIN` | `testanchor.stellar.org` |
 | `FP_ANCHOR_USDC_ASSET` | `USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` |
 | `FP_ANCHOR_USDC_CONTRACT_ID` | SAC C… |
-| `FP_EVENT_PAYOUT_VAULT_ID` | vault #2 |
-| `FP_EVENT_VAULT_FEE_BPS` | must match on-chain |
-| `FP_EVENT_TREASURY_ADDRESS` | treasury |
+| `FP_ANCHOR_VAULT_ID` | vault #2 (was proposed `FP_EVENT_PAYOUT_VAULT_ID`) |
+| `FP_ANCHOR_VAULT_FEE_BPS` | must match on-chain (was `FP_EVENT_VAULT_FEE_BPS`) |
+| `FP_ANCHOR_VAULT_TREASURY_ADDRESS` | treasury (was `FP_EVENT_TREASURY_ADDRESS`) |
+| `FP_ANCHOR_VAULT_PURPOSE` | marker (was `FP_EVENT_VAULT_PURPOSE`) |
 | Baseline `FP_PAYOUT_VAULT_ID` / `FP_USDC_*` | **unchanged** |
 
 Public: `scripts/testnet/testnet-ids-anchor-vault.env` (Cursor-owned).  
 Secrets overlay (gitignored): `.env.secrets-anchor-vault`.
 
-**Isolated setup does not wait on CCR-20 HTTP fields** — only on Claude accepting env **names** if Csaba must load them in the API process. Script/file generation can proceed with the proposed names.
+## Asks for Csaba (API / UI) — server calls only; he proposes shapes
 
-## Asks for Csaba (API / UI)
-
-1. Server-side handlers holding SEP-10 JWT; never send token to the browser.
-2. Claim UI: indicative price label; open withdraw `url`; after memo fields appear, either call backend to `submitClassicPaymentWithMemo` (custodial) or show instructions.
-3. Optional persist anchor tx id + classic payment hash + vault release hash.
-4. Provider registration when ready — no routing rewrite from Cursor.
+1. **Indicative price** — server calls `indicativeWithdrawPrice`; label indicative in UI.
+2. **Start withdrawal / hosted URL** — server calls `startWithdrawInteractive`; open `url` server-side; never put JWT/query token in browser logs or evidence (`urlSanitised` only).
+3. **Poll status** — server calls `getTransaction` / `waitForTerminal` until terminal; then classic memo payment once if custodial.
+4. Persist three refs: anchor tx id, anchor payment hash, vault release hash.
+5. UI copy: “reference anchor on testnet, pays a US-dollar bank account in a sandbox”.
+6. Provider registration when ready — no routing rewrite from Cursor. **No additional CCR wait** for these three calls.
 
 ## Asks for Freebuff
 
@@ -86,12 +89,12 @@ Secrets overlay (gitignored): `.env.secrets-anchor-vault`.
 - Withdraw path: LOCK recipient A → authenticate → interactive → classic memo payment → `waitForTerminal` → `assertSuccessfulWithdraw`.
 - Record vault release vs anchor payment separately; `urlSanitised` only in evidence.
 
-## H1 — Claude approval required (not executed)
+## H1 — Claude **approved** (run gated)
 
-Exact reproduction + gates: **`scripts/demo/H1-REPRODUCTION.md`**.  
-Driver (plan-only by default): `scripts/demo/h1-fee-drift-stellar.ts`.
+Exact reproduction: **`scripts/demo/H1-REPRODUCTION.md`**.  
+Driver: `scripts/demo/h1-fee-drift-stellar.ts` with `FP_H1_CLAUDE_APPROVED=1` + `FP_H1_EXECUTE=1`.
 
-Same-token second vault at `fee_bps=50`, baseline vault untouched; quote on baseline (100) → restart API env to H1 vault → fund → expect `409 fee_drift` + on-chain refund + claim refuse + idempotent replay via **public API**.
+Configuration drift between vaults (baseline 100 → isolated same-token 50), not an on-chain fee change of the baseline vault.
 
 ## Interface reuse (product direction)
 

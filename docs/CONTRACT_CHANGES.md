@@ -276,29 +276,29 @@ Status: **approved** by the project owner on 23 Oct 2026. The documents `PRODUCT
 - **Who implements:** **Freebuff (web)** on #29. **Integrator** accepts this CCR; does not implement the proxy. **Csaba (API)** keeps Bearer auth as today; no CORS change required for the proxy path.
 - **Acceptance:** CF1 can create quote/payment/fund through the **local** proxy **without** the key appearing in built assets or browser page-JS request headers. Fixture-only e2e does **not** close DF2/DF3.
 
-## CCR-20: reference-anchor (M1) env names + client surface (proposed, 25 Oct 2026)
+## CCR-20: reference-anchor (M1) env names + client surface (**accepted** with renames, 25 Oct 2026)
 
 - **From:** Csenge Cursor (E1), event plan M1.
-- **Status:** **proposed — awaiting Claude.** Do not bind new HTTP fields until accepted.
+- **Status:** **accepted** by Claude with name corrections (Cursor applied on #61).
 - **What:**
   1. **Public env names** for the SDF reference anchor and an isolated second vault (anchor USDC issuer `GBBD47…`), without replacing baseline `FP_PAYOUT_VAULT_ID` / `FP_USDC_*` in `testnet-ids.env`:
      - `FP_ANCHOR_HOME_DOMAIN`
      - `FP_ANCHOR_USDC_ASSET` (full `CODE:ISSUER`)
      - `FP_ANCHOR_USDC_CONTRACT_ID`
-     - `FP_EVENT_PAYOUT_VAULT_ID`
-     - `FP_EVENT_VAULT_FEE_BPS`
-     - `FP_EVENT_TREASURY_ADDRESS`
-  2. **Adapter exports** in `@flexipay/adapter-stellar`: `ReferenceAnchorClient` (SEP-10 / SEP-38 indicative `context=sep6` / SEP-24 interactive + poll), asset identity helpers, `sanitiseHostedUrl`. JWT and interactive URL query tokens stay server-side.
-  3. **M1 success rule:** SEP-24 status `completed` plus verified amount, asset identity, destination and memo; vault release hash recorded separately from anchor payment hash. Bank payout described as reference-anchor simulation.
+     - `FP_ANCHOR_VAULT_ID` (was proposed `FP_EVENT_PAYOUT_VAULT_ID`)
+     - `FP_ANCHOR_VAULT_FEE_BPS` (was proposed `FP_EVENT_VAULT_FEE_BPS`)
+     - `FP_ANCHOR_VAULT_TREASURY_ADDRESS` (was proposed `FP_EVENT_TREASURY_ADDRESS`)
+     - `FP_ANCHOR_VAULT_PURPOSE` (was proposed `FP_EVENT_VAULT_PURPOSE`)
+  2. **Adapter exports** in `@flexipay/adapter-stellar`: `ReferenceAnchorClient` (SEP-10 / SEP-38 indicative `context=sep6` / SEP-24 interactive + poll), asset identity helpers, `sanitiseHostedUrl`. JWT and interactive URL query tokens stay out of logs/evidence; use `urlSanitised` only.
+  3. **M1 success rule:** SEP-24 status `completed` plus verified amount, asset identity, destination and memo. Persist **three** distinct refs: SEP-24 **anchor transaction id**, **anchor payment hash** (classic memo / `stellar_transaction_id`), and **vault release hash**. UI wording: “reference anchor on testnet, pays a US-dollar bank account in a sandbox”.
 - **Who is affected:** `packages/adapter-stellar` (Csenge); `apps/api` + claim UI (Csaba) for wiring; DF7 (Freebuff) consumes the client.
-- **Needs:** Claude accepts or renames env keys; Csaba confirms API shape before any new routes; Freebuff aligns DF7 with exported methods in `packages/adapter-stellar/E1-HANDOFF.md`.
-- **Out of scope here:** SEP-45 / passkey (M2); changing baseline vault on-chain config; H1 execution (see `scripts/demo/H1-REPRODUCTION.md` — separate Claude go/no-go).
+- **HTTP:** Csaba proposes request shapes in his PR; no additional CCR wait for the three server calls (indicative price, start withdrawal/hosted URL, poll status).
+- **Out of scope here:** SEP-45 / passkey (M2); changing baseline vault on-chain config.
 
-## H1 Stellar fee-drift reproduction (proposed, 25 Oct 2026)
+## H1 Stellar fee-drift reproduction (**approved**, 25 Oct 2026)
 
 - **From:** Csenge Cursor (M3 / H1).
-- **Status:** **proposed — awaiting Claude.** Driver exists but will not execute the fund/drift path without `FP_H1_CLAUDE_APPROVED=1` and `FP_H1_EXECUTE=1`.
-- **What:** Same-token vault at `fee_bps=50` (baseline GBBO6N SAC); baseline vault at 100 untouched; isolated DB; public API expects **409 `fee_drift`**, payment **`refunded`**, claim accept **409 `settle_failed`**, one lock + one refund on-chain, idempotent replays without duplicate funding/locks/refunds.
+- **Status:** **approved** by Claude (independent of CCR-20). Configuration drift between vaults (100 → 50 bps), not an on-chain fee mutation of the baseline vault.
+- **What:** Same-token vault at `fee_bps=50` (baseline GBBO6N SAC); baseline vault at 100 untouched; isolated DB; public API expects **409 `fee_drift`**, payment **`refunded`**, claim accept **409 `settle_failed`**, one lock + one refund on-chain, idempotent replays without duplicate funding/locks/refunds; prove payer vault balance conserved across lock→refund.
 - **Doc:** `scripts/demo/H1-REPRODUCTION.md`.
-- **Who is affected:** Cursor (run after approval); Freebuff (tx-window LOCK on payer); Claude (approve exact plan).
 - **Out of scope:** re-running E1/H2; changing CCR-15 wire shape; other chains.

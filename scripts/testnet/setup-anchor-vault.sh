@@ -11,14 +11,14 @@
 #
 # Env overrides:
 #   FP_ANCHOR_USDC_ASSET   default USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
-#   FP_EVENT_VAULT_FEE_BPS default 100
-#   FP_REDEPLOY_EVENT_VAULT=1  force a new deploy (changes the event vault id)
+#   FP_ANCHOR_VAULT_FEE_BPS default 100
+#   FP_REDEPLOY_ANCHOR_VAULT=1  force a new deploy (changes the anchor vault id)
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 OUT_DIR=scripts/testnet
 NET=testnet
-FEE_BPS=${FP_EVENT_VAULT_FEE_BPS:-100}
+FEE_BPS=${FP_ANCHOR_VAULT_FEE_BPS:-100}
 ANCHOR_ASSET=${FP_ANCHOR_USDC_ASSET:-USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5}
 HOME_DOMAIN=${FP_ANCHOR_HOME_DOMAIN:-testanchor.stellar.org}
 ALIAS=fp-payout-vault-anchor
@@ -78,12 +78,12 @@ fi
 echo "using wasm $WASM"
 
 VAULT_ID=$(stellar contract alias show "$ALIAS" --network "$NET" 2>/dev/null || true)
-if [ -z "$VAULT_ID" ] || [ "${FP_REDEPLOY_EVENT_VAULT:-0}" = 1 ]; then
+if [ -z "$VAULT_ID" ] || [ "${FP_REDEPLOY_ANCHOR_VAULT:-0}" = 1 ]; then
 	VAULT_ID=$(stellar contract deploy --wasm "$WASM" --source-account fp-deployer --network "$NET" \
 		--alias "$ALIAS" -- \
 		--token "$USDC_ID" --treasury "$TREASURY" --fee_bps "$FEE_BPS")
 fi
-echo "event vault $VAULT_ID (alias $ALIAS)"
+echo "anchor vault $VAULT_ID (alias $ALIAS)"
 
 log "Verify on-chain config matches this isolated env"
 CONFIG=$(stellar contract invoke --id "$VAULT_ID" --source-account fp-deployer --network "$NET" --send no -- config)
@@ -110,20 +110,20 @@ FP_STELLAR_NETWORK_PASSPHRASE="$PASSPHRASE"
 FP_ANCHOR_HOME_DOMAIN=$HOME_DOMAIN
 FP_ANCHOR_USDC_ASSET=$ANCHOR_ASSET
 FP_ANCHOR_USDC_CONTRACT_ID=$USDC_ID
-FP_EVENT_PAYOUT_VAULT_ID=$VAULT_ID
-FP_EVENT_VAULT_FEE_BPS=$FEE_ON_CHAIN
-FP_EVENT_TREASURY_ADDRESS=$TREASURY
+FP_ANCHOR_VAULT_ID=$VAULT_ID
+FP_ANCHOR_VAULT_FEE_BPS=$FEE_ON_CHAIN
+FP_ANCHOR_VAULT_TREASURY_ADDRESS=$TREASURY
 # Demo addresses (same identities as baseline; trustlined for anchor USDC above)
 FP_PAYER_DEMO_ADDRESS=$PAYER
 FP_RECIPIENT_A_ADDRESS=$RECIPIENT_A
 # Explicit non-baseline marker
-FP_EVENT_VAULT_PURPOSE=reference-anchor-usdc-m1
+FP_ANCHOR_VAULT_PURPOSE=reference-anchor-usdc-m1
 EOF
 
 log "Write $OUT_DIR/.env.secrets-anchor-vault (git-ignored overlay; same key names as baseline secrets)"
 umask 077
 cat >"$OUT_DIR/.env.secrets-anchor-vault" <<EOF
-# Testnet only. Never commit. Overlay for M1 event vault — does not replace .env.secrets.
+# Testnet only. Never commit. Overlay for M1 anchor vault — does not replace .env.secrets.
 FP_DEPLOYER_SECRET=$(stellar keys secret fp-deployer)
 FP_PAYER_DEMO_SECRET=$(stellar keys secret fp-payer-demo)
 FP_RECIPIENT_A_SECRET=$(stellar keys secret fp-recipient-a)
@@ -131,4 +131,4 @@ EOF
 
 log "Next (manual / API): SEP-24 deposit 1–10 of $ANCHOR_ASSET into the payer, then vault deposit into $VAULT_ID."
 log "Baseline testnet-ids.env was not modified."
-echo "PASS  event vault $VAULT_ID  token $USDC_ID  fee_bps $FEE_ON_CHAIN"
+echo "PASS  anchor vault $VAULT_ID  token $USDC_ID  fee_bps $FEE_ON_CHAIN"

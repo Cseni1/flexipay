@@ -7,6 +7,8 @@
 **Baseline vault:** untouched  
 **Hosted UI evidence:** `urlSanitised` only — `https://anchor-ref-ui-testanchor.stellar.org/` (no session tokens in this file)
 
+**CCR-20 rename note (post-run annotation only):** At execution time the public ids file used proposed names `FP_EVENT_PAYOUT_VAULT_ID` / `FP_EVENT_VAULT_FEE_BPS` / `FP_EVENT_TREASURY_ADDRESS` / `FP_EVENT_VAULT_PURPOSE`. Accepted replacements are `FP_ANCHOR_VAULT_ID` / `FP_ANCHOR_VAULT_FEE_BPS` / `FP_ANCHOR_VAULT_TREASURY_ADDRESS` / `FP_ANCHOR_VAULT_PURPOSE`. This evidence does **not** claim the renamed keys were present in the executed commands.
+
 **Package-level E1 path:** PASS for deposit → vault release → classic memo payment → SEP-24 `completed`.  
 **Integrated M1:** PARTIAL until Csaba claim API/UI journey works.
 
@@ -79,7 +81,7 @@ Vault release hash ≠ anchor payment hash (recorded separately, as required).
 
 Precise wiring only; Cursor does not own claim routes/UI.
 
-1. **Env (CCR-20 pending Claude name approval):** load `scripts/testnet/testnet-ids-anchor-vault.env` for event vault + `FP_ANCHOR_*`; keep baseline `FP_PAYOUT_VAULT_ID` / `FP_USDC_*` for non-M1 paths.
+1. **Env (CCR-20 accepted):** load `scripts/testnet/testnet-ids-anchor-vault.env` for anchor vault (`FP_ANCHOR_VAULT_*` + `FP_ANCHOR_HOME_DOMAIN` / `FP_ANCHOR_USDC_*`); keep baseline `FP_PAYOUT_VAULT_ID` / `FP_USDC_*` for non-M1 paths. (See rename note above for names used during this run.)
 2. **Server-only:** SEP-10 JWT on `ReferenceAnchorClient` instance; never return interactive `url` token query to the browser — open hosted URL from server or a one-time redirect that does not log the token.
 3. **Claim cash-out sequence:** after vault release to custodial recipient → `startWithdrawInteractive` → wait until `withdraw_anchor_account` + `withdraw_memo` + `amount_in` → `submitClassicPaymentWithMemo` **once** → `waitForTerminal` → persist `{ vaultReleaseTx, classicPaymentTx, sep24Id, status }` separately.
 4. **Duplicate guard:** if poll times out, reconcile Horizon by `classicPaymentTx` / SEP-24 `stellar_transaction_id` before any second submit.

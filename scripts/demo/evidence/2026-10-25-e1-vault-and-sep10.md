@@ -12,6 +12,8 @@
 | On-chain config | `[CBIELTK…, GDH7WGAQ…treasury, 100]` |
 | Public ids file | `scripts/testnet/testnet-ids-anchor-vault.env` (Cursor-owned) |
 
+**CCR-20 rename note (post-run annotation only):** Setup that produced this file wrote proposed keys `FP_EVENT_PAYOUT_VAULT_ID`, `FP_EVENT_VAULT_FEE_BPS`, `FP_EVENT_TREASURY_ADDRESS`, `FP_EVENT_VAULT_PURPOSE`. Accepted replacements: `FP_ANCHOR_VAULT_ID`, `FP_ANCHOR_VAULT_FEE_BPS`, `FP_ANCHOR_VAULT_TREASURY_ADDRESS`, `FP_ANCHOR_VAULT_PURPOSE`. Vault id/token/fee values above are unchanged.
+
 ## Stages
 
 | Stage | Result |
