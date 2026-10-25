@@ -4,6 +4,7 @@ import {
 	closeSync,
 	existsSync,
 	fsyncSync,
+	linkSync,
 	mkdirSync,
 	openSync,
 	readFileSync,
@@ -44,6 +45,15 @@ import type { Blocker } from "./report.ts"
  */
 
 export const DF7_AMOUNT = "1"
+
+/**
+ * CCR-22: retained envelopes must be usable long enough for an operator to
+ * react, so DF7 refuses time bounds shorter than this.
+ */
+export const DF7_MIN_TIME_BOUNDS_SECONDS = 60
+
+/** CCR-22 grace after maxTime before ledger evidence can call a payment expired. */
+export const DF7_EXPIRY_GRACE_SECONDS = 60
 
 export const DF7_STAGE_IDS = [
 	"prerequisites",
@@ -254,6 +264,10 @@ export interface Df7ClassificationInput {
 	timedOut?: boolean
 	/** False when a prerequisite check already blocked the run. */
 	prerequisitesOk?: boolean
+	/** SEP-24 record's published stellar_transaction_id, when present. */
+	anchorStellarTransactionId?: string
+	/** Hash retained before submit; defaults to refs.anchorPaymentHash. */
+	retainedPaymentHash?: string
 }
 
 export interface Df7Classification {
@@ -264,7 +278,8 @@ export interface Df7Classification {
 
 /**
  * Never call `completed` success on its own. M1 PASS needs:
- * - a completed SEP-24 withdrawal,
+ * - a completed SEP-24 withdrawal whose published `stellar_transaction_id`
+ *   matches the hash retained before submit,
  * - the local amount/destination/memo assertion to pass,
  * - the anchor transaction id, anchor payment hash and vault release hash,
  *   each present and verified against its own source,
@@ -324,6 +339,40 @@ export function classifyDf7Lifecycle(
 					"SEP-24 completed but the amount/destination/memo assertion failed",
 				],
 				nextAction: "stop; do not claim M1 success; preserve the mismatch",
+			}
+		}
+		const anchorStellarTransactionId = input.anchorStellarTransactionId?.trim()
+		const retainedPaymentHash = (
+			input.retainedPaymentHash ?? input.refs?.anchorPaymentHash
+		)?.trim()
+		if (!anchorStellarTransactionId) {
+			return {
+				outcome: "NOT_VERIFIED",
+				reasons: [
+					"SEP-24 completed but the anchor published no stellar_transaction_id",
+				],
+				nextAction:
+					"fetch the SEP-24 record and compare its stellar_transaction_id to the retained payment hash",
+			}
+		}
+		if (!retainedPaymentHash) {
+			return {
+				outcome: "NOT_VERIFIED",
+				reasons: [
+					"SEP-24 completed but no pre-submit payment hash was retained",
+				],
+				nextAction:
+					"recover the retained hash; do not infer it from the anchor status",
+			}
+		}
+		if (anchorStellarTransactionId !== retainedPaymentHash) {
+			return {
+				outcome: "FAILURE",
+				reasons: [
+					`SEP-24 stellar_transaction_id ${anchorStellarTransactionId} differs from the retained payment hash ${retainedPaymentHash}`,
+				],
+				nextAction:
+					"stop; preserve the mismatch; do not relabel it as pending or success",
 			}
 		}
 		const referenceProblems = df7RefProblems(input.refs ?? {})
@@ -643,10 +692,134 @@ export class Df7PreSubmitError extends Error {
 	}
 }
 
-export function df7PaymentStatePath(
-	dir = process.env.FP_DF7_PRIVATE_DIR?.trim() || "/tmp/fp-df7-private",
-): string {
-	return join(dir, "payment-state.json")
+export function df7PrivateDir(dir?: string): string {
+	return (
+		dir?.trim() ||
+		process.env.FP_DF7_PRIVATE_DIR?.trim() ||
+		"/tmp/fp-df7-private"
+	)
+}
+
+export function df7PaymentStatePath(dir?: string): string {
+	return join(df7PrivateDir(dir), "payment-state.json")
+}
+
+export interface Df7LockHolder {
+	pid?: number
+	acquiredAt?: string
+	mode?: string
+}
+
+export interface Df7LockHandle {
+	path: string
+	token: string
+	/** Removes the lock only when this process still owns it. */
+	release(): boolean
+}
+
+export type Df7LockAcquireResult =
+	| { ok: true; lock: Df7LockHandle }
+	| { ok: false; path: string; holder?: Df7LockHolder; reason: string }
+
+function readLockHolder(path: string): Df7LockHolder | undefined {
+	try {
+		const parsed = JSON.parse(readFileSync(path, "utf8")) as Record<
+			string,
+			unknown
+		>
+		return {
+			...(typeof parsed.pid === "number" ? { pid: parsed.pid } : {}),
+			...(typeof parsed.acquiredAt === "string"
+				? { acquiredAt: parsed.acquiredAt }
+				: {}),
+			...(typeof parsed.mode === "string" ? { mode: parsed.mode } : {}),
+		}
+	} catch {
+		return undefined
+	}
+}
+
+/**
+ * Exclusive DF7 operation lock. It is created with `wx`, so two processes cannot
+ * both acquire it. A stale lock is never removed automatically: its PID/time are
+ * reported and a human must inspect it.
+ */
+export function acquireDf7Lock(input: {
+	mode: "pay" | "reconcile" | "rebroadcast"
+	dir?: string
+	now?: () => string
+}): Df7LockAcquireResult {
+	const dir = df7PrivateDir(input.dir)
+	mkdirSync(dir, { recursive: true, mode: 0o700 })
+	chmodSync(dir, 0o700)
+	const path = join(dir, "operation.lock")
+	const token = randomBytes(16).toString("hex")
+	const acquiredAt = input.now?.() ?? new Date().toISOString()
+	const contents = JSON.stringify(
+		{ pid: process.pid, acquiredAt, mode: input.mode, token },
+		null,
+		2,
+	)
+	let fd: number | undefined
+	try {
+		fd = openSync(path, "wx", 0o600)
+		writeSync(fd, contents)
+		fsyncSync(fd)
+	} catch (error) {
+		if (fd !== undefined) {
+			try {
+				closeSync(fd)
+			} catch {
+				/* the acquisition error is the useful one */
+			}
+			try {
+				// We created this lock file, so a partial write must not leave it
+				// behind as a permanent stale lock.
+				unlinkSync(path)
+			} catch {
+				/* best-effort cleanup of a lock we just created */
+			}
+		}
+		if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+			return {
+				ok: false,
+				path,
+				holder: readLockHolder(path),
+				reason: `DF7 ${input.mode} lock is already held; it is never broken automatically`,
+			}
+		}
+		throw error
+	}
+	try {
+		closeSync(fd)
+		chmodSync(path, 0o600)
+	} catch (error) {
+		try {
+			unlinkSync(path)
+		} catch {
+			/* best-effort cleanup of a lock we just created */
+		}
+		throw error
+	}
+	return {
+		ok: true,
+		lock: {
+			path,
+			token,
+			release: () => {
+				try {
+					const parsed = JSON.parse(readFileSync(path, "utf8")) as {
+						token?: unknown
+					}
+					if (parsed.token !== token) return false
+					unlinkSync(path)
+					return true
+				} catch {
+					return false
+				}
+			},
+		},
+	}
 }
 
 const HASH_HEX = /^[0-9a-f]{64}$/
@@ -678,6 +851,15 @@ export function encodeSignedPayment(
 		throw new Df7PreSubmitError(
 			"restore",
 			"signed payment has missing or inverted time bounds",
+		)
+	}
+	if (
+		signed.timeBounds.maxTime - signed.timeBounds.minTime <
+		DF7_MIN_TIME_BOUNDS_SECONDS
+	) {
+		throw new Df7PreSubmitError(
+			"restore",
+			`DF7 requires finite time bounds of at least ${DF7_MIN_TIME_BOUNDS_SECONDS}s`,
 		)
 	}
 	const txHash = Buffer.from(signed.signedTx.hash()).toString("hex")
@@ -736,6 +918,15 @@ export function restoreSignedPayment(state: Df7PaymentState): Transaction {
 	}
 	if (!finiteBounds(state.timeBounds)) {
 		throw new Df7PreSubmitError("restore", "stored time bounds are invalid")
+	}
+	if (
+		state.timeBounds.maxTime - state.timeBounds.minTime <
+		DF7_MIN_TIME_BOUNDS_SECONDS
+	) {
+		throw new Df7PreSubmitError(
+			"restore",
+			`stored state has time bounds shorter than ${DF7_MIN_TIME_BOUNDS_SECONDS}s`,
+		)
 	}
 	let restored: Transaction | unknown
 	try {
@@ -821,6 +1012,20 @@ export function readDf7PaymentState(dir?: string): Df7PaymentState | undefined {
 	return state as Df7PaymentState
 }
 
+export class Df7StateExistsError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = "Df7StateExistsError"
+	}
+}
+
+export class Df7StateConflictError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = "Df7StateConflictError"
+	}
+}
+
 /**
  * Atomic private write: same-directory temp file, fsync, rename, 0600. A failure
  * leaves the previous state intact and must block any submission.
@@ -864,13 +1069,94 @@ function writePrivateState(path: string, contents: string): void {
 	}
 }
 
-/** Persist the signed payment state atomically before any submission. */
-export function saveDf7PaymentState(
+/**
+ * Publish the first state for an attempt. The temp file is fully written and
+ * fsynced, then hard-linked into place; `link` fails with EEXIST instead of
+ * replacing an existing state. This is the only create path used by `--pay`.
+ */
+export function createDf7PaymentState(
 	state: Df7PaymentState,
-	dir = process.env.FP_DF7_PRIVATE_DIR?.trim() || "/tmp/fp-df7-private",
+	dir?: string,
 ): string {
 	const path = df7PaymentStatePath(dir)
-	writePrivateState(path, JSON.stringify(state, null, 2))
+	const directory = df7PrivateDir(dir)
+	mkdirSync(directory, { recursive: true, mode: 0o700 })
+	chmodSync(directory, 0o700)
+	const temp = join(
+		directory,
+		`.${basename(path)}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`,
+	)
+	let fd: number | undefined
+	try {
+		fd = openSync(temp, "wx", 0o600)
+		writeSync(fd, JSON.stringify(state, null, 2))
+		fsyncSync(fd)
+	} catch (error) {
+		if (fd !== undefined) {
+			try {
+				closeSync(fd)
+			} catch {
+				/* the write error is the useful one */
+			}
+		}
+		try {
+			unlinkSync(temp)
+		} catch {
+			/* best-effort cleanup */
+		}
+		throw error
+	}
+	try {
+		closeSync(fd)
+		chmodSync(temp, 0o600)
+		linkSync(temp, path)
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+			throw new Df7StateExistsError(
+				`DF7 payment state already exists at ${path}; refusing to replace it`,
+			)
+		}
+		throw error
+	} finally {
+		try {
+			unlinkSync(temp)
+		} catch {
+			/* the linked state is the durable copy */
+		}
+	}
+	return path
+}
+
+/**
+ * Re-read and compare status/hash before replacing an existing state. The caller
+ * must hold the DF7 lock; a mismatch blocks instead of overwriting.
+ */
+export function updateDf7PaymentState(input: {
+	expected: { status: Df7PaymentStateStatus; anchorPaymentHash: string }
+	next: Df7PaymentState
+	dir?: string
+}): string {
+	const current = readDf7PaymentState(input.dir)
+	if (!current) {
+		throw new Df7StateConflictError(
+			"DF7 payment state disappeared before the update",
+		)
+	}
+	if (
+		current.status !== input.expected.status ||
+		current.anchorPaymentHash !== input.expected.anchorPaymentHash
+	) {
+		throw new Df7StateConflictError(
+			`DF7 payment state changed unexpectedly: expected ${input.expected.status}/${input.expected.anchorPaymentHash}, found ${current.status}/${current.anchorPaymentHash}`,
+		)
+	}
+	if (input.next.anchorPaymentHash !== current.anchorPaymentHash) {
+		throw new Df7StateConflictError(
+			"DF7 update cannot change the retained payment hash",
+		)
+	}
+	const path = df7PaymentStatePath(input.dir)
+	writePrivateState(path, JSON.stringify(input.next, null, 2))
 	return path
 }
 
@@ -907,7 +1193,7 @@ export async function persistPreparedThenSubmit(input: {
 
 	let path: string
 	try {
-		path = (input.persist ?? saveDf7PaymentState)(input.state, input.dir)
+		path = (input.persist ?? createDf7PaymentState)(input.state, input.dir)
 	} catch (error) {
 		throw new Df7PreSubmitError(
 			"persist",
@@ -949,11 +1235,175 @@ export async function persistPreparedThenSubmit(input: {
 	return { path, submittedHash: submitted.txHash }
 }
 
+export type Df7PaymentAttemptResult =
+	| {
+			kind: "BLOCKED"
+			reasons: string[]
+			holder?: Df7LockHolder
+			path?: string
+	  }
+	| {
+			kind: "PENDING"
+			reason: string
+			state: Df7PaymentState
+			path?: string
+	  }
+	| { kind: "SUBMITTED"; state: Df7PaymentState; path: string }
+
+/**
+ * The `--pay` critical section: acquire the operation lock, re-read state, then
+ * sign/persist/submit. Two concurrent attempts cannot both sign because the
+ * second fails to acquire the lock. State creation is exclusive, and both status
+ * updates compare the expected status/hash before replacing the file.
+ */
+export async function runDf7PaymentAttempt(input: {
+	anchorTransactionId: string
+	expectation: AnchorPaymentExpectation
+	networkPassphrase: string
+	sign: () => Promise<SignedClassicPayment>
+	submit: (
+		tx: Transaction,
+		state: Df7PaymentState,
+	) => Promise<{ txHash: string }>
+	dir?: string
+	now?: () => string
+}): Promise<Df7PaymentAttemptResult> {
+	let acquired: Df7LockAcquireResult
+	try {
+		acquired = acquireDf7Lock({ mode: "pay", dir: input.dir })
+	} catch (error) {
+		return {
+			kind: "BLOCKED",
+			reasons: [
+				`could not acquire the DF7 pay lock: ${error instanceof Error ? error.message : String(error)}`,
+			],
+		}
+	}
+	if (!acquired.ok) {
+		return {
+			kind: "BLOCKED",
+			reasons: [acquired.reason],
+			holder: acquired.holder,
+			path: acquired.path,
+		}
+	}
+	try {
+		let existing: Df7PaymentState | undefined
+		try {
+			existing = readDf7PaymentState(input.dir)
+		} catch (error) {
+			return {
+				kind: "BLOCKED",
+				reasons: [error instanceof Error ? error.message : String(error)],
+				path: df7PaymentStatePath(input.dir),
+			}
+		}
+		if (existing) {
+			return {
+				kind: "BLOCKED",
+				reasons: [
+					`existing payment state status=${existing.status} hash=${existing.anchorPaymentHash}`,
+				],
+				path: df7PaymentStatePath(input.dir),
+			}
+		}
+
+		const signed = await input.sign()
+		let encoded: ReturnType<typeof encodeSignedPayment>
+		try {
+			encoded = encodeSignedPayment(signed, input.networkPassphrase)
+		} catch (error) {
+			return {
+				kind: "BLOCKED",
+				reasons: [error instanceof Error ? error.message : String(error)],
+			}
+		}
+		const startedAt = input.now?.() ?? new Date().toISOString()
+		const prepared: Df7PaymentState = {
+			version: 2,
+			anchorTransactionId: input.anchorTransactionId,
+			anchorPaymentHash: encoded.txHash,
+			status: "prepared",
+			expectation: input.expectation,
+			networkPassphrase: input.networkPassphrase,
+			signedTransactionXdr: encoded.signedTransactionXdr,
+			timeBounds: encoded.timeBounds,
+			startedAt,
+			updatedAt: startedAt,
+		}
+
+		let result: { path: string; submittedHash: string }
+		try {
+			result = await persistPreparedThenSubmit({
+				state: prepared,
+				dir: input.dir,
+				submit: input.submit,
+			})
+		} catch (error) {
+			if (error instanceof Df7PreSubmitError && error.stage !== "verify") {
+				return {
+					kind: "BLOCKED",
+					reasons: [`${error.stage}: ${error.message}`],
+				}
+			}
+			const uncertain: Df7PaymentState = {
+				...prepared,
+				status: "uncertain",
+				updatedAt: input.now?.() ?? new Date().toISOString(),
+			}
+			try {
+				updateDf7PaymentState({
+					expected: {
+						status: "prepared",
+						anchorPaymentHash: prepared.anchorPaymentHash,
+					},
+					next: uncertain,
+					dir: input.dir,
+				})
+			} catch {
+				/* the prepared state still carries the hash and signed envelope */
+			}
+			return {
+				kind: "PENDING",
+				reason: error instanceof Error ? error.message : String(error),
+				state: uncertain,
+				path: df7PaymentStatePath(input.dir),
+			}
+		}
+
+		const submitted: Df7PaymentState = {
+			...prepared,
+			status: "submitted",
+			updatedAt: input.now?.() ?? new Date().toISOString(),
+		}
+		try {
+			updateDf7PaymentState({
+				expected: {
+					status: "prepared",
+					anchorPaymentHash: prepared.anchorPaymentHash,
+				},
+				next: submitted,
+				dir: input.dir,
+			})
+		} catch (error) {
+			return {
+				kind: "PENDING",
+				reason: `submitted ${result.submittedHash}, but the state update was blocked: ${error instanceof Error ? error.message : String(error)}`,
+				state: prepared,
+				path: result.path,
+			}
+		}
+		return { kind: "SUBMITTED", state: submitted, path: result.path }
+	} finally {
+		acquired.lock.release()
+	}
+}
+
 export type Df7RebroadcastWindow =
 	| { ok: true }
 	| {
 			ok: false
-			reason: "expired" | "not-yet-valid" | "invalid"
+			reason: "unresolved" | "not-yet-valid" | "invalid"
 			detail: string
 	  }
 
@@ -979,11 +1429,85 @@ export function checkRebroadcastWindow(
 	if (nowSec > state.timeBounds.maxTime) {
 		return {
 			ok: false,
-			reason: "expired",
-			detail: `signed payment expired at ${new Date(state.timeBounds.maxTime * 1000).toISOString()}`,
+			reason: "unresolved",
+			detail: `local clock is past maxTime ${new Date(state.timeBounds.maxTime * 1000).toISOString()}; this is not authoritative expiry. Blocked until the latest Horizon ledger close is more than ${DF7_EXPIRY_GRACE_SECONDS}s past maxTime, the retained hash is NOT_FOUND, and the source sequence is below the envelope sequence`,
 		}
 	}
 	return { ok: true }
+}
+
+export interface Df7ExpiryResult {
+	outcome: "EXPIRED" | "UNRESOLVED"
+	reasons: string[]
+}
+
+/**
+ * CCR-22 expiry evidence. Local time is deliberately not an input: expiry needs
+ * a Horizon ledger close after `maxTime + 60s`, a 404 for the retained hash, and
+ * the source account sequence still below the sequence in the signed envelope.
+ */
+export function classifyStoredPaymentExpiry(input: {
+	timeBounds: ClassicPaymentTimeBounds
+	ledgerCloseTime?: number | null
+	hashNotFound: boolean
+	envelopeSequence?: string | null
+	sourceSequence?: string | null
+}): Df7ExpiryResult {
+	const reasons: string[] = []
+	const maxTime = input.timeBounds.maxTime
+	const ledgerCloseTime = input.ledgerCloseTime
+	const ledgerOldEnough =
+		typeof ledgerCloseTime === "number" &&
+		Number.isFinite(ledgerCloseTime) &&
+		ledgerCloseTime > maxTime + DF7_EXPIRY_GRACE_SECONDS
+	if (!ledgerOldEnough) {
+		reasons.push(
+			`latest Horizon ledger close is not more than ${DF7_EXPIRY_GRACE_SECONDS}s past maxTime`,
+		)
+	}
+	if (!input.hashNotFound) {
+		reasons.push("the retained hash was found on Horizon")
+	}
+	const envelopeSequence = parseSequence(input.envelopeSequence)
+	const sourceSequence = parseSequence(input.sourceSequence)
+	const sequenceBelow =
+		envelopeSequence !== undefined &&
+		sourceSequence !== undefined &&
+		sourceSequence < envelopeSequence
+	if (!sequenceBelow) {
+		reasons.push(
+			"source sequence is not confirmed below the signed envelope sequence",
+		)
+	}
+	if (
+		ledgerOldEnough &&
+		input.hashNotFound &&
+		sequenceBelow &&
+		envelopeSequence !== undefined &&
+		sourceSequence !== undefined &&
+		ledgerCloseTime !== undefined
+	) {
+		return {
+			outcome: "EXPIRED",
+			reasons: [
+				`ledger close ${new Date(ledgerCloseTime * 1000).toISOString()} is more than ${DF7_EXPIRY_GRACE_SECONDS}s past maxTime`,
+				"the retained hash is NOT_FOUND on Horizon",
+				`source sequence ${sourceSequence} is below envelope sequence ${envelopeSequence}`,
+			],
+		}
+	}
+	return { outcome: "UNRESOLVED", reasons }
+}
+
+function parseSequence(value: string | null | undefined): bigint | undefined {
+	if (typeof value !== "string" || !/^\d+$/.test(value.trim())) {
+		return undefined
+	}
+	try {
+		return BigInt(value.trim())
+	} catch {
+		return undefined
+	}
 }
 
 /**
@@ -1054,6 +1578,8 @@ export function checkDf7PaymentGates(input: Df7GateInput = {}): Df7GateResult {
 
 export interface HorizonPaymentOperation {
 	type?: string
+	/** Present when the operation source differs from the transaction source. */
+	source_account?: string
 	destination?: string
 	asset_type?: string
 	asset_code?: string
@@ -1063,6 +1589,8 @@ export interface HorizonPaymentOperation {
 
 export interface HorizonTransactionRecord {
 	hash?: string
+	/** Transaction source account; operation sources fall back to this. */
+	source_account?: string
 	successful?: boolean
 	memo?: string
 	memo_type?: string
@@ -1094,6 +1622,8 @@ export interface Df7ReconcileResult {
  */
 export function reconcileStoredHash(input: {
 	storedHash: string
+	/** Expected payer/source; normally the restored envelope source. */
+	sourceAccount: string
 	expectation: AnchorPaymentExpectation
 	transaction?: HorizonTransactionRecord
 }): Df7ReconcileResult {
@@ -1199,6 +1729,36 @@ export function reconcileStoredHash(input: {
 			],
 		}
 	}
+	if (!input.sourceAccount.trim()) {
+		return {
+			outcome: "NOT_VERIFIED",
+			hashes: [],
+			inspected: 1,
+			reasons: ["the expected payment source account is unavailable"],
+		}
+	}
+	const operationSource =
+		payments[0]!.source_account ?? transaction.source_account
+	if (!operationSource) {
+		return {
+			outcome: "NOT_VERIFIED",
+			hashes: [],
+			inspected: 1,
+			reasons: [
+				"the retained transaction does not publish the payment operation source",
+			],
+		}
+	}
+	if (operationSource !== input.sourceAccount) {
+		return {
+			outcome: "MISMATCH",
+			hashes: [],
+			inspected: 1,
+			reasons: [
+				`the retained transaction payment source ${operationSource} differs from the expected payer ${input.sourceAccount}`,
+			],
+		}
+	}
 	if (!paymentMatches(payments[0]!, expectation)) {
 		return {
 			outcome: "MISMATCH",
@@ -1214,7 +1774,7 @@ export function reconcileStoredHash(input: {
 		hashes: [storedHash],
 		inspected: 1,
 		reasons: [
-			`retained classic payment ${storedHash} matches the anchor destination, amount, asset and memo`,
+			`retained classic payment ${storedHash} matches the anchor source, destination, amount, asset and memo`,
 		],
 	}
 }

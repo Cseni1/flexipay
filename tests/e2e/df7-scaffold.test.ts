@@ -31,9 +31,10 @@ import {
 	encodeSignedPayment,
 	parseDf7Amount,
 	planDf7Stages,
+	createDf7PaymentState,
 	readDf7PaymentState,
 	reconcileAnchorPayment,
-	saveDf7PaymentState,
+	updateDf7PaymentState,
 	saveHostedUrlForBrowser,
 	validateAnchorPayment,
 	verifyAnchorCompletion,
@@ -222,6 +223,7 @@ describe("DF7 lifecycle classification", () => {
 				refs,
 				proof,
 				withdrawAssertion: "pass",
+				anchorStellarTransactionId: refs.anchorPaymentHash,
 			}),
 		).toMatchObject({ outcome: "SUCCESS" })
 	})
@@ -232,6 +234,7 @@ describe("DF7 lifecycle classification", () => {
 			refs: { ...refs, vaultReleaseHash: undefined },
 			proof,
 			withdrawAssertion: "pass",
+			anchorStellarTransactionId: refs.anchorPaymentHash,
 		})
 		expect(missingRef.outcome).toBe("NOT_VERIFIED")
 		expect(missingRef.reasons.join(" ")).toMatch(/vault release hash/)
@@ -241,6 +244,7 @@ describe("DF7 lifecycle classification", () => {
 			refs,
 			proof: { ...proof, anchorPaymentHashVerified: false },
 			withdrawAssertion: "pass",
+			anchorStellarTransactionId: refs.anchorPaymentHash,
 		})
 		expect(unverifiedRef.outcome).toBe("NOT_VERIFIED")
 		expect(unverifiedRef.reasons.join(" ")).toMatch(/not verified/)
@@ -250,6 +254,7 @@ describe("DF7 lifecycle classification", () => {
 			refs,
 			proof,
 			withdrawAssertion: "not-run",
+			anchorStellarTransactionId: refs.anchorPaymentHash,
 		})
 		expect(notAsserted.outcome).toBe("NOT_VERIFIED")
 		expect(notAsserted.reasons.join(" ")).toMatch(/assertion was not run/)
@@ -260,6 +265,7 @@ describe("DF7 lifecycle classification", () => {
 			proof,
 			paymentProblems: ["anchor did not publish amount_in"],
 			withdrawAssertion: "not-run",
+			anchorStellarTransactionId: refs.anchorPaymentHash,
 		})
 		expect(missingPayment.outcome).toBe("NOT_VERIFIED")
 		expect(missingPayment.reasons.join(" ")).toMatch(/amount_in/)
@@ -272,6 +278,7 @@ describe("DF7 lifecycle classification", () => {
 			proof,
 			withdrawAssertion: "pass",
 			paymentMismatch: true,
+			anchorStellarTransactionId: refs.anchorPaymentHash,
 		})
 		expect(mismatch.outcome).toBe("FAILURE")
 
@@ -280,6 +287,7 @@ describe("DF7 lifecycle classification", () => {
 			refs,
 			proof,
 			withdrawAssertion: "fail",
+			anchorStellarTransactionId: refs.anchorPaymentHash,
 		})
 		expect(failedAssertion.outcome).toBe("FAILURE")
 		// A failed assertion is a failure even when refs are also missing.
@@ -290,6 +298,39 @@ describe("DF7 lifecycle classification", () => {
 				withdrawAssertion: "fail",
 			}).outcome,
 		).toBe("FAILURE")
+	})
+
+	it("requires completed plus a matching stellar_transaction_id for M1 PASS", () => {
+		expect(
+			classifyDf7Lifecycle({
+				anchorStatus: "pending_user_transfer_start",
+				refs,
+				proof,
+				withdrawAssertion: "pass",
+				anchorStellarTransactionId: refs.anchorPaymentHash,
+				retainedPaymentHash: refs.anchorPaymentHash,
+			}).outcome,
+		).toBe("PENDING")
+
+		expect(
+			classifyDf7Lifecycle({
+				anchorStatus: "completed",
+				refs,
+				proof,
+				withdrawAssertion: "pass",
+			}).outcome,
+		).toBe("NOT_VERIFIED")
+
+		const mismatched = classifyDf7Lifecycle({
+			anchorStatus: "completed",
+			refs,
+			proof,
+			withdrawAssertion: "pass",
+			anchorStellarTransactionId: "f".repeat(64),
+			retainedPaymentHash: refs.anchorPaymentHash,
+		})
+		expect(mismatched.outcome).toBe("FAILURE")
+		expect(mismatched.reasons.join(" ")).toMatch(/stellar_transaction_id/)
 	})
 
 	it("classifies terminal failures, pending statuses and bounded timeouts honestly", () => {
@@ -677,12 +718,19 @@ describe("DF7 payment state", () => {
 		const dir = mkdtempSync(join(tmpdir(), "fp-df7-state-"))
 		try {
 			const prepared = await signedState()
-			saveDf7PaymentState(prepared, dir)
+			createDf7PaymentState(prepared, dir)
 			const submitted: Df7PaymentState = {
 				...prepared,
 				status: "submitted",
 			}
-			const path = saveDf7PaymentState(submitted, dir)
+			const path = updateDf7PaymentState({
+				expected: {
+					status: "prepared",
+					anchorPaymentHash: prepared.anchorPaymentHash,
+				},
+				next: submitted,
+				dir,
+			})
 			expect(statSync(path).mode & 0o777).toBe(0o600)
 			expect(readDf7PaymentState(dir)).toMatchObject({
 				status: "submitted",

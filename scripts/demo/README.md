@@ -281,23 +281,30 @@ prints only the sanitised URL. The human completes the hosted withdrawal in a
 browser. `--pay` is the classic-payment stage: it reuses the adapter's
 `buildAndSignClassicPaymentWithMemo` and `submitSignedClassicPayment`, validates
 the anchor's pending record (status, asset, amount, destination, memo), and
-requires all three live gates. Before submission it serialises the signed
-envelope, proves it restores to the same hash, and atomically persists the hash,
-XDR, network, time bounds and payment expectation in a `0600` state file. A
-persistence failure aborts without submitting. It refuses when retained state
-exists.
+requires all three live gates. It first acquires an exclusive operation lock,
+then re-reads state and signs. Before submission it serialises the signed
+envelope, proves it restores to the same hash, and publishes a new `0600` state
+(create-if-absent) with the hash, XDR, network, finite bounds of at least 60s
+and payment expectation. A persistence failure aborts without submitting. It
+refuses when retained state or another process's lock exists; a stale lock is
+never broken automatically.
 
-`--reconcile` looks up only the retained hash on Horizon. `NOT_FOUND` never
-resends. `--rebroadcast` requires the operator to echo the retained hash and
-submits the identical stored envelope only while it is inside its original time
-bounds; expired or ambiguous state blocks a new payment pending a human
-decision.
+`--reconcile` looks up only the retained hash on Horizon and verifies the
+successful payment operation's source, destination, asset, amount and memo. A
+found-but-failed transaction is `FAILED`. `NOT_FOUND` never resends. Local time
+is not expiry evidence: `EXPIRED` requires the latest ledger close to be more
+than 60s past `maxTime`, the hash to be `NOT_FOUND`, and the source sequence to
+be below the envelope sequence; otherwise the result is `UNRESOLVED`.
+`--rebroadcast` requires the operator to echo the retained hash and submits the
+identical stored envelope only while it is inside its original time bounds.
 
 Offline classification is available with `--classify`. `SUCCESS` requires
-`completed`, a passed amount/destination/memo assertion, and all three refs
-(anchor transaction id, anchor payment hash, vault release hash) verified at the
-sources that produced them; the ids are not required to have different string
-values. A completed run with missing or unverified evidence is `NOT_VERIFIED`. A
-confirmed payment mismatch is `FAILURE`. `PENDING` covers non-terminal statuses
-and bounded timeouts. `--poll` recomputes completion against the retained
-payment expectation and the anchor's published `stellar_transaction_id`.
+`completed`, an anchor `stellar_transaction_id` matching the retained payment
+hash, a passed amount/destination/memo assertion, and all three refs (anchor
+transaction id, anchor payment hash, vault release hash) verified at the sources
+that produced them; the ids are not required to have different string values. A
+completed run with missing or unverified evidence is `NOT_VERIFIED`. A payment
+confirmed while the anchor is still pending is `PENDING`. A confirmed payment
+mismatch is `FAILURE`. `PENDING` covers non-terminal statuses and bounded
+timeouts. `--poll` recomputes completion against the retained payment
+expectation and the anchor's published `stellar_transaction_id`.

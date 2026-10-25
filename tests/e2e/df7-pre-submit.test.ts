@@ -1,4 +1,5 @@
 import {
+	existsSync,
 	mkdtempSync,
 	readFileSync,
 	rmSync,
@@ -13,17 +14,25 @@ import {
 	buildAndSignClassicPaymentWithMemo,
 	type AnchorPaymentExpectation,
 	type ClassicPaymentHorizon,
+	type SignedClassicPayment,
 } from "../../packages/adapter-stellar/src/index.ts"
 import {
+	DF7_MIN_TIME_BOUNDS_SECONDS,
 	Df7PreSubmitError,
+	Df7StateConflictError,
+	Df7StateExistsError,
+	acquireDf7Lock,
 	checkDf7RebroadcastGates,
 	checkRebroadcastWindow,
+	classifyStoredPaymentExpiry,
+	createDf7PaymentState,
 	encodeSignedPayment,
 	persistPreparedThenSubmit,
 	readDf7PaymentState,
 	reconcileStoredHash,
 	restoreSignedPayment,
-	saveDf7PaymentState,
+	runDf7PaymentAttempt,
+	updateDf7PaymentState,
 	type Df7PaymentState,
 } from "../../scripts/demo/lib/df7-lifecycle.ts"
 
@@ -52,18 +61,23 @@ function stubHorizon(): ClassicPaymentHorizon {
 	}
 }
 
-async function preparedState(
+async function buildSigned(
 	timeoutSeconds = 120,
-	overrides: Partial<Df7PaymentState> = {},
-): Promise<Df7PaymentState> {
-	const built = await buildAndSignClassicPaymentWithMemo({
+): Promise<SignedClassicPayment> {
+	return buildAndSignClassicPaymentWithMemo({
 		networkPassphrase: NET,
 		source,
 		expectation,
 		timeoutSeconds,
 		horizon: stubHorizon(),
 	})
-	const encoded = encodeSignedPayment(built, NET)
+}
+
+async function preparedState(
+	timeoutSeconds = 120,
+	overrides: Partial<Df7PaymentState> = {},
+): Promise<Df7PaymentState> {
+	const encoded = encodeSignedPayment(await buildSigned(timeoutSeconds), NET)
 	const now = new Date().toISOString()
 	return {
 		version: 2,
@@ -83,12 +97,14 @@ async function preparedState(
 function matchingRecord(state: Df7PaymentState) {
 	return {
 		hash: state.anchorPaymentHash,
+		source_account: source.publicKey(),
 		successful: true,
 		memo: expectation.memo,
 		memo_type: "id",
 		operations: [
 			{
 				type: "payment",
+				source_account: source.publicKey(),
 				destination,
 				asset_type: "credit_alphanum4",
 				asset_code: "USDC",
@@ -104,7 +120,7 @@ describe("DF7 pre-submit persistence", () => {
 		const dir = mkdtempSync(join(tmpdir(), "fp-df7-presubmit-"))
 		try {
 			const state = await preparedState()
-			const path = saveDf7PaymentState(state, dir)
+			const path = createDf7PaymentState(state, dir)
 			const raw = JSON.parse(readFileSync(path, "utf8")) as Df7PaymentState
 
 			expect(raw).toMatchObject({
@@ -157,7 +173,7 @@ describe("DF7 pre-submit persistence", () => {
 		const dir = mkdtempSync(join(tmpdir(), "fp-df7-restore-"))
 		try {
 			const state = await preparedState()
-			saveDf7PaymentState(state, dir)
+			createDf7PaymentState(state, dir)
 			const persisted = readDf7PaymentState(dir)!
 			const restored = restoreSignedPayment(persisted)
 
@@ -206,13 +222,103 @@ describe("DF7 pre-submit persistence", () => {
 		expect(() => restoreSignedPayment(corrupted)).toThrow(/restore|restored/)
 	})
 
-	it("blocks an expired envelope and never invokes submit", async () => {
+	it("requires finite time bounds of at least 60 seconds", async () => {
+		const short = await buildSigned(DF7_MIN_TIME_BOUNDS_SECONDS - 1)
+		expect(() => encodeSignedPayment(short, NET)).toThrow(/at least 60s/)
+
+		const minimum = await buildSigned(DF7_MIN_TIME_BOUNDS_SECONDS)
+		expect(encodeSignedPayment(minimum, NET).txHash).toBe(minimum.txHash)
+	})
+})
+
+describe("DF7 reconciliation correctness", () => {
+	it("reconciles source, destination, asset, amount and memo together", async () => {
+		const state = await preparedState()
+		const result = reconcileStoredHash({
+			storedHash: state.anchorPaymentHash,
+			sourceAccount: source.publicKey(),
+			expectation,
+			transaction: matchingRecord(state),
+		})
+		expect(result.outcome).toBe("RECONCILED")
+	})
+
+	it("treats a wrong or missing operation source as MISMATCH or NOT_VERIFIED", async () => {
+		const state = await preparedState()
+		const wrongSource = reconcileStoredHash({
+			storedHash: state.anchorPaymentHash,
+			sourceAccount: source.publicKey(),
+			expectation,
+			transaction: {
+				...matchingRecord(state),
+				source_account: Keypair.random().publicKey(),
+				operations: [
+					{
+						...matchingRecord(state).operations[0]!,
+						source_account: Keypair.random().publicKey(),
+					},
+				],
+			},
+		})
+		expect(wrongSource.outcome).toBe("MISMATCH")
+		expect(wrongSource.reasons.join(" ")).toMatch(/payment source/)
+
+		const noSource = reconcileStoredHash({
+			storedHash: state.anchorPaymentHash,
+			sourceAccount: source.publicKey(),
+			expectation,
+			transaction: {
+				...matchingRecord(state),
+				source_account: undefined,
+				operations: [
+					{
+						...matchingRecord(state).operations[0]!,
+						source_account: undefined,
+					},
+				],
+			},
+		})
+		expect(noSource.outcome).toBe("NOT_VERIFIED")
+		expect(noSource.reasons.join(" ")).toMatch(/does not publish/)
+	})
+
+	it("treats a memo mismatch as MISMATCH", async () => {
+		const state = await preparedState()
+		const result = reconcileStoredHash({
+			storedHash: state.anchorPaymentHash,
+			sourceAccount: source.publicKey(),
+			expectation,
+			transaction: { ...matchingRecord(state), memo: "different" },
+		})
+		expect(result.outcome).toBe("MISMATCH")
+		expect(result.reasons.join(" ")).toMatch(/memo/)
+	})
+
+	it("treats a found-but-failed transaction as confirmed failure", async () => {
+		const state = await preparedState()
+		const result = reconcileStoredHash({
+			storedHash: state.anchorPaymentHash,
+			sourceAccount: source.publicKey(),
+			expectation,
+			transaction: {
+				...matchingRecord(state),
+				successful: false,
+				operations: undefined,
+			},
+		})
+		expect(result.outcome).toBe("FAILED")
+		expect(result.reasons.join(" ")).toMatch(/do not rebroadcast/)
+	})
+})
+
+describe("DF7 expiry evidence", () => {
+	it("does not treat local time as expiry evidence", async () => {
 		const state = await preparedState()
 		const after = state.timeBounds.maxTime + 1
 
 		expect(checkRebroadcastWindow(state, after)).toMatchObject({
 			ok: false,
-			reason: "expired",
+			reason: "unresolved",
 		})
 		expect(
 			checkDf7RebroadcastGates({
@@ -220,13 +326,45 @@ describe("DF7 pre-submit persistence", () => {
 				confirm: state.anchorPaymentHash,
 				nowSec: after,
 			}).blockers.join(" "),
-		).toMatch(/expired/)
+		).toMatch(/not authoritative|past maxTime/)
 
 		const submit = vi.fn(async () => ({ txHash: state.anchorPaymentHash }))
 		await expect(
 			persistPreparedThenSubmit({ state, nowSec: after, submit }),
 		).rejects.toMatchObject({ stage: "window" })
 		expect(submit).not.toHaveBeenCalled()
+	})
+
+	it("requires ledger close, NOT_FOUND and source sequence below envelope", async () => {
+		const state = await preparedState()
+		const evidence = {
+			timeBounds: state.timeBounds,
+			ledgerCloseTime: state.timeBounds.maxTime + 61,
+			hashNotFound: true,
+			envelopeSequence: "100",
+			sourceSequence: "99",
+		}
+
+		expect(classifyStoredPaymentExpiry(evidence).outcome).toBe("EXPIRED")
+		expect(
+			classifyStoredPaymentExpiry({
+				...evidence,
+				ledgerCloseTime: state.timeBounds.maxTime + 60,
+			}).outcome,
+		).toBe("UNRESOLVED")
+		expect(
+			classifyStoredPaymentExpiry({ ...evidence, hashNotFound: false }).outcome,
+		).toBe("UNRESOLVED")
+		expect(
+			classifyStoredPaymentExpiry({ ...evidence, sourceSequence: "100" })
+				.outcome,
+		).toBe("UNRESOLVED")
+		expect(
+			classifyStoredPaymentExpiry({
+				...evidence,
+				ledgerCloseTime: undefined,
+			}).outcome,
+		).toBe("UNRESOLVED")
 	})
 
 	it("survives a submit timeout and recovers only by the retained hash", async () => {
@@ -249,6 +387,7 @@ describe("DF7 pre-submit persistence", () => {
 
 			const confirmed = reconcileStoredHash({
 				storedHash: persisted.anchorPaymentHash,
+				sourceAccount: source.publicKey(),
 				expectation,
 				transaction: matchingRecord(persisted),
 			})
@@ -257,6 +396,7 @@ describe("DF7 pre-submit persistence", () => {
 
 			const missing = reconcileStoredHash({
 				storedHash: persisted.anchorPaymentHash,
+				sourceAccount: source.publicKey(),
 				expectation,
 				transaction: undefined,
 			})
@@ -287,19 +427,118 @@ describe("DF7 pre-submit persistence", () => {
 			}).blockers.join(" "),
 		).toMatch(/not eligible/)
 	})
+})
 
-	it("classifies a failed on-chain transaction as FAILED, not NOT_FOUND", async () => {
-		const state = await preparedState()
-		const result = reconcileStoredHash({
-			storedHash: state.anchorPaymentHash,
-			expectation,
-			transaction: {
-				...matchingRecord(state),
-				successful: false,
-				operations: undefined,
-			},
-		})
-		expect(result.outcome).toBe("FAILED")
-		expect(result.reasons.join(" ")).toMatch(/do not rebroadcast/)
+describe("DF7 concurrency", () => {
+	it("publishes the initial state create-if-absent, never by replace", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "fp-df7-create-"))
+		try {
+			const state = await preparedState()
+			createDf7PaymentState(state, dir)
+			expect(() => createDf7PaymentState(state, dir)).toThrow(
+				Df7StateExistsError,
+			)
+		} finally {
+			rmSync(dir, { recursive: true, force: true })
+		}
+	})
+
+	it("allows exactly one simultaneous pay attempt to sign and submit", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "fp-df7-race-"))
+		try {
+			const sign = vi.fn(async () => {
+				await new Promise((resolve) => setTimeout(resolve, 20))
+				return buildSigned()
+			})
+			const submit = vi.fn(async (_tx, state: Df7PaymentState) => ({
+				txHash: state.anchorPaymentHash,
+			}))
+			const attempt = () =>
+				runDf7PaymentAttempt({
+					anchorTransactionId: "sep24-anchor-id-1",
+					expectation,
+					networkPassphrase: NET,
+					sign,
+					submit,
+					dir,
+				})
+
+			const results = await Promise.all([attempt(), attempt()])
+			expect(sign).toHaveBeenCalledTimes(1)
+			expect(submit).toHaveBeenCalledTimes(1)
+			expect(
+				results.filter((result) => result.kind === "SUBMITTED"),
+			).toHaveLength(1)
+			expect(
+				results.filter((result) => result.kind === "BLOCKED"),
+			).toHaveLength(1)
+			expect(readDf7PaymentState(dir)?.status).toBe("submitted")
+		} finally {
+			rmSync(dir, { recursive: true, force: true })
+		}
+	})
+
+	it("rejects an update whose expected status/hash changed", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "fp-df7-update-"))
+		try {
+			const prepared = await preparedState()
+			createDf7PaymentState(prepared, dir)
+			updateDf7PaymentState({
+				expected: {
+					status: "prepared",
+					anchorPaymentHash: prepared.anchorPaymentHash,
+				},
+				next: { ...prepared, status: "submitted" },
+				dir,
+			})
+
+			expect(() =>
+				updateDf7PaymentState({
+					expected: {
+						status: "prepared",
+						anchorPaymentHash: prepared.anchorPaymentHash,
+					},
+					next: { ...prepared, status: "reconciled" },
+					dir,
+				}),
+			).toThrow(Df7StateConflictError)
+			expect(readDf7PaymentState(dir)?.status).toBe("submitted")
+		} finally {
+			rmSync(dir, { recursive: true, force: true })
+		}
+	})
+
+	it("keeps locks exclusive, releases only the owner, and never breaks stale locks", () => {
+		const dir = mkdtempSync(join(tmpdir(), "fp-df7-lock-"))
+		try {
+			const first = acquireDf7Lock({ mode: "pay", dir })
+			expect(first.ok).toBe(true)
+			expect(acquireDf7Lock({ mode: "reconcile", dir }).ok).toBe(false)
+
+			if (!first.ok) throw new Error("first lock not acquired")
+			expect(first.lock.release()).toBe(true)
+
+			const second = acquireDf7Lock({ mode: "rebroadcast", dir })
+			expect(second.ok).toBe(true)
+			// The old handle must not remove the new owner's lock.
+			expect(first.lock.release()).toBe(false)
+			expect(existsSync(join(dir, "operation.lock"))).toBe(true)
+			if (second.ok) expect(second.lock.release()).toBe(true)
+
+			writeFileSync(
+				join(dir, "operation.lock"),
+				JSON.stringify({
+					pid: 999999,
+					acquiredAt: "2026-10-25T13:00:00Z",
+					mode: "pay",
+					token: "stale",
+				}),
+			)
+			const stale = acquireDf7Lock({ mode: "pay", dir })
+			expect(stale.ok).toBe(false)
+			expect(existsSync(join(dir, "operation.lock"))).toBe(true)
+		} finally {
+			rmSync(dir, { recursive: true, force: true })
+		}
 	})
 })
