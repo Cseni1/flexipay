@@ -49,20 +49,23 @@ describe("FP_ANCHOR_MODE createApiRuntime", () => {
 		expect(runtime.anchorAsset).toBeUndefined();
 	});
 
-	it("FP_ANCHOR_MODE=1 uses createAnchorSettlement; settlementSimulated=false", async () => {
+	it("FP_ANCHOR_MODE=1 refuses a mock or unset settlement instead of mislabelling it", async () => {
 		const loaded = await loadConfig(configDir);
 		if (!loaded.ok) throw new Error("config invalid");
-		const runtime = await createApiRuntime(loaded.config, {
-			...ANCHOR_ENV,
-			FP_ANCHOR_MODE: "1",
-		});
-		expect(runtime.anchorMode).toBe(true);
-		expect(runtime.settlementSimulated).toBe(false);
-		expect(runtime.anchorAsset?.issuer).toBe(
-			"GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
-		);
-		expect(runtime.anchorAsset?.code).toBe("USDC");
+		for (const FP_SETTLEMENT of ["mock", undefined]) {
+			await expect(
+				createApiRuntime(loaded.config, {
+					...ANCHOR_ENV,
+					FP_SETTLEMENT,
+					FP_ANCHOR_MODE: "1",
+				}),
+			).rejects.toThrow(/requires FP_SETTLEMENT=stellar/);
+		}
 	});
+
+	// The positive path (anchor vault and asset selected, vault config verified against
+	// FP_ANCHOR_VAULT_FEE_BPS and the anchor USDC contract) needs the payer secret and the
+	// testnet RPC, so it is exercised only in the live M1/DF7 acceptance run.
 
 	it("FP_ANCHOR_MODE=1 fail-fast when anchor vault missing", async () => {
 		const loaded = await loadConfig(configDir);
@@ -70,6 +73,7 @@ describe("FP_ANCHOR_MODE createApiRuntime", () => {
 		await expect(
 			createApiRuntime(loaded.config, {
 				...ANCHOR_ENV,
+				FP_SETTLEMENT: "stellar",
 				FP_ANCHOR_MODE: "1",
 				FP_ANCHOR_VAULT_ID: "",
 			}),
