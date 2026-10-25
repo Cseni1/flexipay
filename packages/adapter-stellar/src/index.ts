@@ -4,8 +4,20 @@ export { VAULT_ERRORS, VaultError, toVaultError } from "./vault-errors.ts";
 export type { VaultErrorCode, VaultErrorName } from "./vault-errors.ts";
 export { externalIdFor, newClaimSecret, claimHashOf, payoutAmounts } from "./vault-math.ts";
 export type { FeeMode } from "./vault-math.ts";
-export { loadStellarEnv, parseEnvFile } from "./stellar-env.ts";
+export { loadStellarEnv, parseEnvFile, SOROBAN_TX_FEE_CEILING_ENV } from "./stellar-env.ts";
 export type { StellarEnv } from "./stellar-env.ts";
+export {
+	VaultTxFeeError,
+	SOROBAN_TX_FEE_UINT32_MAX,
+	breakdownAssembledFee,
+	legacySignPathDoubleCountTotal,
+	rebuildSorobanTxFeeOnce,
+	rebuildSorobanTxFeeLegacyDoubleCount,
+	rebuildAndValidateVaultWriteFee,
+	validateSorobanTxFee,
+	parseSorobanTxFeeCeiling,
+} from "./vault-tx-fee.ts";
+export type { VaultTxFeeRejectReason, SorobanFeeBreakdown } from "./vault-tx-fee.ts";
 
 export { StellarSettlementAdapter } from "./settlement.ts";
 export type { StellarSettlementOptions } from "./settlement.ts";
