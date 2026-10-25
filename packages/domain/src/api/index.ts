@@ -47,6 +47,12 @@ export {
 } from "./payments.ts";
 
 export {
+  AnchorIndicativePriceRequestSchema,
+  AnchorIndicativePriceResponseSchema,
+  AnchorUsdcMajorAmountSchema,
+  AnchorWithdrawRequestSchema,
+  AnchorWithdrawResponseSchema,
+  AnchorWithdrawStatusResponseSchema,
   Base64XdrSchema,
   CLAIM_LINK_STATUSES,
   ClaimAcceptEndpointSchema,
@@ -62,6 +68,11 @@ export {
   PasskeySubmitRequestSchema,
   PasskeySubmitResponseSchema,
   StellarContractIdSchema,
+  type AnchorIndicativePriceRequest,
+  type AnchorIndicativePriceResponse,
+  type AnchorWithdrawRequest,
+  type AnchorWithdrawResponse,
+  type AnchorWithdrawStatusResponse,
   type ClaimAcceptRequest,
   type ClaimAcceptResponse,
   type ClaimLinkStatus,
