@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { A0_OPENAPI_STUBS } from "@flexipay/domain";
 import { ROUTES } from "../src/app.ts";
@@ -12,15 +13,23 @@ const CCR20_UNMOUNTED_PASSKEY = [
   "post /v1/claims/{token}/passkey/submit",
 ] as const;
 
+/** Repo root for this worktree: apps/api/test → ../../.. */
+const WORKTREE_ROOT = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
+const EXPECTED_DOMAIN_ENTRY = resolve(
+  WORKTREE_ROOT,
+  "packages/domain/src/index.ts",
+);
+
 describe("OpenAPI", () => {
   const doc = buildOpenApi();
   const stubs = stubsNotYetMounted();
 
   it("resolves @flexipay/domain from this worktree (not another checkout)", () => {
     const resolved = fileURLToPath(import.meta.resolve("@flexipay/domain"));
-    const normalized = resolved.replaceAll("\\", "/");
-    expect(normalized).toContain("/packages/domain/");
-    expect(normalized).toContain("/flexipay-csaba-m2/");
+    expect(resolve(resolved)).toBe(EXPECTED_DOMAIN_ENTRY);
+    expect(pathToFileURL(resolved).href.startsWith(pathToFileURL(WORKTREE_ROOT).href)).toBe(
+      true,
+    );
   });
 
   it("lists every mounted route", () => {
