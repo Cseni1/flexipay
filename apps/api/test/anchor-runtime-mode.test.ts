@@ -52,15 +52,20 @@ describe("FP_ANCHOR_MODE createApiRuntime", () => {
 	it("FP_ANCHOR_MODE=1 refuses a mock or unset settlement instead of mislabelling it", async () => {
 		const loaded = await loadConfig(configDir);
 		if (!loaded.ok) throw new Error("config invalid");
-		for (const FP_SETTLEMENT of ["mock", undefined]) {
-			await expect(
-				createApiRuntime(loaded.config, {
-					...ANCHOR_ENV,
-					FP_SETTLEMENT,
-					FP_ANCHOR_MODE: "1",
-				}),
-			).rejects.toThrow(/requires FP_SETTLEMENT=stellar/);
-		}
+		await expect(
+			createApiRuntime(loaded.config, {
+				...ANCHOR_ENV,
+				FP_SETTLEMENT: "mock",
+				FP_ANCHOR_MODE: "1",
+			}),
+		).rejects.toThrow(/requires FP_SETTLEMENT=stellar/);
+		await expect(
+			createApiRuntime(loaded.config, {
+				...ANCHOR_ENV,
+				FP_SETTLEMENT: undefined,
+				FP_ANCHOR_MODE: "1",
+			}),
+		).rejects.toThrow(/FP_SETTLEMENT is required/);
 	});
 
 	// The positive path (anchor vault and asset selected, vault config verified against

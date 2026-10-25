@@ -1,5 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
+	FundDepositUnconfirmedError,
+	FundDepositVerifyError,
 	decideOnFailure,
 	isPaid,
 	nextLegIndex,
@@ -64,6 +66,12 @@ async function loadRuntime(
 		externalRef: string | null;
 		lockTxRef: string | null;
 		releaseTxRef: string | null;
+		fundTxRef: string | null;
+		fundOpIndex: number | null;
+		fundAmountValue: string | null;
+		fundAmountCurrency: string | null;
+		fundNetwork: string | null;
+		fundVaultId: string | null;
 		amountInValue: string;
 		amountInCurrency: string;
 		amountOutValue: string;
@@ -499,6 +507,309 @@ async function loadUnsealedSecret(
 	);
 }
 
+/** CCR-23: settle fund requirement from payment principal + quoted fee / feeMode. */
+export function settleFundAmount(
+	leg: { amountInValue: string; amountInCurrency: string },
+	quotedFee: Money,
+	feeMode: FeeMode,
+): Money {
+	const amount = moneyOf(leg.amountInValue, leg.amountInCurrency);
+	if (quotedFee.currency !== amount.currency) {
+		throw new Error(
+			"quote.fees.flexiPayFee missing or currency mismatch for settle lock (CCR-13)",
+		);
+	}
+	// RecipientPays: vault locks P (fee from principal). PayerPays: locks P+f(P).
+	return feeMode === "PayerPays"
+		? {
+				amount: (BigInt(amount.amount) + BigInt(quotedFee.amount)).toString(),
+				currency: amount.currency,
+			}
+		: amount;
+}
+
+/** Full deposit identity (hash + opIndex) — pending fundTxRef alone is not confirmed/bound. */
+export function isFundDepositConfirmed(leg: {
+	fundTxRef: string | null;
+	fundOpIndex: number | null;
+}): boolean {
+	return leg.fundTxRef != null && leg.fundOpIndex != null;
+}
+
+const FUND_VERIFY_MAX_ATTEMPTS = 3;
+const FUND_VERIFY_RETRY_MS = 25;
+
+function sleepMs(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableFundVerifyFailure(err: unknown): boolean {
+	if (err instanceof FundDepositVerifyError) {
+		// FAILED / ambiguous are durable; not_found may be RPC lag after submit.
+		return err.code === "not_found";
+	}
+	return true;
+}
+
+/**
+ * CCR-23: persist fundTxRef only (pending). fundOpIndex / amount / network / vault stay null.
+ * Does not mark the deposit confirmed or bound.
+ */
+export async function persistPendingFundTxRef(
+	db: Db,
+	legId: string,
+	fundTxRef: string,
+): Promise<"written" | "already_same"> {
+	const updated = await db.leg.updateMany({
+		where: { id: legId, fundTxRef: null },
+		data: {
+			fundTxRef,
+			fundOpIndex: null,
+			fundAmountValue: null,
+			fundAmountCurrency: null,
+			fundNetwork: null,
+			fundVaultId: null,
+		},
+	});
+	if (updated.count === 1) return "written";
+	const current = await db.leg.findUniqueOrThrow({ where: { id: legId } });
+	if (current.fundTxRef === fundTxRef) return "already_same";
+	throw new Error(
+		"settle leg already has a different fundTxRef (CCR-23 pending CAS)",
+	);
+}
+
+/** CCR-23: CAS-write confirmed deposit identity; rejects if already bound to another identity. */
+export async function persistConfirmedFundDeposit(
+	db: Db,
+	legId: string,
+	deposit: {
+		fundTxRef: string;
+		fundOpIndex: number;
+		fundAmountValue: string;
+		fundAmountCurrency: string;
+		fundNetwork: string;
+		fundVaultId: string;
+	},
+): Promise<"written" | "already_same"> {
+	const current = await db.leg.findUniqueOrThrow({ where: { id: legId } });
+	if (
+		current.fundTxRef === deposit.fundTxRef &&
+		current.fundOpIndex === deposit.fundOpIndex &&
+		current.fundNetwork === deposit.fundNetwork &&
+		current.fundVaultId === deposit.fundVaultId &&
+		current.fundAmountValue === deposit.fundAmountValue &&
+		current.fundAmountCurrency === deposit.fundAmountCurrency
+	) {
+		return "already_same";
+	}
+
+	// Complete pending hash → full identity (fundTxRef already set, opIndex still null).
+	if (current.fundTxRef === deposit.fundTxRef && current.fundOpIndex === null) {
+		const completed = await db.leg.updateMany({
+			where: {
+				id: legId,
+				fundTxRef: deposit.fundTxRef,
+				fundOpIndex: null,
+			},
+			data: {
+				fundOpIndex: deposit.fundOpIndex,
+				fundAmountValue: deposit.fundAmountValue,
+				fundAmountCurrency: deposit.fundAmountCurrency,
+				fundNetwork: deposit.fundNetwork,
+				fundVaultId: deposit.fundVaultId,
+			},
+		});
+		if (completed.count === 1) return "written";
+		const again = await db.leg.findUniqueOrThrow({ where: { id: legId } });
+		if (
+			again.fundTxRef === deposit.fundTxRef &&
+			again.fundOpIndex === deposit.fundOpIndex &&
+			again.fundNetwork === deposit.fundNetwork &&
+			again.fundVaultId === deposit.fundVaultId
+		) {
+			return "already_same";
+		}
+		throw new Error(
+			"settle leg already has a different confirmed deposit (CCR-23 CAS)",
+		);
+	}
+
+	const updated = await db.leg.updateMany({
+		where: { id: legId, fundTxRef: null },
+		data: {
+			fundTxRef: deposit.fundTxRef,
+			fundOpIndex: deposit.fundOpIndex,
+			fundAmountValue: deposit.fundAmountValue,
+			fundAmountCurrency: deposit.fundAmountCurrency,
+			fundNetwork: deposit.fundNetwork,
+			fundVaultId: deposit.fundVaultId,
+		},
+	});
+	if (updated.count === 1) return "written";
+	const after = await db.leg.findUniqueOrThrow({ where: { id: legId } });
+	if (
+		after.fundTxRef === deposit.fundTxRef &&
+		after.fundOpIndex === deposit.fundOpIndex &&
+		after.fundNetwork === deposit.fundNetwork &&
+		after.fundVaultId === deposit.fundVaultId
+	) {
+		return "already_same";
+	}
+	throw new Error(
+		"settle leg already has a different confirmed deposit (CCR-23 CAS)",
+	);
+}
+
+async function verifyAndCompleteFundIdentity(
+	db: Db,
+	payment: { id: string; organizationId: string },
+	legId: string,
+	fundTxRef: string,
+	payer: string,
+	fundAmount: Money,
+	adapters: OrchestratorAdapters,
+): Promise<void> {
+	let lastErr: unknown;
+	for (let attempt = 1; attempt <= FUND_VERIFY_MAX_ATTEMPTS; attempt++) {
+		try {
+			const confirmed = await adapters.settlement.verifyFundDeposit({
+				txRef: fundTxRef,
+				payer,
+				amount: fundAmount,
+			});
+			const write = await persistConfirmedFundDeposit(db, legId, confirmed);
+			if (write === "written") {
+				await emitPaymentEvent(
+					db,
+					payment.organizationId,
+					payment.id,
+					"payment.onchain",
+					{
+						phase: "fund",
+						fundTxRef: confirmed.fundTxRef,
+						fundOpIndex: confirmed.fundOpIndex,
+						legId,
+					},
+				);
+			}
+			return;
+		} catch (err) {
+			lastErr = err;
+			if (
+				attempt < FUND_VERIFY_MAX_ATTEMPTS &&
+				isRetryableFundVerifyFailure(err)
+			) {
+				await sleepMs(FUND_VERIFY_RETRY_MS);
+				continue;
+			}
+			break;
+		}
+	}
+
+	const detail = lastErr instanceof Error ? lastErr.message : String(lastErr);
+	await db.auditRow.create({
+		data: {
+			id: newId("aud"),
+			paymentId: payment.id,
+			entity: "leg",
+			entityId: legId,
+			fromStatus: "fund_pending",
+			toStatus: "fund_unconfirmed",
+			reason: `fund_verify_durable_failure:${fundTxRef}`,
+		},
+	});
+	await emitPaymentEvent(db, payment.organizationId, payment.id, "payment.onchain", {
+		phase: "fund_unconfirmed",
+		fundTxRef,
+		legId,
+		detail,
+	});
+	throw new FundDepositUnconfirmedError(
+		fundTxRef,
+		`fund deposit ${fundTxRef} not confirmed after verification: ${detail}`,
+	);
+}
+
+/**
+ * CCR-23 §5: bump lockAttempt only after on-chain refunded/cancelled proof, under CAS + audit.
+ * Test/helper only today — no operator CLI; acceptance does not require a bump CLI.
+ */
+export async function advanceLockAttemptAfterTerminalPayout(
+	db: Db,
+	paymentId: string,
+	adapters: OrchestratorAdapters,
+): Promise<{ previousAttempt: number; nextAttempt: number }> {
+	const payment = await db.payment.findUniqueOrThrow({
+		where: { id: paymentId },
+		include: { legs: { where: { kind: "settle" }, take: 1 } },
+	});
+	const settle = payment.legs[0];
+	if (!settle || !isFundDepositConfirmed(settle)) {
+		throw new Error("cannot advance lockAttempt without confirmed deposit (CCR-23)");
+	}
+	const previousAttempt = payment.lockAttempt;
+	if (previousAttempt < 1) {
+		throw new Error("cannot advance lockAttempt: no prior attempt (CCR-23)");
+	}
+	const payoutId =
+		settle.externalRef ??
+		(await adapters.settlement.findLock(
+			adapters.vaultPayer,
+			paymentId,
+			previousAttempt,
+		));
+	if (!payoutId) {
+		throw new Error(
+			"cannot advance lockAttempt: current attempt payout not found (CCR-23)",
+		);
+	}
+	const st = await adapters.settlement.status(payoutId);
+	if (st.state !== "refunded") {
+		throw new Error(
+			`cannot advance lockAttempt: payout state is ${st.state}, need refunded/cancelled (CCR-23)`,
+		);
+	}
+	const nextAttempt = previousAttempt + 1;
+	const priorExternalRef = settle.externalRef;
+	const priorLockTxRef = settle.lockTxRef;
+	const priorReleaseTxRef = settle.releaseTxRef;
+	const bumped = await db.payment.updateMany({
+		where: { id: paymentId, lockAttempt: previousAttempt },
+		data: { lockAttempt: nextAttempt },
+	});
+	if (bumped.count !== 1) {
+		throw new Error("lockAttempt CAS failed (CCR-23)");
+	}
+	// Clear settle lock refs for the new attempt; keep confirmed fund identity.
+	await db.leg.update({
+		where: { id: settle.id },
+		data: { externalRef: null, lockTxRef: null, releaseTxRef: null },
+	});
+	await db.auditRow.create({
+		data: {
+			id: newId("aud"),
+			paymentId,
+			entity: "payment",
+			entityId: paymentId,
+			fromStatus: String(previousAttempt),
+			toStatus: String(nextAttempt),
+			reason: "lock_attempt_advanced_after_refund",
+		},
+	});
+	await emitPaymentEvent(db, payment.organizationId, paymentId, "payment.onchain", {
+		phase: "lock_attempt_advanced",
+		previousAttempt,
+		nextAttempt,
+		payoutId,
+		reason: "lock_attempt_advanced_after_refund",
+		priorExternalRef,
+		priorLockTxRef,
+		priorReleaseTxRef,
+	});
+	return { previousAttempt, nextAttempt };
+}
+
 async function executeSettle(
 	db: Db,
 	rt: Awaited<ReturnType<typeof loadRuntime>>,
@@ -514,12 +825,38 @@ async function executeSettle(
 		return;
 	}
 
-	// Lost lock response: recover payoutId for the current attempt (RULES payout_by_external).
-	if (payment.lockAttempt > 0) {
+	const amount = moneyOf(leg.amountInValue, leg.amountInCurrency);
+	const quotedFee = rt.quotedFlexiPayFee;
+	if (!quotedFee || quotedFee.currency !== amount.currency) {
+		throw new Error(
+			"quote.fees.flexiPayFee missing or currency mismatch for settle lock (CCR-13)",
+		);
+	}
+	const fundAmount = settleFundAmount(leg, quotedFee, feeMode);
+
+	// CCR-23: any existing fundTxRef — never fundVault again (replay-safe).
+	if (leg.fundTxRef) {
+		if (!isFundDepositConfirmed(leg)) {
+			await verifyAndCompleteFundIdentity(
+				db,
+				payment,
+				leg.id,
+				leg.fundTxRef,
+				adapters.vaultPayer,
+				fundAmount,
+				adapters,
+			);
+		}
+		const attempt = payment.lockAttempt;
+		if (attempt < 1) {
+			throw new Error(
+				"fundTxRef present but lockAttempt < 1 (CCR-23 invariant)",
+			);
+		}
 		const recovered = await adapters.settlement.findLock(
 			adapters.vaultPayer,
 			payment.id,
-			payment.lockAttempt,
+			attempt,
 		);
 		if (recovered) {
 			await db.leg.update({
@@ -529,15 +866,29 @@ async function executeSettle(
 			await resumeAfterSettleLock(db, rt, leg, adapters, recovered);
 			return;
 		}
+		// NOT_FOUND / miss: retry lock with the same attempt — never bump, never re-fund.
+		await lockSettleAfterFund(db, rt, leg, adapters, attempt, amount, quotedFee, feeMode);
+		return;
 	}
 
-	const attempt = payment.lockAttempt + 1;
-	await db.payment.update({
-		where: { id: payment.id },
-		data: { lockAttempt: attempt },
-	});
+	// First ceremony: assign lockAttempt 0→1 once (do not bump on later replays).
+	let attempt = payment.lockAttempt;
+	if (attempt < 1) {
+		const assigned = await db.payment.updateMany({
+			where: { id: payment.id, lockAttempt: 0 },
+			data: { lockAttempt: 1 },
+		});
+		if (assigned.count !== 1) {
+			const refreshed = await db.payment.findUniqueOrThrow({
+				where: { id: payment.id },
+			});
+			attempt = refreshed.lockAttempt;
+		} else {
+			attempt = 1;
+		}
+	}
 
-	// Crash window after lockAttempt bump: findLock before creating a second lock.
+	// Lost lock response for the current attempt (RULES payout_by_external).
 	{
 		const recovered = await adapters.settlement.findLock(
 			adapters.vaultPayer,
@@ -554,6 +905,50 @@ async function executeSettle(
 		}
 	}
 
+	const funded = await adapters.settlement.fundVault(
+		adapters.vaultPayer,
+		fundAmount,
+	);
+	// Persist hash immediately after successful fundVault — before verify/decode.
+	// Remaining crash window: if this persist fails, the on-chain hash may be stranded.
+	try {
+		await persistPendingFundTxRef(db, leg.id, funded.txRef);
+	} catch (persistErr) {
+		const detail =
+			persistErr instanceof Error ? persistErr.message : String(persistErr);
+		throw new Error(
+			`fund tx ${funded.txRef} submitted but fundTxRef persist failed; crash-window for this hash remains: ${detail}`,
+		);
+	}
+	await emitPaymentEvent(db, payment.organizationId, payment.id, "payment.onchain", {
+		phase: "fund_pending",
+		fundTxRef: funded.txRef,
+		legId: leg.id,
+	});
+	await verifyAndCompleteFundIdentity(
+		db,
+		payment,
+		leg.id,
+		funded.txRef,
+		adapters.vaultPayer,
+		fundAmount,
+		adapters,
+	);
+
+	await lockSettleAfterFund(db, rt, leg, adapters, attempt, amount, quotedFee, feeMode);
+}
+
+async function lockSettleAfterFund(
+	db: Db,
+	rt: Awaited<ReturnType<typeof loadRuntime>>,
+	leg: Awaited<ReturnType<typeof loadRuntime>>["legs"][number],
+	adapters: OrchestratorAdapters,
+	attempt: number,
+	amount: Money,
+	quotedFee: Money,
+	feeMode: FeeMode,
+): Promise<void> {
+	const payment = rt.payment;
 	const claimHashHex = await ensureClaimSeal(
 		db,
 		payment.id,
@@ -562,27 +957,6 @@ async function executeSettle(
 		rt.lockExpiresAt,
 		adapters,
 	);
-
-	// CCR-13: lock amount = settle leg amountIn (quoted P); feeMode from quote.
-	const amount = moneyOf(leg.amountInValue, leg.amountInCurrency);
-	const quotedFee = rt.quotedFlexiPayFee;
-	if (!quotedFee || quotedFee.currency !== amount.currency) {
-		throw new Error(
-			"quote.fees.flexiPayFee missing or currency mismatch for settle lock (CCR-13)",
-		);
-	}
-	// RecipientPays: vault locks P (fee from principal). PayerPays: locks P+f(P).
-	// Fund only what lock will debit — use frozen quoted fee, never a live-bps pad.
-	const fundAmount =
-		feeMode === "PayerPays"
-			? {
-					amount: (
-						BigInt(amount.amount) + BigInt(quotedFee.amount)
-					).toString(),
-					currency: amount.currency,
-				}
-			: amount;
-	await adapters.settlement.fundVault(adapters.vaultPayer, fundAmount);
 
 	const locked = await adapters.settlement.lock({
 		paymentId: payment.id,
@@ -614,8 +988,6 @@ async function executeSettle(
 		locked.fee.amount !== quotedFee.amount ||
 		locked.fee.currency !== quotedFee.currency
 	) {
-		// CCR-15: refs are already durable. Fail the leg (never leave it `processing`: that is
-		// the claim-accept bypass), refund the vault lock, then surface the drift to the caller.
 		const message = `lock fee drift: locked.fee=${locked.fee.amount} ${locked.fee.currency} != quoted flexiPayFee=${quotedFee.amount} ${quotedFee.currency} (CCR-13)`;
 		await failSettleForDrift(db, payment, leg, adapters, message);
 		throw new FeeDriftError(message);

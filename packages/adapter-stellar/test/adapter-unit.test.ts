@@ -9,8 +9,8 @@ import {
 } from "../src/index.ts";
 
 describe("settlementModeFromEnv", () => {
-	it("defaults to mock", () => {
-		expect(settlementModeFromEnv({})).toBe("mock");
+	it("fail-fast when FP_SETTLEMENT is missing (no code default)", () => {
+		expect(() => settlementModeFromEnv({})).toThrow(/FP_SETTLEMENT is required/);
 	});
 
 	it("accepts mock and stellar", () => {

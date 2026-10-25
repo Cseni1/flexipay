@@ -5,7 +5,7 @@ import { loadStellarEnv, parseEnvFile, type StellarEnv } from "./stellar-env.ts"
 import { PayoutVault } from "./vault-client.ts";
 
 // Selection contract for Csaba / the API (ARCHITECTURE §1a, §11.2):
-//   FP_SETTLEMENT=mock|stellar  (default mock)
+//   FP_SETTLEMENT=mock|stellar  (required — no code default; CCR-23)
 // mock → packages/adapters-sim MockSettlementAdapter (wired in apps/api)
 // stellar → createStellarSettlementAdapter() from this package
 // This package never constructs the mock; it only exports the stellar path and the mode helper.
@@ -15,7 +15,12 @@ export type SettlementMode = "mock" | "stellar";
 export function settlementModeFromEnv(
 	env: Record<string, string | undefined> = process.env,
 ): SettlementMode {
-	const raw = (env.FP_SETTLEMENT ?? "mock").trim().toLowerCase();
+	const raw = env.FP_SETTLEMENT?.trim().toLowerCase();
+	if (!raw) {
+		throw new Error(
+			"FP_SETTLEMENT is required (mock|stellar); there is no code default (CCR-23)",
+		);
+	}
 	if (raw === "mock" || raw === "stellar") return raw;
 	throw new Error(`FP_SETTLEMENT must be mock|stellar, got ${JSON.stringify(env.FP_SETTLEMENT)}`);
 }
@@ -48,6 +53,9 @@ export async function createStellarSettlementAdapter(
 	const adapter = new StellarSettlementAdapter({
 		vault,
 		wallets,
+		vaultId: stellarEnv.payoutVaultId,
+		rpcUrl: stellarEnv.rpcUrl,
+		networkPassphrase: stellarEnv.networkPassphrase,
 		assetCurrency: options.assetCurrency,
 	});
 	return { adapter, wallets, env: stellarEnv };
