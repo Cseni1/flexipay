@@ -378,13 +378,12 @@ test.describe("CF6 claim page passkey option", () => {
 		await expect(page.getByTestId("passkey-create")).toBeEnabled()
 		await expect(page.getByTestId("passkey-signing-unavailable")).toHaveCount(0)
 
+		// The anchor option is present from the claim response, but nothing anchor-related is
+		// fetched or shown until it is selected: its own CF9 spec covers that flow.
 		const anchorOption = page.getByTestId("claim-anchor-option")
 		await expect(anchorOption).toBeVisible()
 		await expect(
 			anchorOption.getByRole("radio", { name: /Cash out to bank/ }),
-		).toBeDisabled()
-		await expect(
-			anchorOption.getByText(/Not available in this build/),
 		).toBeVisible()
 
 		// No invented price, hosted URL, indicative rate or anchor status.

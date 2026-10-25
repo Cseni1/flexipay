@@ -1,8 +1,14 @@
 // Browser-safe claim contract view. Re-export only the shared claim schemas so the claim page
 // does not pull the domain root (and its Node config loader) into the web bundle. These are the
-// accepted shared schemas (CCR-21 is ACK'd), not copies.
+// accepted shared schemas (CCR-21, CCR-22), not copies.
 
 export {
+	AnchorIndicativePriceRequestSchema,
+	AnchorIndicativePriceResponseSchema,
+	AnchorUsdcMajorAmountSchema,
+	AnchorWithdrawRequestSchema,
+	AnchorWithdrawResponseSchema,
+	AnchorWithdrawStatusResponseSchema,
 	ClaimAcceptRequestSchema,
 	ClaimAcceptResponseSchema,
 	ClaimViewSchema,
@@ -16,6 +22,11 @@ export {
 } from "../domain/src/api/claims.ts"
 
 export type {
+	AnchorIndicativePriceRequest,
+	AnchorIndicativePriceResponse,
+	AnchorWithdrawRequest,
+	AnchorWithdrawResponse,
+	AnchorWithdrawStatusResponse,
 	ClaimAcceptRequest,
 	ClaimAcceptResponse,
 	ClaimLinkStatus,

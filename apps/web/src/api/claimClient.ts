@@ -56,7 +56,7 @@ const claimMessage = (status: number): string => {
 	return "The claim could not be loaded."
 }
 
-interface ClaimRequestOptions<T> {
+export interface ClaimRequestOptions<T> {
 	method?: "GET" | "POST"
 	body?: unknown
 	schema: { parse: (value: unknown) => T }
@@ -64,7 +64,8 @@ interface ClaimRequestOptions<T> {
 	signal?: AbortSignal
 }
 
-async function claimRequest<T>(
+/** Shared by the CCR-22 anchor client: same no-Authorization rule and error shape. */
+export async function claimRequest<T>(
 	path: string,
 	options: ClaimRequestOptions<T>,
 ): Promise<T> {
@@ -130,7 +131,7 @@ async function claimRequest<T>(
 	}
 }
 
-const tokenPath = (token: string): string =>
+export const tokenPath = (token: string): string =>
 	`/v1/claims/${encodeURIComponent(token)}`
 
 export const getClaim = (

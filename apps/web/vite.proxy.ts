@@ -9,8 +9,9 @@ import { type Connect, type Plugin } from "vite"
 
 // CCR-19 minimal local proxy. Vite runs this in the Node process, so FP_API_KEY never enters
 // the browser bundle. It forwards only the published API routes below and always strips any
-// browser-supplied Authorization header. Public claim routes (including the CCR-21 passkey
-// deploy/prepare/submit) are forwarded with no Bearer at all, including the upstream hop.
+// browser-supplied Authorization header. Public claim routes (CCR-21 passkey
+// deploy/prepare/submit and the CCR-22 anchor price/withdraw/status) are forwarded with no
+// Bearer at all, including the upstream hop.
 
 export type ProxyRouteKind = "protected" | "claim"
 
@@ -41,6 +42,10 @@ const ROUTES: readonly RouteRule[] = [
 	claimRule("POST", /^\/v1\/claims\/[^/]+\/passkey\/deploy\/?$/),
 	claimRule("POST", /^\/v1\/claims\/[^/]+\/passkey\/prepare\/?$/),
 	claimRule("POST", /^\/v1\/claims\/[^/]+\/passkey\/submit\/?$/),
+	// CCR-22: exactly the three public reference-anchor claim routes, keyless upstream.
+	claimRule("POST", /^\/v1\/claims\/[^/]+\/anchor\/indicative-price\/?$/),
+	claimRule("POST", /^\/v1\/claims\/[^/]+\/anchor\/withdraw\/?$/),
+	claimRule("GET", /^\/v1\/claims\/[^/]+\/anchor\/withdraw\/[^/]+\/?$/),
 	protectedRule("GET", /^\/v1\/corridors\/?$/),
 	protectedRule("GET", /^\/v1\/recipients\/?$/),
 	protectedRule("POST", /^\/v1\/recipients\/?$/),
