@@ -1,6 +1,19 @@
 import { createHash, randomBytes } from "node:crypto";
 
-export type IdPrefix = "org" | "key" | "rcp" | "end" | "qte" | "pay" | "leg" | "bat" | "whs" | "evt" | "idm" | "aud";
+export type IdPrefix =
+	| "org"
+	| "key"
+	| "rcp"
+	| "end"
+	| "qte"
+	| "pay"
+	| "leg"
+	| "bat"
+	| "whs"
+	| "evt"
+	| "idm"
+	| "aud"
+	| "pkp";
 
 export const newId = (prefix: IdPrefix): string => `${prefix}_${randomBytes(12).toString("hex")}`;
 

@@ -112,7 +112,7 @@ describe("CCR-21 passkey prepare/submit routes (no live testnet)", () => {
 			where: { id: paymentId },
 			include: { legs: true },
 		});
-		const settle = payment.legs.find((l) => l.kind === "settle");
+		const settle = payment.legs.find((l: { kind: string }) => l.kind === "settle");
 		if (settle) {
 			await t.db.payment.update({
 				where: { id: paymentId },
@@ -156,7 +156,7 @@ describe("CCR-21 passkey prepare/submit routes (no live testnet)", () => {
 				where: { id: paymentId },
 				include: { legs: true },
 			});
-			const settle = payment.legs.find((l) => l.kind === "settle");
+			const settle = payment.legs.find((l: { kind: string }) => l.kind === "settle");
 			if (settle) {
 				await t.db.payment.update({
 					where: { id: paymentId },

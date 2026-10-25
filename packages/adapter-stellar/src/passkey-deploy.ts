@@ -341,7 +341,12 @@ export async function rebuildAndSignInvokeHostFunction(input: {
 	const label = input.label ?? "invoke";
 	const server = input.server ?? new Server(input.rpcUrl);
 	const accountRecord = await server.getAccount(input.payer.publicKey());
-	const account = new Account(accountRecord.accountId, accountRecord.sequenceNumber());
+	// rpc AccountResponse exposes accountId/sequenceNumber as methods.
+	const acct = accountRecord as unknown as {
+		accountId: () => string;
+		sequenceNumber: () => string;
+	};
+	const account = new Account(acct.accountId(), acct.sequenceNumber());
 	const built = new TransactionBuilder(account, {
 		fee: input.fee ?? "1000000",
 		networkPassphrase: input.networkPassphrase,

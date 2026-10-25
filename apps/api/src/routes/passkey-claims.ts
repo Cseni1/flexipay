@@ -79,13 +79,13 @@ function toDeployResponse(
 
 async function finishDeploySuccess(
 	db: Ctx["db"],
-	linkId: string,
+	paymentId: string,
 	contractId: string,
 	deployTxHash: string,
 	creationLedger: number,
 ): Promise<PasskeyDeployResponse> {
 	await db.claimLink.update({
-		where: { id: linkId },
+		where: { paymentId },
 		data: {
 			passkeyContractId: contractId,
 			passkeyDeployTxHash: deployTxHash,
@@ -208,7 +208,7 @@ async function recoverOrSubmitDeploy(input: {
 		if (outcome.kind === "success") {
 			return finishDeploySuccess(
 				ctx.db,
-				link.id,
+				link.paymentId,
 				pendingContract,
 				outcome.txHash,
 				outcome.ledger,
@@ -216,7 +216,7 @@ async function recoverOrSubmitDeploy(input: {
 		}
 		if (outcome.kind === "failed") {
 			await ctx.db.claimLink.update({
-				where: { id: link.id },
+				where: { paymentId: link.paymentId },
 				data: {
 					passkeyDeployPendingContractId: null,
 					passkeyDeployPendingTxHash: null,
@@ -264,7 +264,7 @@ async function recoverOrSubmitDeploy(input: {
 				});
 				return finishDeploySuccess(
 					ctx.db,
-					link.id,
+					link.paymentId,
 					pendingContract,
 					waited.deployTxHash,
 					waited.creationLedger,
@@ -316,7 +316,7 @@ async function recoverOrSubmitDeploy(input: {
 
 	// Persist pending binding BEFORE send (CCR-21).
 	await ctx.db.claimLink.update({
-		where: { id: link.id },
+		where: { paymentId: link.paymentId },
 		data: {
 			passkeyDeployPendingContractId: validated.contractId,
 			passkeyDeployPendingTxHash: signed.txHash,
@@ -343,7 +343,7 @@ async function recoverOrSubmitDeploy(input: {
 		});
 		return finishDeploySuccess(
 			ctx.db,
-			link.id,
+			link.paymentId,
 			validated.contractId,
 			waited.deployTxHash,
 			waited.creationLedger,
@@ -361,7 +361,9 @@ async function recoverOrSubmitDeploy(input: {
 export type CtxWithRequest = Ctx & { req?: Request };
 
 function settleWaiting(link: LoadedClaim) {
-	const settle = link.payment.legs.find((l) => l.kind === "settle");
+	const settle = link.payment.legs.find(
+		(l: { kind: string }) => l.kind === "settle",
+	);
 	if (settle && (settle.status === "failed" || settle.errorCode === "fee_drift")) {
 		throw new ApiError(
 			409,
