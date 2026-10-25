@@ -9,6 +9,7 @@ import {
 	type ClassicPaymentResult,
 	type SignedClassicPayment,
 } from "@flexipay/adapter-stellar";
+import type { Transaction } from "@stellar/stellar-sdk";
 import type { Db } from "../db.ts";
 import { ApiError } from "../errors.ts";
 import { sealBytes, unsealBytes } from "../orchestrator/claim-seal.ts";
@@ -16,9 +17,15 @@ import type { ApiRuntime } from "../runtime.ts";
 import type { AnchorWithdrawStatusResult } from "./claim-anchor-gateway.ts";
 
 /**
- * CCR-22 /pay: persist sealed signed envelope + hash + time bounds BEFORE Horizon submit.
- * NOT_FOUND/timeout never starts a new payment — same envelope only.
+ * CCR-22 /pay:
+ * - Only the DB-reservation winner may submit.
+ * - Public replay reconciles by retained hash only (Horizon first):
+ *   proven success → 200; proven failure → 409; unresolved → 202.
+ * - Retained envelope does NOT authorise resubmit.
+ * - New payment only when SEP-24 status is pending_user_transfer_start.
  */
+
+const DEFAULT_HORIZON = "https://horizon-testnet.stellar.org";
 
 export type AnchorPayOutcome =
 	| {
@@ -37,6 +44,10 @@ export type AnchorPayOutcome =
 				pendingTxHash: string;
 			};
 	  };
+
+export type ClassicTxLookupResult =
+	| { found: false }
+	| { found: true; successful: boolean };
 
 function mapPayError(e: unknown): never {
 	if (e instanceof ApiError) throw e;
@@ -80,6 +91,144 @@ type PayLinkRow = {
 	anchorPaymentTxHash: string | null;
 };
 
+/** Decode payment destination + amount from a signed classic envelope (no placeholders). */
+export function paymentFieldsFromSignedTx(tx: Transaction): {
+	destination: string;
+	amount: string;
+} {
+	const op = tx.operations.find((o) => o.type === "payment");
+	if (!op || op.type !== "payment") {
+		throw new ApiError(
+			502,
+			"classic_payment_failed",
+			"retained envelope has no payment operation",
+		);
+	}
+	const destination = (op as { destination?: string }).destination;
+	const amount = (op as { amount?: string }).amount;
+	if (!destination || !amount) {
+		throw new ApiError(
+			502,
+			"classic_payment_failed",
+			"retained envelope payment fields incomplete",
+		);
+	}
+	return { destination, amount };
+}
+
+export async function defaultLookupClassicTxByHash(
+	hash: string,
+	horizonUrl = DEFAULT_HORIZON,
+): Promise<ClassicTxLookupResult> {
+	try {
+		const res = await fetch(`${horizonUrl.replace(/\/$/, "")}/transactions/${hash}`);
+		if (res.status === 404) return { found: false };
+		if (!res.ok) return { found: false };
+		const body = (await res.json()) as { successful?: boolean };
+		return { found: true, successful: Boolean(body.successful) };
+	} catch {
+		// Network / ambiguous — treat as unresolved (caller returns 202).
+		return { found: false };
+	}
+}
+
+function isDefinitiveHorizonReject(e: unknown): boolean {
+	if (!e || typeof e !== "object") return false;
+	const status = (e as { response?: { status?: number } }).response?.status;
+	if (status === 400) return true;
+	const msg = e instanceof Error ? e.message : String(e);
+	return (
+		/\btx_failed\b/i.test(msg) ||
+		/\bop_underfunded\b/i.test(msg) ||
+		/\bop_no_destination\b/i.test(msg) ||
+		/\bhorizon.*reject/i.test(msg)
+	);
+}
+
+/**
+ * Reconcile a retained hash against Horizon (before local expiry).
+ * Envelope presence alone never triggers resubmit.
+ */
+async function reconcileByRetainedHash(opts: {
+	db: Db;
+	runtime: ApiRuntime;
+	paymentId: string;
+	anchorTxId: string;
+	hash: string;
+	link: PayLinkRow;
+}): Promise<AnchorPayOutcome> {
+	const { db, runtime, paymentId, anchorTxId, hash, link } = opts;
+
+	if (link.anchorPaymentTxHash && link.anchorPayStatus === "submitted") {
+		return {
+			httpStatus: 200,
+			body: {
+				status: "submitted",
+				anchorTxId,
+				anchorPaymentTxHash: link.anchorPaymentTxHash,
+			},
+		};
+	}
+	if (link.anchorPayStatus === "failed") {
+		throw new ApiError(
+			409,
+			"invalid_state",
+			"classic payment to the anchor was rejected on-chain; do not retry",
+		);
+	}
+
+	const lookup =
+		runtime.lookupClassicTxByHash ??
+		((h: string) => defaultLookupClassicTxByHash(h));
+	const seen = await lookup(hash);
+
+	if (seen.found && seen.successful) {
+		await db.claimLink.update({
+			where: { paymentId },
+			data: {
+				anchorPaymentTxHash: hash,
+				anchorPayStatus: "submitted",
+			},
+		});
+		return {
+			httpStatus: 200,
+			body: {
+				status: "submitted",
+				anchorTxId,
+				anchorPaymentTxHash: hash,
+			},
+		};
+	}
+
+	if (seen.found && !seen.successful) {
+		await db.claimLink.update({
+			where: { paymentId },
+			data: { anchorPayStatus: "failed" },
+		});
+		throw new ApiError(
+			409,
+			"invalid_state",
+			"classic payment to the anchor was rejected on-chain; do not retry",
+		);
+	}
+
+	// Unresolved (NOT_FOUND / network). Local expiry must not invent a new payment.
+	// Proven success above is never blocked by the clock.
+	const nowSec = Math.floor(Date.now() / 1000);
+	if (link.anchorPayMaxTime !== null && nowSec > link.anchorPayMaxTime) {
+		// Still 202 — expiry without Horizon proof forbids resubmit, not a new attempt.
+		return {
+			httpStatus: 202,
+			body: { status: "pending", anchorTxId, pendingTxHash: hash },
+		};
+	}
+
+	return {
+		httpStatus: 202,
+		body: { status: "pending", anchorTxId, pendingTxHash: hash },
+	};
+}
+
 export async function executeAnchorPay(opts: {
 	db: Db;
 	runtime: ApiRuntime;
@@ -115,16 +264,33 @@ export async function executeAnchorPay(opts: {
 			},
 		};
 	}
+	if (link.anchorPayStatus === "failed") {
+		throw new ApiError(
+			409,
+			"invalid_state",
+			"classic payment to the anchor was rejected on-chain; do not retry",
+		);
+	}
 
-	if (link.anchorPayPendingTxHash && link.anchorPayPendingSealed) {
-		return resumePendingPay({
+	// Any retained hash → public replay = Horizon reconcile only (no resubmit).
+	if (link.anchorPayPendingTxHash) {
+		return reconcileByRetainedHash({
 			db,
 			runtime,
 			paymentId,
 			anchorTxId,
+			hash: link.anchorPayPendingTxHash,
 			link,
-			horizon,
 		});
+	}
+
+	// New payment only in this SEP-24 state.
+	if (statusView.status !== "pending_user_transfer_start") {
+		throw new ApiError(
+			409,
+			"invalid_state",
+			`classic payment requires SEP-24 status pending_user_transfer_start (got ${statusView.status})`,
+		);
 	}
 
 	const reserved = await db.claimLink.updateMany({
@@ -150,14 +316,21 @@ export async function executeAnchorPay(opts: {
 				},
 			};
 		}
+		if (again.anchorPayStatus === "failed") {
+			throw new ApiError(
+				409,
+				"invalid_state",
+				"classic payment to the anchor was rejected on-chain; do not retry",
+			);
+		}
 		if (again.anchorPayPendingTxHash) {
-			return resumePendingPay({
+			return reconcileByRetainedHash({
 				db,
 				runtime,
 				paymentId,
 				anchorTxId,
+				hash: again.anchorPayPendingTxHash,
 				link: again,
-				horizon,
 			});
 		}
 		throw new ApiError(
@@ -194,6 +367,7 @@ export async function executeAnchorPay(opts: {
 					timeoutSeconds: 60,
 				});
 
+		const fields = paymentFieldsFromSignedTx(built.signedTx);
 		const envelopeXdr = Buffer.from(built.signedTx.toXDR(), "base64");
 		const sealed = sealBytes(envelopeXdr, runtime.claimSealKey);
 
@@ -221,15 +395,15 @@ export async function executeAnchorPay(opts: {
 			);
 		}
 
-		return await submitPersistedEnvelope({
+		return await submitAsWinner({
 			db,
 			runtime,
 			paymentId,
 			anchorTxId,
 			txHash: built.txHash,
 			signedTx: built.signedTx,
-			destination: built.destination,
-			amount: built.amount,
+			destination: fields.destination,
+			amount: fields.amount,
 			asset: built.asset,
 			horizon,
 		});
@@ -248,96 +422,14 @@ export async function executeAnchorPay(opts: {
 	}
 }
 
-async function resumePendingPay(opts: {
-	db: Db;
-	runtime: ApiRuntime;
-	paymentId: string;
-	anchorTxId: string;
-	link: PayLinkRow;
-	horizon?: ClassicPaymentHorizon;
-}): Promise<AnchorPayOutcome> {
-	const { db, runtime, paymentId, anchorTxId, link, horizon } = opts;
-	const hash = link.anchorPayPendingTxHash;
-	if (!hash || !link.anchorPayPendingSealed || !link.anchorPayPendingSealedNonce) {
-		throw new ApiError(
-			409,
-			"invalid_state",
-			"anchor pay pending state is incomplete; do not start a new payment",
-		);
-	}
-
-	const nowSec = Math.floor(Date.now() / 1000);
-	if (link.anchorPayMaxTime !== null && nowSec > link.anchorPayMaxTime) {
-		throw new ApiError(
-			409,
-			"invalid_state",
-			"retained classic payment envelope is outside time bounds; NOT_FOUND/timeout does not authorise a new payment",
-		);
-	}
-
-	if (link.anchorPayStatus === "uncertain") {
-		return {
-			httpStatus: 202,
-			body: { status: "pending", anchorTxId, pendingTxHash: hash },
-		};
-	}
-
-	const networkPassphrase =
-		runtime.anchorAsset?.networkPassphrase ??
-		loadAnchorEventEnv(process.env).networkPassphrase;
-	const xdrBuf = unsealBytes(
-		Buffer.from(link.anchorPayPendingSealed),
-		Buffer.from(link.anchorPayPendingSealedNonce),
-		runtime.claimSealKey,
-	);
-	const parsed = TransactionBuilder.fromXDR(
-		xdrBuf.toString("base64"),
-		networkPassphrase,
-	);
-	if (!("hash" in parsed) || typeof (parsed as { hash: () => Buffer }).hash !== "function") {
-		throw new ApiError(
-			502,
-			"classic_payment_failed",
-			"retained envelope is not a Transaction",
-		);
-	}
-	const signedTx = parsed as import("@stellar/stellar-sdk").Transaction;
-	const restoredHash = Buffer.from(signedTx.hash()).toString("hex");
-	if (restoredHash !== hash) {
-		throw new ApiError(
-			502,
-			"classic_payment_failed",
-			"restored envelope hash does not match retained pendingTxHash",
-		);
-	}
-
-	const asset =
-		runtime.anchorAsset ?? loadAnchorEventEnv(process.env).asset;
-	return submitPersistedEnvelope({
-		db,
-		runtime,
-		paymentId,
-		anchorTxId,
-		txHash: hash,
-		signedTx,
-		destination: "GRESUME00000000000000000000000000000000000000000000000",
-		amount: "0",
-		asset: {
-			code: asset.code,
-			issuer: asset.issuer,
-			networkPassphrase: asset.networkPassphrase,
-		},
-		horizon,
-	});
-}
-
-async function submitPersistedEnvelope(opts: {
+/** Only the reservation winner calls this — never public replay. */
+async function submitAsWinner(opts: {
 	db: Db;
 	runtime: ApiRuntime;
 	paymentId: string;
 	anchorTxId: string;
 	txHash: string;
-	signedTx: import("@stellar/stellar-sdk").Transaction;
+	signedTx: Transaction;
 	destination: string;
 	amount: string;
 	asset: { code: string; issuer: string; networkPassphrase: string };
@@ -376,7 +468,18 @@ async function submitPersistedEnvelope(opts: {
 				anchorPaymentTxHash: result.txHash,
 			},
 		};
-	} catch {
+	} catch (e) {
+		if (isDefinitiveHorizonReject(e)) {
+			await db.claimLink.update({
+				where: { paymentId },
+				data: { anchorPayStatus: "failed" },
+			});
+			throw new ApiError(
+				409,
+				"invalid_state",
+				"classic payment to the anchor was rejected on-chain; do not retry",
+			);
+		}
 		await db.claimLink.update({
 			where: { paymentId },
 			data: { anchorPayStatus: "uncertain" },
@@ -386,4 +489,35 @@ async function submitPersistedEnvelope(opts: {
 			body: { status: "pending", anchorTxId, pendingTxHash: txHash },
 		};
 	}
+}
+
+/** Test helper: unseal retained envelope and read payment fields. */
+export function decodeRetainedEnvelopeFields(
+	runtime: ApiRuntime,
+	link: PayLinkRow,
+): { destination: string; amount: string; txHash: string } {
+	if (
+		!link.anchorPayPendingTxHash ||
+		!link.anchorPayPendingSealed ||
+		!link.anchorPayPendingSealedNonce
+	) {
+		throw new Error("no retained envelope");
+	}
+	const networkPassphrase =
+		runtime.anchorAsset?.networkPassphrase ??
+		loadAnchorEventEnv(process.env).networkPassphrase;
+	const xdrBuf = unsealBytes(
+		Buffer.from(link.anchorPayPendingSealed),
+		Buffer.from(link.anchorPayPendingSealedNonce),
+		runtime.claimSealKey,
+	);
+	const parsed = TransactionBuilder.fromXDR(
+		xdrBuf.toString("base64"),
+		networkPassphrase,
+	) as Transaction;
+	const fields = paymentFieldsFromSignedTx(parsed);
+	return {
+		...fields,
+		txHash: link.anchorPayPendingTxHash,
+	};
 }

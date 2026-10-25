@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
 	AnchorSettlementConfigError,
+	createAnchorSettlement,
 	mapAnchorVaultToSettlementEnv,
 } from "../src/anchor/settlement-from-anchor-env.ts";
+import { createSettlement } from "../src/settlement.ts";
 
 const BASELINE = {
 	FP_STELLAR_NETWORK: "testnet",
@@ -68,5 +70,31 @@ describe("CCR-22 anchor settlement config mapping", () => {
 				FP_USDC_ASSET: ANCHOR.FP_ANCHOR_USDC_ASSET,
 			}),
 		).toThrow(AnchorSettlementConfigError);
+	});
+
+	it("createAnchorSettlement uses skipBaselineIds (no fake path)", async () => {
+		const bundle = await createAnchorSettlement({
+			env: {
+				...BASELINE,
+				...ANCHOR,
+				FP_SETTLEMENT: "mock",
+				FP_USDC_ASSET:
+					"USDC:GBBO6N7U5E4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHN4",
+			},
+		});
+		expect(bundle.mode).toBe("mock");
+		expect(bundle.mapping.stellar.payoutVaultId).toBe(ANCHOR.FP_ANCHOR_VAULT_ID);
+	});
+
+	it("createSettlement skipBaselineIds=true does not require baseline ids file", async () => {
+		const bundle = await createSettlement({
+			skipBaselineIds: true,
+			env: {
+				FP_SETTLEMENT: "mock",
+				FP_TREASURY_ADDRESS: ANCHOR.FP_ANCHOR_VAULT_TREASURY_ADDRESS,
+				FP_VAULT_FEE_BPS: "50",
+			},
+		});
+		expect(bundle.mode).toBe("mock");
 	});
 });

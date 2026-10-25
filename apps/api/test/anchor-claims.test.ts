@@ -156,7 +156,12 @@ async function releaseToClassic(token: string): Promise<void> {
 	expect(accept.status).toBe(200);
 }
 
-function installPayMocks(counts: { pays: number }) {
+function installPayMocks(
+	counts: { pays: number },
+	opts?: { rejectSubmit?: boolean },
+) {
+	const knownSuccess = new Set<string>();
+	const knownFailed = new Set<string>();
 	t.runtime.anchorAsset = {
 		code: "USDC",
 		issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
@@ -196,9 +201,16 @@ function installPayMocks(counts: { pays: number }) {
 	};
 	t.runtime.submitAnchorClassicPayment = async ({ expectedTxHash }) => {
 		counts.pays += 1;
+		if (opts?.rejectSubmit) {
+			knownFailed.add(expectedTxHash);
+			const err = new Error("tx_failed op_underfunded");
+			(err as { response?: { status: number } }).response = { status: 400 };
+			throw err;
+		}
+		knownSuccess.add(expectedTxHash);
 		return {
 			txHash: expectedTxHash,
-			destination: "GANCHOR",
+			destination: ANCHOR_DEST,
 			amount: "5",
 			memoPresent: true as const,
 			asset: {
@@ -208,6 +220,11 @@ function installPayMocks(counts: { pays: number }) {
 			},
 		};
 	};
+	t.runtime.lookupClassicTxByHash = async (hash) => {
+		if (knownSuccess.has(hash)) return { found: true, successful: true };
+		if (knownFailed.has(hash)) return { found: true, successful: false };
+		return { found: false };
+	};
 }
 
 beforeEach(() => {
@@ -216,6 +233,7 @@ beforeEach(() => {
 	delete t.runtime.anchorAsset;
 	delete t.runtime.buildAnchorClassicPayment;
 	delete t.runtime.submitAnchorClassicPayment;
+	delete t.runtime.lookupClassicTxByHash;
 });
 
 describe("CCR-22 anchor claim routes (review fix)", () => {
@@ -454,7 +472,7 @@ describe("CCR-22 anchor claim routes (review fix)", () => {
 		expect(link.anchorPaymentTxHash).toBeNull();
 	});
 
-	it("/pay persists before send; timeout → 202; no blind new payment", async () => {
+	it("/pay persists before send; unresolved replay → 202 without resubmit", async () => {
 		const { key } = await t.newOrg("Anchor Pay Org");
 		const { token, paymentId } = await openFundedClaim(key);
 		await releaseToClassic(token);
@@ -509,7 +527,8 @@ describe("CCR-22 anchor claim routes (review fix)", () => {
 		expect(link.anchorPaymentTxHash).toBe(paid.anchorPaymentTxHash);
 		expect(link.anchorPayPendingSealed).toBeTruthy();
 
-		// Uncertain path: force status uncertain and ensure replay is 202 without new pay.
+		// Unresolved replay: clear success mark so Horizon lookup is NOT_FOUND.
+		// Retained envelope must NOT authorise resubmit.
 		await t.db.claimLink.update({
 			where: { paymentId },
 			data: {
@@ -517,6 +536,7 @@ describe("CCR-22 anchor claim routes (review fix)", () => {
 				anchorPaymentTxHash: null,
 			},
 		});
+		t.runtime.lookupClassicTxByHash = async () => ({ found: false });
 		payCounts.pays = 0;
 		const pending = await fetch(
 			`${t.base}/v1/claims/${token}/anchor/withdraw/${anchorTxId}/pay`,
@@ -539,7 +559,7 @@ describe("CCR-22 anchor claim routes (review fix)", () => {
 		expect(pendingBody.pendingTxHash).toBe(link.anchorPayPendingTxHash);
 	});
 
-	it("parallel /pay with different keys does not double-submit", async () => {
+	it("parallel /pay: only reservation winner submits", async () => {
 		const { key } = await t.newOrg("Anchor Pay Conc Org");
 		const { token, paymentId } = await openFundedClaim(key);
 		await releaseToClassic(token);
@@ -548,7 +568,9 @@ describe("CCR-22 anchor claim routes (review fix)", () => {
 			data: { amountOutValue: "50000000", amountOutCurrency: "USDC" },
 		});
 		const payCounts = { pays: 0 };
-		t.runtime.anchorGateway = mockGateway().gw;
+		t.runtime.anchorGateway = mockGateway({
+			status: "pending_user_transfer_start",
+		}).gw;
 		t.runtime.resolveAnchorAuthSecret = (a) =>
 			a === CLASSIC_ADDRESS ? CLASSIC_SECRET : undefined;
 		installPayMocks(payCounts);
@@ -590,8 +612,97 @@ describe("CCR-22 anchor claim routes (review fix)", () => {
 				},
 			),
 		]);
-		expect([p1.status, p2.status].sort()[0]).toBe(200);
+		const codes = [p1.status, p2.status].sort();
+		expect(codes[0]).toBe(200);
+		expect([200, 202]).toContain(codes[1]);
 		expect(payCounts.pays).toBe(1);
+	});
+
+	it("/pay definitive Horizon reject → 409 failed; no uncertain", async () => {
+		const { key } = await t.newOrg("Anchor Pay Reject Org");
+		const { token, paymentId } = await openFundedClaim(key);
+		await releaseToClassic(token);
+		await t.db.leg.updateMany({
+			where: { paymentId, kind: "settle" },
+			data: { amountOutValue: "50000000", amountOutCurrency: "USDC" },
+		});
+		const payCounts = { pays: 0 };
+		t.runtime.anchorGateway = mockGateway({
+			status: "pending_user_transfer_start",
+		}).gw;
+		t.runtime.resolveAnchorAuthSecret = (a) =>
+			a === CLASSIC_ADDRESS ? CLASSIC_SECRET : undefined;
+		installPayMocks(payCounts, { rejectSubmit: true });
+
+		const started = await fetch(
+			`${t.base}/v1/claims/${token}/anchor/withdraw`,
+			{
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					"idempotency-key": "wd-pay-rej",
+				},
+				body: JSON.stringify({ amount: "5" }),
+			},
+		);
+		const { anchorTxId } = (await started.json()) as { anchorTxId: string };
+		const pay = await fetch(
+			`${t.base}/v1/claims/${token}/anchor/withdraw/${anchorTxId}/pay`,
+			{
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					"idempotency-key": "pay-rej",
+				},
+				body: "{}",
+			},
+		);
+		expect(pay.status).toBe(409);
+		const link = await t.db.claimLink.findUniqueOrThrow({
+			where: { paymentId },
+		});
+		expect(link.anchorPayStatus).toBe("failed");
+		expect(payCounts.pays).toBe(1);
+	});
+
+	it("/pay refuses new payment unless pending_user_transfer_start", async () => {
+		const { key } = await t.newOrg("Anchor Pay Status Gate");
+		const { token, paymentId } = await openFundedClaim(key);
+		await releaseToClassic(token);
+		await t.db.leg.updateMany({
+			where: { paymentId, kind: "settle" },
+			data: { amountOutValue: "50000000", amountOutCurrency: "USDC" },
+		});
+		t.runtime.anchorGateway = mockGateway({ status: "incomplete" }).gw;
+		t.runtime.resolveAnchorAuthSecret = (a) =>
+			a === CLASSIC_ADDRESS ? CLASSIC_SECRET : undefined;
+		installPayMocks({ pays: 0 });
+
+		const started = await fetch(
+			`${t.base}/v1/claims/${token}/anchor/withdraw`,
+			{
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					"idempotency-key": "wd-pay-gate",
+				},
+				body: JSON.stringify({ amount: "5" }),
+			},
+		);
+		const { anchorTxId } = (await started.json()) as { anchorTxId: string };
+		const pay = await fetch(
+			`${t.base}/v1/claims/${token}/anchor/withdraw/${anchorTxId}/pay`,
+			{
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					"idempotency-key": "pay-gate",
+				},
+				body: "{}",
+			},
+		);
+		expect(pay.status).toBe(409);
+		expect(((await pay.json()) as { code: string }).code).toBe("invalid_state");
 	});
 
 	it("different body same Idempotency-Key → 409", async () => {

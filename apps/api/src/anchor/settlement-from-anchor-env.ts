@@ -140,15 +140,8 @@ export async function createAnchorSettlement(
 			...mapping.settlementEnv,
 			FP_SETTLEMENT: env.FP_SETTLEMENT ?? options.env?.FP_SETTLEMENT ?? "mock",
 		},
-		/**
-		 * Skip baseline testnet-ids.env so FP_PAYOUT_VAULT_ID / FP_USDC_* from the
-		 * baseline file cannot overwrite the mapped anchor vault/asset.
-		 */
-		idsPath: options.idsPath ?? resolveNonexistentAnchorIdsPath(),
+		/** Never load baseline testnet-ids.env over the mapped anchor vault/asset. */
+		skipBaselineIds: true,
 	});
 	return { ...bundle, mapping };
-}
-
-function resolveNonexistentAnchorIdsPath(): string {
-	return "C:\\__flexipay_no_baseline_ids_for_anchor_settlement__.env";
 }

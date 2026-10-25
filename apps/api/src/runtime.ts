@@ -8,6 +8,8 @@ import type {
 } from "@flexipay/adapter-stellar";
 import type { Keypair, Transaction } from "@stellar/stellar-sdk";
 import type { AnchorClaimGateway } from "./anchor/claim-anchor-gateway.ts";
+import type { ClassicTxLookupResult } from "./anchor/claim-anchor-pay.ts";
+import { createAnchorSettlement } from "./anchor/settlement-from-anchor-env.ts";
 import { createSettlement, settlementModeFromEnv } from "./settlement.ts";
 import { claimSealKeyFromEnv } from "./orchestrator/claim-seal.ts";
 
@@ -40,7 +42,7 @@ export function createApiClock(wall: () => Date = () => new Date()): ApiClock {
 export interface ApiRuntime {
 	getProvider: (id: string) => ProviderAdapter | undefined;
 	settlement: SettlementAdapter;
-	/** CCR-10: true when FP_SETTLEMENT=mock. */
+	/** CCR-10: true when FP_SETTLEMENT=mock (baseline). False when FP_ANCHOR_MODE=1. */
 	settlementSimulated: boolean;
 	vaultPayer: string;
 	now: () => Date;
@@ -50,6 +52,8 @@ export interface ApiRuntime {
 	/** Base for claim URLs, e.g. https://api.example (no trailing slash). */
 	apiPublicBase: string;
 	sim?: SimProviders;
+	/** True when createApiRuntime selected FP_ANCHOR_MODE=1. */
+	anchorMode?: boolean;
 	/**
 	 * CCR-22: injectable reference-anchor gateway (tests). When omitted, routes
 	 * build from FP_ANCHOR_* via createEnvAnchorClaimGateway.
@@ -57,7 +61,7 @@ export interface ApiRuntime {
 	anchorGateway?: AnchorClaimGateway;
 	/** Optional SEP-10 secret resolver for vault-release classic G… (tests). */
 	resolveAnchorAuthSecret?: (classicAddress: string) => string | undefined;
-	/** Optional anchor asset identity (tests /pay). */
+	/** Optional anchor asset identity (tests /pay / FP_ANCHOR_MODE). */
 	anchorAsset?: StellarAssetIdentity;
 	/** Optional build/sign classic payment (tests). */
 	buildAnchorClassicPayment?: (opts: {
@@ -70,20 +74,42 @@ export interface ApiRuntime {
 		signedTx: Transaction;
 		expectedTxHash: string;
 	}) => Promise<ClassicPaymentResult>;
+	/** Optional Horizon tx lookup by hash (tests /pay reconcile). */
+	lookupClassicTxByHash?: (hash: string) => Promise<ClassicTxLookupResult>;
 }
 
 export async function createApiRuntime(
 	config: FlexiPayConfig,
 	env: Record<string, string | undefined> = process.env,
 ): Promise<ApiRuntime> {
-	const mode = settlementModeFromEnv(env);
-	const { adapter } = await createSettlement({ env });
+	const clock = createApiClock();
+	const claimSealKey = claimSealKeyFromEnv(env);
+	const apiPublicBase = (env.FP_API_URL ?? "").replace(/\/$/, "");
 	const sim = createSimProviders(config);
 	const vaultPayer =
 		env.FP_PAYER_DEMO_ADDRESS?.trim() ||
 		"GDEMOPAYER000000000000000000000000000000000000000000";
-	const apiPublicBase = (env.FP_API_URL ?? "").replace(/\/$/, "");
-	const clock = createApiClock();
+
+	const anchorMode = env.FP_ANCHOR_MODE?.trim() === "1";
+	if (anchorMode) {
+		const { adapter, mapping } = await createAnchorSettlement({ env });
+		return {
+			getProvider: (id) => sim.providers.get(id),
+			settlement: adapter,
+			settlementSimulated: false,
+			vaultPayer,
+			now: () => clock.now(),
+			clock,
+			claimSealKey,
+			apiPublicBase,
+			sim,
+			anchorMode: true,
+			anchorAsset: mapping.anchor.asset,
+		};
+	}
+
+	const mode = settlementModeFromEnv(env);
+	const { adapter } = await createSettlement({ env });
 	return {
 		getProvider: (id) => sim.providers.get(id),
 		settlement: adapter,
@@ -91,8 +117,9 @@ export async function createApiRuntime(
 		vaultPayer,
 		now: () => clock.now(),
 		clock,
-		claimSealKey: claimSealKeyFromEnv(env),
+		claimSealKey,
 		apiPublicBase,
 		sim,
+		anchorMode: false,
 	};
 }

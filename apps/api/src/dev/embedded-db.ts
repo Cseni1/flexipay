@@ -56,9 +56,35 @@ export async function startEmbeddedDb(opts: { dir?: string; port?: number; name?
     url: `postgresql://fp:fp@127.0.0.1:${port}/${name}`,
     async stop() {
       await pg.stop();
-      if (temporary) await rm(databaseDir, { recursive: true, force: true });
+      if (temporary) await rmTempDirWithRetry(databaseDir);
     },
   };
+}
+
+/** Windows often holds locks briefly after pg.stop(); retry EBUSY/EPERM. */
+async function rmTempDirWithRetry(dir: string): Promise<void> {
+  const delaysMs = [0, 100, 250, 500, 1000, 2000];
+  let last: unknown;
+  for (const wait of delaysMs) {
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return;
+    } catch (e) {
+      last = e;
+      const code =
+        e && typeof e === "object" && "code" in e
+          ? String((e as { code: unknown }).code)
+          : "";
+      if (code !== "EBUSY" && code !== "EPERM" && code !== "ENOTEMPTY") throw e;
+    }
+  }
+  // Last resort: leave the temp dir; suite already finished. Do not fail tests on cleanup.
+  console.warn(
+    `embedded-db: could not remove ${dir} after retries: ${
+      last instanceof Error ? last.message : String(last)
+    }`,
+  );
 }
 
 /** Runs the Prisma CLI in apps/api against `url`. */
