@@ -58,6 +58,7 @@ export {
   PasskeyDeployResponseSchema,
   PasskeyPrepareRequestSchema,
   PasskeyPrepareResponseSchema,
+  PasskeySubmitPendingResponseSchema,
   PasskeySubmitRequestSchema,
   PasskeySubmitResponseSchema,
   StellarContractIdSchema,
@@ -69,6 +70,7 @@ export {
   type PasskeyDeployResponse,
   type PasskeyPrepareRequest,
   type PasskeyPrepareResponse,
+  type PasskeySubmitPendingResponse,
   type PasskeySubmitRequest,
   type PasskeySubmitResponse,
 } from "./claims.ts";

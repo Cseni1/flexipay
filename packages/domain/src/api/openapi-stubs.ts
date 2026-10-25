@@ -11,6 +11,7 @@ import {
 	PasskeyDeployResponseSchema,
 	PasskeyPrepareRequestSchema,
 	PasskeyPrepareResponseSchema,
+	PasskeySubmitPendingResponseSchema,
 	PasskeySubmitRequestSchema,
 	PasskeySubmitResponseSchema,
 } from "./claims.ts";
@@ -48,7 +49,13 @@ export interface ApiOpenApiStub {
 	summary: string;
 	auth: "api_key" | "none";
 	body?: ZodType;
-	success: { status: 200 | 201; schema?: ZodType };
+	success: { status: 200 | 201 | 202; schema?: ZodType };
+	/** Extra documented responses (e.g. CCR-20 submit 202 pending). */
+	extraResponses?: ReadonlyArray<{
+		status: 202;
+		description: string;
+		schema: ZodType;
+	}>;
 }
 
 export const A0_OPENAPI_STUBS: readonly ApiOpenApiStub[] = [
@@ -170,13 +177,22 @@ export const A0_OPENAPI_STUBS: readonly ApiOpenApiStub[] = [
 	},
 	{
 		// CCR-20 ELFOGADÁSRA VÁR — submit signed auth; durable reserve before send.
+		// 200 only with Leg.releaseTxRef after RPC SUCCESS; 202 while pending (no releaseTxRef).
 		method: "post",
 		path: "/v1/claims/{token}/passkey/submit",
 		summary:
-			"Public (pending CCR-20): submit passkey-signed claim auth; idempotent release",
+			"Public (pending CCR-20): submit passkey-signed claim auth; 200 released / 202 pending",
 		auth: "none",
 		body: PasskeySubmitRequestSchema,
 		success: { status: 200, schema: PasskeySubmitResponseSchema },
+		extraResponses: [
+			{
+				status: 202,
+				description:
+					"Release tx persisted or awaiting confirmation; Leg.releaseTxRef not written yet",
+				schema: PasskeySubmitPendingResponseSchema,
+			},
+		],
 	},
 	{
 		// Request from ARCHITECTURE §10 + CCR-4; no approved response body on main.

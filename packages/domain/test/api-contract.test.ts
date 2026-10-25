@@ -13,6 +13,7 @@ import {
   PasskeyDeployResponseSchema,
   PasskeyPrepareRequestSchema,
   PasskeyPrepareResponseSchema,
+  PasskeySubmitPendingResponseSchema,
   PasskeySubmitRequestSchema,
   PasskeySubmitResponseSchema,
   PaymentDetailSchema,
@@ -448,6 +449,26 @@ describe("CCR-20 passkey claim schemas (ELFOGADÁSRA VÁR)", () => {
         releaseTxRef: "b".repeat(64),
       }).releaseTxRef,
     ).toBe("b".repeat(64));
+
+    expect(
+      PasskeySubmitPendingResponseSchema.parse({
+        status: "pending",
+        prepareId: "ppk_1",
+        paymentId: "pay_demo_1",
+        paymentStatus: "processing",
+        pendingTxHash: "c".repeat(64),
+      }).status,
+    ).toBe("pending");
+    expect(
+      PasskeySubmitPendingResponseSchema.safeParse({
+        status: "pending",
+        prepareId: "ppk_1",
+        paymentId: "pay_demo_1",
+        paymentStatus: "processing",
+        pendingTxHash: "c".repeat(64),
+        releaseTxRef: "b".repeat(64),
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects invalid contract ids, empty XDR, secretHex, and legacy releaseTxHash", () => {

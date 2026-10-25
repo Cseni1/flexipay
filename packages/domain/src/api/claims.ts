@@ -200,6 +200,10 @@ export const PasskeySubmitRequestSchema = z
 
 export type PasskeySubmitRequest = z.infer<typeof PasskeySubmitRequestSchema>;
 
+/**
+ * HTTP 200 only after the release tx is RPC-SUCCESS and settle `Leg.releaseTxRef` is written.
+ * Never return this shape (and never require releaseTxRef) while the tx is PENDING / unknown.
+ */
 export const PasskeySubmitResponseSchema = z
   .object({
     claim: ClaimViewSchema,
@@ -214,3 +218,23 @@ export const PasskeySubmitResponseSchema = z
   .strict();
 
 export type PasskeySubmitResponse = z.infer<typeof PasskeySubmitResponseSchema>;
+
+/**
+ * HTTP 202 — release envelope was persisted/sent (or is awaiting confirmation) but
+ * `Leg.releaseTxRef` is not yet written. No releaseTxRef field (ELFOGADÁSRA VÁR CCR-20).
+ * Client polls GET /v1/claims/{token} or retries submit with the same Idempotency-Key.
+ */
+export const PasskeySubmitPendingResponseSchema = z
+  .object({
+    status: z.literal("pending"),
+    prepareId: z.string().min(1),
+    paymentId: z.string().min(1),
+    paymentStatus: PaymentStatusSchema,
+    /** Same hash as PasskeyClaimPrepare.pendingTxHash; not a success release ref. */
+    pendingTxHash: z.string().regex(/^[a-f0-9]{64}$/, "lowercase hex tx hash"),
+  })
+  .strict();
+
+export type PasskeySubmitPendingResponse = z.infer<
+  typeof PasskeySubmitPendingResponseSchema
+>;

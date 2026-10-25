@@ -332,14 +332,17 @@ Atomic prepare **reserve** and on-chain **pendingTx*** recovery remain separate 
 - **`authEntries` are secret-bearing** (secret in `rootInvocation` args). Seal at rest on `PasskeyClaimPrepare`; never log; never put in IdempotencyRecord.
 - **`signatureExpirationLedger`:** one prepare-level value. Backend stamps **every** unsigned auth entry with this ledger. Browser **must** call `signAuthEntry(..., { expiration: prepare.signatureExpirationLedger })`. Kit-default or any other ledger → submit `422 auth_mismatch`. Submit checks each signed entry’s ledger equals the prepare row.
 
-### Submit — reserve, hash-before-send, single success ref
+### Submit — reserve, hash-before-send, HTTP 200 vs 202
 
 1. **Atomic reservation:** `PasskeyClaimPrepare` `open → reserved` (`reservedAt`) while claim open and ledger ≤ `signatureExpirationLedger`. Concurrent second reserve → `409`.
 2. Validate each `signedAuthEntries[i]`: address, nonce, rootInvocation fingerprint, **signatureExpirationLedger** (length/order). Mismatch → `422 auth_mismatch`.
 3. Build release envelope. **Before send:** persist `pendingTxHash` + sealed `pendingTxSealed` / nonce on the prepare row.
-4. Send once. On SUCCESS: write settle **`Leg.releaseTxRef`** (CCR-12), prepare `submitted`, complete claim settle as today. **Do not** store a separate prepare `releaseTxHash`.
-5. Submit **200** includes `releaseTxRef` = that settle leg’s `releaseTxRef` (sole success tx ref).
-6. **Restart / lost HTTP:** if prepare `pendingTxHash` set → `getTransaction` first. SUCCESS → finish by writing/reading `Leg.releaseTxRef`; PENDING → wait; NOT_FOUND/timeout → restore sealed envelope for the **same** hash (not FAILED); proven FAILED → documented recovery only. Idempotent HTTP replay uses `IdempotencyRecord` after claim re-validation; if settle already has `releaseTxRef`, return it.
+4. Send / recover per RPC rules below. **Do not** store a separate prepare `releaseTxHash`.
+5. **HTTP responses (ELFOGADÁSRA VÁR clarification):**
+   - **`200` + `PasskeySubmitResponseSchema`:** only when RPC reports **SUCCESS** for the release and settle **`Leg.releaseTxRef`** is written. Body includes required `releaseTxRef` (= that leg field).
+   - **`202` + `PasskeySubmitPendingResponseSchema`:** when the envelope is persisted and/or submitted but release is **not** yet confirmed (`PENDING`, waiting, or re-query after NOT_FOUND/timeout while still bound to the same `pendingTxHash`). Body: `{ status: "pending", prepareId, paymentId, paymentStatus, pendingTxHash }`. **No `releaseTxRef`.** Client must not treat 202 as paid/released; poll `GET /v1/claims/{token}` or retry submit with the same Idempotency-Key.
+   - Never return **200** with a required `releaseTxRef` before the release is verified.
+6. **Restart / lost HTTP:** if prepare `pendingTxHash` set → `getTransaction` first. SUCCESS → write/read `Leg.releaseTxRef` then **200**; PENDING → **202** (same pending hash); NOT_FOUND/timeout → restore sealed envelope for the **same** hash (not FAILED), respond **202** until SUCCESS or proven FAILED; proven FAILED → documented recovery only. Idempotent HTTP replay uses `IdempotencyRecord` after claim re-validation; cached body must match the outcome (200 vs 202) — never a foreign claim.
 
 ### Errors (stable codes)
 

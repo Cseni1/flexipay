@@ -5,9 +5,23 @@ import { A0_OPENAPI_STUBS } from "@flexipay/domain";
 import { ROUTES } from "../src/app.ts";
 import { buildOpenApi, stubsNotYetMounted } from "../src/openapi/spec.ts";
 
+/** CCR-20 contract stubs: documented in OpenAPI, Express handlers not mounted until ACK + impl. */
+const CCR20_UNMOUNTED_PASSKEY = [
+  "post /v1/claims/{token}/passkey/deploy",
+  "post /v1/claims/{token}/passkey/prepare",
+  "post /v1/claims/{token}/passkey/submit",
+] as const;
+
 describe("OpenAPI", () => {
   const doc = buildOpenApi();
   const stubs = stubsNotYetMounted();
+
+  it("resolves @flexipay/domain from this worktree (not another checkout)", () => {
+    const resolved = fileURLToPath(import.meta.resolve("@flexipay/domain"));
+    const normalized = resolved.replaceAll("\\", "/");
+    expect(normalized).toContain("/packages/domain/");
+    expect(normalized).toContain("/flexipay-csaba-m2/");
+  });
 
   it("lists every mounted route", () => {
     for (const r of ROUTES) expect(doc.paths[r.path]?.[r.method], `${r.method} ${r.path}`).toBeDefined();
@@ -22,8 +36,30 @@ describe("OpenAPI", () => {
     expect(stubs.length).toBe(unmounted.length);
   });
 
-  it("mounts every A0 stub route (CC3 complete): none is left as a stub", () => {
-    expect(stubs.map((s) => `${s.method} ${s.path}`)).toEqual([]);
+  it("keeps CC3 routes mounted; only CCR-20 passkey stubs remain unmounted", () => {
+    // Contract PR: passkey paths are documented stubs until routes land. Do not
+    // weaken this to allow arbitrary unmounted surfaces — exact set only.
+    expect(stubs.map((s) => `${s.method} ${s.path}`).sort()).toEqual(
+      [...CCR20_UNMOUNTED_PASSKEY].sort(),
+    );
+  });
+
+  it("documents passkey submit 200 released and 202 pending without releaseTxRef on 202", () => {
+    const op = doc.paths["/v1/claims/{token}/passkey/submit"].post as {
+      responses: Record<string, { content?: { "application/json": { schema: { required?: string[]; properties?: Record<string, unknown> } } } }>;
+    };
+    expect(op.responses["200"]).toBeDefined();
+    expect(op.responses["202"]).toBeDefined();
+    const released = op.responses["200"].content!["application/json"].schema;
+    const pending = op.responses["202"].content!["application/json"].schema;
+    expect(released.required).toEqual(
+      expect.arrayContaining(["claim", "paymentId", "paymentStatus", "releaseTxRef"]),
+    );
+    expect(pending.required).toEqual(
+      expect.arrayContaining(["status", "prepareId", "paymentId", "paymentStatus", "pendingTxHash"]),
+    );
+    expect(pending.required ?? []).not.toContain("releaseTxRef");
+    expect(pending.properties?.releaseTxRef).toBeUndefined();
   });
 
   it("documents mounted routes plus A0 stubs with no duplicates", () => {
