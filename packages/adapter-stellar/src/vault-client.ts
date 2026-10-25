@@ -229,6 +229,13 @@ export class PayoutVault {
           }`,
         );
       }
+      // sign() refused a transaction that still needs other classic signers; keep that guard.
+      const otherSigners = tx.needsNonInvokerSigningBy().filter((id) => !id.startsWith("C"));
+      if (otherSigners.length > 0) {
+        throw new Error(
+          `payout_vault ${method}: transaction needs signatures from ${otherSigners.join(", ")}`,
+        );
+      }
       const timeoutInSeconds = tx.options.timeoutInSeconds ?? contract.DEFAULT_TIMEOUT;
       const { tx: rebuilt } = rebuildAndValidateVaultWriteFee({
         built: tx.built,
