@@ -242,19 +242,47 @@ export type PasskeySubmitPendingResponse = z.infer<
 // ---------------------------------------------------------------------------
 // CCR-22: public claim-link reference-anchor HTTP (M1). auth: none.
 // Adapter surface remains CCR-20 (ReferenceAnchorClient). Indicative ≠ binding quote.
-// Never return raw hosted URL query tokens; use urlSanitised only.
+// interactiveUrl: first successful withdraw response only — never DB/log/event/idempotency cache.
 // ---------------------------------------------------------------------------
 
+const USDC_DECIMALS = 7n;
+const USDC_MAJOR_SCALE = 10n ** USDC_DECIMALS;
+const ANCHOR_MIN_MINOR = 1n * USDC_MAJOR_SCALE;
+const ANCHOR_MAX_MINOR = 10n * USDC_MAJOR_SCALE;
+
+/** Parse SEP major-unit decimal → USDC minor units (integer; no float). */
+export function anchorMajorToMinor(major: string): bigint {
+  const m = /^(\d+)(?:\.(\d{1,7}))?$/.exec(major.trim());
+  if (!m) throw new Error("invalid major units");
+  const whole = BigInt(m[1]!);
+  const frac = (m[2] ?? "").padEnd(Number(USDC_DECIMALS), "0");
+  return whole * USDC_MAJOR_SCALE + BigInt(frac || "0");
+}
+
+/** Format USDC minor units → SEP major-unit decimal string (no float). */
+export function anchorMinorToMajor(minor: string | bigint): string {
+  const m = typeof minor === "bigint" ? minor : BigInt(minor);
+  if (m < 0n) throw new Error("negative minor units");
+  const whole = m / USDC_MAJOR_SCALE;
+  const frac = m % USDC_MAJOR_SCALE;
+  if (frac === 0n) return whole.toString();
+  return `${whole}.${frac.toString().padStart(Number(USDC_DECIMALS), "0").replace(/0+$/, "")}`;
+}
+
 /**
- * USDC major units as a decimal string in [1, 10] (CCR-22).
- * Not minor-unit MoneySchema — SEP-24/38 use major units here.
+ * USDC major units as a decimal string in [1, 10] (CCR-22 anchor limit).
+ * Integer minor-unit check — not Number()/float.
  */
 export const AnchorUsdcMajorAmountSchema = z
   .string()
   .regex(/^\d+(\.\d{1,7})?$/, "decimal major units")
   .refine((s) => {
-    const n = Number(s);
-    return Number.isFinite(n) && n >= 1 && n <= 10;
+    try {
+      const minor = anchorMajorToMinor(s);
+      return minor >= ANCHOR_MIN_MINOR && minor <= ANCHOR_MAX_MINOR;
+    } catch {
+      return false;
+    }
   }, "USDC major units must be between 1 and 10");
 
 export const AnchorIndicativePriceRequestSchema = z
@@ -285,19 +313,27 @@ export type AnchorIndicativePriceResponse = z.infer<
 
 export const AnchorWithdrawRequestSchema = z
   .object({
-    amount: AnchorUsdcMajorAmountSchema,
-    /** SEP-24 type; optional (test anchor often accepts bank_account after interactive). */
-    type: z.string().min(1).optional(),
+    /**
+     * Optional USDC major units. Default = claim settle net (capped by anchor 1–10).
+     * Must not exceed claim net; must satisfy anchor limits when present.
+     */
+    amount: AnchorUsdcMajorAmountSchema.optional(),
+    /** Only `bank_account` or omitted (CCR-22). */
+    type: z.enum(["bank_account"]).optional(),
   })
   .strict();
 
 export type AnchorWithdrawRequest = z.infer<typeof AnchorWithdrawRequestSchema>;
 
+/**
+ * First successful withdraw may include `interactiveUrl` (server→client once).
+ * Replay/resume omits it — urlSanitised only. Never persist interactiveUrl.
+ */
 export const AnchorWithdrawResponseSchema = z
   .object({
     anchorTxId: z.string().min(1),
-    /** Hosted URL with query/token stripped — never log the raw interactive URL. */
     urlSanitised: z.string().min(1),
+    interactiveUrl: z.string().min(1).optional(),
     kind: z.literal("withdrawal"),
   })
   .strict();
@@ -305,9 +341,8 @@ export const AnchorWithdrawResponseSchema = z
 export type AnchorWithdrawResponse = z.infer<typeof AnchorWithdrawResponseSchema>;
 
 /**
- * SEP-24 transaction poll view. Terminal vs pending is `status` only —
- * vault release and classic anchor payment are separate refs (CCR-22).
- * Memo value is never returned; only `withdrawMemoPresent`.
+ * Read-only SEP-24 status. Separate refs — do not conflate hashes:
+ * vaultReleaseTxRef, anchorPaymentTxHash (our classic pay), anchorStellarTransactionId (anchor).
  */
 export const AnchorWithdrawStatusResponseSchema = z
   .object({
@@ -316,10 +351,45 @@ export const AnchorWithdrawStatusResponseSchema = z
     amountIn: z.string().min(1).optional(),
     withdrawAnchorAccount: z.string().min(1).optional(),
     withdrawMemoPresent: z.boolean(),
-    stellarTransactionId: z.string().min(1).optional(),
+    anchorPaymentTxHash: z.string().min(1).optional(),
+    anchorStellarTransactionId: z.string().min(1).optional(),
+    vaultReleaseTxRef: z.string().min(1).optional(),
+    terminal: z.boolean(),
   })
   .strict();
 
 export type AnchorWithdrawStatusResponse = z.infer<
   typeof AnchorWithdrawStatusResponseSchema
+>;
+
+/** POST …/pay — empty body; Idempotency-Key required. */
+export const AnchorPayRequestSchema = z.object({}).strict();
+
+export type AnchorPayRequest = z.infer<typeof AnchorPayRequestSchema>;
+
+export const AnchorPayResponseSchema = z
+  .object({
+    status: z.literal("submitted"),
+    anchorTxId: z.string().min(1),
+    /** Our classic memo payment hash (pre-submit retained). */
+    anchorPaymentTxHash: z.string().regex(/^[a-f0-9]{64}$/, "lowercase hex tx hash"),
+  })
+  .strict();
+
+export type AnchorPayResponse = z.infer<typeof AnchorPayResponseSchema>;
+
+/**
+ * 202 — envelope persisted / submit uncertain; Leg/claim payment hash not final.
+ * NOT_FOUND/timeout never authorises a new payment — same envelope only.
+ */
+export const AnchorPayPendingResponseSchema = z
+  .object({
+    status: z.literal("pending"),
+    anchorTxId: z.string().min(1),
+    pendingTxHash: z.string().regex(/^[a-f0-9]{64}$/, "lowercase hex tx hash"),
+  })
+  .strict();
+
+export type AnchorPayPendingResponse = z.infer<
+  typeof AnchorPayPendingResponseSchema
 >;

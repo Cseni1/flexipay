@@ -1,5 +1,12 @@
 import type { FlexiPayConfig, ProviderAdapter, SettlementAdapter } from "@flexipay/domain";
 import { createSimProviders, type SimProviders } from "@flexipay/adapters-sim";
+import type {
+	AnchorPaymentExpectation,
+	ClassicPaymentResult,
+	SignedClassicPayment,
+	StellarAssetIdentity,
+} from "@flexipay/adapter-stellar";
+import type { Keypair, Transaction } from "@stellar/stellar-sdk";
 import type { AnchorClaimGateway } from "./anchor/claim-anchor-gateway.ts";
 import { createSettlement, settlementModeFromEnv } from "./settlement.ts";
 import { claimSealKeyFromEnv } from "./orchestrator/claim-seal.ts";
@@ -50,6 +57,19 @@ export interface ApiRuntime {
 	anchorGateway?: AnchorClaimGateway;
 	/** Optional SEP-10 secret resolver for vault-release classic G… (tests). */
 	resolveAnchorAuthSecret?: (classicAddress: string) => string | undefined;
+	/** Optional anchor asset identity (tests /pay). */
+	anchorAsset?: StellarAssetIdentity;
+	/** Optional build/sign classic payment (tests). */
+	buildAnchorClassicPayment?: (opts: {
+		source: Keypair;
+		expectation: AnchorPaymentExpectation;
+		networkPassphrase: string;
+	}) => Promise<SignedClassicPayment>;
+	/** Optional submit of already-signed classic payment (tests). */
+	submitAnchorClassicPayment?: (opts: {
+		signedTx: Transaction;
+		expectedTxHash: string;
+	}) => Promise<ClassicPaymentResult>;
 }
 
 export async function createApiRuntime(

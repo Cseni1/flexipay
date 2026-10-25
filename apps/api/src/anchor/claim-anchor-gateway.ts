@@ -30,6 +30,8 @@ export interface AnchorIndicativeResult {
 export interface AnchorWithdrawStartResult {
 	anchorTxId: string;
 	urlSanitised: string;
+	/** Raw hosted URL — return once on first HTTP success; never persist/log/cache. */
+	interactiveUrl: string;
 	kind: "withdrawal";
 }
 
@@ -39,11 +41,15 @@ export interface AnchorWithdrawStatusResult {
 	amountIn?: string;
 	withdrawAnchorAccount?: string;
 	withdrawMemoPresent: boolean;
-	stellarTransactionId?: string;
-	/** Derived helpers — not in HTTP response; used by recovery guards. */
+	/** SEP-24 stellar_transaction_id — not our classic payment hash. */
+	anchorStellarTransactionId?: string;
+	/** Derived helpers — used by recovery guards / status.terminal. */
 	terminal: boolean;
 	success: boolean;
 	failure: boolean;
+	/** Memo value for /pay only — never HTTP-returned. */
+	withdrawMemo?: string;
+	withdrawMemoType?: string;
 }
 
 export interface AnchorClaimGateway {
@@ -121,10 +127,12 @@ function toStatusView(tx: Sep24TransactionView): AnchorWithdrawStatusResult {
 		amountIn: tx.amountIn,
 		withdrawAnchorAccount: tx.withdrawAnchorAccount,
 		withdrawMemoPresent: Boolean(tx.withdrawMemo),
-		stellarTransactionId: tx.stellarTransactionId,
+		anchorStellarTransactionId: tx.stellarTransactionId,
 		terminal: isSep24Terminal(tx.status),
 		success: isSep24Success(tx.status),
 		failure: isSep24Failure(tx.status),
+		withdrawMemo: tx.withdrawMemo,
+		withdrawMemoType: tx.withdrawMemoType,
 	};
 }
 
@@ -233,6 +241,7 @@ export function createEnvAnchorClaimGateway(
 					return {
 						anchorTxId: started.id,
 						urlSanitised: started.urlSanitised,
+						interactiveUrl: started.url,
 						kind: "withdrawal" as const,
 					};
 				},

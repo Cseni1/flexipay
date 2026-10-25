@@ -71,6 +71,13 @@ describe("OpenAPI", () => {
           r.path === "/v1/claims/{token}/anchor/withdraw/{anchorTxId}",
       ),
     ).toBe(true);
+    expect(
+      ROUTES.some(
+        (r) =>
+          r.method === "post" &&
+          r.path === "/v1/claims/{token}/anchor/withdraw/{anchorTxId}/pay",
+      ),
+    ).toBe(true);
   });
 
   it("documents passkey submit 200 released and 202 pending without releaseTxRef on 202", () => {
