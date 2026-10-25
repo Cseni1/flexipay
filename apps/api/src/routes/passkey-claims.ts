@@ -1,14 +1,29 @@
 import {
 	PasskeyDeployRequestSchema,
 	PasskeyDeployResponseSchema,
+	PasskeyPrepareRequestSchema,
+	PasskeyPrepareResponseSchema,
+	PasskeySubmitPendingResponseSchema,
+	PasskeySubmitRequestSchema,
+	PasskeySubmitResponseSchema,
 	type PasskeyDeployResponse,
+	type PasskeyPrepareResponse,
+	type PasskeySubmitPendingResponse,
+	type PasskeySubmitResponse,
 } from "@flexipay/domain";
 import {
+	decodeSealedPrepareBlob,
+	encodeSealedPrepareBlob,
 	getPasskeyDeployTxOutcome,
 	hasPayerDemoSecret,
+	hostFunctionFromXdr,
 	loadPayerDemoKeypair,
 	loadStellarEnv,
+	matchSignedAuthEntries,
+	PasskeyAuthMismatchError,
 	PasskeyDeployValidationError,
+	prepareVaultPasskeyClaimAuth,
+	rebuildAndSignPasskeyClaimRelease,
 	rebuildAndSignPasskeyDeploy,
 	resubmitPasskeyDeployEnvelope,
 	sendSignedPasskeyDeploy,
@@ -16,28 +31,26 @@ import {
 	waitPasskeyDeploySuccess,
 } from "@flexipay/adapter-stellar";
 import { ApiError } from "../errors.ts";
-import { sha256Hex } from "../ids.ts";
+import { newId, sha256Hex } from "../ids.ts";
 import { withIdempotency } from "../idempotency.ts";
+import {
+	ClaimReleaseRefusedError,
+	recordPasskeyClaimRelease,
+	unsealClaimSecret,
+} from "../orchestrator/index.ts";
 import { sealBytes, unsealBytes } from "../orchestrator/claim-seal.ts";
-import { defineRoute, type Ctx, type RouteDef } from "../routes.ts";
+import {
+	defineRoute,
+	type Ctx,
+	type HttpRouteResult,
+	type RouteDef,
+} from "../routes.ts";
+import {
+	loadClaimByToken,
+	toClaimView,
+	type LoadedClaim,
+} from "./claims.ts";
 import type { Request } from "express";
-
-async function loadClaimByToken(db: Ctx["db"], token: string) {
-	const tokenHash = sha256Hex(token);
-	return db.claimLink.findUnique({
-		where: { tokenHash },
-		include: {
-			payment: {
-				include: {
-					quote: true,
-					legs: { orderBy: { position: "asc" } },
-				},
-			},
-		},
-	});
-}
-
-type LoadedClaim = NonNullable<Awaited<ReturnType<typeof loadClaimByToken>>>;
 
 function assertClaimOpenForPasskey(link: LoadedClaim, now: Date): void {
 	if (link.status === "accepted") {
@@ -104,11 +117,14 @@ function requireStellarEnv(env: Record<string, string | undefined>) {
 	}
 }
 
-function requirePayerSecret(env: Record<string, string | undefined>): void {
+function requirePayerSecret(
+	env: Record<string, string | undefined>,
+	code: "deploy_failed" | "prepare_failed" | "release_failed" = "deploy_failed",
+): void {
 	if (!hasPayerDemoSecret(env)) {
 		throw new ApiError(
 			502,
-			"deploy_failed",
+			code,
 			"FP_PAYER_DEMO_SECRET is not configured on this API host",
 		);
 	}
@@ -344,6 +360,401 @@ async function recoverOrSubmitDeploy(input: {
  */
 export type CtxWithRequest = Ctx & { req?: Request };
 
+function settleWaiting(link: LoadedClaim) {
+	const settle = link.payment.legs.find((l) => l.kind === "settle");
+	if (settle && (settle.status === "failed" || settle.errorCode === "fee_drift")) {
+		throw new ApiError(
+			409,
+			"settle_failed",
+			"the funds for this payment were returned; the claim cannot be released",
+		);
+	}
+	if (
+		link.payment.status !== "processing" ||
+		!settle ||
+		settle.status !== "processing" ||
+		!settle.externalRef
+	) {
+		throw new ApiError(
+			409,
+			"invalid_state",
+			"settle leg is not waiting for claim release (fund payment first)",
+		);
+	}
+	return settle;
+}
+
+function assertPasskeyBound(link: LoadedClaim, contractId: string): void {
+	if (!link.passkeyContractId || !link.passkeyDeployTxHash) {
+		throw new ApiError(
+			409,
+			"invalid_state",
+			"passkey wallet not deployed for this claim",
+		);
+	}
+	if (link.passkeyContractId !== contractId) {
+		throw new ApiError(
+			422,
+			"contract_mismatch",
+			"contractId does not match the deployed passkey wallet on this claim",
+		);
+	}
+}
+
+async function handlePrepare(
+	ctx: Ctx,
+	token: string,
+	body: { contractId: string },
+): Promise<PasskeyPrepareResponse> {
+	const runtime = ctx.runtime;
+	if (!runtime) {
+		throw new ApiError(500, "internal_error", "runtime not configured");
+	}
+	const link = await loadClaimByToken(ctx.db, token);
+	if (!link) throw new ApiError(404, "not_found", "Claim not found");
+	const now = runtime.now();
+	assertClaimOpenForPasskey(link, now);
+	assertPasskeyBound(link, body.contractId);
+	const settle = settleWaiting(link);
+
+	if (!link.secretSealed || !link.secretSealedNonce) {
+		throw new ApiError(502, "prepare_failed", "claim secret seal missing");
+	}
+
+	const env = process.env;
+	requirePayerSecret(env, "prepare_failed");
+	const stellarEnv = requireStellarEnv(env);
+	const payer = loadPayerDemoKeypair(env);
+	const secretHex = unsealClaimSecret(
+		Buffer.from(link.secretSealed),
+		Buffer.from(link.secretSealedNonce),
+		runtime.claimSealKey,
+	);
+
+	let prepared;
+	try {
+		prepared = await prepareVaultPasskeyClaimAuth({
+			env: stellarEnv,
+			payer,
+			payoutId: BigInt(settle.externalRef!),
+			secret: Buffer.from(secretHex, "hex"),
+			toContractId: body.contractId,
+		});
+	} catch (e) {
+		if (e instanceof PasskeyAuthMismatchError) {
+			throw new ApiError(422, e.code, e.message);
+		}
+		const msg = e instanceof Error ? e.message : "prepare failed";
+		throw new ApiError(502, "prepare_failed", msg);
+	}
+
+	const authEntriesBase64 = prepared.authEntries.map((e) =>
+		e.toXDR("base64"),
+	);
+	const sealedPlain = encodeSealedPrepareBlob({
+		v: 1,
+		authEntries: authEntriesBase64,
+		hostFunction: prepared.hostFunction.toXDR("base64"),
+	});
+	const { sealed, nonce } = sealBytes(sealedPlain, runtime.claimSealKey);
+	const prepareId = newId("pkp");
+
+	await ctx.db.passkeyClaimPrepare.create({
+		data: {
+			id: prepareId,
+			paymentId: link.paymentId,
+			tokenHash: sha256Hex(token),
+			contractId: body.contractId,
+			payoutId: settle.externalRef!,
+			networkPassphrase: stellarEnv.networkPassphrase,
+			signatureExpirationLedger: prepared.signatureExpirationLedger,
+			status: "open",
+			authInvocationFingerprints: prepared.meta.fingerprints,
+			authNonces: prepared.meta.nonces,
+			authAddresses: prepared.meta.addresses,
+			authEntriesSealed: sealed,
+			authEntriesSealedNonce: nonce,
+		},
+	});
+
+	return PasskeyPrepareResponseSchema.parse({
+		prepareId,
+		payoutId: settle.externalRef!,
+		networkPassphrase: stellarEnv.networkPassphrase,
+		signatureExpirationLedger: prepared.signatureExpirationLedger,
+		authEntries: authEntriesBase64,
+	});
+}
+
+async function handleSubmit(
+	ctx: Ctx,
+	token: string,
+	body: {
+		prepareId: string;
+		contractId: string;
+		signedAuthEntries: string[];
+	},
+): Promise<HttpRouteResult> {
+	const runtime = ctx.runtime;
+	if (!runtime) {
+		throw new ApiError(500, "internal_error", "runtime not configured");
+	}
+	const link = await loadClaimByToken(ctx.db, token);
+	if (!link) throw new ApiError(404, "not_found", "Claim not found");
+	const now = runtime.now();
+	assertClaimOpenForPasskey(link, now);
+	assertPasskeyBound(link, body.contractId);
+	settleWaiting(link);
+
+	const prepare = await ctx.db.passkeyClaimPrepare.findUnique({
+		where: { id: body.prepareId },
+	});
+	if (
+		!prepare ||
+		prepare.paymentId !== link.paymentId ||
+		prepare.tokenHash !== sha256Hex(token)
+	) {
+		throw new ApiError(404, "not_found", "Prepare not found for this claim");
+	}
+	if (prepare.contractId !== body.contractId) {
+		throw new ApiError(422, "contract_mismatch", "prepare contractId mismatch");
+	}
+
+	const env = process.env;
+	requirePayerSecret(env, "release_failed");
+	const stellarEnv = requireStellarEnv(env);
+
+	const pendingBody = (
+		pendingTxHash: string,
+		paymentStatus: string,
+	): PasskeySubmitPendingResponse =>
+		PasskeySubmitPendingResponseSchema.parse({
+			status: "pending",
+			prepareId: prepare.id,
+			paymentId: link.paymentId,
+			paymentStatus,
+			pendingTxHash,
+		});
+
+	const successBody = async (
+		releaseTxRef: string,
+	): Promise<PasskeySubmitResponse> => {
+		let status: string;
+		try {
+			status = (
+				await recordPasskeyClaimRelease(
+					ctx.db,
+					link.paymentId,
+					{
+						getProvider: runtime.getProvider,
+						settlement: runtime.settlement,
+						vaultPayer: runtime.vaultPayer,
+						now: runtime.now,
+						claimSealKey: runtime.claimSealKey,
+					},
+					releaseTxRef,
+				)
+			).status;
+		} catch (e) {
+			if (e instanceof ClaimReleaseRefusedError) {
+				throw new ApiError(409, "settle_failed", e.message);
+			}
+			throw e;
+		}
+		await ctx.db.passkeyClaimPrepare.update({
+			where: { id: prepare.id },
+			data: {
+				status: "submitted",
+				pendingTxHash: null,
+				pendingTxSealed: null,
+				pendingTxSealedNonce: null,
+			},
+		});
+		const refreshed = await loadClaimByToken(ctx.db, token);
+		if (!refreshed) throw new ApiError(404, "not_found", "Claim not found");
+		return PasskeySubmitResponseSchema.parse({
+			claim: toClaimView(refreshed, runtime.now()),
+			paymentId: link.paymentId,
+			paymentStatus: status,
+			releaseTxRef,
+		});
+	};
+
+	// Recovery: pendingTxHash set → getTransaction first (CCR-20).
+	if (prepare.pendingTxHash) {
+		const outcome = await getPasskeyDeployTxOutcome(
+			prepare.pendingTxHash,
+			stellarEnv.rpcUrl,
+		);
+		if (outcome.kind === "success") {
+			return {
+				httpStatus: 200,
+				body: await successBody(outcome.txHash),
+			};
+		}
+		if (outcome.kind === "failed") {
+			await ctx.db.passkeyClaimPrepare.update({
+				where: { id: prepare.id },
+				data: {
+					status: "failed",
+					pendingTxHash: null,
+					pendingTxSealed: null,
+					pendingTxSealedNonce: null,
+					reservedAt: null,
+				},
+			});
+			throw new ApiError(502, "release_failed", "pending release tx FAILED on-chain");
+		}
+		if (outcome.kind === "not_found" || outcome.kind === "unknown") {
+			if (!prepare.pendingTxSealed || !prepare.pendingTxSealedNonce) {
+				throw new ApiError(
+					502,
+					"release_failed",
+					"pending release hash not found and sealed envelope missing",
+				);
+			}
+			const envelopeXdr = unsealBytes(
+				Buffer.from(prepare.pendingTxSealed),
+				Buffer.from(prepare.pendingTxSealedNonce),
+				runtime.claimSealKey,
+			).toString("utf8");
+			try {
+				await resubmitPasskeyDeployEnvelope({
+					envelopeXdrBase64: envelopeXdr,
+					networkPassphrase: stellarEnv.networkPassphrase,
+					rpcUrl: stellarEnv.rpcUrl,
+				});
+			} catch {
+				/* race / duplicate — continue poll */
+			}
+		}
+		try {
+			const waited = await waitPasskeyDeploySuccess({
+				txHash: prepare.pendingTxHash,
+				rpcUrl: stellarEnv.rpcUrl,
+				timeoutMs: 45_000,
+			});
+			return {
+				httpStatus: 200,
+				body: await successBody(waited.deployTxHash),
+			};
+		} catch {
+			return {
+				httpStatus: 202,
+				body: pendingBody(prepare.pendingTxHash, link.payment.status),
+			};
+		}
+	}
+
+	if (prepare.status !== "open" && prepare.status !== "reserved") {
+		throw new ApiError(
+			409,
+			"invalid_state",
+			`prepare is ${prepare.status}`,
+		);
+	}
+
+	// Atomic open → reserved (CCR-20). Concurrent second reserve → 409.
+	if (prepare.status === "open") {
+		const reserved = await ctx.db.passkeyClaimPrepare.updateMany({
+			where: { id: prepare.id, status: "open" },
+			data: { status: "reserved", reservedAt: new Date() },
+		});
+		if (reserved.count !== 1) {
+			throw new ApiError(
+				409,
+				"idempotency_conflict",
+				"prepare already reserved by a concurrent submit",
+			);
+		}
+	}
+
+	const fingerprints = prepare.authInvocationFingerprints as string[];
+	const nonces = prepare.authNonces as string[];
+	const addresses = prepare.authAddresses as string[];
+	let signed;
+	try {
+		signed = matchSignedAuthEntries(
+			{
+				signatureExpirationLedger: prepare.signatureExpirationLedger,
+				fingerprints,
+				nonces,
+				addresses,
+			},
+			body.signedAuthEntries,
+		);
+	} catch (e) {
+		if (e instanceof PasskeyAuthMismatchError) {
+			throw new ApiError(422, e.code, e.message);
+		}
+		throw e;
+	}
+
+	const blob = decodeSealedPrepareBlob(
+		unsealBytes(
+			Buffer.from(prepare.authEntriesSealed),
+			Buffer.from(prepare.authEntriesSealedNonce),
+			runtime.claimSealKey,
+		),
+	);
+	const hostFunction = hostFunctionFromXdr(blob.hostFunction);
+	const payer = loadPayerDemoKeypair(env);
+
+	let signedEnvelope;
+	try {
+		signedEnvelope = await rebuildAndSignPasskeyClaimRelease({
+			hostFunction,
+			signedAuth: signed,
+			payer,
+			networkPassphrase: stellarEnv.networkPassphrase,
+			rpcUrl: stellarEnv.rpcUrl,
+		});
+	} catch (e) {
+		const msg = e instanceof Error ? e.message : "release rebuild failed";
+		throw new ApiError(502, "release_failed", msg);
+	}
+
+	const { sealed, nonce } = sealBytes(
+		Buffer.from(signedEnvelope.envelopeXdrBase64, "utf8"),
+		runtime.claimSealKey,
+	);
+	await ctx.db.passkeyClaimPrepare.update({
+		where: { id: prepare.id },
+		data: {
+			pendingTxHash: signedEnvelope.txHash,
+			pendingTxSealed: sealed,
+			pendingTxSealedNonce: nonce,
+		},
+	});
+
+	try {
+		await sendSignedPasskeyDeploy({
+			tx: signedEnvelope.tx,
+			rpcUrl: stellarEnv.rpcUrl,
+		});
+	} catch (e) {
+		const msg = e instanceof Error ? e.message : "release send failed";
+		throw new ApiError(502, "release_failed", msg);
+	}
+
+	try {
+		const waited = await waitPasskeyDeploySuccess({
+			txHash: signedEnvelope.txHash,
+			rpcUrl: stellarEnv.rpcUrl,
+			timeoutMs: 90_000,
+		});
+		return {
+			httpStatus: 200,
+			body: await successBody(waited.deployTxHash),
+		};
+	} catch {
+		return {
+			httpStatus: 202,
+			body: pendingBody(signedEnvelope.txHash, link.payment.status),
+		};
+	}
+}
+
 export const passkeyClaimRoutes: RouteDef<any, any>[] = [
 	defineRoute({
 		method: "post",
@@ -371,7 +782,6 @@ export const passkeyClaimRoutes: RouteDef<any, any>[] = [
 				req,
 				orgId,
 				async () => {
-					// Re-load after idempotency miss (row may have changed).
 					const fresh = await loadClaimByToken(ctx.db, token);
 					if (!fresh) throw new ApiError(404, "not_found", "Claim not found");
 					assertClaimOpenForPasskey(fresh, ctx.runtime?.now() ?? new Date());
@@ -401,6 +811,78 @@ export const passkeyClaimRoutes: RouteDef<any, any>[] = [
 				},
 			);
 			return result.body;
+		},
+	}),
+	defineRoute({
+		method: "post",
+		path: "/v1/claims/{token}/passkey/prepare",
+		summary:
+			"Public: build vault claim auth entries for a C… passkey wallet",
+		auth: "none",
+		body: PasskeyPrepareRequestSchema,
+		success: { status: 200, schema: PasskeyPrepareResponseSchema },
+		handler: async (ctx, { body, params }) => {
+			return handlePrepare(ctx, params.token!, body);
+		},
+	}),
+	defineRoute({
+		method: "post",
+		path: "/v1/claims/{token}/passkey/submit",
+		summary:
+			"Public: submit passkey-signed claim auth; 200 released / 202 pending",
+		auth: "none",
+		idempotency: "claim",
+		body: PasskeySubmitRequestSchema,
+		success: { status: 200, schema: PasskeySubmitResponseSchema },
+		extraResponses: [
+			{
+				status: 202,
+				description:
+					"Release tx persisted or awaiting confirmation; Leg.releaseTxRef not written yet",
+				schema: PasskeySubmitPendingResponseSchema,
+			},
+		],
+		handler: async (ctx, { body, params }) => {
+			const req = (ctx as CtxWithRequest).req;
+			if (!req) {
+				throw new ApiError(500, "internal_error", "request context missing");
+			}
+			const token = params.token!;
+			const link = await loadClaimByToken(ctx.db, token);
+			if (!link) throw new ApiError(404, "not_found", "Claim not found");
+			const now = ctx.runtime?.now() ?? new Date();
+			assertClaimOpenForPasskey(link, now);
+			const orgId = link.payment.organizationId;
+
+			const result = await withIdempotency(
+				ctx.db,
+				req,
+				orgId,
+				async () => {
+					const out = await handleSubmit(ctx, token, body);
+					return { status: out.httpStatus, body: out.body };
+				},
+				{
+					required: true,
+					beforeReturnCache: async () => {
+						const again = await loadClaimByToken(ctx.db, token);
+						if (!again) {
+							throw new ApiError(404, "not_found", "Claim not found");
+						}
+						if (again.payment.organizationId !== orgId) {
+							throw new ApiError(
+								409,
+								"idempotency_conflict",
+								"claim organization no longer matches Idempotency-Key scope",
+							);
+						}
+					},
+				},
+			);
+			return {
+				httpStatus: result.status as 200 | 202,
+				body: result.body,
+			} satisfies HttpRouteResult;
 		},
 	}),
 ];

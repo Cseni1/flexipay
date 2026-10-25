@@ -322,11 +322,12 @@ export function validatePasskeyDeployCarrier(input: {
 }
 
 /**
- * Rebuild the carrier as a payer-sourced envelope, simulate, assemble, and sign.
+ * Rebuild an invokeHostFunction as a payer-sourced envelope, simulate, assemble, sign.
  * Does not send. Caller must persist sealed XDR + hash before send (CCR-20).
  */
-export async function rebuildAndSignPasskeyDeploy(input: {
-	validated: ValidatedPasskeyDeploy;
+export async function rebuildAndSignInvokeHostFunction(input: {
+	func: xdr.HostFunction;
+	auth: xdr.SorobanAuthorizationEntry[];
 	payer: Keypair;
 	networkPassphrase: string;
 	rpcUrl: string;
@@ -334,7 +335,10 @@ export async function rebuildAndSignPasskeyDeploy(input: {
 	fee?: string;
 	timeoutSeconds?: number;
 	server?: Server;
+	/** Error label prefix (deploy | claim). */
+	label?: string;
 }): Promise<SignedPasskeyDeployEnvelope> {
+	const label = input.label ?? "invoke";
 	const server = input.server ?? new Server(input.rpcUrl);
 	const accountRecord = await server.getAccount(input.payer.publicKey());
 	const account = new Account(accountRecord.accountId, accountRecord.sequenceNumber());
@@ -344,8 +348,8 @@ export async function rebuildAndSignPasskeyDeploy(input: {
 	})
 		.addOperation(
 			Operation.invokeHostFunction({
-				func: input.validated.func,
-				auth: input.validated.auth,
+				func: input.func,
+				auth: input.auth,
 			}),
 		)
 		.setTimeout(input.timeoutSeconds ?? 180)
@@ -353,16 +357,42 @@ export async function rebuildAndSignPasskeyDeploy(input: {
 
 	const sim = await server.simulateTransaction(built);
 	if (Api.isSimulationError(sim)) {
-		throw new Error(`passkey deploy simulation failed: ${sim.error}`);
+		throw new Error(`passkey ${label} simulation failed: ${sim.error}`);
 	}
 	if (!Api.isSimulationSuccess(sim)) {
-		throw new Error("passkey deploy simulation did not succeed");
+		throw new Error(`passkey ${label} simulation did not succeed`);
 	}
 	const assembled = assembleTransaction(built, sim).build();
 	assembled.sign(input.payer);
 	const envelopeXdrBase64 = assembled.toXDR();
 	const txHash = assembled.hash().toString("hex");
 	return { txHash, envelopeXdrBase64, tx: assembled };
+}
+
+/**
+ * Rebuild the deploy carrier as a payer-sourced envelope, simulate, assemble, and sign.
+ * Does not send. Caller must persist sealed XDR + hash before send (CCR-20).
+ */
+export async function rebuildAndSignPasskeyDeploy(input: {
+	validated: ValidatedPasskeyDeploy;
+	payer: Keypair;
+	networkPassphrase: string;
+	rpcUrl: string;
+	fee?: string;
+	timeoutSeconds?: number;
+	server?: Server;
+}): Promise<SignedPasskeyDeployEnvelope> {
+	return rebuildAndSignInvokeHostFunction({
+		func: input.validated.func,
+		auth: input.validated.auth,
+		payer: input.payer,
+		networkPassphrase: input.networkPassphrase,
+		rpcUrl: input.rpcUrl,
+		fee: input.fee,
+		timeoutSeconds: input.timeoutSeconds,
+		server: input.server,
+		label: "deploy",
+	});
 }
 
 export function transactionFromXdr(

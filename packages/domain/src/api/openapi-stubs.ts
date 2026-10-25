@@ -166,22 +166,20 @@ export const A0_OPENAPI_STUBS: readonly ApiOpenApiStub[] = [
 		success: { status: 200, schema: PasskeyDeployResponseSchema },
 	},
 	{
-		// CCR-20 ACK'd — prepare not mounted until M2 step 2.
+		// CCR-20 ACK'd — prepare (M2). Mounted on event/csaba-cursor/m2-passkey.
 		method: "post",
 		path: "/v1/claims/{token}/passkey/prepare",
-		summary:
-			"Public: build vault claim auth entries for a C… passkey wallet (M2 step 2)",
+		summary: "Public: build vault claim auth entries for a C… passkey wallet",
 		auth: "none",
 		body: PasskeyPrepareRequestSchema,
 		success: { status: 200, schema: PasskeyPrepareResponseSchema },
 	},
 	{
-		// CCR-20 ACK'd — submit not mounted until M2 step 2.
-		// 200 only with Leg.releaseTxRef after RPC SUCCESS; 202 while pending (no releaseTxRef).
+		// CCR-20 ACK'd — submit (M2). 200 + releaseTxRef / 202 pending.
 		method: "post",
 		path: "/v1/claims/{token}/passkey/submit",
 		summary:
-			"Public: submit passkey-signed claim auth; 200 released / 202 pending (M2 step 2)",
+			"Public: submit passkey-signed claim auth; 200 released / 202 pending",
 		auth: "none",
 		body: PasskeySubmitRequestSchema,
 		success: { status: 200, schema: PasskeySubmitResponseSchema },

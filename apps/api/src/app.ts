@@ -5,7 +5,7 @@ import type { Db } from "./db.ts";
 import { ApiError } from "./errors.ts";
 import { sha256Hex } from "./ids.ts";
 import { withIdempotency } from "./idempotency.ts";
-import type { Ctx, RouteDef } from "./routes.ts";
+import { isHttpRouteResult, type Ctx, type RouteDef } from "./routes.ts";
 import { batchRoutes } from "./routes/batches.ts";
 import { claimRoutes } from "./routes/claims.ts";
 import { passkeyClaimRoutes, type CtxWithRequest } from "./routes/passkey-claims.ts";
@@ -81,6 +81,26 @@ export function createApp(deps: {
 							query,
 							params: req.params as Record<string, string>,
 						});
+						if (isHttpRouteResult(out)) {
+							const pendingSchema = route.extraResponses?.find(
+								(e) => e.status === out.httpStatus,
+							)?.schema;
+							const schema =
+								out.httpStatus === route.success.status
+									? route.success.schema
+									: pendingSchema;
+							if (!schema) {
+								throw new ApiError(
+									500,
+									"internal_error",
+									`no response schema for HTTP ${out.httpStatus}`,
+								);
+							}
+							return {
+								status: out.httpStatus,
+								body: schema.parse(out.body),
+							};
+						}
 						return {
 							status: route.success.status as number,
 							body: route.success.schema.parse(out),

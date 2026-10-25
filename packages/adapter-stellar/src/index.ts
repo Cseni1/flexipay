@@ -34,6 +34,7 @@ export {
 	decodeKeyIdBase64,
 	derivePasskeyContractId,
 	validatePasskeyDeployCarrier,
+	rebuildAndSignInvokeHostFunction,
 	rebuildAndSignPasskeyDeploy,
 	transactionFromXdr,
 	sendSignedPasskeyDeploy,
@@ -50,3 +51,29 @@ export type {
 	SignedPasskeyDeployEnvelope,
 	DeployTxOutcome,
 } from "./passkey-deploy.ts";
+
+export {
+	PASSKEY_CLAIM_AUTH_LIFETIME_LEDGERS,
+	PasskeyAuthMismatchError,
+	sha256HexBytes,
+	parseAuthEntryXdr,
+	authEntryAddress,
+	authEntryNonce,
+	authEntryExpirationLedger,
+	rootInvocationFingerprint,
+	stampAuthEntryExpiration,
+	matchSignedAuthEntries,
+	encodeSealedPrepareBlob,
+	decodeSealedPrepareBlob,
+} from "./passkey-claim-auth.ts";
+export type {
+	PreparedAuthMeta,
+	SealedPasskeyPrepareBlob,
+} from "./passkey-claim-auth.ts";
+
+export {
+	prepareVaultPasskeyClaimAuth,
+	rebuildAndSignPasskeyClaimRelease,
+	hostFunctionFromXdr,
+} from "./passkey-claim.ts";
+export type { PreparedPasskeyClaimAuth } from "./passkey-claim.ts";

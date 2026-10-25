@@ -34,10 +34,33 @@ export interface RouteDef<B = unknown, Q = unknown> {
 	query?: ZodType<Q>;
 	/** Success status code and response schema. */
 	success: { status: 200 | 201 | 202; schema: ZodType };
+	/** Optional alternate success (e.g. CCR-20 submit 202 pending). */
+	extraResponses?: ReadonlyArray<{
+		status: 202;
+		description: string;
+		schema: ZodType;
+	}>;
 	handler: (
 		ctx: Ctx,
 		input: { body: B; query: Q; params: Record<string, string> },
 	) => Promise<unknown>;
+}
+
+/** Handler may return this to pick 200 vs 202 (submit pending). */
+export type HttpRouteResult = {
+	httpStatus: 200 | 202;
+	body: unknown;
+};
+
+export function isHttpRouteResult(out: unknown): out is HttpRouteResult {
+	return (
+		typeof out === "object" &&
+		out !== null &&
+		"httpStatus" in out &&
+		"body" in out &&
+		((out as HttpRouteResult).httpStatus === 200 ||
+			(out as HttpRouteResult).httpStatus === 202)
+	);
 }
 
 export const defineRoute = <B, Q>(r: RouteDef<B, Q>): RouteDef<B, Q> => r;

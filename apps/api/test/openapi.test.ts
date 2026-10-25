@@ -6,11 +6,8 @@ import { A0_OPENAPI_STUBS } from "@flexipay/domain";
 import { ROUTES } from "../src/app.ts";
 import { buildOpenApi, stubsNotYetMounted } from "../src/openapi/spec.ts";
 
-/** CCR-20: deploy mounted (M2); prepare/submit still stubs until step 2. */
-const CCR20_UNMOUNTED_PASSKEY = [
-  "post /v1/claims/{token}/passkey/prepare",
-  "post /v1/claims/{token}/passkey/submit",
-] as const;
+/** CCR-20 M2: all three passkey routes mounted on the event branch. */
+const CCR20_UNMOUNTED_PASSKEY: readonly string[] = [];
 
 /** Repo root for this worktree: apps/api/test → ../../.. */
 const WORKTREE_ROOT = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
@@ -44,15 +41,17 @@ describe("OpenAPI", () => {
     expect(stubs.length).toBe(unmounted.length);
   });
 
-  it("keeps CC3 + passkey deploy mounted; prepare/submit stubs remain unmounted", () => {
+  it("keeps CC3 + all CCR-20 passkey routes mounted (no passkey stubs left)", () => {
     expect(stubs.map((s) => `${s.method} ${s.path}`).sort()).toEqual(
       [...CCR20_UNMOUNTED_PASSKEY].sort(),
     );
-    expect(
-      ROUTES.some(
-        (r) => r.method === "post" && r.path === "/v1/claims/{token}/passkey/deploy",
-      ),
-    ).toBe(true);
+    for (const path of [
+      "/v1/claims/{token}/passkey/deploy",
+      "/v1/claims/{token}/passkey/prepare",
+      "/v1/claims/{token}/passkey/submit",
+    ]) {
+      expect(ROUTES.some((r) => r.method === "post" && r.path === path)).toBe(true);
+    }
   });
 
   it("documents passkey submit 200 released and 202 pending without releaseTxRef on 202", () => {

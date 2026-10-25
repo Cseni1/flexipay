@@ -5169,6 +5169,476 @@
         }
       }
     },
+    "/v1/claims/{token}/passkey/prepare": {
+      "post": {
+        "summary": "Public: build vault claim auth entries for a C… passkey wallet",
+        "security": [],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "contractId": {
+                    "type": "string",
+                    "pattern": "^C[A-Z0-9]{55}$"
+                  }
+                },
+                "required": [
+                  "contractId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "prepareId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "payoutId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "networkPassphrase": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "signatureExpirationLedger": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "authEntries": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9_+/=-]+$"
+                      }
+                    }
+                  },
+                  "required": [
+                    "prepareId",
+                    "payoutId",
+                    "networkPassphrase",
+                    "signatureExpirationLedger",
+                    "authEntries"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency or state conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/claims/{token}/passkey/submit": {
+      "post": {
+        "summary": "Public: submit passkey-signed claim auth; 200 released / 202 pending",
+        "security": [],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "prepareId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "contractId": {
+                    "type": "string",
+                    "pattern": "^C[A-Z0-9]{55}$"
+                  },
+                  "signedAuthEntries": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9_+/=-]+$"
+                    }
+                  }
+                },
+                "required": [
+                  "prepareId",
+                  "contractId",
+                  "signedAuthEntries"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "claim": {
+                      "type": "object",
+                      "properties": {
+                        "paymentId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "accepted",
+                            "expired"
+                          ]
+                        },
+                        "paymentStatus": {
+                          "type": "string",
+                          "enum": [
+                            "quoted",
+                            "awaiting_funding",
+                            "funded",
+                            "processing",
+                            "paid",
+                            "cancelled",
+                            "failed",
+                            "refunding",
+                            "refunded",
+                            "expired"
+                          ]
+                        },
+                        "expiresAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "amount": {
+                          "type": "object",
+                          "properties": {
+                            "amount": {
+                              "type": "string",
+                              "pattern": "^(0|[1-9][0-9]*)$"
+                            },
+                            "currency": {
+                              "type": "string",
+                              "pattern": "^[A-Z][A-Z0-9]{2,11}$"
+                            }
+                          },
+                          "required": [
+                            "amount",
+                            "currency"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "corridor": {
+                          "type": "object",
+                          "properties": {
+                            "from": {
+                              "type": "object",
+                              "properties": {
+                                "country": {
+                                  "type": "string"
+                                },
+                                "currency": {
+                                  "type": "string",
+                                  "pattern": "^[A-Z][A-Z0-9]{2,11}$"
+                                }
+                              },
+                              "required": [
+                                "country",
+                                "currency"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "to": {
+                              "type": "object",
+                              "properties": {
+                                "country": {
+                                  "type": "string"
+                                },
+                                "currency": {
+                                  "type": "string",
+                                  "pattern": "^[A-Z][A-Z0-9]{2,11}$"
+                                }
+                              },
+                              "required": [
+                                "country",
+                                "currency"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "from",
+                            "to"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "allowedDestinationTypes": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "bank_account",
+                              "ewallet",
+                              "crypto_wallet",
+                              "crypto_custodial"
+                            ]
+                          }
+                        },
+                        "simulated": {
+                          "type": "boolean",
+                          "const": true
+                        }
+                      },
+                      "required": [
+                        "paymentId",
+                        "status",
+                        "paymentStatus",
+                        "expiresAt",
+                        "amount",
+                        "corridor",
+                        "allowedDestinationTypes",
+                        "simulated"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "paymentId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "paymentStatus": {
+                      "type": "string",
+                      "enum": [
+                        "quoted",
+                        "awaiting_funding",
+                        "funded",
+                        "processing",
+                        "paid",
+                        "cancelled",
+                        "failed",
+                        "refunding",
+                        "refunded",
+                        "expired"
+                      ]
+                    },
+                    "releaseTxRef": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "claim",
+                    "paymentId",
+                    "paymentStatus",
+                    "releaseTxRef"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Release tx persisted or awaiting confirmation; Leg.releaseTxRef not written yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "pending"
+                    },
+                    "prepareId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "paymentId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "paymentStatus": {
+                      "type": "string",
+                      "enum": [
+                        "quoted",
+                        "awaiting_funding",
+                        "funded",
+                        "processing",
+                        "paid",
+                        "cancelled",
+                        "failed",
+                        "refunding",
+                        "refunded",
+                        "expired"
+                      ]
+                    },
+                    "pendingTxHash": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "prepareId",
+                    "paymentId",
+                    "paymentStatus",
+                    "pendingTxHash"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency or state conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sandbox/fail-next": {
       "post": {
         "summary": "Make the next count calls to a provider fail (also forced failure on or off)",
@@ -5663,522 +6133,6 @@
           },
           "409": {
             "description": "Idempotency or state conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/claims/{token}/passkey/prepare": {
-      "post": {
-        "summary": "Public: build vault claim auth entries for a C… passkey wallet (M2 step 2)",
-        "security": [],
-        "parameters": [
-          {
-            "name": "token",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object",
-                "properties": {
-                  "contractId": {
-                    "type": "string",
-                    "pattern": "^C[A-Z0-9]{55}$"
-                  }
-                },
-                "required": [
-                  "contractId"
-                ],
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "type": "object",
-                  "properties": {
-                    "prepareId": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "payoutId": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "networkPassphrase": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "signatureExpirationLedger": {
-                      "type": "integer",
-                      "exclusiveMinimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    "authEntries": {
-                      "minItems": 1,
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "minLength": 1,
-                        "pattern": "^[A-Za-z0-9_+/=-]+$"
-                      }
-                    }
-                  },
-                  "required": [
-                    "prepareId",
-                    "payoutId",
-                    "networkPassphrase",
-                    "signatureExpirationLedger",
-                    "authEntries"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Idempotency or state conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Not eligible or business-rule failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/claims/{token}/passkey/submit": {
-      "post": {
-        "summary": "Public: submit passkey-signed claim auth; 200 released / 202 pending (M2 step 2)",
-        "security": [],
-        "parameters": [
-          {
-            "name": "token",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object",
-                "properties": {
-                  "prepareId": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "contractId": {
-                    "type": "string",
-                    "pattern": "^C[A-Z0-9]{55}$"
-                  },
-                  "signedAuthEntries": {
-                    "minItems": 1,
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^[A-Za-z0-9_+/=-]+$"
-                    }
-                  }
-                },
-                "required": [
-                  "prepareId",
-                  "contractId",
-                  "signedAuthEntries"
-                ],
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "type": "object",
-                  "properties": {
-                    "claim": {
-                      "type": "object",
-                      "properties": {
-                        "paymentId": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "status": {
-                          "type": "string",
-                          "enum": [
-                            "open",
-                            "accepted",
-                            "expired"
-                          ]
-                        },
-                        "paymentStatus": {
-                          "type": "string",
-                          "enum": [
-                            "quoted",
-                            "awaiting_funding",
-                            "funded",
-                            "processing",
-                            "paid",
-                            "cancelled",
-                            "failed",
-                            "refunding",
-                            "refunded",
-                            "expired"
-                          ]
-                        },
-                        "expiresAt": {
-                          "type": "string",
-                          "format": "date-time",
-                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
-                        },
-                        "amount": {
-                          "type": "object",
-                          "properties": {
-                            "amount": {
-                              "type": "string",
-                              "pattern": "^(0|[1-9][0-9]*)$"
-                            },
-                            "currency": {
-                              "type": "string",
-                              "pattern": "^[A-Z][A-Z0-9]{2,11}$"
-                            }
-                          },
-                          "required": [
-                            "amount",
-                            "currency"
-                          ],
-                          "additionalProperties": false
-                        },
-                        "corridor": {
-                          "type": "object",
-                          "properties": {
-                            "from": {
-                              "type": "object",
-                              "properties": {
-                                "country": {
-                                  "type": "string"
-                                },
-                                "currency": {
-                                  "type": "string",
-                                  "pattern": "^[A-Z][A-Z0-9]{2,11}$"
-                                }
-                              },
-                              "required": [
-                                "country",
-                                "currency"
-                              ],
-                              "additionalProperties": false
-                            },
-                            "to": {
-                              "type": "object",
-                              "properties": {
-                                "country": {
-                                  "type": "string"
-                                },
-                                "currency": {
-                                  "type": "string",
-                                  "pattern": "^[A-Z][A-Z0-9]{2,11}$"
-                                }
-                              },
-                              "required": [
-                                "country",
-                                "currency"
-                              ],
-                              "additionalProperties": false
-                            }
-                          },
-                          "required": [
-                            "from",
-                            "to"
-                          ],
-                          "additionalProperties": false
-                        },
-                        "allowedDestinationTypes": {
-                          "minItems": 1,
-                          "type": "array",
-                          "items": {
-                            "type": "string",
-                            "enum": [
-                              "bank_account",
-                              "ewallet",
-                              "crypto_wallet",
-                              "crypto_custodial"
-                            ]
-                          }
-                        },
-                        "simulated": {
-                          "type": "boolean",
-                          "const": true
-                        }
-                      },
-                      "required": [
-                        "paymentId",
-                        "status",
-                        "paymentStatus",
-                        "expiresAt",
-                        "amount",
-                        "corridor",
-                        "allowedDestinationTypes",
-                        "simulated"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "paymentId": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "paymentStatus": {
-                      "type": "string",
-                      "enum": [
-                        "quoted",
-                        "awaiting_funding",
-                        "funded",
-                        "processing",
-                        "paid",
-                        "cancelled",
-                        "failed",
-                        "refunding",
-                        "refunded",
-                        "expired"
-                      ]
-                    },
-                    "releaseTxRef": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "required": [
-                    "claim",
-                    "paymentId",
-                    "paymentStatus",
-                    "releaseTxRef"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "202": {
-            "description": "Release tx persisted or awaiting confirmation; Leg.releaseTxRef not written yet",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "const": "pending"
-                    },
-                    "prepareId": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "paymentId": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "paymentStatus": {
-                      "type": "string",
-                      "enum": [
-                        "quoted",
-                        "awaiting_funding",
-                        "funded",
-                        "processing",
-                        "paid",
-                        "cancelled",
-                        "failed",
-                        "refunding",
-                        "refunded",
-                        "expired"
-                      ]
-                    },
-                    "pendingTxHash": {
-                      "type": "string",
-                      "pattern": "^[a-f0-9]{64}$"
-                    }
-                  },
-                  "required": [
-                    "status",
-                    "prepareId",
-                    "paymentId",
-                    "paymentStatus",
-                    "pendingTxHash"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Idempotency or state conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Not eligible or business-rule failure",
             "content": {
               "application/json": {
                 "schema": {
