@@ -4,11 +4,21 @@ import {
 	ClaimViewSchema,
 	PasskeyDeployRequestSchema,
 	PasskeyDeployResponseSchema,
+	PasskeyPrepareRequestSchema,
+	PasskeyPrepareResponseSchema,
+	PasskeySubmitPendingResponseSchema,
+	PasskeySubmitRequestSchema,
+	PasskeySubmitResponseSchema,
 	type ClaimAcceptRequest,
 	type ClaimAcceptResponse,
 	type ClaimView,
 	type PasskeyDeployRequest,
 	type PasskeyDeployResponse,
+	type PasskeyPrepareRequest,
+	type PasskeyPrepareResponse,
+	type PasskeySubmitPendingResponse,
+	type PasskeySubmitRequest,
+	type PasskeySubmitResponse,
 } from "@flexipay/web-lib/claim-contract"
 
 // Public claim routes are same-origin and use their own client: no Authorization header is
@@ -151,7 +161,7 @@ export const acceptClaim = (
 }
 
 /**
- * CCR-20 deploy. Public claim route: no Authorization header is ever attached, the claim token
+ * CCR-21 deploy. Public claim route: no Authorization header is ever attached, the claim token
  * stays in the path, and `signedTx` is the passkey-kit carrier (standard base64 XDR), never
  * logged or stored. The same Idempotency-Key must be reused for a retry of the same carrier.
  */
@@ -166,6 +176,63 @@ export const deployPasskeyWallet = (
 		method: "POST",
 		body,
 		schema: PasskeyDeployResponseSchema,
+		idempotencyKey,
+		signal,
+	})
+}
+
+/**
+ * CCR-21 prepare. No Idempotency-Key: the response carries secret-bearing auth entries, so it
+ * must never be cached as an idempotent response body. The entries stay in memory.
+ */
+export const preparePasskeyClaim = (
+	token: string,
+	input: PasskeyPrepareRequest,
+	signal?: AbortSignal,
+): Promise<PasskeyPrepareResponse> => {
+	const body = PasskeyPrepareRequestSchema.parse(input)
+	return claimRequest(`${tokenPath(token)}/passkey/prepare`, {
+		method: "POST",
+		body,
+		schema: PasskeyPrepareResponseSchema,
+		signal,
+	})
+}
+
+export type PasskeySubmitOutcome =
+	| { status: "settled"; body: PasskeySubmitResponse }
+	| { status: "pending"; body: PasskeySubmitPendingResponse }
+
+/** 200 (released) and 202 (pending) are distinct typed outcomes, never a fake success. */
+const passkeySubmitResponse = {
+	parse(value: unknown): PasskeySubmitOutcome {
+		if (isRecord(value) && value.status === "pending")
+			return {
+				status: "pending",
+				body: PasskeySubmitPendingResponseSchema.parse(value),
+			}
+		return {
+			status: "settled",
+			body: PasskeySubmitResponseSchema.parse(value),
+		}
+	},
+}
+
+/**
+ * CCR-21 submit. Public claim route without a Bearer token. `signedAuthEntries` can contain the
+ * claim secret: they are sent once and kept in memory only for the same-key retry.
+ */
+export const submitPasskeyClaim = (
+	token: string,
+	input: PasskeySubmitRequest,
+	idempotencyKey: string,
+	signal?: AbortSignal,
+): Promise<PasskeySubmitOutcome> => {
+	const body = PasskeySubmitRequestSchema.parse(input)
+	return claimRequest(`${tokenPath(token)}/passkey/submit`, {
+		method: "POST",
+		body,
+		schema: passkeySubmitResponse,
 		idempotencyKey,
 		signal,
 	})
@@ -232,6 +299,167 @@ export const describePasskeyDeployError = (
 		message:
 			"The passkey wallet could not be deployed. No wallet was confirmed by the claim API.",
 		retryable: false,
+		expired: false,
+	}
+}
+
+export type PasskeyRetryStep = "prepare" | "submit"
+
+export interface PasskeyStepFailure {
+	message: string
+	/** Which step is safe to repeat; null means the flow must stop. */
+	retry: PasskeyRetryStep | null
+	expired: boolean
+}
+
+export const describePasskeyPrepareError = (
+	error: ClaimApiError,
+): PasskeyStepFailure => {
+	if (error.status === 0) {
+		return {
+			message:
+				"The claim API could not be reached, so nothing was signed. Preparing again is safe.",
+			retry: "prepare",
+			expired: false,
+		}
+	}
+	if (error.status === 404) {
+		return {
+			message:
+				"This claim API does not offer passkey signing yet. The crypto wallet address still works.",
+			retry: null,
+			expired: false,
+		}
+	}
+	if (error.status === 409 && error.code === "expired") {
+		return {
+			message: "This claim link has expired. Nothing was signed.",
+			retry: null,
+			expired: true,
+		}
+	}
+	if (error.status === 409 && error.code === "settle_failed") {
+		return {
+			message:
+				"This payment was returned to the sender, so the claim cannot be released.",
+			retry: null,
+			expired: false,
+		}
+	}
+	if (error.status === 409) {
+		return {
+			message:
+				"This claim is not waiting for a passkey release. Refresh the claim before trying again.",
+			retry: null,
+			expired: false,
+		}
+	}
+	if (error.status === 422 && error.code === "contract_mismatch") {
+		return {
+			message:
+				"This claim is bound to a different passkey wallet. Use the wallet that deployed it, or a crypto wallet address.",
+			retry: null,
+			expired: false,
+		}
+	}
+	if (error.status === 502 || error.status === 503) {
+		return {
+			message:
+				"The claim API could not prepare the claim signature. Nothing was signed; preparing again is safe.",
+			retry: "prepare",
+			expired: false,
+		}
+	}
+	return {
+		message: "The claim signature could not be prepared.",
+		retry: null,
+		expired: false,
+	}
+}
+
+export const describePasskeySubmitError = (
+	error: ClaimApiError,
+): PasskeyStepFailure => {
+	if (error.status === 0) {
+		return {
+			message:
+				"The claim API could not be reached. Retrying sends the same signed claim with the same idempotency key.",
+			retry: "submit",
+			expired: false,
+		}
+	}
+	if (error.status === 409 && error.code === "expired") {
+		return {
+			message: "This claim link has expired, so the release was not requested.",
+			retry: null,
+			expired: true,
+		}
+	}
+	if (error.status === 404) {
+		return {
+			message:
+				"The prepared claim was not found by the claim API. Prepare the claim again.",
+			retry: "prepare",
+			expired: false,
+		}
+	}
+	if (
+		error.status === 409 &&
+		(error.code === "prepare_expired" ||
+			error.code === "auth_expired" ||
+			error.code === "idempotency_conflict")
+	) {
+		return {
+			message:
+				"The signing window is no longer valid. Prepare the claim again to sign a fresh request.",
+			retry: "prepare",
+			expired: false,
+		}
+	}
+	if (error.status === 409 && error.code === "settle_failed") {
+		return {
+			message:
+				"This payment was returned to the sender, so the claim cannot be released.",
+			retry: null,
+			expired: false,
+		}
+	}
+	if (error.status === 409) {
+		return {
+			message:
+				"This claim is no longer waiting for the release. Refresh the claim to see its actual state.",
+			retry: null,
+			expired: false,
+		}
+	}
+	if (error.status === 422 && error.code === "contract_mismatch") {
+		return {
+			message:
+				"This claim is bound to a different passkey wallet, so the release was not requested.",
+			retry: null,
+			expired: false,
+		}
+	}
+	if (error.status === 422) {
+		return {
+			message:
+				"The signed claim did not match the prepared request. Prepare the claim again.",
+			retry: "prepare",
+			expired: false,
+		}
+	}
+	if (error.status === 502 || error.status === 503) {
+		return {
+			message:
+				"The release is not confirmed by the claim API yet. Retrying sends the same signed claim with the same idempotency key.",
+			retry: "submit",
+			expired: false,
+		}
+	}
+	return {
+		message:
+			"The claim release could not be confirmed. Refresh the claim to see its actual state.",
+		retry: null,
 		expired: false,
 	}
 }

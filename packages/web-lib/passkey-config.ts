@@ -1,13 +1,16 @@
-// Public configuration for creating a passkey smart wallet from the browser (CCR-20, E3).
+// Public configuration for creating a passkey smart wallet from the browser (CCR-21, E3).
 //
 // Nothing here is a secret: the passkey never leaves the authenticator, the deployer keypair is
 // the public deterministic deployer inside passkey-kit, and the API pays for the deploy with its
 // own server-side FP_PAYER_DEMO_* key. Only public network values and the pinned WASM hash cross
 // into the browser bundle.
-import { networkPassphrase, rpcUrl } from "./env"
+//
+// The values come from the repo's FP_ config, exposed explicitly in apps/web/vite.config.ts:
+// FP_STELLAR_RPC_URL and FP_STELLAR_NETWORK_PASSPHRASE. There is no FP_ envPrefix, so no other
+// FP_ value (FP_API_KEY, FP_*_SECRET) reaches the browser.
 
 /**
- * Smart-wallet WASM hash pinned by CCR-20 (passkey-kit@0.19.1). The backend rejects any other
+ * Smart-wallet WASM hash pinned by CCR-21 (passkey-kit@0.19.1). The backend rejects any other
  * hash, so the browser must build the deploy carrier with exactly this value.
  */
 export const PASSKEY_WALLET_WASM_HASH =
@@ -26,17 +29,19 @@ export interface PasskeyWalletConfig {
 	walletWasmHash: string
 }
 
+const publicRpcUrl = import.meta.env.FP_STELLAR_RPC_URL?.trim() ?? ""
+const publicNetworkPassphrase =
+	import.meta.env.FP_STELLAR_NETWORK_PASSPHRASE?.trim() ?? ""
+
 export const passkeyWalletConfig: PasskeyWalletConfig = {
-	rpcUrl,
-	networkPassphrase,
+	rpcUrl: publicRpcUrl,
+	networkPassphrase: publicNetworkPassphrase,
 	walletWasmHash: PASSKEY_WALLET_WASM_HASH,
 }
 
 /**
- * The passkey deploy path needs a real public RPC origin and network passphrase. `env.ts` falls
- * back to localhost when they are missing, which would only produce a broken wallet creation, so
- * the UI stays explicitly unavailable instead of attempting it.
+ * The passkey path needs a real public RPC origin and network passphrase. Without them the UI
+ * stays explicitly unavailable instead of attempting a broken wallet creation.
  */
 export const isPasskeyWalletConfigured =
-	Boolean(import.meta.env.PUBLIC_STELLAR_RPC_URL?.trim()) &&
-	Boolean(import.meta.env.PUBLIC_STELLAR_NETWORK_PASSPHRASE?.trim())
+	Boolean(publicRpcUrl) && Boolean(publicNetworkPassphrase)

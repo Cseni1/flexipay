@@ -9,6 +9,7 @@
     "./claim-contract": "./claim-contract.ts",
     "./claim-endpoint": "./claim-endpoint.ts",
     "./passkey-config": "./passkey-config.ts",
+    "./passkey-auth": "./passkey-auth.ts",
     "./styles.css": "./styles.css"
   },
   "dependencies": {

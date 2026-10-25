@@ -11,8 +11,8 @@ import { PasskeyClaimPanel } from "../components/claim/PasskeyClaimPanel"
 // states, not a passkey run and not a claim: it is registered only when `import.meta.env.DEV`,
 // so a production build has no route to it. It never sends a request and holds no XDR payload.
 //
-// CCR-20 deploy is accepted and the real flow lives on the claim page; prepare/submit are still
-// stubs, so their states are fixture-only here.
+// CCR-21 is accepted and the real chain lives on the claim page. This gallery renders the same
+// phases from fixture values only: no request, no signature, no XDR payload.
 
 const scenario = (
 	name: string,
@@ -137,8 +137,8 @@ const LiveSupportScenario = () => {
 	return (
 		<div className="stack" data-scenario="live-support">
 			<p className="muted">
-				Live browser detection with the accepted CCR-20 deploy route; prepare
-				and submit are still stubs.
+				Live browser detection for the accepted CCR-21 passkey claim: the panel
+				only enables what this browser and build can actually do.
 			</p>
 			<PasskeyClaimPanel flow={flow} claimExpired={false} />
 		</div>
@@ -165,12 +165,23 @@ const InteractiveScenario = ({
 				claimExpired={claimExpired}
 				claimClosed={claimClosed}
 				onCreate={() => dispatch({ type: "wallet_creation_started" })}
-				onApprove={() =>
+				onPrepare={() => {
+					dispatch({ type: "prepare_started" })
 					dispatch({
-						type: "signature_approved",
+						type: "prepared",
+						prepareId: "fixture-prepare",
+						signatureExpirationLedger: 123456,
+						authEntryCount: 1,
+					})
+				}}
+				onApprove={() => {
+					dispatch({ type: "signing_started" })
+					dispatch({
+						type: "signed",
 						submitIdempotencyKey: `fixture-submit-${crypto.randomUUID()}`,
 					})
-				}
+				}}
+				onCheckRelease={() => dispatch({ type: "submit_retry" })}
 				onRetry={() => dispatch({ type: "retry" })}
 				onCancel={() => dispatch({ type: "cancelled" })}
 				onUseCryptoWallet={() => undefined}
@@ -191,11 +202,11 @@ export default function PasskeyClaimStates() {
 				</header>
 				<div className="stack">
 					<div>
-						<p className="eyebrow">DEV-only component gallery</p>
+						<p className="eyebrow">DEV-only component gallery</p>{" "}
 						<h1 className="phone-title">Passkey claim states</h1>
 						<p className="muted">
 							UI states for the passkey claim. Fixture states only: this is not
-							a passkey run and not a testnet claim.
+							a passkey run, not a signature and not a testnet claim.
 						</p>
 					</div>
 					<LiveSupportScenario />

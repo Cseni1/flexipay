@@ -1,19 +1,17 @@
-// Passkey claim UI state for the M2 milestone.
+// Passkey claim UI state for the M2 milestone (CCR-21).
 //
-// CCR-20 is accepted and its deploy route is mounted on the event API branch. Wallet creation and
-// `POST /v1/claims/{token}/passkey/deploy` are wired through the hook next to this module; this
-// reducer stays pure and holds UI state only.
+// The reducer is pure UI state: it holds no auth entries, signed entries, XDR, claim secret or
+// claim token. Those live only in the controller's in-memory refs, never in React state, logs or
+// browser storage. The full chain is:
 //
-// Prepare and submit are still stubs on that branch, so the deployed phase deliberately has no
-// prepare action: the UI says claim signing is unavailable and offers the working G-address
-// claim instead. The extra phases below stay so the eventual binding can reuse the reducer, and
-// the DEV gallery renders them from fixtures only.
+//   wallet create → deploy → prepare → passkey sign → submit
 //
-// Security rules encoded here: a deploy or submit is started once per attempt, a network retry
-// reuses the same idempotency key, and expiry blocks approval and submit.
+// Submit semantics: 200 + releaseTxRef is a confirmed release (paid only when the API says so);
+// 202 is pending and never paid. A network retry reuses the same submit body and idempotency key;
+// a new prepare gets a new key.
 
 export type PasskeyClaimPhase =
-	/** No accepted contract/backend yet: the production default. */
+	/** Public passkey config absent: no RPC/passphrase in this build. */
 	| "unavailable"
 	/** The browser has no WebAuthn support. */
 	| "unsupported"
@@ -24,8 +22,13 @@ export type PasskeyClaimPhase =
 	| "deploy_failed"
 	| "preparing"
 	| "awaiting_signature"
+	| "signing"
 	| "submitting"
+	/** 202: release persisted/submitted but not yet confirmed; never paid. */
 	| "processing"
+	/** 200 + releaseTxRef, but the API has not reported a paid payment. */
+	| "released"
+	/** 200 + accepted claim + paid payment, confirmed by the API. */
 	| "verified"
 	| "unconfirmed"
 	| "cancelled"
@@ -46,8 +49,17 @@ export interface PasskeyClaimFlowState {
 	/** Ledger-confirmed deploy hash returned by the API; never a fabricated one. */
 	deployTxHash: string | null
 	prepareId: string | null
+	/** The sole ledger the API accepts for this prepare's signatures. */
+	signatureExpirationLedger: number | null
+	/** Number of prepared auth entries; the entries themselves stay out of React state. */
+	authEntryCount: number | null
 	deployIdempotencyKey: string | null
 	submitIdempotencyKey: string | null
+	/** Settle leg releaseTxRef; only from a 200 submit response. */
+	releaseTxRef: string | null
+	/** 202 pendingTxHash; not a success reference. */
+	pendingTxHash: string | null
+	apiPaymentStatus: string | null
 	retry: PasskeyRetryTarget | null
 	message: string | null
 	verified: PasskeyVerifiedClaim | null
@@ -60,18 +72,39 @@ export type PasskeyClaimEvent =
 			contractId: string
 			deployIdempotencyKey: string
 	  }
+	| { type: "wallet_creation_failed"; message: string }
 	| { type: "deploy_succeeded"; deployTxHash: string }
 	| { type: "deploy_failed"; message: string; retryable?: boolean }
-	| { type: "wallet_creation_failed"; message: string }
 	| { type: "prepare_started" }
-	| { type: "prepared"; prepareId: string }
-	| { type: "signature_approved"; submitIdempotencyKey: string }
 	| {
-			type: "submit_accepted"
-			claimStatus: string
+			type: "prepared"
+			prepareId: string
+			signatureExpirationLedger: number
+			authEntryCount: number
+	  }
+	| { type: "prepare_failed"; message: string; retryable?: boolean }
+	| { type: "signing_started" }
+	| { type: "signature_dismissed"; message: string }
+	| { type: "signing_failed"; message: string }
+	| { type: "signed"; submitIdempotencyKey: string }
+	| {
+			type: "submit_pending"
+			pendingTxHash: string
 			paymentStatus: string
 	  }
-	| { type: "submit_rejected"; message: string; retryable: boolean }
+	| {
+			type: "submit_settled"
+			claimStatus: string
+			paymentStatus: string
+			releaseTxRef: string
+	  }
+	| {
+			type: "submit_rejected"
+			message: string
+			retry: PasskeyRetryTarget | null
+	  }
+	/** 202 follow-up: same signed body and same Idempotency-Key, never a new submit. */
+	| { type: "submit_retry" }
 	| { type: "retry" }
 	| { type: "cancelled" }
 	| { type: "expired" }
@@ -80,6 +113,7 @@ const BUSY_PHASES = new Set<PasskeyClaimPhase>([
 	"creating_wallet",
 	"deploying",
 	"preparing",
+	"signing",
 	"submitting",
 	"processing",
 ])
@@ -88,6 +122,7 @@ const TERMINAL_PHASES = new Set<PasskeyClaimPhase>([
 	"unavailable",
 	"unsupported",
 	"verified",
+	"released",
 	"cancelled",
 	"expired",
 ])
@@ -107,8 +142,13 @@ export const initialPasskeyFlow = ({
 	contractId: null,
 	deployTxHash: null,
 	prepareId: null,
+	signatureExpirationLedger: null,
+	authEntryCount: null,
 	deployIdempotencyKey: null,
 	submitIdempotencyKey: null,
+	releaseTxRef: null,
+	pendingTxHash: null,
+	apiPaymentStatus: null,
 	retry: null,
 	message: null,
 	verified: null,
@@ -128,11 +168,19 @@ export const canCreatePasskeyWallet = (flow: PasskeyClaimFlowState): boolean =>
 export const canPreparePasskeyClaim = (flow: PasskeyClaimFlowState): boolean =>
 	flow.phase === "deployed"
 
-/** Approval and submit are both refused once the claim is no longer open at `expiresAt`. */
+/** Approval is refused once the claim is no longer open at `expiresAt`. */
 export const canApprovePasskeyClaim = (
 	flow: PasskeyClaimFlowState,
 	claimExpired: boolean,
-): boolean => flow.phase === "awaiting_signature" && !claimExpired
+): boolean =>
+	(flow.phase === "awaiting_signature" || flow.phase === "signing") &&
+	!claimExpired
+
+/** A 202 may be re-checked by re-sending the same signed request and idempotency key. */
+export const canCheckPasskeyRelease = (flow: PasskeyClaimFlowState): boolean =>
+	flow.phase === "processing" &&
+	flow.prepareId !== null &&
+	flow.submitIdempotencyKey !== null
 
 export const canRetryPasskeyStep = (
 	flow: PasskeyClaimFlowState,
@@ -205,31 +253,76 @@ export function passkeyClaimReducer(
 			}
 
 		case "prepare_started":
-			if (state.phase !== "deployed") return unchanged(state)
-			// A fresh prepare is a new attempt: the previous prepare and submit key are dropped,
-			// and the backend contract decides the idempotency behaviour of the next submit.
+			if (state.phase !== "deployed" && state.phase !== "retryable_error")
+				return unchanged(state)
+			if (state.phase === "retryable_error" && state.retry !== "prepare")
+				return unchanged(state)
+			// A fresh prepare is a new attempt: the previous prepare, its expiration and the old
+			// submit key are dropped. The old submit key is never reused for a new prepare.
 			return {
 				...state,
 				phase: "preparing",
 				prepareId: null,
+				signatureExpirationLedger: null,
+				authEntryCount: null,
 				submitIdempotencyKey: null,
+				releaseTxRef: null,
+				pendingTxHash: null,
+				apiPaymentStatus: null,
 				retry: null,
 				message: null,
 			}
 
 		case "prepared":
 			if (state.phase !== "preparing") return unchanged(state)
-			if (!event.prepareId.trim()) return unchanged(state)
+			if (
+				!event.prepareId.trim() ||
+				!Number.isInteger(event.signatureExpirationLedger) ||
+				event.signatureExpirationLedger <= 0 ||
+				event.authEntryCount < 1
+			)
+				return unchanged(state)
 			return {
 				...state,
 				phase: "awaiting_signature",
 				prepareId: event.prepareId,
+				signatureExpirationLedger: event.signatureExpirationLedger,
+				authEntryCount: event.authEntryCount,
 				message: null,
 			}
 
-		case "signature_approved":
-			if (state.phase !== "awaiting_signature" || !state.prepareId)
-				return unchanged(state)
+		case "prepare_failed":
+			if (state.phase !== "preparing") return unchanged(state)
+			return {
+				...state,
+				phase: "retryable_error",
+				retry: event.retryable === false ? null : "prepare",
+				message: event.message,
+			}
+
+		case "signing_started":
+			if (state.phase !== "awaiting_signature") return unchanged(state)
+			return { ...state, phase: "signing", message: null }
+
+		case "signature_dismissed":
+			if (state.phase !== "signing") return unchanged(state)
+			// The prepare and its entries are still valid: the user can approve again.
+			return {
+				...state,
+				phase: "awaiting_signature",
+				message: event.message,
+			}
+
+		case "signing_failed":
+			if (state.phase !== "signing") return unchanged(state)
+			return {
+				...state,
+				phase: "awaiting_signature",
+				message: event.message,
+			}
+
+		case "signed":
+			if (state.phase !== "signing" || !state.prepareId) return unchanged(state)
 			if (!event.submitIdempotencyKey.trim()) return unchanged(state)
 			if (state.submitIdempotencyKey) {
 				// A submit for this prepare was already signed; never issue a second one.
@@ -243,13 +336,41 @@ export function passkeyClaimReducer(
 				message: null,
 			}
 
-		case "submit_accepted": {
-			if (state.phase !== "submitting" && state.phase !== "processing")
-				return unchanged(state)
+		case "submit_pending": {
+			if (state.phase !== "submitting") return unchanged(state)
+			if (!/^[a-f0-9]{64}$/.test(event.pendingTxHash)) return unchanged(state)
+			return {
+				...state,
+				phase: "processing",
+				pendingTxHash: event.pendingTxHash,
+				apiPaymentStatus: event.paymentStatus,
+				releaseTxRef: null,
+				verified: null,
+				retry: null,
+				message: null,
+			}
+		}
+
+		case "submit_settled": {
+			if (state.phase !== "submitting") return unchanged(state)
+			if (!event.releaseTxRef.trim()) {
+				// A 200 without the settle release reference is never shown as success.
+				return {
+					...state,
+					phase: "unconfirmed",
+					releaseTxRef: null,
+					apiPaymentStatus: event.paymentStatus,
+					retry: null,
+					message:
+						"The claim API did not return a release reference. Nothing here is marked paid.",
+				}
+			}
 			if (event.claimStatus === "accepted" && event.paymentStatus === "paid") {
 				return {
 					...state,
 					phase: "verified",
+					releaseTxRef: event.releaseTxRef,
+					apiPaymentStatus: event.paymentStatus,
 					retry: null,
 					message: null,
 					verified: {
@@ -258,17 +379,22 @@ export function passkeyClaimReducer(
 					},
 				}
 			}
-			if (event.claimStatus === "accepted")
-				return { ...state, phase: "processing", retry: null, message: null }
-			// A 200 that does not say the claim is accepted is never shown as success.
 			return {
 				...state,
-				phase: "unconfirmed",
+				phase: "released",
+				releaseTxRef: event.releaseTxRef,
+				apiPaymentStatus: event.paymentStatus,
 				retry: null,
-				message:
-					"The claim API did not confirm the claim as accepted. Nothing here is marked paid.",
+				message: null,
+				verified: null,
 			}
 		}
+
+		case "submit_retry":
+			if (state.phase !== "processing") return unchanged(state)
+			if (!state.submitIdempotencyKey || !state.prepareId)
+				return unchanged(state)
+			return { ...state, phase: "submitting", message: null }
 
 		case "submit_rejected":
 			if (state.phase !== "submitting" && state.phase !== "processing")
@@ -276,7 +402,7 @@ export function passkeyClaimReducer(
 			return {
 				...state,
 				phase: "retryable_error",
-				retry: event.retryable ? "submit" : null,
+				retry: event.retry,
 				message: event.message,
 			}
 
@@ -314,7 +440,12 @@ export function passkeyClaimReducer(
 					...state,
 					phase: "preparing",
 					prepareId: null,
+					signatureExpirationLedger: null,
+					authEntryCount: null,
 					submitIdempotencyKey: null,
+					releaseTxRef: null,
+					pendingTxHash: null,
+					apiPaymentStatus: null,
 					retry: null,
 					message: null,
 				}
@@ -323,9 +454,10 @@ export function passkeyClaimReducer(
 		}
 
 		case "cancelled":
-			// Never hide a submission that may already be in flight.
+			// Never hide a submission or release that may already be in flight or confirmed.
 			if (
 				state.phase === "verified" ||
+				state.phase === "released" ||
 				state.phase === "submitting" ||
 				state.phase === "processing"
 			)
@@ -335,17 +467,26 @@ export function passkeyClaimReducer(
 				phase: "cancelled",
 				retry: null,
 				prepareId: null,
+				signatureExpirationLedger: null,
+				authEntryCount: null,
 				submitIdempotencyKey: null,
+				releaseTxRef: null,
+				pendingTxHash: null,
+				apiPaymentStatus: null,
 				message: null,
 			}
 
 		case "expired":
-			if (state.phase === "verified") return unchanged(state)
+			if (state.phase === "verified" || state.phase === "released")
+				return unchanged(state)
 			return {
 				...state,
 				phase: "expired",
 				retry: null,
 				submitIdempotencyKey: null,
+				releaseTxRef: null,
+				pendingTxHash: null,
+				apiPaymentStatus: null,
 				message: null,
 			}
 	}

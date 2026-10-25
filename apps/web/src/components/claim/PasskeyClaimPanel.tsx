@@ -8,7 +8,9 @@ import {
 } from "../ui"
 import {
 	canApprovePasskeyClaim,
+	canCheckPasskeyRelease,
 	canCreatePasskeyWallet,
+	canPreparePasskeyClaim,
 	canRetryPasskeyStep,
 	isPasskeyBusy,
 	type PasskeyClaimFlowState,
@@ -16,8 +18,8 @@ import {
 
 // Rendering for the passkey claim (M2). Deliberately separate from ClaimPage and presentational:
 // it reads flow state and calls handlers, it never talks to the API itself. The claim page renders
-// it for the real CCR-20 deploy flow; the DEV-only state gallery renders the prepare/submit states
-// from fixtures because those routes are still stubs.
+// it for the real CCR-21 chain (create → deploy → prepare → sign → submit); the DEV-only state
+// gallery renders every phase from fixtures.
 
 export interface PasskeyClaimPanelProps {
 	flow: PasskeyClaimFlowState
@@ -26,7 +28,9 @@ export interface PasskeyClaimPanelProps {
 	/** The claim is no longer open at all (accepted, cancelled or payment not processing). */
 	claimClosed?: boolean
 	onCreate?: () => void
+	onPrepare?: () => void
 	onApprove?: () => void
+	onCheckRelease?: () => void
 	onRetry?: () => void
 	onCancel?: () => void
 	onUseCryptoWallet?: () => void
@@ -44,7 +48,9 @@ export function PasskeyClaimPanel({
 	claimExpired,
 	claimClosed = false,
 	onCreate,
+	onPrepare,
 	onApprove,
+	onCheckRelease,
 	onRetry,
 	onCancel,
 	onUseCryptoWallet,
@@ -170,11 +176,23 @@ export function PasskeyClaimPanel({
 								Deploy transaction {truncated(flow.deployTxHash)}
 							</p>
 						) : null}
-						<Notice tone="warning" data-testid="passkey-signing-unavailable">
-							Claim signing is not part of this build yet. Nothing has been paid
-							or completed by this page; your claim is still open.
-						</Notice>
-						{fallback}
+						<PhaseCopy>
+							Next, the claim API prepares the release authorization and your
+							passkey signs it. Nothing is paid until the API confirms the
+							release.
+						</PhaseCopy>
+						<div className="claim-demo">
+							<Button
+								onClick={onPrepare}
+								disabled={
+									expired || claimClosed || !canPreparePasskeyClaim(flow)
+								}
+								data-testid="passkey-prepare"
+							>
+								Prepare claim release
+							</Button>
+							{fallback}
+						</div>
 					</>
 				)
 
@@ -214,6 +232,16 @@ export function PasskeyClaimPanel({
 							Approve the claim with your passkey. The signature is prepared by
 							the claim API; this page signs it once.
 						</PhaseCopy>
+						{flow.signatureExpirationLedger ? (
+							<p className="claim-meta" data-testid="passkey-ledger">
+								Signature valid until ledger {flow.signatureExpirationLedger}
+							</p>
+						) : null}
+						{flow.message ? (
+							<p className="form-note" data-testid="passkey-sign-note">
+								{flow.message}
+							</p>
+						) : null}
 						{expired ? (
 							<Notice tone="warning" data-testid="passkey-expired">
 								This claim link has expired. No release was made by this page.
@@ -245,10 +273,29 @@ export function PasskeyClaimPanel({
 			case "processing":
 				return (
 					<>
-						<Notice tone="info">
+						<Notice tone="info" data-testid="passkey-processing">
 							The claim API is processing the release. This page does not mark
 							it paid on its own.
 						</Notice>
+						{flow.pendingTxHash ? (
+							<p className="claim-meta" data-testid="passkey-pending-hash">
+								Pending transaction {truncated(flow.pendingTxHash)}
+							</p>
+						) : null}
+						<div className="claim-demo">
+							<Button
+								variant="secondary"
+								onClick={onCheckRelease}
+								disabled={!canCheckPasskeyRelease(flow)}
+								data-testid="passkey-check-release"
+							>
+								Check release status
+							</Button>
+						</div>
+						<p className="form-note">
+							Checking resends the same signed request with the same idempotency
+							key, so it cannot release the claim twice.
+						</p>
 					</>
 				)
 

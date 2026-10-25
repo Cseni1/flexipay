@@ -560,10 +560,10 @@ export default function ClaimPage() {
 										</label>
 									</fieldset>
 									<p className="form-note">
-										A crypto wallet address works today. The passkey wallet can
-										be deployed on testnet; claim signing is not enabled yet.
-										The reference anchor cash-out is not available in this
-										build.
+										A crypto wallet address works today. The passkey wallet is
+										created on testnet and signs the release with your
+										fingerprint or face. The reference anchor cash-out is not
+										available in this build.
 									</p>
 									{passkeySelected ? (
 										<PasskeyClaimSection
