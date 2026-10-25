@@ -33,7 +33,9 @@ Import from `@flexipay/adapter-stellar`:
 | **`startWithdrawInteractive({ amount, type? })`** | — | hosted withdraw session (`kind: "withdrawal"`) |
 | `getTransaction` / `waitForTerminal` | id | status + memo/account fields |
 | `paymentExpectationFromTx(tx)` | withdraw tx | amount, destination, memo, asset |
-| **`submitClassicPaymentWithMemo({ source, expectation, networkPassphrase })`** | Keypair + expectation | `{ txHash, … }` Horizon payment **with memo** to anchor |
+| **`buildAndSignClassicPaymentWithMemo({ source, expectation, networkPassphrase })`** | Keypair + expectation | `{ txHash, signedTx, timeBounds, … }` **before** Horizon submit (never log `signedTx`) |
+| **`submitSignedClassicPayment({ signedTx, expectedTxHash?, … })`** | signed tx from build | `{ txHash, … }` submits identical bytes |
+| **`submitClassicPaymentWithMemo(…)`** | same as before | compatible wrapper = build then submit |
 | `assertSuccessfulWithdraw({ tx, expected })` | — | requires status **`completed`** + field match |
 | `evidenceSafeTx` / `sanitiseHostedUrl` | — | no JWT; memo presence only |
 
