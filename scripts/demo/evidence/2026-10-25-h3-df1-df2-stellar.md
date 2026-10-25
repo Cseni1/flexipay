@@ -11,7 +11,8 @@ produced **PASS** at `2026-10-25T11:37:43.797Z`.
 
 | Item                  | Value                                                                                                       |
 | --------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Base / tested commit  | `abee07b` (`main`; docs-only changes after arrival `9d9c039`)                                               |
+| Base commit           | `abee07b` (`main`; docs-only changes after arrival `9d9c039`)                                               |
+| H3 source commit      | `b9409ce` (the run printed `abee07b` because the H3 changes were uncommitted)                               |
 | Arrival baseline      | `9d9c039`; local and remote tag `arrival` still point there                                                 |
 | Branch                | `event/csenge-freebuff/h3-df1-df2`                                                                          |
 | Runtime               | Node `24.21.0`, npm `11.12.1`, macOS arm64                                                                  |

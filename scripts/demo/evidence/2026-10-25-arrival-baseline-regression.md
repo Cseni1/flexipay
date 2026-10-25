@@ -11,7 +11,7 @@ checks are listed separately.
 | Arrival tag       | local and remote `arrival` = `9d9c039`; not moved                                     |
 | Current `main`    | `abee07b`                                                                             |
 | Docs-only delta   | `9d9c039..abee07b` changes only `README.md`, `docs/DEV_PLAN.md`, `docs/EVENT_PLAN.md` |
-| Tested tree       | `abee07b` plus H3 demo/test changes on the task branch                                |
+| Tested tree       | `abee07b` plus H3 demo/test changes; source commit `b9409ce`                          |
 | Runtime           | Node `24.21.0`, npm `11.12.1`, macOS arm64                                            |
 
 The H3 branch does not edit `apps/api`, `apps/web`, `packages/adapter-stellar`,
