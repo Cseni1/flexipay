@@ -524,6 +524,7 @@ test.describe("CF6 passkey state gallery", () => {
 			"unsupported",
 			"idle",
 			"creating_wallet",
+			"awaiting_creation_confirm",
 			"deploying",
 			"deployed",
 			"deploy_failed",
@@ -680,6 +681,7 @@ test.describe("CF6 passkey state gallery", () => {
 			"unsupported",
 			"idle",
 			"creating_wallet",
+			"awaiting_creation_confirm",
 			"deploying",
 			"deployed",
 			"deploy_failed",
@@ -833,6 +835,7 @@ test.describe("CF6 passkey source guards", () => {
 		const claimFiles = [
 			"apps/web/src/api/claimClient.ts",
 			"apps/web/src/api/passkeyWallet.ts",
+			"apps/web/src/api/passkeyWebAuthnGate.ts",
 			"apps/web/src/pages/ClaimPage.tsx",
 			"apps/web/src/components/claim/PasskeyClaimPanel.tsx",
 			"apps/web/src/components/claim/PasskeyClaimSection.tsx",

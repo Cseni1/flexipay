@@ -4,9 +4,11 @@
 // claim token. Those live only in the controller's in-memory refs, never in React state, logs or
 // browser storage. The full chain is:
 //
-//   wallet create → deploy → Bind wallet → prepare → passkey sign → submit
+//   wallet create (register → Confirm with passkey) → deploy → Bind wallet → prepare → sign → submit
 //
-// Create and Bind are separate user gestures. Binding never auto-starts after create/deploy.
+// Create-time Confirm and post-deploy Bind are separate user gestures. Binding never auto-starts
+// after create/deploy. The post-registration startAuthentication is gated behind Confirm so it
+// runs from that click, continuing the same createWallet (no second registration).
 // Submit semantics: 200 + releaseTxRef is a confirmed release (paid only when the API says so);
 // 202 is pending and never paid. A network retry reuses the same submit body and idempotency key;
 // a new prepare gets a new key.
@@ -18,6 +20,8 @@ export type PasskeyClaimPhase =
 	| "unsupported"
 	| "idle"
 	| "creating_wallet"
+	/** Registration done; waiting for Confirm with passkey (same createWallet). */
+	| "awaiting_creation_confirm"
 	| "deploying"
 	/** Deploy confirmed; waiting for an explicit Bind wallet click. */
 	| "deployed"
@@ -74,6 +78,10 @@ export interface PasskeyClaimFlowState {
 
 export type PasskeyClaimEvent =
 	| { type: "wallet_creation_started" }
+	| { type: "creation_confirm_needed" }
+	| { type: "creation_confirm_started" }
+	| { type: "creation_confirm_dismissed"; message: string }
+	| { type: "creation_confirm_failed"; message: string }
 	| {
 			type: "wallet_created"
 			contractId: string
@@ -122,6 +130,7 @@ export type PasskeyClaimEvent =
 
 const BUSY_PHASES = new Set<PasskeyClaimPhase>([
 	"creating_wallet",
+	"awaiting_creation_confirm",
 	"deploying",
 	"binding",
 	"preparing",
@@ -177,6 +186,11 @@ export const isPasskeyTerminal = (phase: PasskeyClaimPhase): boolean =>
 export const canCreatePasskeyWallet = (flow: PasskeyClaimFlowState): boolean =>
 	flow.phase === "idle"
 
+/** Confirm with passkey during the same createWallet (post-registration auth). */
+export const canConfirmPasskeyCreation = (
+	flow: PasskeyClaimFlowState,
+): boolean => flow.phase === "awaiting_creation_confirm"
+
 /** Explicit Bind wallet click only; never starts from create/deploy completion. */
 export const canBindPasskeyWallet = (flow: PasskeyClaimFlowState): boolean =>
 	(flow.phase === "deployed" || flow.phase === "binding_failed") &&
@@ -225,8 +239,44 @@ export function passkeyClaimReducer(
 				message: null,
 			}
 
+		case "creation_confirm_needed":
+			if (
+				state.phase !== "creating_wallet" &&
+				state.phase !== "awaiting_creation_confirm"
+			)
+				return unchanged(state)
+			return {
+				...state,
+				phase: "awaiting_creation_confirm",
+				message: null,
+			}
+
+		case "creation_confirm_started":
+			if (state.phase !== "awaiting_creation_confirm") return unchanged(state)
+			return { ...state, message: null }
+
+		case "creation_confirm_dismissed":
+			if (state.phase !== "awaiting_creation_confirm") return unchanged(state)
+			return {
+				...state,
+				phase: "awaiting_creation_confirm",
+				message: event.message,
+			}
+
+		case "creation_confirm_failed":
+			if (state.phase !== "awaiting_creation_confirm") return unchanged(state)
+			return {
+				...state,
+				phase: "awaiting_creation_confirm",
+				message: event.message,
+			}
+
 		case "wallet_created": {
-			if (state.phase !== "creating_wallet") return unchanged(state)
+			if (
+				state.phase !== "creating_wallet" &&
+				state.phase !== "awaiting_creation_confirm"
+			)
+				return unchanged(state)
 			if (!event.contractId.trim() || !event.deployIdempotencyKey.trim())
 				return unchanged(state)
 			return {
@@ -240,7 +290,11 @@ export function passkeyClaimReducer(
 		}
 
 		case "wallet_creation_failed":
-			if (state.phase !== "creating_wallet") return unchanged(state)
+			if (
+				state.phase !== "creating_wallet" &&
+				state.phase !== "awaiting_creation_confirm"
+			)
+				return unchanged(state)
 			// There is no deploy carrier to retry, so the next attempt is a new ceremony with a
 			// fresh passkey and a fresh deploy key; never a replay of an empty deploy.
 			return {
@@ -530,6 +584,7 @@ export function passkeyClaimReducer(
 				state.phase === "processing"
 			)
 				return unchanged(state)
+			// Abandoning during Confirm ends createWallet; a later Retry starts a new create.
 			return {
 				...state,
 				phase: "cancelled",

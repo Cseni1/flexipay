@@ -10,6 +10,7 @@ import {
 	canApprovePasskeyClaim,
 	canBindPasskeyWallet,
 	canCheckPasskeyRelease,
+	canConfirmPasskeyCreation,
 	canCreatePasskeyWallet,
 	canPreparePasskeyClaim,
 	canRetryPasskeyStep,
@@ -29,6 +30,7 @@ export interface PasskeyClaimPanelProps {
 	/** The claim is no longer open at all (accepted, cancelled or payment not processing). */
 	claimClosed?: boolean
 	onCreate?: () => void
+	onConfirmCreation?: () => void
 	onBind?: () => void
 	onPrepare?: () => void
 	onApprove?: () => void
@@ -50,6 +52,7 @@ export function PasskeyClaimPanel({
 	claimExpired,
 	claimClosed = false,
 	onCreate,
+	onConfirmCreation,
 	onBind,
 	onPrepare,
 	onApprove,
@@ -73,7 +76,9 @@ export function PasskeyClaimPanel({
 	// Cancelling is safe before a deploy is sent: the ceremony result is ignored and no request
 	// leaves the page. Once deploying, the page must not hide an in-flight wallet deploy.
 	const cancellable =
-		flow.phase === "creating_wallet" || (!busy && flow.phase !== "deployed")
+		flow.phase === "creating_wallet" ||
+		flow.phase === "awaiting_creation_confirm" ||
+		(!busy && flow.phase !== "deployed")
 	const cancel =
 		onCancel && cancellable ? (
 			<Button variant="ghost" onClick={onCancel} data-testid="passkey-cancel">
@@ -144,9 +149,41 @@ export function PasskeyClaimPanel({
 					<>
 						<Notice tone="info">
 							Waiting for your device: create the passkey with your fingerprint
-							or face. Binding is a separate step after deploy.
+							or face. Confirmation is a separate step on this page.
 						</Notice>
 						{cancel}
+					</>
+				)
+
+			case "awaiting_creation_confirm":
+				return (
+					<>
+						<Notice tone="info" data-testid="passkey-creation-confirm-needed">
+							Passkey created. Confirm with your passkey to finish wallet setup.
+							This continues the same creation — it does not register a new
+							credential.
+						</Notice>
+						{flow.message ? (
+							<p
+								className="form-note"
+								data-testid="passkey-creation-confirm-note"
+							>
+								{flow.message}
+							</p>
+						) : null}
+						<div className="claim-demo">
+							<Button
+								onClick={onConfirmCreation}
+								disabled={
+									expired || claimClosed || !canConfirmPasskeyCreation(flow)
+								}
+								data-testid="passkey-confirm-creation"
+							>
+								Confirm with passkey
+							</Button>
+							{cancel}
+							{fallback}
+						</div>
 					</>
 				)
 

@@ -62,6 +62,12 @@ export async function bindPasskeyWallet() {
 	)
 }
 
+export async function confirmPasskeyCreationAuth() {
+	return "idle"
+}
+
+export function abandonPasskeyCreationAuth() {}
+
 export async function signPasskeyClaimAuthEntries() {
 	throw new PasskeyWalletError("failed", "Signing is not part of this fixture.")
 }

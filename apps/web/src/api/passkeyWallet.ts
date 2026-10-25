@@ -4,25 +4,26 @@ import {
 	isPasskeyWalletConfigured,
 	passkeyWalletConfig,
 } from "@flexipay/web-lib/passkey-config"
+import {
+	createPasskeyWebAuthnGate,
+	type CreationAuthSnapshot,
+	type PasskeyWebAuthnGate,
+} from "./passkeyWebAuthnGate"
+
 // Types come from the lazy loader: no value import, so the kit stays a lazy chunk.
 const loadKitModule = () => import("passkey-kit")
+const loadSimpleWebAuthn = () => import("@simplewebauthn/browser")
 type KitModule = Awaited<ReturnType<typeof loadKitModule>>
 type PasskeyKit = InstanceType<KitModule["PasskeyKit"]>
 type CreateWalletResult = Awaited<ReturnType<PasskeyKit["createWallet"]>>
 
 // The only place in the web app that touches passkey-kit, loaded on demand so the claim page
-// does not ship the wallet SDK to visitors who never create a wallet. `createWallet` registers a
-// passkey with the platform authenticator and returns the shared-deployer carrier that the claim
-// API rebuilds with its own payer:
+// does not ship the wallet SDK to visitors who never create a wallet.
 //
-//   keyIdBase64 — base64url WebAuthn credential id (not standard base64)
-//   signedTx    — standard base64 Transaction envelope XDR (not base64url)
-//   contractId  — the deterministic C… wallet address for that credential
-//
-// The carrier is not secret-bearing, but it is never logged or stored: it goes straight into the
-// deploy request and stays in memory for an idempotent retry. The created wallet stays in this
-// module's memory so the claim signature can be made with the same credential; nothing is
-// persisted in the browser, so a page reload cannot resume it.
+// createWallet uses the kit's supported custom `WebAuthn` client: startRegistration is unchanged;
+// the post-registration startAuthentication (Genesis binding proof) is gated behind an explicit
+// Confirm with passkey click so the authenticator runs from that user gesture. Deploy-time Bind
+// wallet remains a separate later step.
 
 export type PasskeyWalletErrorCode =
 	"unsupported" | "cancelled" | "not_configured" | "no_wallet" | "failed"
@@ -43,6 +44,11 @@ export interface CreatedPasskeyWallet {
 	signedTx: string
 }
 
+export interface CreatePasskeyWalletHooks {
+	/** Fired when createWallet parks for the Confirm with passkey click. */
+	onAwaitingCreationConfirm?: () => void
+}
+
 interface ActiveWallet {
 	kit: PasskeyKit
 	created: CreateWalletResult
@@ -55,6 +61,8 @@ interface ActiveWallet {
 
 /** In-memory only: the created passkey wallet for this page session. */
 let active: ActiveWallet | null = null
+/** Active gate for the in-flight createWallet (null when idle). */
+let creationGate: PasskeyWebAuthnGate | null = null
 
 /** passkey-kit error codes (WebAuthn range); kept numeric to avoid importing the SDK eagerly. */
 const WEBAUTHN_NOT_SUPPORTED = 3003
@@ -103,14 +111,45 @@ const toWalletError = (cause: unknown): PasskeyWalletError => {
 			"This browser cannot use a passkey.",
 		)
 	}
-	// Kit messages can mention RPC or contract details; the UI gets stable, payload-free copy.
 	return new PasskeyWalletError(
 		"failed",
 		"The passkey wallet could not be used on this device.",
 	)
 }
 
-export async function createPasskeyWallet(): Promise<CreatedPasskeyWallet> {
+export function getCreationAuthSnapshot(): CreationAuthSnapshot | null {
+	return creationGate?.snapshot() ?? null
+}
+
+export function subscribeCreationAuth(
+	listener: () => void,
+): (() => void) | null {
+	return creationGate?.subscribe(listener) ?? null
+}
+
+/**
+ * Call from the Confirm with passkey click handler. Starts the real
+ * `startAuthentication` in that gesture; continues the same createWallet.
+ */
+export async function confirmPasskeyCreationAuth(): Promise<
+	"completed" | "dismissed" | "failed" | "busy" | "idle"
+> {
+	if (!creationGate) return "idle"
+	return creationGate.confirmCreationAuthentication()
+}
+
+/** Abandon the parked creation authentication (and the in-flight createWallet). */
+export function abandonPasskeyCreationAuth(): void {
+	creationGate?.abandonCreationAuthentication(
+		Object.assign(new Error("Passkey confirmation was cancelled."), {
+			name: "NotAllowedError",
+		}),
+	)
+}
+
+export async function createPasskeyWallet(
+	hooks: CreatePasskeyWalletHooks = {},
+): Promise<CreatedPasskeyWallet> {
 	if (!hasWebAuthn()) {
 		throw new PasskeyWalletError(
 			"unsupported",
@@ -126,16 +165,36 @@ export async function createPasskeyWallet(): Promise<CreatedPasskeyWallet> {
 
 	let created: CreateWalletResult
 	let kit: PasskeyKit
+	let gate: PasskeyWebAuthnGate | null = null
 	try {
-		const { PasskeyKit } = await loadKitModule()
-		kit = new PasskeyKit(passkeyWalletConfig)
+		const [{ PasskeyKit }, simple] = await Promise.all([
+			loadKitModule(),
+			loadSimpleWebAuthn(),
+		])
+		gate = createPasskeyWebAuthnGate({
+			startRegistration: (args) => simple.startRegistration(args),
+			startAuthentication: (args) => simple.startAuthentication(args),
+			onAwaitingConfirm: hooks.onAwaitingCreationConfirm,
+			isCancellation,
+		})
+		creationGate = gate
+		gate.beginCreationGate()
+		kit = new PasskeyKit({
+			...passkeyWalletConfig,
+			WebAuthn: gate.client,
+		})
 		created = await kit.createWallet(
 			PASSKEY_WALLET_APP_NAME,
 			PASSKEY_WALLET_USER_NAME,
 		)
 	} catch (cause) {
 		active = null
+		gate?.endCreationGate()
+		creationGate = null
 		throw toWalletError(cause)
+	} finally {
+		gate?.endCreationGate()
+		if (creationGate === gate) creationGate = null
 	}
 
 	const { contractId, keyIdBase64, signedTx } = created
@@ -164,14 +223,15 @@ export async function createPasskeyWallet(): Promise<CreatedPasskeyWallet> {
 export function rememberPasskeyDeploy(deployTxHash: string): void {
 	if (active) {
 		active.deployTxHash = deployTxHash
-		// A new deploy confirmation invalidates any prior bind for this session wallet.
 		active.bound = false
 	}
 }
 
 /** Drops the in-memory wallet (token change or logout); never persisted anywhere. */
 export function forgetPasskeyWallet(): void {
+	abandonPasskeyCreationAuth()
 	active = null
+	creationGate = null
 }
 
 /**
@@ -198,7 +258,6 @@ export async function bindPasskeyWallet(): Promise<void> {
 	if (wallet.bound) return
 
 	try {
-		// First awaits are the binding ceremonies themselves — no prior kit/module load.
 		await wallet.kit.confirmWalletCreation(wallet.created, wallet.deployTxHash)
 		await wallet.kit.connectWallet({ keyId: wallet.keyIdBase64 })
 		wallet.bound = true
@@ -260,7 +319,6 @@ export async function signPasskeyClaimAuthEntries({
 			])
 
 		const entries = authEntries.map((entry) => decodeAuthEntryXdr(entry))
-		// Binding already ran from the Bind wallet click; sign only reuses that session.
 		const signer = new PasskeySigner(wallet.keyIdBase64)
 		const signed: string[] = []
 		for (const entry of entries) {

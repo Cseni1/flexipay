@@ -18,7 +18,9 @@ import {
 } from "../../api/claimClient"
 import {
 	PasskeyWalletError,
+	abandonPasskeyCreationAuth,
 	bindPasskeyWallet,
+	confirmPasskeyCreationAuth,
 	createPasskeyWallet,
 	forgetPasskeyWallet,
 	rememberPasskeyDeploy,
@@ -62,6 +64,8 @@ interface PreparedClaim {
 export interface PasskeyClaimController {
 	flow: ReturnType<typeof passkeyClaimReducer>
 	create: () => void
+	/** Confirm with passkey — real startAuthentication from this click (same createWallet). */
+	confirmCreation: () => void
 	bind: () => void
 	prepare: () => void
 	approve: () => void
@@ -97,6 +101,7 @@ export function usePasskeyClaim({
 	// Monotonic attempt id: a result that belongs to a cancelled attempt is ignored.
 	const attempt = useRef(0)
 	const creating = useRef(false)
+	const confirmingCreation = useRef(false)
 	const deploying = useRef(false)
 	const binding = useRef(false)
 	const preparing = useRef(false)
@@ -170,7 +175,12 @@ export function usePasskeyClaim({
 			if (creating.current) return
 			creating.current = true
 			try {
-				const wallet = await createPasskeyWallet()
+				const wallet = await createPasskeyWallet({
+					onAwaitingCreationConfirm: () => {
+						if (attempt.current !== attemptId) return
+						dispatch({ type: "creation_confirm_needed" })
+					},
+				})
 				if (attempt.current !== attemptId) return
 				const pending: DeployCarrier = {
 					key: `claim-passkey-deploy-${crypto.randomUUID()}`,
@@ -403,6 +413,40 @@ export function usePasskeyClaim({
 	}, [runCreate])
 
 	/**
+	 * Confirm with passkey click: starts the real startAuthentication in this gesture and
+	 * continues the same createWallet. Never calls createWallet / startRegistration again.
+	 */
+	const confirmCreation = useCallback(() => {
+		if (confirmingCreation.current) return
+		if (flow.phase !== "awaiting_creation_confirm") return
+		confirmingCreation.current = true
+		dispatch({ type: "creation_confirm_started" })
+		void confirmPasskeyCreationAuth()
+			.then((outcome) => {
+				if (outcome === "dismissed") {
+					dispatch({
+						type: "creation_confirm_dismissed",
+						message:
+							"Confirmation was dismissed. The same passkey is still available — tap Confirm with passkey again. No new credential is created.",
+					})
+					return
+				}
+				if (outcome === "failed") {
+					dispatch({
+						type: "creation_confirm_failed",
+						message:
+							"Confirmation failed. Tap Confirm with passkey to retry with the same registration. No new credential is created.",
+					})
+					return
+				}
+				// completed | busy | idle: createWallet continues or nothing to do
+			})
+			.finally(() => {
+				confirmingCreation.current = false
+			})
+	}, [flow.phase])
+
+	/**
 	 * Explicit Bind wallet click. Starts the binding ceremony on the click stack without an
 	 * intervening module-load await (kit already held from create). Never calls createWallet.
 	 */
@@ -524,11 +568,23 @@ export function usePasskeyClaim({
 		abort.current?.abort()
 		abort.current = null
 		creating.current = false
+		confirmingCreation.current = false
 		binding.current = false
+		abandonPasskeyCreationAuth()
 		carrier.current = null
 		prepared.current = null
 		dispatch({ type: "cancelled" })
 	}, [])
 
-	return { flow, create, bind, prepare, approve, checkRelease, retry, cancel }
+	return {
+		flow,
+		create,
+		confirmCreation,
+		bind,
+		prepare,
+		approve,
+		checkRelease,
+		retry,
+		cancel,
+	}
 }

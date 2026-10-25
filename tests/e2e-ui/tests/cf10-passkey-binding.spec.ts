@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 
-// CF10: create vs Bind wallet split (WebAuthn binding focus). Fixture PASS is not a real
-// authenticator ceremony and not M2 acceptance.
+// CF10: create Confirm vs Bind wallet as separate steps. Wrapper-control proof lives in
+// cf10-passkey-webauthn-gate.spec.ts. Fixture PASS here is not a real authenticator ceremony.
 
 const CONTRACT_ID = `C${"A".repeat(55)}`
 const KEY_ID = "pQ7-_credential-id_base64url=="
@@ -30,14 +30,19 @@ const claimFixture = () => ({
 
 interface StubState {
 	creates: number
+	confirms: number
 	binds: number
 	signs: number
+	confirm: "ok" | "cancel" | "error"
 	bind: "ok" | "cancel" | "error" | "hang"
 	bindDelay: number
+	confirmDelay: number
 	contractId: string
 	keyIdBase64: string
 	signedTx: string
 	deployHashes: string[]
+	createContinue: null | (() => void)
+	createReject: null | ((err: Error) => void)
 }
 
 type StubWindow = { __passkeyBindTest?: StubState }
@@ -51,9 +56,14 @@ export class PasskeyWalletError extends Error {
 	}
 }
 
-export async function createPasskeyWallet() {
+export async function createPasskeyWallet(hooks = {}) {
 	const state = window.__passkeyBindTest
 	state.creates += 1
+	hooks.onAwaitingCreationConfirm?.()
+	await new Promise((resolve, reject) => {
+		state.createContinue = () => resolve()
+		state.createReject = (err) => reject(err)
+	})
 	return {
 		contractId: state.contractId,
 		keyIdBase64: state.keyIdBase64,
@@ -61,11 +71,36 @@ export async function createPasskeyWallet() {
 	}
 }
 
+export async function confirmPasskeyCreationAuth() {
+	const state = window.__passkeyBindTest
+	state.confirms += 1
+	if (state.confirmDelay > 0)
+		await new Promise((resolve) => setTimeout(resolve, state.confirmDelay))
+	if (state.confirm === "cancel") return "dismissed"
+	if (state.confirm === "error") return "failed"
+	state.createContinue?.()
+	state.createContinue = null
+	return "completed"
+}
+
+export function abandonPasskeyCreationAuth() {
+	const state = window.__passkeyBindTest
+	if (state?.createReject) {
+		const err = new Error("cancelled")
+		err.name = "NotAllowedError"
+		state.createReject(err)
+		state.createContinue = null
+		state.createReject = null
+	}
+}
+
 export function rememberPasskeyDeploy(hash) {
 	window.__passkeyBindTest.deployHashes.push(hash)
 }
 
-export function forgetPasskeyWallet() {}
+export function forgetPasskeyWallet() {
+	abandonPasskeyCreationAuth()
+}
 
 export async function bindPasskeyWallet() {
 	const state = window.__passkeyBindTest
@@ -95,14 +130,19 @@ async function installStub(
 ): Promise<{ state: () => Promise<StubState> }> {
 	const initial: StubState = {
 		creates: 0,
+		confirms: 0,
 		binds: 0,
 		signs: 0,
+		confirm: "ok",
 		bind: "ok",
 		bindDelay: 0,
+		confirmDelay: 0,
 		contractId: CONTRACT_ID,
 		keyIdBase64: KEY_ID,
 		signedTx: SIGNED_TX,
 		deployHashes: [],
+		createContinue: null,
+		createReject: null,
 		...overrides,
 	}
 	await page.addInitScript((state) => {
@@ -177,10 +217,19 @@ const openPasskey = async (page: Page) => {
 	await expect(page.getByTestId("passkey-panel")).toBeVisible()
 }
 
+const createAndConfirm = async (page: Page) => {
+	await page.getByTestId("passkey-create").click()
+	await expect(page.getByTestId("passkey-confirm-creation")).toBeVisible()
+	await expect(page.getByTestId("passkey-bind")).toHaveCount(0)
+	await page.getByTestId("passkey-confirm-creation").click()
+	await expect(page.getByTestId("passkey-deployed")).toBeVisible()
+	await expect(page.getByTestId("passkey-bind")).toBeEnabled()
+}
+
 test.use({ viewport: { width: 390, height: 844 } })
 
 test.describe("CF10 passkey binding focus", () => {
-	test("create success does not auto-bind; Bind wallet starts authentication", async ({
+	test("create parks for Confirm; Confirm then Bind are separate steps", async ({
 		page,
 	}) => {
 		const stub = await installStub(page)
@@ -188,11 +237,18 @@ test.describe("CF10 passkey binding focus", () => {
 		await openPasskey(page)
 		await page.getByTestId("passkey-create").click()
 
+		await expect(page.getByTestId("passkey-creation-confirm-needed")).toBeVisible()
+		await expect(page.getByTestId("passkey-confirm-creation")).toBeEnabled()
+		await expect(page.getByTestId("passkey-deployed")).toHaveCount(0)
+		await expect(page.getByTestId("passkey-bind")).toHaveCount(0)
+		expect((await stub.state()).creates).toBe(1)
+		expect((await stub.state()).confirms).toBe(0)
+		expect((await stub.state()).binds).toBe(0)
+
+		await page.getByTestId("passkey-confirm-creation").click()
 		await expect(page.getByTestId("passkey-deployed")).toBeVisible()
 		await expect(page.getByTestId("passkey-bind")).toBeEnabled()
-		await expect(page.getByTestId("passkey-bound")).toHaveCount(0)
-		await expect(page.getByTestId("passkey-prepare")).toHaveCount(0)
-		await expect(page.getByTestId("passkey-approve")).toHaveCount(0)
+		expect((await stub.state()).confirms).toBe(1)
 		expect((await stub.state()).creates).toBe(1)
 		expect((await stub.state()).binds).toBe(0)
 
@@ -200,59 +256,80 @@ test.describe("CF10 passkey binding focus", () => {
 		await expect(page.getByTestId("passkey-bound")).toBeVisible()
 		expect((await stub.state()).binds).toBe(1)
 		expect((await stub.state()).creates).toBe(1)
+		expect((await stub.state()).confirms).toBe(1)
 	})
 
-	test("bind cancel then retry reuses the credential; create stays 1", async ({
+	test("Confirm dismiss then retry continues the same create (creates stay 1)", async ({
 		page,
 	}) => {
-		const stub = await installStub(page, { bind: "cancel" })
+		const stub = await installStub(page, { confirm: "cancel" })
 		await mockClaim(page)
 		await openPasskey(page)
 		await page.getByTestId("passkey-create").click()
-		await expect(page.getByTestId("passkey-bind")).toBeVisible()
-		await page.getByTestId("passkey-bind").click()
-
-		await expect(page.getByTestId("passkey-bind-error")).toContainText(
-			/dismissed|same passkey/i,
+		await page.getByTestId("passkey-confirm-creation").click()
+		await expect(page.getByTestId("passkey-creation-confirm-note")).toContainText(
+			/same passkey|dismissed/i,
 		)
 		expect((await stub.state()).creates).toBe(1)
-		expect((await stub.state()).binds).toBe(1)
+		expect((await stub.state()).confirms).toBe(1)
 
 		await page.evaluate(() => {
 			const state = (window as unknown as StubWindow).__passkeyBindTest
-			if (state) state.bind = "ok"
+			if (state) state.confirm = "ok"
 		})
-		await page.getByTestId("passkey-bind").click()
-		await expect(page.getByTestId("passkey-bound")).toBeVisible()
+		await page.getByTestId("passkey-confirm-creation").click()
+		await expect(page.getByTestId("passkey-deployed")).toBeVisible()
 		expect((await stub.state()).creates).toBe(1)
-		expect((await stub.state()).binds).toBe(2)
+		expect((await stub.state()).confirms).toBe(2)
 	})
 
-	test("bind error retry never creates a new credential", async ({ page }) => {
-		const stub = await installStub(page, { bind: "error" })
+	test("Confirm get-error retry never starts a second create", async ({
+		page,
+	}) => {
+		const stub = await installStub(page, { confirm: "error" })
 		await mockClaim(page)
 		await openPasskey(page)
 		await page.getByTestId("passkey-create").click()
-		await page.getByTestId("passkey-bind").click()
-		await expect(page.getByTestId("passkey-bind-error")).toBeVisible()
+		await page.getByTestId("passkey-confirm-creation").click()
+		await expect(page.getByTestId("passkey-creation-confirm-note")).toContainText(
+			/retry/i,
+		)
 		expect((await stub.state()).creates).toBe(1)
 
 		await page.evaluate(() => {
 			const state = (window as unknown as StubWindow).__passkeyBindTest
-			if (state) state.bind = "ok"
+			if (state) state.confirm = "ok"
 		})
-		await page.getByTestId("passkey-bind").click()
-		await expect(page.getByTestId("passkey-bound")).toBeVisible()
+		await page.getByTestId("passkey-confirm-creation").click()
+		await expect(page.getByTestId("passkey-deployed")).toBeVisible()
 		expect((await stub.state()).creates).toBe(1)
-		expect((await stub.state()).binds).toBe(2)
+		expect((await stub.state()).confirms).toBe(2)
+	})
+
+	test("double Confirm click runs a single confirmation", async ({ page }) => {
+		const stub = await installStub(page, { confirmDelay: 200 })
+		await mockClaim(page)
+		await openPasskey(page)
+		await page.getByTestId("passkey-create").click()
+		await expect(page.getByTestId("passkey-confirm-creation")).toBeEnabled()
+
+		await page.evaluate(() => {
+			const button = document.querySelector<HTMLButtonElement>(
+				'[data-testid="passkey-confirm-creation"]',
+			)
+			button?.click()
+			button?.click()
+		})
+		await expect(page.getByTestId("passkey-deployed")).toBeVisible()
+		expect((await stub.state()).confirms).toBe(1)
+		expect((await stub.state()).creates).toBe(1)
 	})
 
 	test("double Bind click runs a single binding ceremony", async ({ page }) => {
 		const stub = await installStub(page, { bindDelay: 200 })
 		await mockClaim(page)
 		await openPasskey(page)
-		await page.getByTestId("passkey-create").click()
-		await expect(page.getByTestId("passkey-bind")).toBeEnabled()
+		await createAndConfirm(page)
 
 		await page.evaluate(() => {
 			const button = document.querySelector<HTMLButtonElement>(
@@ -266,36 +343,35 @@ test.describe("CF10 passkey binding focus", () => {
 		expect((await stub.state()).creates).toBe(1)
 	})
 
-	test("claim sign stays closed until bind succeeds, then prepare/approve work", async ({
+	test("claim sign stays closed until bind succeeds after Confirm", async ({
 		page,
 	}) => {
 		const stub = await installStub(page)
 		const mock = await mockClaim(page)
 		await openPasskey(page)
-		await page.getByTestId("passkey-create").click()
-		await expect(page.getByTestId("passkey-deployed")).toBeVisible()
+		await createAndConfirm(page)
 		await expect(page.getByTestId("passkey-prepare")).toHaveCount(0)
-		await expect(page.getByTestId("passkey-approve")).toHaveCount(0)
 		expect(mock.prepareCount()).toBe(0)
 
 		await page.getByTestId("passkey-bind").click()
 		await expect(page.getByTestId("passkey-bound")).toBeVisible()
-		await expect(page.getByTestId("passkey-prepare")).toBeEnabled()
-
 		await page.getByTestId("passkey-prepare").click()
 		await expect(page.getByTestId("passkey-approve")).toBeEnabled()
 		await page.getByTestId("passkey-approve").click()
 		await expect(page.getByTestId("passkey-verified")).toBeVisible()
 		expect((await stub.state()).creates).toBe(1)
+		expect((await stub.state()).confirms).toBe(1)
 		expect((await stub.state()).binds).toBe(1)
 		expect((await stub.state()).signs).toBe(1)
 	})
 
-	test("390 px viewport stays inside width after bind", async ({ page }) => {
+	test("390 px viewport stays inside width after Confirm and Bind", async ({
+		page,
+	}) => {
 		await installStub(page)
 		await mockClaim(page)
 		await openPasskey(page)
-		await page.getByTestId("passkey-create").click()
+		await createAndConfirm(page)
 		await page.getByTestId("passkey-bind").click()
 		await expect(page.getByTestId("passkey-bound")).toBeVisible()
 		expect(

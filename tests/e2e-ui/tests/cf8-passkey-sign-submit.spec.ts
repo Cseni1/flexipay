@@ -93,6 +93,12 @@ export async function bindPasskeyWallet() {
 	if (state.bind === "hang") return new Promise(() => {})
 }
 
+export async function confirmPasskeyCreationAuth() {
+	return "idle"
+}
+
+export function abandonPasskeyCreationAuth() {}
+
 export async function signPasskeyClaimAuthEntries({ authEntries, signatureExpirationLedger }) {
 	const state = window.__passkeySignTest
 	state.signs += 1

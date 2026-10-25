@@ -40,6 +40,10 @@ const scenarios = [
 		...accepted(),
 		phase: "creating_wallet",
 	}),
+	scenario("awaiting_creation_confirm", {
+		...accepted(),
+		phase: "awaiting_creation_confirm",
+	}),
 	scenario("deploying", {
 		...accepted(),
 		phase: "deploying",
