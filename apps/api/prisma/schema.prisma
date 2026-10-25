@@ -163,6 +163,17 @@ model Leg {
   lockTxRef   String?
   /// Settle release or refund transaction hash (CCR-12).
   releaseTxRef String?
+  /// CCR-23: confirmed vault deposit tx hash (settle only). Null until deposit confirmed.
+  fundTxRef String?
+  /// CCR-23: op index of the decoded matching deposit invoke (never assumed 0).
+  fundOpIndex Int?
+  /// CCR-23: exact deposited minor units (integer string).
+  fundAmountValue String?
+  fundAmountCurrency String?
+  /// CCR-23: stellar | mock
+  fundNetwork String?
+  /// CCR-23: vault contract / mock vault id
+  fundVaultId String?
   errorCode   String?
   errorMessage String?
   reversalOf  String?
@@ -171,6 +182,8 @@ model Leg {
   updatedAt   DateTime @updatedAt
 
   @@unique([paymentId, position])
+  /// Partial unique for deposit identity is in migration SQL (WHERE fundTxRef IS NOT NULL).
+  @@index([fundTxRef])
 }
 
 model Batch {

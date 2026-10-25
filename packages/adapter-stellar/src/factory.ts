@@ -48,6 +48,9 @@ export async function createStellarSettlementAdapter(
 	const adapter = new StellarSettlementAdapter({
 		vault,
 		wallets,
+		vaultId: stellarEnv.payoutVaultId,
+		rpcUrl: stellarEnv.rpcUrl,
+		networkPassphrase: stellarEnv.networkPassphrase,
 		assetCurrency: options.assetCurrency,
 	});
 	return { adapter, wallets, env: stellarEnv };

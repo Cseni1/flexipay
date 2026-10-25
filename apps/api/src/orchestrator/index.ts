@@ -17,9 +17,11 @@ export {
 	expireClaimIfDue,
 } from "./claim-flow.ts";
 export {
+	advanceLockAttemptAfterTerminalPayout,
 	cancelPayment,
 	ClaimReleaseRefusedError,
 	completeClaimSettle,
+	persistConfirmedFundDeposit,
 	recordPasskeyClaimRelease,
 	FeeDriftError,
 	fundAndRun,

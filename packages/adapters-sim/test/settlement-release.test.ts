@@ -33,7 +33,7 @@ describe("mock settlement: claim", () => {
 
 		expect(released.received).toEqual(usdc("100000000"))
 		expect(released.network).toBe("mock")
-		expect(released.txRef).toBe("mock-tx-3")
+		expect(released.txRef).toMatch(/^mock-tx-[0-9a-f]+-3$/)
 
 		const status = await h.adapter.status(locked.payoutId)
 		expect(status).toEqual({
@@ -173,10 +173,9 @@ describe("mock settlement: refund", () => {
 		const locked = await h.adapter.lock(lockRequest())
 		h.clock.set(IN_HOUR)
 
-		expect(await h.adapter.refund(locked.payoutId)).toEqual({
-			network: "mock",
-			txRef: "mock-tx-3",
-		})
+		const refunded = await h.adapter.refund(locked.payoutId)
+		expect(refunded.network).toBe("mock")
+		expect(refunded.txRef).toMatch(/^mock-tx-[0-9a-f]+-3$/)
 		expect((await h.adapter.status(locked.payoutId)).state).toBe("refunded")
 
 		// The refunded balance is disposable again: a fresh attempt can lock the same amount.

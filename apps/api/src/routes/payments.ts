@@ -1,3 +1,4 @@
+import { VaultTxFeeError } from "@flexipay/adapter-stellar";
 import {
 	CreatePaymentRequestSchema,
 	PaymentDetailSchema,
@@ -122,6 +123,17 @@ export const paymentRoutes: RouteDef<any, any>[] = [
 				const msg = e instanceof Error ? e.message : "fund failed";
 				// CCR-15: the drifted lock was failed and refunded; the payment is never paid.
 				if (e instanceof FeeDriftError) throw new ApiError(409, "fee_drift", msg);
+				// CCR-23: preserve VaultTxFeeError name + reason (API shape finalized in review).
+				if (e instanceof VaultTxFeeError) {
+					throw new ApiError(409, e.reason, e.message, {
+						name: e.name,
+						reason: e.reason,
+						inclusionFee: e.inclusionFee?.toString(),
+						resourceFee: e.resourceFee?.toString(),
+						totalFee: e.totalFee?.toString(),
+						ceiling: e.ceiling === null ? null : e.ceiling?.toString(),
+					});
+				}
 				throw new ApiError(409, "invalid_state", msg);
 			}
 			return loadPaymentApi(ctx.db, payment.id, org.id);

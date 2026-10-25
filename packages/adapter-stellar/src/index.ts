@@ -21,6 +21,11 @@ export type { VaultTxFeeRejectReason, SorobanFeeBreakdown } from "./vault-tx-fee
 
 export { StellarSettlementAdapter } from "./settlement.ts";
 export type { StellarSettlementOptions } from "./settlement.ts";
+export {
+	listVaultDepositInvokes,
+	matchSingleVaultDeposit,
+} from "./vault-deposit-decode.ts";
+export type { DecodedVaultDepositInvoke } from "./vault-deposit-decode.ts";
 
 export {
 	CustodialDemoWalletProvider,

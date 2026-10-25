@@ -214,12 +214,46 @@ export interface SettlementStatus {
   net: Money;
 }
 
+/** CCR-23: result of verifying exactly one matching vault deposit in a fund tx. */
+export interface ConfirmedFundDeposit {
+  fundTxRef: string;
+  fundOpIndex: number;
+  fundAmountValue: string;
+  fundAmountCurrency: string;
+  fundNetwork: SettlementNetwork;
+  fundVaultId: string;
+}
+
+export type FundDepositVerifyCode = "not_found" | "ambiguous";
+
+/** CCR-23: zero or multiple matching vault deposits in a transaction. */
+export class FundDepositVerifyError extends Error {
+  readonly code: FundDepositVerifyCode;
+
+  constructor(code: FundDepositVerifyCode, message: string) {
+    super(message);
+    this.name = "FundDepositVerifyError";
+    this.code = code;
+  }
+}
+
 export interface SettlementAdapter {
   readonly network: SettlementNetwork;
+  /** Vault contract id (C…) or mock vault id used for fund identity (CCR-23). */
+  readonly vaultId: string;
   /** The vault's fixed fee in basis points, read from the contract (ARCHITECTURE §8). */
   feeBps(): Promise<number>;
   /** Moves the settlement asset into the payer's vault balance. */
   fundVault(payer: string, amount: Money): Promise<SettlementRef>;
+  /**
+   * CCR-23: decode `txRef` and require exactly one matching successful vault deposit
+   * for this adapter's vault, payer, and amount. `fundOpIndex` comes from decode.
+   */
+  verifyFundDeposit(input: {
+    txRef: string;
+    payer: string;
+    amount: Money;
+  }): Promise<ConfirmedFundDeposit>;
   lock(req: LockRequest): Promise<LockResult>;
   release(req: ReleaseRequest): Promise<ReleaseResult>;
   /** Returns a pending payout to the payer: cancel before expiry, refund after it. */

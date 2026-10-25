@@ -38,16 +38,15 @@ describe("mock settlement: instance isolation", () => {
 		const a = harness()
 		const b = harness()
 
-		expect(await a.adapter.fundVault(PAYER, usdc("1000000000"))).toEqual({
-			network: "mock",
-			txRef: "mock-tx-1",
-		})
-		expect(await b.adapter.fundVault(OTHER_PAYER, usdc("1000000000"))).toEqual({
-			network: "mock",
-			txRef: "mock-tx-1",
-		})
+		const fundedA = await a.adapter.fundVault(PAYER, usdc("1000000000"))
+		const fundedB = await b.adapter.fundVault(OTHER_PAYER, usdc("1000000000"))
+		expect(fundedA.network).toBe("mock")
+		expect(fundedB.network).toBe("mock")
+		expect(fundedA.txRef).toMatch(/^mock-tx-[0-9a-f]+-1$/)
+		expect(fundedB.txRef).toMatch(/^mock-tx-[0-9a-f]+-1$/)
+		expect(fundedA.txRef).not.toBe(fundedB.txRef)
 		const locked = await a.adapter.lock(lockRequest())
-		expect(locked.txRef).toBe("mock-tx-2")
+		expect(locked.txRef).toMatch(/^mock-tx-[0-9a-f]+-2$/)
 	})
 })
 

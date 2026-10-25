@@ -30,7 +30,8 @@ describe("mock settlement: funding and balances", () => {
 	it("moves the funded amount into the payer's vault balance", async () => {
 		const funded = await h.adapter.fundVault(PAYER, usdc("101000000"))
 
-		expect(funded).toEqual({ network: "mock", txRef: "mock-tx-1" })
+		expect(funded.network).toBe("mock")
+		expect(funded.txRef).toMatch(/^mock-tx-[0-9a-f]+-1$/)
 		const result = await h.adapter.lock(lockRequest())
 		expect(result.locked).toEqual(usdc("101000000"))
 	})
