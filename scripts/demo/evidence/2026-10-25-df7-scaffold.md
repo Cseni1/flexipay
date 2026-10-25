@@ -94,8 +94,9 @@ test of the decision function, not a live run.
 
 ### Classic-payment stage (implemented, not executed)
 
-`--pay` reuses `submitClassicPaymentWithMemo`; there is no second payment
-implementation. Before any submit it requires:
+`--pay` reuses the adapter's split helpers `buildAndSignClassicPaymentWithMemo`
+and `submitSignedClassicPayment`; there is no second payment implementation.
+Before any submit it requires:
 
 1. `FP_DF7_ALLOW_NETWORK=1`;
 2. `FP_DF7_SUBMIT_PAYMENT=1`; and
@@ -119,22 +120,40 @@ publishes no asset, the CLI prints `asset-source` = requested session asset
 instead of claiming anchor-published proof.
 
 The submission state file (`/tmp/fp-df7-private/payment-state.json`, `0600`) is
-written before submit with status `submitting`, then rewritten with the returned
-hash and status `submitted` **before any polling**. A second `--pay` refuses
-while state exists. An uncertain submit is recorded as `uncertain` and prints
-`DO NOT RETRY`. A retry is never automated: even `NOT_FOUND` reconciliation
-needs an operator decision and explicit state handling before a new attempt, and
-reconciliation itself never resets or resends. `--reconcile` performs a bounded
-read-only Horizon scan (latest 20 recipient transactions, operations fetched
-only for memo-carrying records) and either retains a single matching hash,
-reports `NOT_FOUND`, `MISMATCH`, `AMBIGUOUS` or `NOT_VERIFIED`. It never
-submits. `--reconcile` requires only `FP_DF7_ALLOW_NETWORK=1` (read-only);
-without it the CLI prints that one blocker and makes no request.
+written **before submit** with status `prepared`, the pre-submit hash, the exact
+base64 signed envelope, network passphrase, finite time bounds and the payment
+expectation. The write is atomic (same-directory temp file, fsync, rename) and
+the persisted bytes are restored and hash-checked before the submit call. A
+persistence failure aborts before submission. After submit the same file is
+rewritten with status `submitted`; the hash is retained even if that second
+write fails. A second `--pay` refuses while state exists. An uncertain submit is
+recorded as `uncertain` and prints `DO NOT RETRY`.
+
+A retry is never automated. `--reconcile` looks up the retained hash directly
+(`GET /transactions/{hash}`) and reports `RECONCILED`, `NOT_FOUND`, `MISMATCH`,
+`FAILED`, `AMBIGUOUS` or `NOT_VERIFIED`; it never submits and never accepts a
+different memo-carrying payment. `NOT_FOUND` requires a human decision.
+`--rebroadcast` is the only resend path: it requires the three live gates plus
+`FP_DF7_REBROADCAST_CONFIRM` equal to the retained hash, and submits the
+identical stored envelope only while it is inside its original time bounds. An
+expired or ambiguous state blocks a new payment pending a human decision and is
+never cleared automatically. `--reconcile` requires only
+`FP_DF7_ALLOW_NETWORK=1` (read-only); without it the CLI prints that one blocker
+and makes no request.
+
+#### Dependency on PR #68
+
+PR #68 (`7156e01`, split build/sign and submit helpers) merged to `main` as
+`78f0cf6` while this change was in progress. This branch was rebased onto that
+main and consumes the split helpers rather than copying them.
 
 ### Tests and typecheck
 
 - `npx vitest run tests/e2e/df7-scaffold.test.ts` — **25 tests passed**.
-- Targeted `tsc --noEmit` over the new script, helper and test — **passes**.
+- `npx vitest run tests/e2e/df7-pre-submit.test.ts` — **9 tests passed**:
+  persistence failure blocks submit, timeout-after-send recovery by stored hash,
+  restored hash/byte identity, legacy-state rejection, and expired bounds.
+- Targeted `tsc --noEmit` over the script, helper and both tests — **passes**.
 - Repository-wide `tsc -p scripts/demo/tsconfig.json` currently reports the
   pre-existing H1 driver error on `main` (`settle.amountIn`); PR #66 contains
   that one-line fix. It is not duplicated here.

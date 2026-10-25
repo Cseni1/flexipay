@@ -7,10 +7,10 @@
  * - reports the lifecycle stages and classifies success/failure/pending;
  * - can perform read-only anchor readiness/polling and start a hosted session
  *   behind network gates;
- * - can submit the classic memo payment exactly once behind network + submit +
- *   recipient-window gates, retaining the hash before any polling;
- * - reconciles an uncertain submission against bounded Horizon reads without a
- *   second submit.
+ * - can build/sign one classic memo payment, atomically persist its exact hash,
+ *   XDR, network, time bounds and expectation, then submit it behind network +
+ *   submit + recipient-window gates;
+ * - reconciles only the retained hash against Horizon without a second submit;
  *
  * The full hosted URL is for browser navigation only. It is written to a 0600
  * private file; logs and evidence receive the sanitised origin+pathname.
@@ -23,13 +23,21 @@ import { relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import {
 	AnchorClientError,
+	buildAndSignClassicPaymentWithMemo,
 	parseEnvFile,
-	submitClassicPaymentWithMemo,
+	submitSignedClassicPayment,
 	type AnchorPaymentExpectation,
 } from "../../packages/adapter-stellar/src/index.ts"
 import {
 	DF7_AMOUNT,
+	Df7PreSubmitError,
 	checkDf7PaymentGates,
+	checkDf7RebroadcastGates,
+	checkRebroadcastWindow,
+	encodeSignedPayment,
+	persistPreparedThenSubmit,
+	reconcileStoredHash,
+	restoreSignedPayment,
 	checkDf7Prerequisites,
 	classifyDf7Lifecycle,
 	createDf7AnchorClient,
@@ -38,7 +46,6 @@ import {
 	parseDf7Amount,
 	planDf7Stages,
 	readDf7PaymentState,
-	reconcileAnchorPayment,
 	saveDf7PaymentState,
 	saveHostedUrlForBrowser,
 	validateAnchorPayment,
@@ -263,68 +270,61 @@ function embeddedRecords(body: Record<string, unknown>): unknown[] {
 	return embedded.records
 }
 
+function operationRows(raw: unknown): HorizonPaymentOperation[] {
+	if (typeof raw !== "object" || raw === null) return []
+	const value = raw as Record<string, unknown>
+	return [
+		{
+			type: typeof value.type === "string" ? value.type : undefined,
+			destination:
+				typeof value.destination === "string" ? value.destination : undefined,
+			asset_type:
+				typeof value.asset_type === "string" ? value.asset_type : undefined,
+			asset_code:
+				typeof value.asset_code === "string" ? value.asset_code : undefined,
+			asset_issuer:
+				typeof value.asset_issuer === "string" ? value.asset_issuer : undefined,
+			amount: typeof value.amount === "string" ? value.amount : undefined,
+		},
+	]
+}
+
 /**
- * Bounded reconciliation read: the latest `limit` transactions for the recipient,
- * with operations fetched only for memo-carrying records (at most 5). Read-only;
- * no signature and no submit.
+ * Look up the exact hash retained before submission. A 404 is returned as
+ * undefined; other Horizon faults throw. Read-only; no submit is possible here.
  */
-async function fetchRecentTransactions(
-	account: string,
-	memo: string,
-	memoType: string,
-	limit = 20,
-): Promise<HorizonTransactionRecord[]> {
+async function fetchTransactionByHash(
+	hash: string,
+): Promise<HorizonTransactionRecord | undefined> {
 	const base = HORIZON.replace(/\/+$/, "")
-	const list = await horizonJson(
-		`${base}/accounts/${encodeURIComponent(account)}/transactions?order=desc&limit=${limit}`,
-	)
-	const rows: HorizonTransactionRecord[] = []
-	let opFetches = 0
-	for (const raw of embeddedRecords(list).slice(0, limit)) {
-		if (typeof raw !== "object" || raw === null) continue
-		const tx = raw as Record<string, unknown>
-		const row: HorizonTransactionRecord = {
-			hash: typeof tx.hash === "string" ? tx.hash : undefined,
-			successful:
-				typeof tx.successful === "boolean" ? tx.successful : undefined,
-			memo: typeof tx.memo === "string" ? tx.memo : undefined,
-			memo_type: typeof tx.memo_type === "string" ? tx.memo_type : undefined,
-			created_at: typeof tx.created_at === "string" ? tx.created_at : undefined,
-		}
-		const candidate =
-			row.hash &&
-			row.memo === memo &&
-			(row.memo_type ?? "text").toLowerCase() === memoType
-		if (candidate && opFetches < 5) {
-			opFetches += 1
-			const ops = await horizonJson(
-				`${base}/transactions/${row.hash}/operations?order=asc&limit=20`,
-			)
-			row.operations = embeddedRecords(ops).flatMap((op) => {
-				if (typeof op !== "object" || op === null) return []
-				const value = op as Record<string, unknown>
-				const out: HorizonPaymentOperation = {
-					type: typeof value.type === "string" ? value.type : undefined,
-					destination:
-						typeof value.destination === "string"
-							? value.destination
-							: undefined,
-					asset_type:
-						typeof value.asset_type === "string" ? value.asset_type : undefined,
-					asset_code:
-						typeof value.asset_code === "string" ? value.asset_code : undefined,
-					asset_issuer:
-						typeof value.asset_issuer === "string"
-							? value.asset_issuer
-							: undefined,
-					amount: typeof value.amount === "string" ? value.amount : undefined,
-				}
-				return [out]
-			})
-		}
-		rows.push(row)
+	const res = await fetch(`${base}/transactions/${encodeURIComponent(hash)}`, {
+		headers: { Accept: "application/json" },
+		signal: AbortSignal.timeout(15_000),
+	})
+	if (res.status === 404) return undefined
+	const body = (await res.json().catch(() => ({}))) as Record<string, unknown>
+	if (!res.ok) {
+		throw new Error(`Horizon ${res.status} for /transactions/{hash}`)
 	}
-	return rows
+	if (body.hash !== hash) {
+		throw new Error("Horizon lookup returned a different transaction hash")
+	}
+	const row: HorizonTransactionRecord = {
+		hash,
+		successful:
+			typeof body.successful === "boolean" ? body.successful : undefined,
+		memo: typeof body.memo === "string" ? body.memo : undefined,
+		memo_type: typeof body.memo_type === "string" ? body.memo_type : undefined,
+		created_at:
+			typeof body.created_at === "string" ? body.created_at : undefined,
+	}
+	if (row.successful) {
+		const ops = await horizonJson(
+			`${base}/transactions/${encodeURIComponent(hash)}/operations?order=asc&limit=20`,
+		)
+		row.operations = embeddedRecords(ops).flatMap(operationRows)
+	}
+	return row
 }
 
 function proofFromArgs(): {
@@ -466,13 +466,20 @@ async function payMode(): Promise<never> {
 		process.exit(2)
 	}
 	if (existing) {
+		const window = checkRebroadcastWindow(existing)
 		line(
 			"blocked",
-			`existing payment state ${df7PaymentStatePath()} status=${existing.status} hash=${existing.anchorPaymentHash ?? "(none)"}`,
+			`existing payment state ${df7PaymentStatePath()} status=${existing.status} hash=${existing.anchorPaymentHash}`,
+		)
+		line(
+			"window",
+			window.ok
+				? "stored signed payment is still inside its time bounds"
+				: window.detail,
 		)
 		line(
 			"note",
-			"run --reconcile to recover or confirm the hash; this script never submits a second payment",
+			"a new payment is blocked pending a human decision; run --reconcile first. This script never automatically resends.",
 		)
 		line("result", "BLOCKED")
 		process.exit(2)
@@ -563,46 +570,119 @@ async function payMode(): Promise<never> {
 				: "anchor record published no asset; validated the requested session asset",
 		)
 
-		const startedAt = new Date().toISOString()
-		const intent: Df7PaymentState = {
-			version: 1,
-			anchorTransactionId: tx.id,
-			anchorPaymentHash: null,
-			status: "submitting",
-			expectation,
-			startedAt,
-			updatedAt: startedAt,
-		}
+		let built
 		try {
-			saveDf7PaymentState(intent)
-		} catch (error) {
-			line(
-				"error",
-				`could not retain pre-submit intent: ${error instanceof Error ? error.message : String(error)}`,
-			)
-			line("result", "BLOCKED")
-			line("next", "fix the private state path before submitting")
-			process.exit(2)
-		}
-		line("state", `intent saved ${df7PaymentStatePath()}`)
-
-		let submitted: { txHash: string }
-		try {
-			submitted = await submitClassicPaymentWithMemo({
+			built = await buildAndSignClassicPaymentWithMemo({
 				source: pre.recipient,
 				expectation,
 				networkPassphrase: pre.env.networkPassphrase,
+				horizonUrl: HORIZON,
 			})
 		} catch (error) {
+			line(
+				"error",
+				`could not build/sign the classic payment: ${error instanceof Error ? error.message : String(error)}`,
+			)
+			line("result", "FAILURE")
+			line("next", "no payment was signed or submitted")
+			process.exit(1)
+		}
+
+		let encoded: ReturnType<typeof encodeSignedPayment>
+		try {
+			encoded = encodeSignedPayment(built, pre.env.networkPassphrase)
+		} catch (error) {
+			line(
+				"error",
+				`could not serialise/restore the signed payment: ${error instanceof Error ? error.message : String(error)}`,
+			)
+			line("result", "BLOCKED")
+			line(
+				"next",
+				"no payment was submitted; do not retry until the envelope is verified",
+			)
+			process.exit(2)
+		}
+
+		const startedAt = new Date().toISOString()
+		const prepared: Df7PaymentState = {
+			version: 2,
+			anchorTransactionId: tx.id,
+			anchorPaymentHash: encoded.txHash,
+			status: "prepared",
+			expectation,
+			networkPassphrase: pre.env.networkPassphrase,
+			signedTransactionXdr: encoded.signedTransactionXdr,
+			timeBounds: encoded.timeBounds,
+			startedAt,
+			updatedAt: startedAt,
+		}
+		line("payment", `signed hash ${encoded.txHash} (not submitted)`)
+		line(
+			"bounds",
+			`${new Date(encoded.timeBounds.minTime * 1000).toISOString()} .. ${new Date(encoded.timeBounds.maxTime * 1000).toISOString()}`,
+		)
+
+		let submittedHash: string
+		try {
+			const result = await persistPreparedThenSubmit({
+				state: prepared,
+				submit: async (restored, persisted) => {
+					const submitted = await submitSignedClassicPayment({
+						horizonUrl: HORIZON,
+						signedTx: restored,
+						expectedTxHash: persisted.anchorPaymentHash,
+						destination: persisted.expectation.destination,
+						amount: persisted.expectation.amount,
+						asset: {
+							code: persisted.expectation.asset.code,
+							issuer: persisted.expectation.asset.issuer,
+							networkPassphrase: persisted.networkPassphrase,
+						},
+					})
+					return { txHash: submitted.txHash }
+				},
+			})
+			submittedHash = result.submittedHash
+			line("state", `signed payment retained at ${result.path} (0600)`)
+		} catch (error) {
+			if (error instanceof Df7PreSubmitError) {
+				if (error.stage === "verify") {
+					const uncertain: Df7PaymentState = {
+						...prepared,
+						status: "uncertain",
+						updatedAt: new Date().toISOString(),
+					}
+					try {
+						saveDf7PaymentState(uncertain)
+					} catch {
+						/* the retained prepared state still carries the hash */
+					}
+					line("uncertain", error.message)
+					line("result", "PENDING")
+					line(
+						"next",
+						"run --reconcile against the retained hash before any retry decision",
+					)
+					process.exit(2)
+				}
+				line("error", `${error.stage}: ${error.message}`)
+				line("result", "BLOCKED")
+				line(
+					"next",
+					"no payment was submitted; fix the private state before retrying",
+				)
+				process.exit(2)
+			}
 			const uncertain: Df7PaymentState = {
-				...intent,
+				...prepared,
 				status: "uncertain",
 				updatedAt: new Date().toISOString(),
 			}
 			try {
 				saveDf7PaymentState(uncertain)
 			} catch {
-				/* the uncertain state must not hide the original error */
+				/* the prepared state already contains the hash and signed bytes */
 			}
 			line(
 				"error",
@@ -617,24 +697,20 @@ async function payMode(): Promise<never> {
 		}
 
 		const submittedState: Df7PaymentState = {
-			...intent,
+			...prepared,
 			status: "submitted",
-			anchorPaymentHash: submitted.txHash,
 			updatedAt: new Date().toISOString(),
 		}
 		try {
 			saveDf7PaymentState(submittedState)
 		} catch (error) {
 			line(
-				"error",
-				`submitted hash ${submitted.txHash} could not be persisted: ${error instanceof Error ? error.message : String(error)}`,
+				"warn",
+				`submitted hash ${submittedHash} is retained as prepared, but the status update failed: ${error instanceof Error ? error.message : String(error)}`,
 			)
-			line("result", "BLOCKED")
-			line("next", "do not poll or resubmit until the hash is retained")
-			process.exit(2)
 		}
-		line("payment", `hash ${submitted.txHash}`)
-		line("state", "hash retained before any polling")
+		line("payment", `hash ${submittedHash}`)
+		line("state", "hash and signed transaction were retained before submission")
 		line("result", "PENDING")
 		line(
 			"next",
@@ -782,15 +858,9 @@ async function pollMode(): Promise<never> {
 
 async function reconcileMode(): Promise<never> {
 	requireNetworkGate()
-	const { publicEnv, pre } = preflight(false)
+	const { pre } = preflight(false)
 	printBlockers(pre.blockers)
 	if (pre.blockers.length > 0 || !pre.env) {
-		line("result", "BLOCKED")
-		process.exit(2)
-	}
-	const address = publicEnv.FP_RECIPIENT_A_ADDRESS?.trim()
-	if (!address) {
-		line("blocked", "FP_RECIPIENT_A_ADDRESS is missing from the anchor ids")
 		line("result", "BLOCKED")
 		process.exit(2)
 	}
@@ -809,22 +879,18 @@ async function reconcileMode(): Promise<never> {
 	}
 	line(
 		"state",
-		`${df7PaymentStatePath()} status=${state.status} hash=${state.anchorPaymentHash ?? "(none)"}`,
+		`${df7PaymentStatePath()} status=${state.status} hash=${state.anchorPaymentHash}`,
 	)
 	line("horizon", HORIZON)
+	line("lookup", `stored hash ${state.anchorPaymentHash}`)
 	line(
 		"note",
 		"read-only reconciliation; no signature, no submit, no second payment",
 	)
 
-	const memoType = (state.expectation.memoType ?? "text").toLowerCase()
-	let transactions: HorizonTransactionRecord[]
+	let record: HorizonTransactionRecord | undefined
 	try {
-		transactions = await fetchRecentTransactions(
-			address,
-			state.expectation.memo,
-			memoType,
-		)
+		record = await fetchTransactionByHash(state.anchorPaymentHash)
 	} catch (error) {
 		line("error", error instanceof Error ? error.message : String(error))
 		line("result", "NOT_VERIFIED")
@@ -832,34 +898,34 @@ async function reconcileMode(): Promise<never> {
 		process.exit(2)
 	}
 
-	const result = reconcileAnchorPayment({
+	const result = reconcileStoredHash({
+		storedHash: state.anchorPaymentHash,
 		expectation: state.expectation,
-		transactions,
+		transaction: record,
 	})
-	line(
-		"scan",
-		`${result.inspected} recent transactions; operations read only for memo matches`,
-	)
 	for (const reason of result.reasons) line("reason", reason)
+	if (!record) {
+		const window = checkRebroadcastWindow(state)
+		if (!window.ok) line("window", window.detail)
+		else line("window", "stored signed payment is still inside its time bounds")
+	}
 
 	if (result.outcome === "RECONCILED") {
-		const hash = result.hashes[0]!
 		const now = new Date().toISOString()
 		try {
 			saveDf7PaymentState({
 				...state,
 				status: "reconciled",
-				anchorPaymentHash: hash,
 				reconciledAt: now,
 				updatedAt: now,
 			})
 		} catch (error) {
 			line("error", error instanceof Error ? error.message : String(error))
 			line("result", "BLOCKED")
-			line("next", "do not poll or retry until the recovered hash is retained")
+			line("next", "do not poll or retry until the confirmed hash is retained")
 			process.exit(2)
 		}
-		line("payment", `hash ${hash} recovered from Horizon and retained`)
+		line("payment", `hash ${state.anchorPaymentHash} confirmed on Horizon`)
 		line("result", "RECONCILED")
 		line(
 			"next",
@@ -871,13 +937,124 @@ async function reconcileMode(): Promise<never> {
 	line("result", result.outcome)
 	line(
 		"next",
-		result.outcome === "MISMATCH" || result.outcome === "AMBIGUOUS"
-			? "stop; preserve the mismatch; do not send another payment"
-			: "no payment submitted; re-check after the next ledger before any retry decision",
+		result.outcome === "MISMATCH" ||
+			result.outcome === "AMBIGUOUS" ||
+			result.outcome === "FAILED"
+			? "stop; preserve the evidence; do not send another payment"
+			: "no automatic resend; NOT_FOUND needs a human decision before any rebroadcast",
 	)
 	process.exit(
-		result.outcome === "MISMATCH" || result.outcome === "AMBIGUOUS" ? 1 : 2,
+		result.outcome === "MISMATCH" ||
+			result.outcome === "AMBIGUOUS" ||
+			result.outcome === "FAILED"
+			? 1
+			: 2,
 	)
+}
+
+async function rebroadcastMode(): Promise<never> {
+	requirePaymentGate()
+	let state: Df7PaymentState | undefined
+	try {
+		state = readDf7PaymentState()
+	} catch (error) {
+		line("blocked", error instanceof Error ? error.message : String(error))
+		line("result", "BLOCKED")
+		process.exit(2)
+	}
+	if (!state) {
+		line("blocked", `no retained payment state at ${df7PaymentStatePath()}`)
+		line("result", "BLOCKED")
+		process.exit(2)
+	}
+	const gates = checkDf7RebroadcastGates({
+		state,
+		confirm: process.env.FP_DF7_REBROADCAST_CONFIRM,
+	})
+	if (gates.blockers.length > 0) {
+		for (const blocker of gates.blockers) line("blocked", blocker)
+		line(
+			"note",
+			"a new payment remains blocked pending a human decision; expired or ambiguous state is never cleared automatically",
+		)
+		line("result", "BLOCKED")
+		process.exit(2)
+	}
+
+	const prepared = { ...state }
+	const { pre } = preflight(false)
+	if (!pre.env) {
+		line("blocked", "anchor public ids are incomplete")
+		line("result", "BLOCKED")
+		process.exit(2)
+	}
+	let restored
+	try {
+		restored = restoreSignedPayment(prepared)
+	} catch (error) {
+		line("error", error instanceof Error ? error.message : String(error))
+		line("result", "BLOCKED")
+		process.exit(2)
+	}
+	line("rebroadcast", `identical signed hash ${prepared.anchorPaymentHash}`)
+	line("horizon", HORIZON)
+	line("note", "no rebuild, no re-sign; only the stored envelope is submitted")
+
+	try {
+		const submitted = await submitSignedClassicPayment({
+			horizonUrl: HORIZON,
+			signedTx: restored,
+			expectedTxHash: prepared.anchorPaymentHash,
+			destination: prepared.expectation.destination,
+			amount: prepared.expectation.amount,
+			asset: {
+				code: prepared.expectation.asset.code,
+				issuer: prepared.expectation.asset.issuer,
+				networkPassphrase: prepared.networkPassphrase,
+			},
+		})
+		const now = new Date().toISOString()
+		try {
+			saveDf7PaymentState({
+				...prepared,
+				status: "submitted",
+				updatedAt: now,
+			})
+		} catch (error) {
+			line(
+				"warn",
+				`rebroadcast hash ${submitted.txHash} is retained, but the status update failed: ${error instanceof Error ? error.message : String(error)}`,
+			)
+		}
+		line(
+			"payment",
+			`hash ${submitted.txHash} rebroadcast from the stored envelope`,
+		)
+		line("result", "PENDING")
+		line(
+			"next",
+			`run --reconcile, then --poll --id ${prepared.anchorTransactionId}`,
+		)
+		process.exit(2)
+	} catch (error) {
+		const now = new Date().toISOString()
+		try {
+			saveDf7PaymentState({
+				...prepared,
+				status: "uncertain",
+				updatedAt: now,
+			})
+		} catch {
+			/* the stored hash and envelope remain authoritative */
+		}
+		line(
+			"error",
+			`rebroadcast outcome uncertain: ${error instanceof Error ? error.message : String(error)}`,
+		)
+		line("uncertain", "DO NOT RETRY. Run --reconcile against the stored hash.")
+		line("result", "PENDING")
+		process.exit(2)
+	}
 }
 
 function classifyMode(): never {
@@ -912,6 +1089,7 @@ async function main(): Promise<void> {
 		"start-withdraw",
 		"pay",
 		"reconcile",
+		"rebroadcast",
 		"poll",
 		"classify",
 	].filter(has)
@@ -931,9 +1109,14 @@ async function main(): Promise<void> {
   FP_DF7_ALLOW_NETWORK=1 FP_DF7_SUBMIT_PAYMENT=1 \\
       FP_DF7_RECIPIENT_LOCK="LOCK recipient A <agent> DF7 <UTC>" \\
       node scripts/demo/df7-anchor-lifecycle.ts --pay --id <sep24-id>
-      one classic memo payment; retains the hash before polling
+      sign, persist the exact hash/XDR/time bounds, then submit once
   FP_DF7_ALLOW_NETWORK=1 node scripts/demo/df7-anchor-lifecycle.ts --reconcile
-      read-only Horizon reconciliation of an uncertain submit; never resubmits
+      read-only Horizon lookup of the retained hash; never resubmits
+  FP_DF7_ALLOW_NETWORK=1 FP_DF7_SUBMIT_PAYMENT=1 \\
+      FP_DF7_RECIPIENT_LOCK="LOCK recipient A <agent> DF7 <UTC>" \\
+      FP_DF7_REBROADCAST_CONFIRM=<retained-hash> \\
+      node scripts/demo/df7-anchor-lifecycle.ts --rebroadcast
+      explicitly rebroadcast the identical stored envelope within its time bounds
   node scripts/demo/df7-anchor-lifecycle.ts --classify --anchor-status completed \\
       --anchor-tx-id ... --anchor-payment-hash ... --vault-release-hash ... \\
       --withdraw-check pass
@@ -941,8 +1124,10 @@ async function main(): Promise<void> {
 
 The classic memo payment is implemented behind the three gates above. It is not
 executed by the plan, preflight, readiness, start-withdraw, poll or classify
-modes. --pay sends at most one payment and refuses when retained state exists;
-use --reconcile to recover the hash first.
+modes. --pay persists the exact signed envelope, hash, network, time bounds and
+expectation before submitting, and refuses when retained state exists. Use
+--reconcile to confirm the retained hash. NOT_FOUND never resends; --rebroadcast
+requires an explicit hash confirmation and the original envelope's time bounds.
 `)
 		process.exit(0)
 	}
@@ -961,6 +1146,8 @@ use --reconcile to recover the hash first.
 			return payMode()
 		case "reconcile":
 			return reconcileMode()
+		case "rebroadcast":
+			return rebroadcastMode()
 		case "poll":
 			return pollMode()
 		case "classify":

@@ -268,6 +268,10 @@ FP_DF7_ALLOW_NETWORK=1 FP_DF7_SUBMIT_PAYMENT=1 \
   FP_DF7_RECIPIENT_LOCK="LOCK recipient A <agent> DF7 <UTC>" \
   node scripts/demo/df7-anchor-lifecycle.ts --pay --id <sep24-id>
 FP_DF7_ALLOW_NETWORK=1 node scripts/demo/df7-anchor-lifecycle.ts --reconcile
+FP_DF7_ALLOW_NETWORK=1 FP_DF7_SUBMIT_PAYMENT=1 \
+  FP_DF7_RECIPIENT_LOCK="LOCK recipient A <agent> DF7 <UTC>" \
+  FP_DF7_REBROADCAST_CONFIRM=<retained-hash> \
+  node scripts/demo/df7-anchor-lifecycle.ts --rebroadcast
 FP_DF7_ALLOW_NETWORK=1 node scripts/demo/df7-anchor-lifecycle.ts \
   --poll --id <sep24-id> --anchor-tx-id <sep24-id> --vault-release-hash <64-hex>
 ```
@@ -275,13 +279,19 @@ FP_DF7_ALLOW_NETWORK=1 node scripts/demo/df7-anchor-lifecycle.ts \
 `--start-withdraw` writes the functional hosted URL to a `0600` private file and
 prints only the sanitised URL. The human completes the hosted withdrawal in a
 browser. `--pay` is the classic-payment stage: it reuses the adapter's
-`submitClassicPaymentWithMemo`, validates the anchor's pending record (status,
-asset, amount, destination, memo), requires all three live gates, and saves the
-returned hash to a `0600` state file before any polling. It refuses when
-retained state exists. If submit outcome is uncertain, `--reconcile` performs a
-bounded, read-only Horizon scan of the recipient's recent memo-carrying
-transactions; it never resubmits and never recovers a hash from a mismatched
-payment.
+`buildAndSignClassicPaymentWithMemo` and `submitSignedClassicPayment`, validates
+the anchor's pending record (status, asset, amount, destination, memo), and
+requires all three live gates. Before submission it serialises the signed
+envelope, proves it restores to the same hash, and atomically persists the hash,
+XDR, network, time bounds and payment expectation in a `0600` state file. A
+persistence failure aborts without submitting. It refuses when retained state
+exists.
+
+`--reconcile` looks up only the retained hash on Horizon. `NOT_FOUND` never
+resends. `--rebroadcast` requires the operator to echo the retained hash and
+submits the identical stored envelope only while it is inside its original time
+bounds; expired or ambiguous state blocks a new payment pending a human
+decision.
 
 Offline classification is available with `--classify`. `SUCCESS` requires
 `completed`, a passed amount/destination/memo assertion, and all three refs

@@ -7,9 +7,18 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Keypair, StrKey } from "@stellar/stellar-sdk"
+import {
+	Account,
+	Keypair,
+	StrKey,
+	type Transaction,
+} from "@stellar/stellar-sdk"
 import { describe, expect, it } from "vitest"
-import type { AnchorPaymentExpectation } from "../../packages/adapter-stellar/src/index.ts"
+import {
+	buildAndSignClassicPaymentWithMemo,
+	type AnchorPaymentExpectation,
+	type ClassicPaymentHorizon,
+} from "../../packages/adapter-stellar/src/index.ts"
 import { AssertionFailure } from "../../scripts/demo/lib/assertions.ts"
 import {
 	anchorDeclaredAsset,
@@ -19,6 +28,7 @@ import {
 	classifyDf7Lifecycle,
 	decimalEquals,
 	df7RefProblems,
+	encodeSignedPayment,
 	parseDf7Amount,
 	planDf7Stages,
 	readDf7PaymentState,
@@ -629,30 +639,54 @@ describe("DF7 reconciliation", () => {
 })
 
 describe("DF7 payment state", () => {
-	const state = (): Df7PaymentState => ({
-		version: 1,
-		anchorTransactionId: refs.anchorTransactionId,
-		anchorPaymentHash: null,
-		status: "submitting",
-		expectation,
-		startedAt: "2026-10-25T13:00:00Z",
-		updatedAt: "2026-10-25T13:00:00Z",
-	})
+	const signedState = async (
+		overrides: Partial<Df7PaymentState> = {},
+	): Promise<Df7PaymentState> => {
+		const horizon: ClassicPaymentHorizon = {
+			loadAccount: async () => new Account(recipient.publicKey(), "1"),
+			fetchBaseFee: async () => 100,
+			submitTransaction: async (tx: Transaction) => ({
+				hash: Buffer.from(tx.hash()).toString("hex"),
+			}),
+		}
+		const built = await buildAndSignClassicPaymentWithMemo({
+			networkPassphrase: TESTNET,
+			source: recipient,
+			expectation,
+			timeoutSeconds: 120,
+			horizon,
+		})
+		const encoded = encodeSignedPayment(built, TESTNET)
+		const now = "2026-10-25T13:00:00Z"
+		return {
+			version: 2,
+			anchorTransactionId: refs.anchorTransactionId,
+			anchorPaymentHash: encoded.txHash,
+			status: "prepared",
+			expectation,
+			networkPassphrase: TESTNET,
+			signedTransactionXdr: encoded.signedTransactionXdr,
+			timeBounds: encoded.timeBounds,
+			startedAt: now,
+			updatedAt: now,
+			...overrides,
+		}
+	}
 
-	it("retains the submitted hash in a 0600 file before polling", () => {
+	it("retains the prepared hash and envelope in a 0600 file", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "fp-df7-state-"))
 		try {
-			saveDf7PaymentState(state(), dir)
+			const prepared = await signedState()
+			saveDf7PaymentState(prepared, dir)
 			const submitted: Df7PaymentState = {
-				...state(),
+				...prepared,
 				status: "submitted",
-				anchorPaymentHash: refs.anchorPaymentHash,
 			}
 			const path = saveDf7PaymentState(submitted, dir)
 			expect(statSync(path).mode & 0o777).toBe(0o600)
 			expect(readDf7PaymentState(dir)).toMatchObject({
 				status: "submitted",
-				anchorPaymentHash: refs.anchorPaymentHash,
+				anchorPaymentHash: prepared.anchorPaymentHash,
 			})
 		} finally {
 			rmSync(dir, { recursive: true, force: true })
@@ -672,7 +706,7 @@ describe("DF7 payment state", () => {
 				JSON.stringify({ anchorTransactionId: refs.anchorTransactionId }),
 			)
 			expect(() => readDf7PaymentState(dir)).toThrow(
-				/invalid DF7 payment state/,
+				/invalid DF7 payment state|unsupported DF7 payment state version/,
 			)
 		} finally {
 			rmSync(dir, { recursive: true, force: true })

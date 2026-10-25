@@ -1,12 +1,24 @@
+import { randomBytes } from "node:crypto"
 import {
 	chmodSync,
+	closeSync,
 	existsSync,
+	fsyncSync,
 	mkdirSync,
+	openSync,
 	readFileSync,
+	renameSync,
+	unlinkSync,
 	writeFileSync,
+	writeSync,
 } from "node:fs"
-import { join } from "node:path"
-import { Keypair, StrKey } from "@stellar/stellar-sdk"
+import { basename, dirname, join } from "node:path"
+import {
+	Keypair,
+	StrKey,
+	Transaction,
+	TransactionBuilder,
+} from "@stellar/stellar-sdk"
 import {
 	ANCHOR_ENV_NAMES,
 	ReferenceAnchorClient,
@@ -17,16 +29,18 @@ import {
 	sanitiseHostedUrl,
 	type AnchorEventEnv,
 	type AnchorPaymentExpectation,
+	type ClassicPaymentTimeBounds,
+	type SignedClassicPayment,
 	type StellarAssetIdentity,
 } from "../../../packages/adapter-stellar/src/index.ts"
 import { AssertionFailure } from "./assertions.ts"
 import type { Blocker } from "./report.ts"
 
 /**
- * DF7 scaffold. This module prepares, validates and reconciles the classic-payment
- * stage but does not call the anchor or submit a transaction. Its job is to make
- * the prerequisites, stage vocabulary, three references and the
- * success/failure/pending decision explicit before a live run.
+ * DF7 scaffold. This module validates, persists and reconciles the classic-payment
+ * stage but does not call the anchor or submit a transaction itself. The exact
+ * signed envelope is persisted before submit so a crash or timeout can only be
+ * recovered from the retained hash.
  */
 
 export const DF7_AMOUNT = "1"
@@ -128,7 +142,7 @@ export function planDf7Stages(prerequisitesOk: boolean): Df7StageView[] {
 		stage(
 			"anchor_payment",
 			"PLANNED",
-			"submitClassicPaymentWithMemo once; retain the hash; live-gated",
+			"build/sign, persist the exact hash/XDR, then submit once; live-gated",
 		),
 		stage(
 			"poll_terminal",
@@ -592,18 +606,41 @@ export function verifyAnchorCompletion(input: {
 }
 
 export type Df7PaymentStateStatus =
-	"submitting" | "submitted" | "reconciled" | "uncertain"
+	"prepared" | "submitted" | "reconciled" | "uncertain"
 
+/**
+ * The retained pre-submit state. It is written before the signed payment is sent,
+ * so a crash or a lost submit response can only be recovered from these bytes.
+ * The signed envelope is sensitive: never log or commit this file's contents.
+ */
 export interface Df7PaymentState {
-	version: 1
+	version: 2
 	anchorTransactionId: string
-	anchorPaymentHash: string | null
+	/** Hash of the signed envelope, known before submission. */
+	anchorPaymentHash: string
 	status: Df7PaymentStateStatus
 	expectation: AnchorPaymentExpectation
+	networkPassphrase: string
+	/** Lossless base64 envelope XDR of the exact signed transaction. */
+	signedTransactionXdr: string
+	timeBounds: ClassicPaymentTimeBounds
 	startedAt: string
 	updatedAt: string
-	/** Set when a bounded Horizon reconciliation recovered the hash after submit. */
+	/** Set when a bounded Horizon reconciliation confirmed the stored hash. */
 	reconciledAt?: string
+}
+
+export class Df7PreSubmitError extends Error {
+	readonly stage: "window" | "restore" | "persist" | "verify"
+
+	constructor(
+		stage: "window" | "restore" | "persist" | "verify",
+		message: string,
+	) {
+		super(message)
+		this.name = "Df7PreSubmitError"
+		this.stage = stage
+	}
 }
 
 export function df7PaymentStatePath(
@@ -612,7 +649,135 @@ export function df7PaymentStatePath(
 	return join(dir, "payment-state.json")
 }
 
-/** Read the private submission state. It contains public fields only, never a key. */
+const HASH_HEX = /^[0-9a-f]{64}$/
+
+function finiteBounds(bounds: ClassicPaymentTimeBounds): boolean {
+	return (
+		Number.isFinite(bounds.minTime) &&
+		Number.isFinite(bounds.maxTime) &&
+		bounds.maxTime > bounds.minTime
+	)
+}
+
+/**
+ * Serialise the signed envelope and prove the exact bytes restore to the same
+ * network hash before the caller can persist or submit them.
+ */
+export function encodeSignedPayment(
+	signed: SignedClassicPayment,
+	networkPassphrase: string,
+): {
+	txHash: string
+	timeBounds: ClassicPaymentTimeBounds
+	signedTransactionXdr: string
+} {
+	if (!networkPassphrase.trim()) {
+		throw new Df7PreSubmitError("restore", "network passphrase is required")
+	}
+	if (!finiteBounds(signed.timeBounds)) {
+		throw new Df7PreSubmitError(
+			"restore",
+			"signed payment has missing or inverted time bounds",
+		)
+	}
+	const txHash = Buffer.from(signed.signedTx.hash()).toString("hex")
+	if (!HASH_HEX.test(txHash) || txHash !== signed.txHash) {
+		throw new Df7PreSubmitError(
+			"restore",
+			"signed transaction hash does not match the builder's pre-submit hash",
+		)
+	}
+	const signedTransactionXdr = signed.signedTx.toEnvelope().toXDR("base64")
+	let restored: Transaction | unknown
+	try {
+		restored = TransactionBuilder.fromXDR(
+			signedTransactionXdr,
+			networkPassphrase,
+		)
+	} catch {
+		throw new Df7PreSubmitError(
+			"restore",
+			"signed transaction XDR could not be restored",
+		)
+	}
+	if (!(restored instanceof Transaction)) {
+		throw new Df7PreSubmitError(
+			"restore",
+			"signed transaction restored as a fee-bump envelope, not a payment",
+		)
+	}
+	if (Buffer.from(restored.hash()).toString("hex") !== txHash) {
+		throw new Df7PreSubmitError(
+			"restore",
+			"restored transaction hash differs from the pre-submit hash",
+		)
+	}
+	const restoredBounds = restored.timeBounds
+	if (
+		!restoredBounds ||
+		Number(restoredBounds.minTime) !== signed.timeBounds.minTime ||
+		Number(restoredBounds.maxTime) !== signed.timeBounds.maxTime
+	) {
+		throw new Df7PreSubmitError(
+			"restore",
+			"restored transaction time bounds differ from the signed time bounds",
+		)
+	}
+	return { txHash, timeBounds: signed.timeBounds, signedTransactionXdr }
+}
+
+/**
+ * Restore the exact stored envelope and re-check its hash and time bounds. This
+ * never re-signs and never rebuilds the payment.
+ */
+export function restoreSignedPayment(state: Df7PaymentState): Transaction {
+	if (!HASH_HEX.test(state.anchorPaymentHash)) {
+		throw new Df7PreSubmitError("restore", "stored payment hash is not 64 hex")
+	}
+	if (!finiteBounds(state.timeBounds)) {
+		throw new Df7PreSubmitError("restore", "stored time bounds are invalid")
+	}
+	let restored: Transaction | unknown
+	try {
+		restored = TransactionBuilder.fromXDR(
+			state.signedTransactionXdr,
+			state.networkPassphrase,
+		)
+	} catch {
+		throw new Df7PreSubmitError(
+			"restore",
+			"stored signed transaction cannot be restored",
+		)
+	}
+	if (!(restored instanceof Transaction)) {
+		throw new Df7PreSubmitError(
+			"restore",
+			"stored envelope is not a classic transaction",
+		)
+	}
+	if (
+		Buffer.from(restored.hash()).toString("hex") !== state.anchorPaymentHash
+	) {
+		throw new Df7PreSubmitError(
+			"restore",
+			"restored transaction hash does not match the retained payment hash",
+		)
+	}
+	const restoredBounds = restored.timeBounds
+	if (
+		!restoredBounds ||
+		Number(restoredBounds.minTime) !== state.timeBounds.minTime ||
+		Number(restoredBounds.maxTime) !== state.timeBounds.maxTime
+	) {
+		throw new Df7PreSubmitError(
+			"restore",
+			"restored time bounds do not match the retained time bounds",
+		)
+	}
+	return restored
+}
+
+/** Read the private submission state. It contains no secret key. */
 export function readDf7PaymentState(dir?: string): Df7PaymentState | undefined {
 	const path = df7PaymentStatePath(dir)
 	if (!existsSync(path)) return undefined
@@ -622,29 +787,229 @@ export function readDf7PaymentState(dir?: string): Df7PaymentState | undefined {
 	} catch {
 		throw new Error(`invalid DF7 payment state at ${path}`)
 	}
-	if (
-		typeof parsed !== "object" ||
-		parsed === null ||
-		typeof (parsed as { anchorTransactionId?: unknown }).anchorTransactionId !==
-			"string" ||
-		typeof (parsed as { expectation?: unknown }).expectation !== "object"
-	) {
+	const invalid = (): never => {
 		throw new Error(`invalid DF7 payment state at ${path}`)
 	}
-	return parsed as Df7PaymentState
+	if (typeof parsed !== "object" || parsed === null) invalid()
+	const state = parsed as Partial<Df7PaymentState>
+	if (state.version !== 2) {
+		throw new Error(
+			`unsupported DF7 payment state version at ${path}; inspect and resolve manually`,
+		)
+	}
+	if (
+		typeof state.anchorTransactionId !== "string" ||
+		typeof state.anchorPaymentHash !== "string" ||
+		!HASH_HEX.test(state.anchorPaymentHash) ||
+		typeof state.expectation !== "object" ||
+		state.expectation === null ||
+		typeof state.networkPassphrase !== "string" ||
+		!state.networkPassphrase.trim() ||
+		typeof state.signedTransactionXdr !== "string" ||
+		!state.signedTransactionXdr ||
+		typeof state.timeBounds !== "object" ||
+		state.timeBounds === null ||
+		!Number.isFinite(state.timeBounds.minTime) ||
+		!Number.isFinite(state.timeBounds.maxTime) ||
+		state.timeBounds.maxTime <= state.timeBounds.minTime ||
+		!["prepared", "submitted", "reconciled", "uncertain"].includes(
+			state.status ?? "",
+		)
+	) {
+		invalid()
+	}
+	return state as Df7PaymentState
 }
 
-/** Persist the intent before submit and the returned hash before any polling. */
+/**
+ * Atomic private write: same-directory temp file, fsync, rename, 0600. A failure
+ * leaves the previous state intact and must block any submission.
+ */
+function writePrivateState(path: string, contents: string): void {
+	const dir = dirname(path)
+	mkdirSync(dir, { recursive: true, mode: 0o700 })
+	chmodSync(dir, 0o700)
+	const temp = join(
+		dir,
+		`.${basename(path)}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`,
+	)
+	const fd = openSync(temp, "wx", 0o600)
+	try {
+		writeSync(fd, contents)
+		fsyncSync(fd)
+	} catch (error) {
+		try {
+			closeSync(fd)
+		} catch {
+			/* the original write error is the useful one */
+		}
+		try {
+			unlinkSync(temp)
+		} catch {
+			/* best-effort cleanup of the private temp file */
+		}
+		throw error
+	}
+	closeSync(fd)
+	try {
+		renameSync(temp, path)
+		chmodSync(path, 0o600)
+	} catch (error) {
+		try {
+			unlinkSync(temp)
+		} catch {
+			/* best-effort cleanup */
+		}
+		throw error
+	}
+}
+
+/** Persist the signed payment state atomically before any submission. */
 export function saveDf7PaymentState(
 	state: Df7PaymentState,
 	dir = process.env.FP_DF7_PRIVATE_DIR?.trim() || "/tmp/fp-df7-private",
 ): string {
-	mkdirSync(dir, { recursive: true, mode: 0o700 })
-	chmodSync(dir, 0o700)
 	const path = df7PaymentStatePath(dir)
-	writeFileSync(path, JSON.stringify(state, null, 2), { mode: 0o600 })
-	chmodSync(path, 0o600)
+	writePrivateState(path, JSON.stringify(state, null, 2))
 	return path
+}
+
+/**
+ * Persist first, verify the persisted envelope restores to the same hash, then
+ * submit. A persistence/restore failure throws before the submit callback runs.
+ */
+export async function persistPreparedThenSubmit(input: {
+	state: Df7PaymentState
+	submit: (
+		tx: Transaction,
+		persisted: Df7PaymentState,
+	) => Promise<{ txHash: string }>
+	dir?: string
+	persist?: (state: Df7PaymentState, dir?: string) => string
+	nowSec?: number
+}): Promise<{ path: string; submittedHash: string }> {
+	if (input.state.status !== "prepared") {
+		throw new Df7PreSubmitError(
+			"persist",
+			`payment state must be prepared before submit, got ${input.state.status}`,
+		)
+	}
+	const window = checkRebroadcastWindow(input.state, input.nowSec)
+	if (!window.ok) throw new Df7PreSubmitError("window", window.detail)
+	try {
+		restoreSignedPayment(input.state)
+	} catch (error) {
+		throw new Df7PreSubmitError(
+			"restore",
+			error instanceof Error ? error.message : String(error),
+		)
+	}
+
+	let path: string
+	try {
+		path = (input.persist ?? saveDf7PaymentState)(input.state, input.dir)
+	} catch (error) {
+		throw new Df7PreSubmitError(
+			"persist",
+			`could not persist the signed payment: ${error instanceof Error ? error.message : String(error)}`,
+		)
+	}
+	let persisted: Df7PaymentState | undefined
+	try {
+		persisted = readDf7PaymentState(input.dir)
+	} catch (error) {
+		throw new Df7PreSubmitError(
+			"persist",
+			`persisted payment state cannot be read back: ${error instanceof Error ? error.message : String(error)}`,
+		)
+	}
+	if (!persisted) {
+		throw new Df7PreSubmitError(
+			"persist",
+			"persisted payment state is missing after the write",
+		)
+	}
+	let restored: Transaction
+	try {
+		restored = restoreSignedPayment(persisted)
+	} catch (error) {
+		throw new Df7PreSubmitError(
+			"restore",
+			error instanceof Error ? error.message : String(error),
+		)
+	}
+
+	const submitted = await input.submit(restored, persisted)
+	if (submitted.txHash !== persisted.anchorPaymentHash) {
+		throw new Df7PreSubmitError(
+			"verify",
+			`submitted hash ${submitted.txHash} differs from the retained hash ${persisted.anchorPaymentHash}`,
+		)
+	}
+	return { path, submittedHash: submitted.txHash }
+}
+
+export type Df7RebroadcastWindow =
+	| { ok: true }
+	| {
+			ok: false
+			reason: "expired" | "not-yet-valid" | "invalid"
+			detail: string
+	  }
+
+/** The stored envelope may only be rebroadcast inside its own time bounds. */
+export function checkRebroadcastWindow(
+	state: Df7PaymentState,
+	nowSec = Math.floor(Date.now() / 1000),
+): Df7RebroadcastWindow {
+	if (!finiteBounds(state.timeBounds)) {
+		return {
+			ok: false,
+			reason: "invalid",
+			detail: "stored time bounds are missing or inverted",
+		}
+	}
+	if (nowSec < state.timeBounds.minTime) {
+		return {
+			ok: false,
+			reason: "not-yet-valid",
+			detail: `signed payment is not valid before ${new Date(state.timeBounds.minTime * 1000).toISOString()}`,
+		}
+	}
+	if (nowSec > state.timeBounds.maxTime) {
+		return {
+			ok: false,
+			reason: "expired",
+			detail: `signed payment expired at ${new Date(state.timeBounds.maxTime * 1000).toISOString()}`,
+		}
+	}
+	return { ok: true }
+}
+
+/**
+ * Explicit rebroadcast authorisation: the operator must echo the retained hash,
+ * the state must not already be confirmed, and the signed envelope must still be
+ * inside its time bounds. Nothing here sends a transaction.
+ */
+export function checkDf7RebroadcastGates(input: {
+	state: Df7PaymentState
+	confirm?: string
+	nowSec?: number
+}): { blockers: string[] } {
+	const blockers: string[] = []
+	if (input.confirm?.trim() !== input.state.anchorPaymentHash) {
+		blockers.push(
+			"FP_DF7_REBROADCAST_CONFIRM must equal the retained payment hash",
+		)
+	}
+	if (input.state.status !== "prepared" && input.state.status !== "uncertain") {
+		blockers.push(
+			`payment state ${input.state.status} is not eligible for rebroadcast; reconcile it first`,
+		)
+	}
+	const window = checkRebroadcastWindow(input.state, input.nowSec)
+	if (!window.ok) blockers.push(window.detail)
+	return { blockers }
 }
 
 export interface Df7GateInput {
@@ -706,7 +1071,12 @@ export interface HorizonTransactionRecord {
 }
 
 export type Df7ReconcileOutcome =
-	"RECONCILED" | "NOT_FOUND" | "MISMATCH" | "AMBIGUOUS" | "NOT_VERIFIED"
+	| "RECONCILED"
+	| "NOT_FOUND"
+	| "MISMATCH"
+	| "FAILED"
+	| "AMBIGUOUS"
+	| "NOT_VERIFIED"
 
 export interface Df7ReconcileResult {
 	outcome: Df7ReconcileOutcome
@@ -715,6 +1085,138 @@ export interface Df7ReconcileResult {
 	/** How many recent transactions were inspected. */
 	inspected: number
 	reasons: string[]
+}
+
+/**
+ * Reconcile the exact hash retained before submission. No lookup alternative is
+ * accepted: a different memo-carrying payment is not the transaction this run
+ * signed. NOT_FOUND never authorises a resend.
+ */
+export function reconcileStoredHash(input: {
+	storedHash: string
+	expectation: AnchorPaymentExpectation
+	transaction?: HorizonTransactionRecord
+}): Df7ReconcileResult {
+	const { storedHash, expectation, transaction } = input
+	if (!HASH_HEX.test(storedHash)) {
+		return {
+			outcome: "NOT_VERIFIED",
+			hashes: [],
+			inspected: 0,
+			reasons: ["retained payment hash is not 64 hex"],
+		}
+	}
+	if (!transaction) {
+		return {
+			outcome: "NOT_FOUND",
+			hashes: [],
+			inspected: 0,
+			reasons: [
+				"Horizon has no transaction with the retained payment hash",
+				"do not resend on NOT_FOUND; an authorised rebroadcast or a new payment needs a human decision",
+			],
+		}
+	}
+	if (transaction.hash !== storedHash) {
+		return {
+			outcome: "MISMATCH",
+			hashes: [],
+			inspected: 1,
+			reasons: ["Horizon record hash does not match the retained payment hash"],
+		}
+	}
+	if (typeof transaction.successful !== "boolean") {
+		return {
+			outcome: "NOT_VERIFIED",
+			hashes: [],
+			inspected: 1,
+			reasons: ["the retained transaction does not state whether it succeeded"],
+		}
+	}
+	if (!transaction.successful) {
+		return {
+			outcome: "FAILED",
+			hashes: [],
+			inspected: 1,
+			reasons: [
+				"the retained transaction is on-chain but failed; do not rebroadcast it",
+			],
+		}
+	}
+	const memoType = (expectation.memoType ?? "text").toLowerCase()
+	if (typeof transaction.memo !== "string") {
+		return {
+			outcome: "NOT_VERIFIED",
+			hashes: [],
+			inspected: 1,
+			reasons: ["the retained transaction has no memo in the Horizon record"],
+		}
+	}
+	if (transaction.memo !== expectation.memo) {
+		return {
+			outcome: "MISMATCH",
+			hashes: [],
+			inspected: 1,
+			reasons: [
+				"the retained transaction memo differs from the anchor instruction",
+			],
+		}
+	}
+	if (typeof transaction.memo_type !== "string") {
+		return {
+			outcome: "NOT_VERIFIED",
+			hashes: [],
+			inspected: 1,
+			reasons: ["the retained transaction does not publish a memo type"],
+		}
+	}
+	if (transaction.memo_type.toLowerCase() !== memoType) {
+		return {
+			outcome: "MISMATCH",
+			hashes: [],
+			inspected: 1,
+			reasons: [
+				`the retained transaction memo type ${transaction.memo_type} differs from the anchor instruction ${memoType}`,
+			],
+		}
+	}
+	if (!Array.isArray(transaction.operations)) {
+		return {
+			outcome: "NOT_VERIFIED",
+			hashes: [],
+			inspected: 1,
+			reasons: ["the retained transaction has no operations metadata"],
+		}
+	}
+	const payments = transaction.operations.filter((op) => op?.type === "payment")
+	if (payments.length !== 1) {
+		return {
+			outcome: "MISMATCH",
+			hashes: [],
+			inspected: 1,
+			reasons: [
+				`the retained transaction has ${payments.length} payment operations, expected exactly one`,
+			],
+		}
+	}
+	if (!paymentMatches(payments[0]!, expectation)) {
+		return {
+			outcome: "MISMATCH",
+			hashes: [],
+			inspected: 1,
+			reasons: [
+				"the retained transaction's payment destination, amount or asset differs from the anchor instruction",
+			],
+		}
+	}
+	return {
+		outcome: "RECONCILED",
+		hashes: [storedHash],
+		inspected: 1,
+		reasons: [
+			`retained classic payment ${storedHash} matches the anchor destination, amount, asset and memo`,
+		],
+	}
 }
 
 /**
