@@ -7,7 +7,7 @@ Does **not** implement API/UI or DF7. Source: `packages/adapter-stellar/E1-HANDO
 | Question | Answer |
 | --- | --- |
 | Which package? | `@flexipay/adapter-stellar` on tip that contains `badfb0c`+ |
-| Which methods? | `ReferenceAnchorClient` (`connect`, `authenticate`, `startDepositInteractive`, `startWithdrawInteractive`, `getTransaction`, `waitForTerminal`, `paymentExpectationFromTx`), `submitClassicPaymentWithMemo`, `sanitiseHostedUrl`, `assertSuccessfulWithdraw` |
+| Which methods? | `ReferenceAnchorClient` (`connect`, `authenticate`, `startDepositInteractive`, `startWithdrawInteractive`, `getTransaction`, `waitForTerminal`, `paymentExpectationFromTx`), `buildAndSignClassicPaymentWithMemo` + `submitSignedClassicPayment` (or wrapper `submitClassicPaymentWithMemo`), `sanitiseHostedUrl`, `assertSuccessfulWithdraw` |
 | Which env file for M1 asset/vault? | `scripts/testnet/testnet-ids-anchor-vault.env` — **not** baseline `testnet-ids.env` |
 | CCR-20? | **Accepted** (Claude) with renames: `FP_ANCHOR_VAULT_ID`, `FP_ANCHOR_VAULT_FEE_BPS`, `FP_ANCHOR_VAULT_TREASURY_ADDRESS`, `FP_ANCHOR_VAULT_PURPOSE` (+ keep `FP_ANCHOR_HOME_DOMAIN` / `FP_ANCHOR_USDC_ASSET` / `FP_ANCHOR_USDC_CONTRACT_ID`). You propose HTTP request shapes in your PR — **no extra CCR wait** |
 | Three server calls to wire | (1) indicative price (2) start withdrawal / hosted URL (3) poll status |
