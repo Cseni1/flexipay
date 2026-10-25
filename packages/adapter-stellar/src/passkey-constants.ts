@@ -1,5 +1,5 @@
 /**
- * Pins for passkey-kit@0.19.1 shared-deployer wallet deploys (CCR-20).
+ * Pins for passkey-kit@0.19.1 shared-deployer wallet deploys (CCR-21).
  * Do not change without a matching kit / WASM upgrade and CCR update.
  */
 
@@ -7,7 +7,7 @@
 export const PASSKEY_DEFAULT_DEPLOYER_SEED = "kalepail";
 
 /**
- * Smart-wallet WASM hash pinned in CCR-20 / EVENT_PLAN E2.
+ * Smart-wallet WASM hash pinned in CCR-21 / EVENT_PLAN E2.
  * Lowercase hex, 64 chars.
  */
 export const PASSKEY_WALLET_WASM_HASH =

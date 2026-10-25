@@ -50,7 +50,7 @@ export interface ApiOpenApiStub {
 	auth: "api_key" | "none";
 	body?: ZodType;
 	success: { status: 200 | 201 | 202; schema?: ZodType };
-	/** Extra documented responses (e.g. CCR-20 submit 202 pending). */
+	/** Extra documented responses (e.g. CCR-21 submit 202 pending). */
 	extraResponses?: ReadonlyArray<{
 		status: 202;
 		description: string;
@@ -156,7 +156,7 @@ export const A0_OPENAPI_STUBS: readonly ApiOpenApiStub[] = [
 		success: { status: 200, schema: ClaimAcceptResponseSchema },
 	},
 	{
-		// CCR-20 ACK'd — passkey wallet deploy (M2). Mounted on event/csaba-cursor/m2-passkey.
+		// CCR-21 ACK'd — passkey wallet deploy (M2). Mounted on event/csaba-cursor/m2-passkey.
 		method: "post",
 		path: "/v1/claims/{token}/passkey/deploy",
 		summary:
@@ -166,7 +166,7 @@ export const A0_OPENAPI_STUBS: readonly ApiOpenApiStub[] = [
 		success: { status: 200, schema: PasskeyDeployResponseSchema },
 	},
 	{
-		// CCR-20 ACK'd — prepare (M2). Mounted on event/csaba-cursor/m2-passkey.
+		// CCR-21 ACK'd — prepare (M2). Mounted on event/csaba-cursor/m2-passkey.
 		method: "post",
 		path: "/v1/claims/{token}/passkey/prepare",
 		summary: "Public: build vault claim auth entries for a C… passkey wallet",
@@ -175,7 +175,7 @@ export const A0_OPENAPI_STUBS: readonly ApiOpenApiStub[] = [
 		success: { status: 200, schema: PasskeyPrepareResponseSchema },
 	},
 	{
-		// CCR-20 ACK'd — submit (M2). 200 + releaseTxRef / 202 pending.
+		// CCR-21 ACK'd — submit (M2). 200 + releaseTxRef / 202 pending.
 		method: "post",
 		path: "/v1/claims/{token}/passkey/submit",
 		summary:

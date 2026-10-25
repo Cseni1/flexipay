@@ -198,7 +198,7 @@ model ClaimLink {
   status    String   @default("open") // open | accepted | expired
   createdAt DateTime @default(now())
 
-  /// CCR-20 (ELFOGADÁSRA VÁR): passkey wallet bound to this claim after deploy SUCCESS.
+  /// CCR-21 (ELFOGADÁSRA VÁR): passkey wallet bound to this claim after deploy SUCCESS.
   passkeyContractId String?
   /// Final successful deploy tx hash (hex). Sole durable deploy success ref for this claim.
   passkeyDeployTxHash String?
@@ -214,7 +214,7 @@ model ClaimLink {
   @@index([passkeyDeployTxHash])
 }
 
-/// CCR-20 (ELFOGADÁSRA VÁR): durable passkey prepare + submit reservation for M2.
+/// CCR-21 (ELFOGADÁSRA VÁR): durable passkey prepare + submit reservation for M2.
 /// Not accepted shared interface until integrator ACK. Secret-bearing blobs use CCR-11 seal key.
 /// HTTP idempotency for deploy/submit uses IdempotencyRecord (payment.organizationId), not this table.
 /// Release success is Leg.releaseTxRef only — no releaseTxHash here.

@@ -10,10 +10,13 @@ import {
 	expectSimulated,
 	fail,
 } from "./lib/assertions.ts"
+import { maskAddress } from "./lib/env.ts"
 import { endpointOf, flowOf, workerOf } from "./lib/fixtures.ts"
+import { BlockedError } from "./lib/report.ts"
 import { ROUTES } from "./lib/routes.ts"
 import { execute } from "./lib/script.ts"
 import { setUpWorker } from "./lib/setup.ts"
+import { verifyVaultPayment } from "./lib/stellar-proof.ts"
 import { waitForPayment } from "./lib/wait.ts"
 
 // DF2: a one-off PH bank payment from quote to paid. The quote is the contract: the paid route
@@ -24,7 +27,7 @@ const runId = Date.now().toString(36)
 
 await execute(
 	{ id: "DF2", title: "One-off payment, quote to paid", needs: ROUTES.df2 },
-	async ({ api, fixtures, flow }) => {
+	async ({ api, env, fixtures, flow }) => {
 		const spec = flowOf(fixtures, "df2")
 		const expected = fixtures.expectations.df2
 		const worker = workerOf(fixtures, spec.workerRef)
@@ -115,5 +118,46 @@ await execute(
 			"payment events",
 		)
 		flow.check("timeline carries created, funded, processing, onchain and paid")
+
+		// H3: independently decode this payment's lock/release and tie them to the frozen
+		// quote, configured vault, vault token, amounts and on-chain net transfer.
+		if (env.settlement === "stellar") {
+			if (
+				!env.payoutVaultId ||
+				!env.assetContractId ||
+				!env.recipientAddress ||
+				!env.stellarRpcUrl ||
+				!env.stellarNetworkPassphrase
+			) {
+				throw new BlockedError([
+					{
+						what: "H3 requires the public vault id, asset id, Worker A address, RPC and passphrase",
+						owner: "caller / Csaba (integration)",
+					},
+				])
+			}
+			const proof = await verifyVaultPayment({
+				payment,
+				quote,
+				recipientAddress: env.recipientAddress,
+				vaultContractId: env.payoutVaultId,
+				expectedAssetContractId: env.assetContractId,
+				rpcUrl: env.stellarRpcUrl,
+				networkPassphrase: env.stellarNetworkPassphrase,
+				timeoutMs: env.timeoutMs,
+			})
+			console.log(
+				`chain  lock ${proof.lockHash} release ${proof.hash} payout ${proof.payoutId}`,
+			)
+			console.log(
+				`vault  ${proof.contractId} asset ${proof.assetContractId} recipient ${maskAddress(proof.recipient)}`,
+			)
+			console.log(
+				`amount principal ${proof.principal} fee ${proof.fee} net ${proof.net} feeMode ${proof.feeMode} bps ${proof.vaultFeeBps}`,
+			)
+			flow.check(
+				"lock/release decode to the frozen payment, vault, asset, amount and payout",
+			)
+		}
 	},
 )

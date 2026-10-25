@@ -188,7 +188,7 @@ async function recoverOrSubmitDeploy(input: {
 		throw new ApiError(502, "deploy_failed", "recorded deploy hash failed on-chain");
 	}
 
-	// Pending binding: recover same hash first (CCR-20 — no blind rebuild).
+	// Pending binding: recover same hash first (CCR-21 — no blind rebuild).
 	if (link.passkeyDeployPendingTxHash) {
 		const stellarEnv = requireStellarEnv(env);
 		const pendingHash = link.passkeyDeployPendingTxHash;
@@ -314,7 +314,7 @@ async function recoverOrSubmitDeploy(input: {
 		runtime.claimSealKey,
 	);
 
-	// Persist pending binding BEFORE send (CCR-20).
+	// Persist pending binding BEFORE send (CCR-21).
 	await ctx.db.claimLink.update({
 		where: { id: link.id },
 		data: {
@@ -580,7 +580,7 @@ async function handleSubmit(
 		});
 	};
 
-	// Recovery: pendingTxHash set → getTransaction first (CCR-20).
+	// Recovery: pendingTxHash set → getTransaction first (CCR-21).
 	if (prepare.pendingTxHash) {
 		const outcome = await getPasskeyDeployTxOutcome(
 			prepare.pendingTxHash,
@@ -654,7 +654,7 @@ async function handleSubmit(
 		);
 	}
 
-	// Atomic open → reserved (CCR-20). Concurrent second reserve → 409.
+	// Atomic open → reserved (CCR-21). Concurrent second reserve → 409.
 	if (prepare.status === "open") {
 		const reserved = await ctx.db.passkeyClaimPrepare.updateMany({
 			where: { id: prepare.id, status: "open" },
