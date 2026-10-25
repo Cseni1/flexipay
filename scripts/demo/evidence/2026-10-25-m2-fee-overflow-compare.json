@@ -1,0 +1,246 @@
+{
+  "testedCommit": "f5af6669495fa9c243117f0e9896fc2f7e601713",
+  "diagnosedAt": "2026-10-25T17:13:29.396Z",
+  "noTransactionsSubmitted": true,
+  "vault": "CCG232ACW63XVUQGMMA6SWV46W2HIVR2ZSB5ENXHOIIITQBXUBHHIUMN",
+  "invoker": "GA3VFDLARJMD7IBYZ2EW3SDQBAIASVSFLFKKBLCNI4D3KDMWDQJX6D6F",
+  "rpcUrl": "https://soroban-testnet.stellar.org",
+  "argShapeSanitised": {
+    "deposit": {
+      "amount": "19899999"
+    },
+    "create_payout": {
+      "amount": "19702970",
+      "mode": "PayerPays",
+      "external_id_sha256_prefix": "bd02546e4639ca10",
+      "claim_hash": "random_32_bytes_placeholder_not_api_claim_hash",
+      "expires_at": "1792951991"
+    }
+  },
+  "configSettings_rpc": {
+    "contractLedgerCostV0": {
+      "source": "rpc_getLedgerEntries",
+      "latestLedger": 5384971,
+      "numericFields_rpc": {
+        "ledgerMaxDiskReadEntries": "2000",
+        "ledgerMaxDiskReadBytes": "400000",
+        "ledgerMaxWriteLedgerEntries": "2000",
+        "ledgerMaxWriteBytes": "297000",
+        "txMaxDiskReadEntries": "200",
+        "txMaxDiskReadBytes": "200000",
+        "txMaxWriteLedgerEntries": "200",
+        "txMaxWriteBytes": "132096",
+        "sorobanStateRentFeeGrowthFactor": "5000"
+      }
+    },
+    "note": "Other ConfigSetting arms fetched earlier as present; numeric extraction focused on ledgerCost (rent growth factor). Full fee-parameter tables not expanded."
+  },
+  "samples": [
+    {
+      "sampleIndex": 0,
+      "ledgerBefore": 5384960,
+      "deposit": {
+        "method": "deposit",
+        "source": "rpc_simulate_via_contract_Client",
+        "latestLedger_rpc": 5384961,
+        "minResourceFee_rpc": "13442",
+        "resourceFee_xdr": "13442",
+        "builtFee_assembledTx": "13542",
+        "restorePreamble_present": false,
+        "restorePreamble_minResourceFee_rpc": null,
+        "resources_xdr": {
+          "instructions": "899733",
+          "diskReadBytes": "116",
+          "writeBytes": "488"
+        },
+        "footprint_xdr": {
+          "readOnlyEntries": 3,
+          "readWriteEntries": 3
+        },
+        "eventsCount_rpc": 5,
+        "eventsSizeBytes_estimate": 7394,
+        "returnValueSizeBytes_estimate": 4,
+        "stateChanges_rpc": {
+          "count": 3,
+          "types": [
+            "updated",
+            "updated",
+            "updated"
+          ]
+        }
+      },
+      "create_payout": {
+        "method": "create_payout",
+        "source": "rpc_simulate_via_contract_Client",
+        "latestLedger_rpc": 5384961,
+        "minResourceFee_rpc": "2910966914",
+        "resourceFee_xdr": "2910966914",
+        "builtFee_assembledTx": "2910967014",
+        "restorePreamble_present": false,
+        "restorePreamble_minResourceFee_rpc": null,
+        "resources_xdr": {
+          "instructions": "991206",
+          "diskReadBytes": "0",
+          "writeBytes": "1176"
+        },
+        "footprint_xdr": {
+          "readOnlyEntries": 1,
+          "readWriteEntries": 4
+        },
+        "eventsCount_rpc": 3,
+        "eventsSizeBytes_estimate": 6739,
+        "returnValueSizeBytes_estimate": 12,
+        "stateChanges_rpc": {
+          "count": 4,
+          "types": [
+            "updated",
+            "created",
+            "created",
+            "updated"
+          ]
+        }
+      }
+    },
+    {
+      "sampleIndex": 1,
+      "ledgerBefore": 5384962,
+      "deposit": {
+        "method": "deposit",
+        "source": "rpc_simulate_via_contract_Client",
+        "latestLedger_rpc": 5384962,
+        "minResourceFee_rpc": "13442",
+        "resourceFee_xdr": "13442",
+        "builtFee_assembledTx": "13542",
+        "restorePreamble_present": false,
+        "restorePreamble_minResourceFee_rpc": null,
+        "resources_xdr": {
+          "instructions": "899733",
+          "diskReadBytes": "116",
+          "writeBytes": "488"
+        },
+        "footprint_xdr": {
+          "readOnlyEntries": 3,
+          "readWriteEntries": 3
+        },
+        "eventsCount_rpc": 5,
+        "eventsSizeBytes_estimate": 7394,
+        "returnValueSizeBytes_estimate": 4,
+        "stateChanges_rpc": {
+          "count": 3,
+          "types": [
+            "updated",
+            "updated",
+            "updated"
+          ]
+        }
+      },
+      "create_payout": {
+        "method": "create_payout",
+        "source": "rpc_simulate_via_contract_Client",
+        "latestLedger_rpc": 5384962,
+        "minResourceFee_rpc": "2910966914",
+        "resourceFee_xdr": "2910966914",
+        "builtFee_assembledTx": "2910967014",
+        "restorePreamble_present": false,
+        "restorePreamble_minResourceFee_rpc": null,
+        "resources_xdr": {
+          "instructions": "991206",
+          "diskReadBytes": "0",
+          "writeBytes": "1176"
+        },
+        "footprint_xdr": {
+          "readOnlyEntries": 1,
+          "readWriteEntries": 4
+        },
+        "eventsCount_rpc": 3,
+        "eventsSizeBytes_estimate": 6739,
+        "returnValueSizeBytes_estimate": 12,
+        "stateChanges_rpc": {
+          "count": 4,
+          "types": [
+            "updated",
+            "created",
+            "created",
+            "updated"
+          ]
+        }
+      }
+    },
+    {
+      "sampleIndex": 2,
+      "ledgerBefore": 5384964,
+      "deposit": {
+        "method": "deposit",
+        "source": "rpc_simulate_via_contract_Client",
+        "latestLedger_rpc": 5384964,
+        "minResourceFee_rpc": "13442",
+        "resourceFee_xdr": "13442",
+        "builtFee_assembledTx": "13542",
+        "restorePreamble_present": false,
+        "restorePreamble_minResourceFee_rpc": null,
+        "resources_xdr": {
+          "instructions": "899733",
+          "diskReadBytes": "116",
+          "writeBytes": "488"
+        },
+        "footprint_xdr": {
+          "readOnlyEntries": 3,
+          "readWriteEntries": 3
+        },
+        "eventsCount_rpc": 5,
+        "eventsSizeBytes_estimate": 7394,
+        "returnValueSizeBytes_estimate": 4,
+        "stateChanges_rpc": {
+          "count": 3,
+          "types": [
+            "updated",
+            "updated",
+            "updated"
+          ]
+        }
+      },
+      "create_payout": {
+        "method": "create_payout",
+        "source": "rpc_simulate_via_contract_Client",
+        "latestLedger_rpc": 5384964,
+        "minResourceFee_rpc": "2910966914",
+        "resourceFee_xdr": "2910966914",
+        "builtFee_assembledTx": "2910967014",
+        "restorePreamble_present": false,
+        "restorePreamble_minResourceFee_rpc": null,
+        "resources_xdr": {
+          "instructions": "991206",
+          "diskReadBytes": "0",
+          "writeBytes": "1176"
+        },
+        "footprint_xdr": {
+          "readOnlyEntries": 1,
+          "readWriteEntries": 4
+        },
+        "eventsCount_rpc": 3,
+        "eventsSizeBytes_estimate": 6739,
+        "returnValueSizeBytes_estimate": 12,
+        "stateChanges_rpc": {
+          "count": 4,
+          "types": [
+            "updated",
+            "created",
+            "created",
+            "updated"
+          ]
+        }
+      }
+    }
+  ],
+  "apiObservedOverflowTotal": {
+    "value": "5261104576",
+    "source": "API_error_message_only",
+    "note": "Not decomposed here. Script records RPC minResourceFee and AssembledTransaction.built.fee only."
+  },
+  "inputDifferencesVsApi": [
+    "API claim_hash comes from sealed claim secret; this script uses a random 32-byte placeholder",
+    "API expires_at comes from runtime lockExpiresAt / quote window; script uses now+3600s",
+    "API runs deposit then create_payout sequentially in one fundAndRun; script simulates each independently",
+    "API may re-simulate inside signAndSend; script does not call signAndSend"
+  ]
+}
