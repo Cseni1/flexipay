@@ -1,0 +1,474 @@
+{
+  "testedCommit": "729e67f",
+  "diagnosedAt": "2026-10-25T17:35:49.367Z",
+  "noTransactionsSubmitted": true,
+  "noDatabaseMutations": true,
+  "noSignAndSendCalled": true,
+  "paymentId": "pay_b61ffbace8fe4a8b1397ad38",
+  "db": {
+    "status": "processing",
+    "lockAttempt": 3,
+    "settleStatus": "processing",
+    "externalRef": null,
+    "lockTxRef": null,
+    "amountInValue": "19702970",
+    "feeMode": "PayerPays",
+    "claimExpiresAt": "2026-10-25T17:12:17.931Z",
+    "claimStatus": "open",
+    "quoteValidUntil": "2026-10-25T17:12:17.931Z"
+  },
+  "vault": "CCG232ACW63XVUQGMMA6SWV46W2HIVR2ZSB5ENXHOIIITQBXUBHHIUMN",
+  "invoker": "GA3VFDLARJMD7IBYZ2EW3SDQBAIASVSFLFKKBLCNI4D3KDMWDQJX6D6F",
+  "rpcUrl": "https://soroban-testnet.stellar.org",
+  "inputMatching": {
+    "exact_from_db": [
+      "claim_hash = claimLink.vaultClaimHashHex",
+      "amount = settle.amountInValue",
+      "mode = quote.feeMode",
+      "payer = FP_PAYER_DEMO_ADDRESS",
+      "external_id = sha256(paymentId:lockAttempt)"
+    ],
+    "exact_expires_at_probe": "exact_db_inputs_lockAttempt",
+    "fee_measure_deviation": "expires_at set to now+3600s because DB claim expiry is in the past and exact-expiry simulate does not produce resource fees; claim_hash/amount/mode/external_id unchanged"
+  },
+  "probes": [
+    {
+      "label": "exact_db_inputs_lockAttempt",
+      "argsSanitised": {
+        "payer": "GA3VFDLARJMD7IBYZ2EW3SDQBAIASVSFLFKKBLCNI4D3KDMWDQJX6D6F",
+        "amount": "19702970",
+        "mode": "PayerPays",
+        "expires_at_unix": "1792948337",
+        "external_id_hex_prefix": "a873ae635feb2ae7",
+        "claim_hash_hex_prefix": "1838a2c9b3843bac",
+        "claim_hash_byteLength": 32
+      },
+      "simulation": {
+        "source": "rpc_simulate_via_contract_Client_create_payout",
+        "latestLedger_rpc": 5385232,
+        "error_rpc": "HostError: Error(Contract, #11)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CCG232ACW63XVUQGMMA6SWV46W2HIVR2ZSB5ENXHOIIITQBXUBHHIUMN, topics:[error, Error(Contract, #11)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diagnostic Event] topics:[fn_call, CCG232ACW63XVUQGMMA6SWV46W2HIVR2ZSB5ENXHOIIITQBXUBHHIUMN, create_payout], data:[GA3VFDLARJMD7IBYZ2EW3SDQBAIASVSFLFKKBLCNI4D3KDMWDQJX6D6F, Bytes(a873ae635feb2ae7e861fbc48a491ff0a8242f4e40b76a69d9570fb8c6f88898), Bytes(1838a2c9b3843bacd18a111f756ac29f110244f1e1cbcb1919cce7770858da61), 19702970, [PayerPays], 1792948337]\n",
+        "minResourceFee_rpc": null,
+        "resourceFee_xdr": null,
+        "builtFee_assembledTx": "100",
+        "restorePreamble_present": false,
+        "resources_xdr": null,
+        "footprint_xdr": null,
+        "stateChanges_decoded": null
+      },
+      "signPathRebuild_measured": null,
+      "cloneFromWithoutFeeOverride_measured": null,
+      "arithmetic_check": null
+    },
+    {
+      "label": "exact_claim_hash_amount_mode_externalId__expires_at_plus_1h_for_fee_measure",
+      "argsSanitised": {
+        "payer": "GA3VFDLARJMD7IBYZ2EW3SDQBAIASVSFLFKKBLCNI4D3KDMWDQJX6D6F",
+        "amount": "19702970",
+        "mode": "PayerPays",
+        "expires_at_unix": "1792953346",
+        "external_id_hex_prefix": "a873ae635feb2ae7",
+        "claim_hash_hex_prefix": "1838a2c9b3843bac",
+        "claim_hash_byteLength": 32
+      },
+      "simulation": {
+        "source": "rpc_simulate_via_contract_Client_create_payout",
+        "latestLedger_rpc": 5385232,
+        "error_rpc": null,
+        "minResourceFee_rpc": "692289",
+        "resourceFee_xdr": "692289",
+        "builtFee_assembledTx": "692389",
+        "restorePreamble_present": false,
+        "resources_xdr": {
+          "instructions": "991206",
+          "diskReadBytes": "0",
+          "writeBytes": "1176"
+        },
+        "footprint_xdr": {
+          "readOnlyEntries": 1,
+          "readWriteEntries": 4
+        },
+        "stateChanges_decoded": [
+          {
+            "type": "updated",
+            "keyKind": "contractData",
+            "before": {
+              "encodedLedgerEntryBytes_estimate": 148,
+              "entryDataArm": "contractData"
+            },
+            "after": {
+              "encodedLedgerEntryBytes_estimate": 148,
+              "entryDataArm": "contractData"
+            }
+          },
+          {
+            "type": "created",
+            "keyKind": "contractData",
+            "before": null,
+            "after": {
+              "encodedLedgerEntryBytes_estimate": 180,
+              "entryDataArm": "contractData"
+            }
+          },
+          {
+            "type": "created",
+            "keyKind": "contractData",
+            "before": null,
+            "after": {
+              "encodedLedgerEntryBytes_estimate": 524,
+              "entryDataArm": "contractData"
+            }
+          },
+          {
+            "type": "updated",
+            "keyKind": "contractData",
+            "before": {
+              "encodedLedgerEntryBytes_estimate": 324,
+              "entryDataArm": "contractData"
+            },
+            "after": {
+              "encodedLedgerEntryBytes_estimate": 324,
+              "entryDataArm": "contractData"
+            }
+          }
+        ]
+      },
+      "signPathRebuild_measured": {
+        "ok": true,
+        "rebuiltFee": "1384678"
+      },
+      "cloneFromWithoutFeeOverride_measured": {
+        "ok": true,
+        "rebuiltFee": "692389"
+      },
+      "arithmetic_check": {
+        "inclusionFee_assembled_minus_resourceFee": "100",
+        "assembled_plus_resourceFee": "1384678",
+        "two_times_resourceFee_plus_inclusion": "1384678",
+        "signRebuild_got_or_fee": "1384678",
+        "signRebuild_equals_assembled_plus_R": true,
+        "signRebuild_equals_historical_5261104576": false,
+        "assembled_plus_R_equals_historical_5261104576": false,
+        "uint32_max": "4294967295"
+      }
+    },
+    {
+      "label": "attempt_1_exact_claim_hash__expires_at_plus_1h_for_fee_measure",
+      "argsSanitised": {
+        "payer": "GA3VFDLARJMD7IBYZ2EW3SDQBAIASVSFLFKKBLCNI4D3KDMWDQJX6D6F",
+        "amount": "19702970",
+        "mode": "PayerPays",
+        "expires_at_unix": "1792953346",
+        "external_id_hex_prefix": "b555072c297a0716",
+        "claim_hash_hex_prefix": "1838a2c9b3843bac",
+        "claim_hash_byteLength": 32
+      },
+      "simulation": {
+        "source": "rpc_simulate_via_contract_Client_create_payout",
+        "latestLedger_rpc": 5385232,
+        "error_rpc": null,
+        "minResourceFee_rpc": "692289",
+        "resourceFee_xdr": "692289",
+        "builtFee_assembledTx": "692389",
+        "restorePreamble_present": false,
+        "resources_xdr": {
+          "instructions": "991206",
+          "diskReadBytes": "0",
+          "writeBytes": "1176"
+        },
+        "footprint_xdr": {
+          "readOnlyEntries": 1,
+          "readWriteEntries": 4
+        },
+        "stateChanges_decoded": [
+          {
+            "type": "updated",
+            "keyKind": "contractData",
+            "before": {
+              "encodedLedgerEntryBytes_estimate": 148,
+              "entryDataArm": "contractData"
+            },
+            "after": {
+              "encodedLedgerEntryBytes_estimate": 148,
+              "entryDataArm": "contractData"
+            }
+          },
+          {
+            "type": "created",
+            "keyKind": "contractData",
+            "before": null,
+            "after": {
+              "encodedLedgerEntryBytes_estimate": 180,
+              "entryDataArm": "contractData"
+            }
+          },
+          {
+            "type": "created",
+            "keyKind": "contractData",
+            "before": null,
+            "after": {
+              "encodedLedgerEntryBytes_estimate": 524,
+              "entryDataArm": "contractData"
+            }
+          },
+          {
+            "type": "updated",
+            "keyKind": "contractData",
+            "before": {
+              "encodedLedgerEntryBytes_estimate": 324,
+              "entryDataArm": "contractData"
+            },
+            "after": {
+              "encodedLedgerEntryBytes_estimate": 324,
+              "entryDataArm": "contractData"
+            }
+          }
+        ]
+      },
+      "signPathRebuild_measured": {
+        "ok": true,
+        "rebuiltFee": "1384678"
+      },
+      "cloneFromWithoutFeeOverride_measured": {
+        "ok": true,
+        "rebuiltFee": "692389"
+      },
+      "arithmetic_check": {
+        "inclusionFee_assembled_minus_resourceFee": "100",
+        "assembled_plus_resourceFee": "1384678",
+        "two_times_resourceFee_plus_inclusion": "1384678",
+        "signRebuild_got_or_fee": "1384678",
+        "signRebuild_equals_assembled_plus_R": true,
+        "signRebuild_equals_historical_5261104576": false,
+        "assembled_plus_R_equals_historical_5261104576": false,
+        "uint32_max": "4294967295"
+      }
+    }
+  ],
+  "rentCalc": {
+    "formula_sources": [
+      "rs-soroban-env/src/fees.rs \u2014 compute_rent_write_fee_per_1kb, compute_rent_fee, rent_fee_for_size_and_ledgers",
+      "stellar-protocol CAP-0046-07 \u2014 Rent fee section"
+    ],
+    "units": "stroops; sizes in bytes; ledgers dimensionless; fee_per_rent_1kb is stroops per 1KB of rented space",
+    "growthFactor_role": "sorobanStateRentFeeGrowthFactor multiplies ONLY the post-target slope inside compute_rent_write_fee_per_1kb(state_size). It is NOT a direct multiplier on entry rent (S\u00b7L\u00b7rate).",
+    "vault_ttl": {
+      "source": "contracts/payout_vault/src/lib.rs",
+      "DAY_LEDGERS": 17280,
+      "TTL_THRESHOLD": 518400,
+      "TTL_BUMP": 1036800,
+      "note": "extend_ttl(threshold, extend_to): bump live_until to current+extend_to when below threshold. New persistent writes typically land near current+TTL_BUMP."
+    },
+    "config_from_rpc": {
+      "contractLedgerCostV0": {
+        "found": true,
+        "source": "rpc_getLedgerEntries",
+        "latestLedger": 5385231,
+        "arm": "configSettingContractLedgerCostV0",
+        "numericFields_rpc": {
+          "ledgerMaxDiskReadEntries": "2000",
+          "ledgerMaxDiskReadBytes": "400000",
+          "ledgerMaxWriteLedgerEntries": "2000",
+          "ledgerMaxWriteBytes": "297000",
+          "txMaxDiskReadEntries": "200",
+          "txMaxDiskReadBytes": "200000",
+          "txMaxWriteLedgerEntries": "200",
+          "txMaxWriteBytes": "132096",
+          "feeDiskReadLedgerEntry": "781",
+          "feeWriteLedgerEntry": "1250",
+          "feeDiskRead1Kb": "223",
+          "sorobanStateTargetSizeBytes": "7000000000",
+          "rentFee1KbSorobanStateSizeLow": "-17000",
+          "rentFee1KbSorobanStateSizeHigh": "10000",
+          "sorobanStateRentFeeGrowthFactor": "5000"
+        },
+        "arrayValues_rpc": null
+      },
+      "stateArchival": {
+        "found": true,
+        "source": "rpc_getLedgerEntries",
+        "latestLedger": 5385231,
+        "arm": "configSettingStateArchival",
+        "numericFields_rpc": {
+          "maxEntryTtl": "3110400",
+          "minTemporaryTtl": "720",
+          "minPersistentTtl": "120960",
+          "persistentRentRateDenominator": "1215",
+          "tempRentRateDenominator": "2430",
+          "maxEntriesToArchive": "1000",
+          "liveSorobanStateSizeWindowSampleSize": "30",
+          "liveSorobanStateSizeWindowSamplePeriod": "64",
+          "evictionScanSize": "500000",
+          "startingEvictionScanLevel": "7"
+        },
+        "arrayValues_rpc": null
+      },
+      "liveSorobanStateSizeWindow": {
+        "found": true,
+        "source": "rpc_getLedgerEntries",
+        "latestLedger": 5385231,
+        "arm": "configSettingLiveSorobanStateSizeWindow",
+        "numericFields_rpc": null,
+        "arrayValues_rpc": [
+          "4099114763",
+          "4100542568",
+          "4101685234",
+          "4105603905",
+          "4112925083",
+          "4116083836",
+          "4121329372",
+          "4124426423",
+          "4125586762",
+          "4126402698",
+          "4136545694",
+          "4136864891",
+          "4139534203",
+          "4140629217",
+          "4141710805",
+          "4143182265",
+          "4145469194",
+          "4147562548",
+          "4146186921",
+          "4146822083",
+          "4145886294",
+          "4147184711",
+          "4147761869",
+          "4147853260",
+          "4148376966",
+          "4150571480",
+          "4153399657",
+          "4155107093",
+          "4156982373",
+          "4158211794"
+        ],
+        "latestSample_bytes": "4158211794",
+        "sampleCount": 30
+      },
+      "contractLedgerCostExtV0": {
+        "found": true,
+        "source": "rpc_getLedgerEntries",
+        "latestLedger": 5385232,
+        "arm": "configSettingContractLedgerCostExtV0",
+        "numericFields_rpc": {
+          "txMaxFootprintEntries": "400",
+          "feeWrite1Kb": "437"
+        },
+        "arrayValues_rpc": null
+      }
+    },
+    "computed": {
+      "soroban_state_size_bytes_rpc_window_latest": "4158211794",
+      "sorobanStateTargetSizeBytes_rpc": "7000000000",
+      "state_above_target_bytes": "-2841788206",
+      "fee_per_rent_1kb_calculated": "1000",
+      "feeWrite1Kb_rpc_ledgerCostExt": "437",
+      "feeWriteLedgerEntry_rpc": "1250",
+      "persistentRentRateDenominator_rpc": "1215",
+      "tempRentRateDenominator_rpc": "2430",
+      "TTL_BUMP_ledgers_from_vault": 1036800,
+      "TTL_ENTRY_SIZE_constant": 48,
+      "note_entry_sizes": "Filled after create_payout probe using encoded stateChange sizes / writeBytes \u2014 see computed.entryRentEstimates",
+      "entryRentEstimates": [
+        {
+          "type": "created",
+          "keyKind": "contractData",
+          "assumed_size_bytes": 180,
+          "size_source": "encoded_LedgerEntry_XDR_length_from_simulate_stateChange.after",
+          "assumed_extension_ledgers": 1036800,
+          "extension_source": "vault TTL_BUMP (new persistent live_until \u2248 current+TTL_BUMP; exclusive-diff may be TTL_BUMP\u00b11)",
+          "rent_fee_stroops_calculated": "150000",
+          "status": "CALCULATED_under_stated_assumptions"
+        },
+        {
+          "type": "created",
+          "keyKind": "contractData",
+          "assumed_size_bytes": 524,
+          "size_source": "encoded_LedgerEntry_XDR_length_from_simulate_stateChange.after",
+          "assumed_extension_ledgers": 1036800,
+          "extension_source": "vault TTL_BUMP (new persistent live_until \u2248 current+TTL_BUMP; exclusive-diff may be TTL_BUMP\u00b11)",
+          "rent_fee_stroops_calculated": "436667",
+          "status": "CALCULATED_under_stated_assumptions"
+        }
+      ],
+      "ttl_write_fee_rough_if_all_entries_extended": "5082",
+      "sum_created_entry_rent_estimates": "586667",
+      "minResourceFee_rpc_feeProbe": "692289",
+      "rent_sum_vs_minResourceFee": {
+        "sum_created_rent": "586667",
+        "minResourceFee": "692289",
+        "difference_minRF_minus_sum": "105622",
+        "note": "minResourceFee also includes non-rent resource fees + updated-entry rent/top-ups + TTL writes; exact match not expected without full LedgerEntryRentChange vectors."
+      }
+    },
+    "limitations": [
+      "live_until before/after per entry not resolved from separate TTL ledger keys; extension ledgers assumed = TTL_BUMP for created entries only.",
+      "encoded LedgerEntry XDR length is an estimate of in-memory size used by rent; host may use a different size metric."
+    ]
+  },
+  "matchedFeeExplanation": {
+    "historical_api_error_got": "5261104576",
+    "historical_diagnosis_minResourceFee_at_time": "2820986533",
+    "historical_diagnosis_assembled_builtFee_at_time": "2820986633",
+    "historical_arithmetic_check": {
+      "assembled_plus_resourceFee_then": "5641973166 (\u2260 5261104576)",
+      "note": "At diagnosis time, assembled+R did NOT equal Got 5261104576. The earlier split 2820986533+2440118043 equals Got arithmetically but 2440118043 was NOT an RPC/SDK field \u2014 speculative."
+    },
+    "this_dryrun_feeProbe": {
+      "minResourceFee_rpc": "692289",
+      "builtFee_assembled": "692389",
+      "signRebuild_got_or_fee": "1384678",
+      "assembled_plus_R": "1384678",
+      "signRebuild_equals_assembled_plus_R": true,
+      "signRebuild_equals_historical_got": false
+    },
+    "sdk_mechanism_measured": "AssembledTransaction.sign() passes fee: built.fee into cloneFrom, overriding the stripped inclusion fee; build() then adds resourceFee again. Measured: sign-path total \u2248 assembled.fee + resourceFee when overflow throws.",
+    "what_is_measured_vs_not": {
+      "measured": [
+        "RPC minResourceFee / XDR resourceFee / Assembled built.fee for matched claim_hash+amount+mode+external_id (expires_at +1h deviation noted)",
+        "sign()-equivalent TransactionBuilder rebuild Got value (no network submit)",
+        "ConfigSetting rent knobs + liveSorobanStateSizeWindow latest sample",
+        "Calculated fee_per_rent_1kb from those knobs + state size"
+      ],
+      "not_measured": [
+        "Exact historical Got 5261104576 reproduction (ledger/state size has moved; current minRF differs)",
+        "Exact per-entry live_until before/after pairs",
+        "Full host rent breakdown returned as separate RPC fields (unavailable)"
+      ]
+    },
+    "current_vs_historical_minResourceFee": {
+      "earlier_today_compare_json_minResourceFee": "2910966914",
+      "earlier_diagnosis_json_minResourceFee": "2820986533",
+      "this_dryrun_minResourceFee": "692289",
+      "reproduced_now": false,
+      "rent_math_now_closes": true,
+      "note": "With state size ~4.16e9 < target 7e9, growthFactor=5000 does not apply; fee_per_rent_1kb floors at 1000; created-entry rent estimates sum ~5.87e5 vs minRF 6.92e5."
+    },
+    "historical_got_5261104576": {
+      "api_error_string_only": "5261104576",
+      "sign_path_mechanism_measured_this_dryrun": "rebuiltFee == assembledFee + resourceFee (692389+692289=1384678)",
+      "diagnosis_time_assembled_plus_R": "2820986633+2820986533=5641973166 \u2260 5261104576",
+      "R_that_would_make_assembled_plus_R_equal_Got_if_inclusion_100": "2630552238",
+      "retired_speculation": "2820986533+2440118043 split \u2014 second addend was not an RPC/SDK field",
+      "conclusion": "SDK sign()-rebuild double-counts resourceFee (measured). Historical Got is consistent with that mechanism for some R\u22482.630552238e9 at failure time, but is NOT equal to assembled+R using the later diagnosis-script fees. Do not invent components."
+    }
+  },
+  "correction_of_prior_evidence": {
+    "file": "scripts/demo/evidence/2026-10-25-m2-fee-overflow-diagnosis.md",
+    "prior_speculative_sentence": "Got 5261104576 \u2248 2820986533 + 2440118043 (pathological resource fee plus a second large addend \u2014 likely restore/re-assemble/signAndSend composition)",
+    "correction": "RETIRE that additive split. 2440118043 was not returned by RPC/SDK. Measured SDK sign()-rebuild mechanism doubles resourceFee onto assembled fee (assembled + R). Historical Got 5261104576 is recorded as the API error string only; it is not reproduced by assembled+R using the diagnosis-time fees (2820986633+2820986533\u22605261104576). Root rent driver is fee_per_rent_1kb from live Soroban state size \u226b target under growthFactor slope \u2014 not growthFactor as a direct multiplier on rent."
+  },
+  "stellar_mentor_question": {
+    "context": "We can compute fee_per_rent_1kb from LiveSorobanStateSizeWindow + ledgerCost, and estimate created-entry rent with size\u2248encoded XDR length and L=TTL_BUMP, but cannot close the gap to minResourceFee without exact TTL before/after.",
+    "question": "On Testnet, LiveSorobanStateSizeWindow \u2248 4.1e9 bytes with sorobanStateRentFeeGrowthFactor=5000 drives fee_per_rent_1kb into the millions. For create_payout creating 2 persistent entries with TTL_BUMP=1036800, what is the authoritative size metric for rent (XDR length vs host memory size), and does SimulateTransaction expose a rent-only fee breakdown? Also please confirm whether stellar-sdk AssembledTransaction.sign()'s cloneFrom({fee: built.fee}) double-adding resourceFee (overflowing uint32 when resourceFee>~2.15e9) is expected."
+  },
+  "controlSims_same_session": {
+    "source": "scripts/demo/_control-minrf.mjs (not committed)",
+    "create_payout_random_external_id_minResourceFee_rpc": "692289",
+    "create_payout_random_2_minResourceFee_rpc": "692289",
+    "deposit_minResourceFee_rpc": "13442",
+    "liveSorobanStateSizeWindow_range_bytes": {
+      "min": "4099114763",
+      "max": "4158211794"
+    },
+    "note": "Current create_payout minResourceFee ~6.9e5 is stable for random and matched claim_hash. Prior evidence ~2.9e9 from earlier today is NOT reproduced now; ledger/settings/TTL conditions have moved."
+  }
+}

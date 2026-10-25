@@ -19,7 +19,9 @@
 
 Settle orchestration (`fundAndRun`) always **`fundVault` (deposit) then `lock` (`create_payout`)**. Failed payments leave settle `processing` with **no `lockTxRef`**, while deposits already landed (duplicate-funding risk on naive retry).
 
-`Got 5261104576` ≈ `2820986533 + 2440118043` (pathological resource fee plus a second large addend — likely restore/re-assemble/signAndSend composition). Client `AssembledTransaction` after first simulate already carries `builtFee` 2.82e9 (fits uint32); overflow appears on the submit/prepare path used by `signAndSend`, not on deposit.
+`Got 5261104576` was recorded from the API error string alongside script `minResourceFee=2820986533` / `builtFee=2820986633`. Client `AssembledTransaction` after first simulate already carries `builtFee` 2.82e9 (fits uint32); overflow appears on the submit/prepare path used by `signAndSend`, not on deposit.
+
+> **CORRECTION (2026-10-25 Assignment 1 — see `2026-10-25-m2-fee-rent-matched.md`):** An earlier draft of this paragraph claimed `Got ≈ 2820986533 + 2440118043` (speculative “second addend” / restore composition). **That split is withdrawn** — `2440118043` was not an RPC/SDK field. Measured SDK behavior: `AssembledTransaction.sign()` rebuilds with `fee: built.fee` then adds `resourceFee` again (`total ≈ assembled + R`). Diagnosis-time `assembled + R = 5641973166 ≠ 5261104576`; historical Got remains an API string not fully reproduced from those diagnosis-time fees. Historical measured numbers above are preserved.
 
 ---
 

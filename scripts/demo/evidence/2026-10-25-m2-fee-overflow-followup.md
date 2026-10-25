@@ -82,8 +82,8 @@ Unchanged: `create_payout` sim → Contract **#5 InsufficientBalance** (payer va
 
 ## 5. Smallest evidence-backed recommendation
 
-1. Investigate **why RPC assigns ~2.9e9 minResourceFee** to baseline `create_payout` despite modest instructions/writeBytes — likely **rent on `created` entries** / TTL extensions under `sorobanStateRentFeeGrowthFactor=5000`; not a deposit bug.  
-2. Separately explain API **5.26e9** vs script **2.91e9** with **matched args** (real claim hash + expires_at) and inspection of **`signAndSend` assemble** — without inventing fee components.  
+1. Investigate **why RPC assigns ~2.9e9 minResourceFee** to baseline `create_payout` despite modest instructions/writeBytes — rent on `created` entries / TTL is still the leading hypothesis; **do not treat `sorobanStateRentFeeGrowthFactor=5000` as a direct multiplier** (it only affects post-target `fee_per_rent_1kb` slope). Follow-up: `2026-10-25-m2-fee-rent-matched.md`.  
+2. Separately explain API **5.26e9** vs script **2.91e9** with **matched args** and **`sign()` rebuild inspection** — without inventing fee components. **Update:** speculative additive split in the diagnosis note is **corrected/retired** in Assignment 1 evidence.  
 3. **Do not** re-`/fund` failed payments without Claude review; code **will re-deposit**. Prefer withdraw/reconcile stranded balance or a Claude-designed lock-only path after `findLock`/balance checks.  
 4. No fee cap/truncation, no vault redeploy, no claim replacement from this lane.
 
