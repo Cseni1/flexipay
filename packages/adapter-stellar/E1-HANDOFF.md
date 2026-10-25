@@ -88,12 +88,14 @@ Secrets overlay (gitignored): `.env.secrets-anchor-vault`.
 
 ## H1 — Claude approval required (not executed)
 
-Same-token second vault at `fee_bps=50`, baseline vault untouched; quote on baseline (100) → restart API env to H1 vault → fund → expect `409 fee_drift` + refund + claim refuse via **public API**. Details in prior section of PR #61 / below.
+Exact reproduction + gates: **`scripts/demo/H1-REPRODUCTION.md`**.  
+Driver (plan-only by default): `scripts/demo/h1-fee-drift-stellar.ts`.
 
-1. Deploy H1 vault: baseline token (GBBO6N SAC), fee 50, distinct id.  
-2. Process A: baseline env → claim_link payment. Isolated DB.  
-3. Process B: same DB, env → H1 vault (verifyConfig OK).  
-4. Fund → drift path. Restore baseline env.
+Same-token second vault at `fee_bps=50`, baseline vault untouched; quote on baseline (100) → restart API env to H1 vault → fund → expect `409 fee_drift` + on-chain refund + claim refuse + idempotent replay via **public API**.
+
+## Interface reuse (product direction)
+
+Hackathon stays Stellar-first. Anchor/H2/H1 code uses existing settlement + provider interfaces; chain-specific SEP/Soroban details remain in this package and `contracts/`. Do not add another ecosystem adapter this weekend.
 
 ## H2 — PASS (25 Oct)
 

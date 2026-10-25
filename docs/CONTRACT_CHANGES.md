@@ -292,4 +292,13 @@ Status: **approved** by the project owner on 23 Oct 2026. The documents `PRODUCT
   3. **M1 success rule:** SEP-24 status `completed` plus verified amount, asset identity, destination and memo; vault release hash recorded separately from anchor payment hash. Bank payout described as reference-anchor simulation.
 - **Who is affected:** `packages/adapter-stellar` (Csenge); `apps/api` + claim UI (Csaba) for wiring; DF7 (Freebuff) consumes the client.
 - **Needs:** Claude accepts or renames env keys; Csaba confirms API shape before any new routes; Freebuff aligns DF7 with exported methods in `packages/adapter-stellar/E1-HANDOFF.md`.
-- **Out of scope here:** SEP-45 / passkey (M2); changing baseline vault on-chain config; H1 execution (separate proposal in the handoff).
+- **Out of scope here:** SEP-45 / passkey (M2); changing baseline vault on-chain config; H1 execution (see `scripts/demo/H1-REPRODUCTION.md` — separate Claude go/no-go).
+
+## H1 Stellar fee-drift reproduction (proposed, 25 Oct 2026)
+
+- **From:** Csenge Cursor (M3 / H1).
+- **Status:** **proposed — awaiting Claude.** Driver exists but will not execute the fund/drift path without `FP_H1_CLAUDE_APPROVED=1` and `FP_H1_EXECUTE=1`.
+- **What:** Same-token vault at `fee_bps=50` (baseline GBBO6N SAC); baseline vault at 100 untouched; isolated DB; public API expects **409 `fee_drift`**, payment **`refunded`**, claim accept **409 `settle_failed`**, one lock + one refund on-chain, idempotent replays without duplicate funding/locks/refunds.
+- **Doc:** `scripts/demo/H1-REPRODUCTION.md`.
+- **Who is affected:** Cursor (run after approval); Freebuff (tx-window LOCK on payer); Claude (approve exact plan).
+- **Out of scope:** re-running E1/H2; changing CCR-15 wire shape; other chains.

@@ -57,6 +57,7 @@ apps/api/src/generated/
 # local embedded Postgres data
 apps/api/.pgdata/
 apps/api/.pgdata-h2-seal/
+apps/api/.pgdata-h1-drift/
 
 # E1 event vault secrets overlay (never commit)
 scripts/testnet/.env.secrets-anchor-vault

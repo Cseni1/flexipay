@@ -111,3 +111,7 @@ Hosted demo; fee sponsorship; polish of the hosted anchor screen; extra Playwrig
 
 1. Csenge: log in to Vercel (and the API host) when Claude asks, only if the hosted demo goes ahead.
 2. Both: tell Claude immediately when an agent is stuck, a checkpoint is missed, or a decision about scope is needed.
+
+## 10. Keep the options open (guardrails)
+
+Source of truth for this weekend: root coordinator file `FlexiPay-EVENT-BUILD-PLAN.md` §10. Stellar-first for hackathon implementation, docs and presentation. Reusable interfaces only: chain details stay in `packages/adapter-stellar` and `contracts/`; domain/API/web keep generic settlement names; do not invent other-chain adapters; vault behaviour lives in `contracts/payout_vault/RULES.md`; corridors/fees stay in `config/`; vault fee remains fixed for the demo.
