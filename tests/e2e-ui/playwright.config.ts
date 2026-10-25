@@ -26,7 +26,18 @@ export default defineConfig({
 		env: {
 			...(process.env as Record<string, string>),
 			FP_API_URL: "http://127.0.0.1:5199",
-			FP_API_KEY: "",
+			FP_API_KEY: "",				// Public, non-secret values from the repo's FP_ config. Only these two are exposed to
+				// the browser by vite.config.ts, and they enable the passkey option. The wallet kit
+				// itself is replaced by a deterministic module fixture in the passkey specs, so no
+				// RPC request leaves the test browser.
+				FP_STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015",
+				FP_STELLAR_RPC_URL: "https://soroban-testnet.stellar.org",
+				// The inherited wallet-kit scaffold still reads PUBLIC_STELLAR_*; keep its network
+				// values public and stable for the existing pages.
+				PUBLIC_STELLAR_NETWORK: "TESTNET",
+				PUBLIC_STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015",
+				PUBLIC_STELLAR_RPC_URL: "https://soroban-testnet.stellar.org",
+				PUBLIC_STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org",
 		},
 	},
 })

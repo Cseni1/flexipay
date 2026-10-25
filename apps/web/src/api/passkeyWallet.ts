@@ -1,0 +1,234 @@
+import {
+	PASSKEY_WALLET_APP_NAME,
+	PASSKEY_WALLET_USER_NAME,
+	isPasskeyWalletConfigured,
+	passkeyWalletConfig,
+} from "@flexipay/web-lib/passkey-config"
+// Types come from the lazy loader: no value import, so the kit stays a lazy chunk.
+const loadKitModule = () => import("passkey-kit")
+type KitModule = Awaited<ReturnType<typeof loadKitModule>>
+type PasskeyKit = InstanceType<KitModule["PasskeyKit"]>
+type CreateWalletResult = Awaited<ReturnType<PasskeyKit["createWallet"]>>
+
+// The only place in the web app that touches passkey-kit, loaded on demand so the claim page
+// does not ship the wallet SDK to visitors who never create a wallet. `createWallet` registers a
+// passkey with the platform authenticator and returns the shared-deployer carrier that the claim
+// API rebuilds with its own payer:
+//
+//   keyIdBase64 — base64url WebAuthn credential id (not standard base64)
+//   signedTx    — standard base64 Transaction envelope XDR (not base64url)
+//   contractId  — the deterministic C… wallet address for that credential
+//
+// The carrier is not secret-bearing, but it is never logged or stored: it goes straight into the
+// deploy request and stays in memory for an idempotent retry. The created wallet stays in this
+// module's memory so the claim signature can be made with the same credential; nothing is
+// persisted in the browser, so a page reload cannot resume it.
+
+export type PasskeyWalletErrorCode =
+	"unsupported" | "cancelled" | "not_configured" | "no_wallet" | "failed"
+
+export class PasskeyWalletError extends Error {
+	readonly code: PasskeyWalletErrorCode
+
+	constructor(code: PasskeyWalletErrorCode, message: string) {
+		super(message)
+		this.name = "PasskeyWalletError"
+		this.code = code
+	}
+}
+
+export interface CreatedPasskeyWallet {
+	contractId: string
+	keyIdBase64: string
+	signedTx: string
+}
+
+interface ActiveWallet {
+	kit: PasskeyKit
+	created: CreateWalletResult
+	contractId: string
+	keyIdBase64: string
+	deployTxHash: string | null
+}
+
+/** In-memory only: the created passkey wallet for this page session. */
+let active: ActiveWallet | null = null
+
+/** passkey-kit error codes (WebAuthn range); kept numeric to avoid importing the SDK eagerly. */
+const WEBAUTHN_NOT_SUPPORTED = 3003
+const WEBAUTHN_CANCELLED = 3004
+
+const hasWebAuthn = (): boolean =>
+	typeof window !== "undefined" &&
+	typeof window.PublicKeyCredential === "function"
+
+const errorCode = (cause: unknown): number | undefined => {
+	if (typeof cause !== "object" || cause === null || !("code" in cause))
+		return undefined
+	const code = (cause as { code: unknown }).code
+	return typeof code === "number" ? code : undefined
+}
+
+const isCancellation = (cause: unknown): boolean => {
+	if (errorCode(cause) === WEBAUTHN_CANCELLED) return true
+	const name =
+		cause instanceof Error
+			? cause.name
+			: typeof cause === "object" && cause !== null && "name" in cause
+				? String((cause as { name: unknown }).name)
+				: ""
+	if (name === "NotAllowedError" || name === "AbortError") return true
+	const inner =
+		typeof cause === "object" && cause !== null && "cause" in cause
+			? (cause as { cause: unknown }).cause
+			: undefined
+	return inner instanceof Error
+		? inner.name === "NotAllowedError" || inner.name === "AbortError"
+		: false
+}
+
+const toWalletError = (cause: unknown): PasskeyWalletError => {
+	if (cause instanceof PasskeyWalletError) return cause
+	if (isCancellation(cause)) {
+		return new PasskeyWalletError(
+			"cancelled",
+			"The passkey prompt was dismissed. Nothing was signed.",
+		)
+	}
+	if (errorCode(cause) === WEBAUTHN_NOT_SUPPORTED) {
+		return new PasskeyWalletError(
+			"unsupported",
+			"This browser cannot use a passkey.",
+		)
+	}
+	// Kit messages can mention RPC or contract details; the UI gets stable, payload-free copy.
+	return new PasskeyWalletError(
+		"failed",
+		"The passkey wallet could not be used on this device.",
+	)
+}
+
+export async function createPasskeyWallet(): Promise<CreatedPasskeyWallet> {
+	if (!hasWebAuthn()) {
+		throw new PasskeyWalletError(
+			"unsupported",
+			"This browser cannot create a passkey wallet.",
+		)
+	}
+	if (!isPasskeyWalletConfigured) {
+		throw new PasskeyWalletError(
+			"not_configured",
+			"Passkey wallets are not configured in this build.",
+		)
+	}
+
+	let created: CreateWalletResult
+	let kit: PasskeyKit
+	try {
+		const { PasskeyKit } = await loadKitModule()
+		kit = new PasskeyKit(passkeyWalletConfig)
+		created = await kit.createWallet(
+			PASSKEY_WALLET_APP_NAME,
+			PASSKEY_WALLET_USER_NAME,
+		)
+	} catch (cause) {
+		active = null
+		throw toWalletError(cause)
+	}
+
+	const { contractId, keyIdBase64, signedTx } = created
+	if (!contractId || !keyIdBase64 || !signedTx) {
+		active = null
+		throw new PasskeyWalletError(
+			"failed",
+			"The passkey wallet kit returned an incomplete deploy carrier.",
+		)
+	}
+	active = {
+		kit,
+		created,
+		contractId,
+		keyIdBase64,
+		deployTxHash: null,
+	}
+	return { contractId, keyIdBase64, signedTx }
+}
+
+/**
+ * Records the API-confirmed deploy hash for the in-memory wallet. Signing is refused until the
+ * API confirmed the deploy, so a pending/unknown deploy can never sign a claim.
+ */
+export function rememberPasskeyDeploy(deployTxHash: string): void {
+	if (active) active.deployTxHash = deployTxHash
+}
+
+/** Drops the in-memory wallet (token change or logout); never persisted anywhere. */
+export function forgetPasskeyWallet(): void {
+	active = null
+}
+
+export interface SignPasskeyClaimInput {
+	/** Unsigned Soroban auth entries from prepare (base64 XDR, secret-bearing). */
+	authEntries: string[]
+	/** The exact ledger prepare returned; any other value is rejected on submit. */
+	signatureExpirationLedger: number
+}
+
+/**
+ * Signs the prepared claim auth entries with the passkey created in this session.
+ *
+ * `signAuthEntry` is called with `expiration: signatureExpirationLedger` exactly as CCR-21
+ * requires. The signed entries carry the vault claim secret, so they are returned to the caller
+ * and never logged or stored.
+ */
+export async function signPasskeyClaimAuthEntries({
+	authEntries,
+	signatureExpirationLedger,
+}: SignPasskeyClaimInput): Promise<string[]> {
+	const wallet = active
+	if (!wallet) {
+		throw new PasskeyWalletError(
+			"no_wallet",
+			"This page no longer holds the passkey wallet. A reload cannot resume it; use a crypto wallet address instead.",
+		)
+	}
+	if (!wallet.deployTxHash) {
+		throw new PasskeyWalletError(
+			"no_wallet",
+			"The wallet deploy is not confirmed yet, so no claim signature was made.",
+		)
+	}
+	if (authEntries.length === 0) {
+		throw new PasskeyWalletError(
+			"failed",
+			"The claim signature request was empty.",
+		)
+	}
+
+	try {
+		const [{ PasskeySigner }, { decodeAuthEntryXdr, encodeAuthEntryXdr }] =
+			await Promise.all([
+				loadKitModule(),
+				import("@flexipay/web-lib/passkey-auth"),
+			])
+
+		const entries = authEntries.map((entry) => decodeAuthEntryXdr(entry))
+
+		// The API-confirmed deploy must be verified once, then the wallet is connected with a
+		// fresh possession check before any signature is produced.
+		await wallet.kit.confirmWalletCreation(wallet.created, wallet.deployTxHash)
+		await wallet.kit.connectWallet({ keyId: wallet.keyIdBase64 })
+
+		const signer = new PasskeySigner(wallet.keyIdBase64)
+		const signed: string[] = []
+		for (const entry of entries) {
+			const signedEntry = await wallet.kit.signAuthEntry(entry, signer, {
+				expiration: signatureExpirationLedger,
+			})
+			signed.push(encodeAuthEntryXdr(signedEntry))
+		}
+		return signed
+	} catch (cause) {
+		throw toWalletError(cause)
+	}
+}

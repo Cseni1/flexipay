@@ -13,13 +13,14 @@
     "typecheck": "tsc"
   },
   "dependencies": {
+    "@flexipay/web-lib": "*",
     "@tanstack/react-query": "^5.90.17",
     "@theahaco/ts-config": "^1.3.0",
     "lossless-json": "^4.3.0",
+    "passkey-kit": "0.19.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-router-dom": "^7.18.1",
-    "@flexipay/web-lib": "*"
+    "react-router-dom": "^7.18.1"
   },
   "devDependencies": {
     "@types/lodash": "^4.17.24",
