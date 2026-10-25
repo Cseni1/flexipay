@@ -4,6 +4,11 @@ import {
 	CreateBatchRequestSchema,
 } from "./batches.ts";
 import {
+	AnchorIndicativePriceRequestSchema,
+	AnchorIndicativePriceResponseSchema,
+	AnchorWithdrawRequestSchema,
+	AnchorWithdrawResponseSchema,
+	AnchorWithdrawStatusResponseSchema,
 	ClaimAcceptRequestSchema,
 	ClaimAcceptResponseSchema,
 	ClaimViewSchema,
@@ -191,6 +196,34 @@ export const A0_OPENAPI_STUBS: readonly ApiOpenApiStub[] = [
 				schema: PasskeySubmitPendingResponseSchema,
 			},
 		],
+	},
+	{
+		// CCR-22 — reference-anchor claim HTTP (M1). Mounted on event/csaba-cursor/m1-anchor-api.
+		method: "post",
+		path: "/v1/claims/{token}/anchor/indicative-price",
+		summary:
+			"Public: SEP-38 indicative withdraw price (context=sep6; not a binding quote)",
+		auth: "none",
+		body: AnchorIndicativePriceRequestSchema,
+		success: { status: 200, schema: AnchorIndicativePriceResponseSchema },
+	},
+	{
+		// CCR-22 — start SEP-24 interactive withdraw after vault release to classic G….
+		method: "post",
+		path: "/v1/claims/{token}/anchor/withdraw",
+		summary:
+			"Public: start reference-anchor SEP-24 withdraw; returns sanitised hosted URL",
+		auth: "none",
+		body: AnchorWithdrawRequestSchema,
+		success: { status: 200, schema: AnchorWithdrawResponseSchema },
+	},
+	{
+		// CCR-22 — poll SEP-24 withdraw status (memo value never returned).
+		method: "get",
+		path: "/v1/claims/{token}/anchor/withdraw/{anchorTxId}",
+		summary: "Public: SEP-24 withdraw status for this claim's anchorTxId",
+		auth: "none",
+		success: { status: 200, schema: AnchorWithdrawStatusResponseSchema },
 	},
 	{
 		// Request from ARCHITECTURE §10 + CCR-4; no approved response body on main.

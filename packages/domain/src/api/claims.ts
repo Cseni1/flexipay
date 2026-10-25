@@ -238,3 +238,88 @@ export const PasskeySubmitPendingResponseSchema = z
 export type PasskeySubmitPendingResponse = z.infer<
   typeof PasskeySubmitPendingResponseSchema
 >;
+
+// ---------------------------------------------------------------------------
+// CCR-22: public claim-link reference-anchor HTTP (M1). auth: none.
+// Adapter surface remains CCR-20 (ReferenceAnchorClient). Indicative ≠ binding quote.
+// Never return raw hosted URL query tokens; use urlSanitised only.
+// ---------------------------------------------------------------------------
+
+/**
+ * USDC major units as a decimal string in [1, 10] (CCR-22).
+ * Not minor-unit MoneySchema — SEP-24/38 use major units here.
+ */
+export const AnchorUsdcMajorAmountSchema = z
+  .string()
+  .regex(/^\d+(\.\d{1,7})?$/, "decimal major units")
+  .refine((s) => {
+    const n = Number(s);
+    return Number.isFinite(n) && n >= 1 && n <= 10;
+  }, "USDC major units must be between 1 and 10");
+
+export const AnchorIndicativePriceRequestSchema = z
+  .object({
+    sellAmount: AnchorUsdcMajorAmountSchema,
+  })
+  .strict();
+
+export type AnchorIndicativePriceRequest = z.infer<
+  typeof AnchorIndicativePriceRequestSchema
+>;
+
+export const AnchorIndicativePriceResponseSchema = z
+  .object({
+    indicative: z.literal(true),
+    context: z.literal("sep6"),
+    sellAmount: z.string().min(1),
+    buyAmount: z.string().min(1),
+    buyAsset: z.string().min(1),
+    sellAsset: z.string().min(1),
+    price: z.string().min(1),
+  })
+  .strict();
+
+export type AnchorIndicativePriceResponse = z.infer<
+  typeof AnchorIndicativePriceResponseSchema
+>;
+
+export const AnchorWithdrawRequestSchema = z
+  .object({
+    amount: AnchorUsdcMajorAmountSchema,
+    /** SEP-24 type; optional (test anchor often accepts bank_account after interactive). */
+    type: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type AnchorWithdrawRequest = z.infer<typeof AnchorWithdrawRequestSchema>;
+
+export const AnchorWithdrawResponseSchema = z
+  .object({
+    anchorTxId: z.string().min(1),
+    /** Hosted URL with query/token stripped — never log the raw interactive URL. */
+    urlSanitised: z.string().min(1),
+    kind: z.literal("withdrawal"),
+  })
+  .strict();
+
+export type AnchorWithdrawResponse = z.infer<typeof AnchorWithdrawResponseSchema>;
+
+/**
+ * SEP-24 transaction poll view. Terminal vs pending is `status` only —
+ * vault release and classic anchor payment are separate refs (CCR-22).
+ * Memo value is never returned; only `withdrawMemoPresent`.
+ */
+export const AnchorWithdrawStatusResponseSchema = z
+  .object({
+    anchorTxId: z.string().min(1),
+    status: z.string().min(1),
+    amountIn: z.string().min(1).optional(),
+    withdrawAnchorAccount: z.string().min(1).optional(),
+    withdrawMemoPresent: z.boolean(),
+    stellarTransactionId: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type AnchorWithdrawStatusResponse = z.infer<
+  typeof AnchorWithdrawStatusResponseSchema
+>;

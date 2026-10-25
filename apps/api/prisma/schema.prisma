@@ -210,6 +210,17 @@ model ClaimLink {
   passkeyDeployPendingSealed Bytes?
   passkeyDeployPendingSealedNonce Bytes?
 
+  /// CCR-22: classic G… that received vault release (SEP-10 auth account for withdraw).
+  recipientClassicAddress String?
+  /// SEP-24 withdraw transaction id bound to this claim (unique across claims).
+  anchorTxId String? @unique
+  /// Sanitised hosted URL only (no query/token).
+  anchorUrlSanitised String?
+  /// Amount (USDC major units) used when anchorTxId was started — blocks amount mismatch replay.
+  anchorWithdrawAmount String?
+  /// Classic / anchor payment hash once known (stellar_transaction_id); separate from Leg.releaseTxRef.
+  anchorPaymentTxHash String?
+
   @@index([passkeyDeployPendingTxHash])
   @@index([passkeyDeployTxHash])
 }

@@ -387,10 +387,10 @@ Atomic prepare **reserve** and on-chain **pendingTx*** recovery remain separate 
 - Testnet: deploy hash + `Leg.releaseTxRef`; vault Claimed to `C…`; evidence without secrets/tokens.
 - Manual passkey ceremony on a real authenticator (virtual authenticator is not biometrics proof).
 
-## CCR-22: claim-link reference-anchor HTTP (M1 wiring) — **ELFOGADÁSRA VÁR**
+## CCR-22: claim-link reference-anchor HTTP (M1 wiring) — **ACK'd (integrator handoff)**
 
 - **From:** CCR-20 (accepted): “Csaba proposes request shapes in his PR; no additional CCR wait for the three server calls.”
-- **Status:** **ELFOGADÁSRA VÁR.** Not an accepted shared interface until the integrator ACKs. Adapter client surface remains CCR-20; this CCR only proposes **public claim HTTP** for Csaba ↔ Freebuff/Csenge wiring.
+- **Status:** **ACK'd** for M1 API wiring per integrator handoff (Csaba Cursor, branch `event/csaba-cursor/m1-anchor-api`). Adapter client surface remains CCR-20; this CCR is the **public claim HTTP** contract for Csaba ↔ Freebuff/Csenge.
 - **Out of scope:** DF7 script, `submitClassicPaymentWithMemo` refactor, SEP-45, changing CCR-20 env names.
 
 ### Public routes (`auth: none`, claim token)

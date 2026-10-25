@@ -1,5 +1,6 @@
 import type { FlexiPayConfig, ProviderAdapter, SettlementAdapter } from "@flexipay/domain";
 import { createSimProviders, type SimProviders } from "@flexipay/adapters-sim";
+import type { AnchorClaimGateway } from "./anchor/claim-anchor-gateway.ts";
 import { createSettlement, settlementModeFromEnv } from "./settlement.ts";
 import { claimSealKeyFromEnv } from "./orchestrator/claim-seal.ts";
 
@@ -42,6 +43,13 @@ export interface ApiRuntime {
 	/** Base for claim URLs, e.g. https://api.example (no trailing slash). */
 	apiPublicBase: string;
 	sim?: SimProviders;
+	/**
+	 * CCR-22: injectable reference-anchor gateway (tests). When omitted, routes
+	 * build from FP_ANCHOR_* via createEnvAnchorClaimGateway.
+	 */
+	anchorGateway?: AnchorClaimGateway;
+	/** Optional SEP-10 secret resolver for vault-release classic G… (tests). */
+	resolveAnchorAuthSecret?: (classicAddress: string) => string | undefined;
 }
 
 export async function createApiRuntime(
