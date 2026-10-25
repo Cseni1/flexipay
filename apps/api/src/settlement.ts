@@ -37,7 +37,7 @@ export interface CreateSettlementOptions {
 }
 
 /**
- * Builds the settlement adapter selected by `FP_SETTLEMENT` (default `mock`).
+ * Builds the settlement adapter selected by required `FP_SETTLEMENT` (mock|stellar).
  * Stellar mode loads public ids + optional secrets; it never prints secrets.
  */
 export async function createSettlement(

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { FundDepositVerifyError } from "@flexipay/domain";
-import { matchSingleVaultDeposit } from "../src/vault-deposit-decode.ts";
+import {
+	listVaultDepositInvokes,
+	matchSingleVaultDeposit,
+} from "../src/vault-deposit-decode.ts";
+import { FeeBumpTransaction, TransactionBuilder } from "@stellar/stellar-sdk";
 
 describe("CCR-23 vault deposit decode matching", () => {
 	const vaultId = "C" + "A".repeat(55);
@@ -64,6 +68,27 @@ describe("CCR-23 vault deposit decode matching", () => {
 			});
 		} catch (e) {
 			expect((e as FundDepositVerifyError).code).toBe("ambiguous");
+		}
+	});
+
+	it("rejects fee-bump / wrapper envelopes without unwrapping inner deposits", () => {
+		// Minimal stub: if fromXDR yields a FeeBumpTransaction, listVaultDepositInvokes must reject.
+		const passphrase = "Test SDF Network ; September 2015";
+		const original = TransactionBuilder.fromXDR.bind(TransactionBuilder);
+		const fakeBump = Object.create(FeeBumpTransaction.prototype) as FeeBumpTransaction;
+		TransactionBuilder.fromXDR = (() => fakeBump) as typeof TransactionBuilder.fromXDR;
+		try {
+			expect(() => listVaultDepositInvokes("AAAA", passphrase)).toThrow(
+				FundDepositVerifyError,
+			);
+			try {
+				listVaultDepositInvokes("AAAA", passphrase);
+			} catch (e) {
+				expect((e as FundDepositVerifyError).code).toBe("not_found");
+				expect((e as Error).message).toMatch(/wrapper|fee-bump/i);
+			}
+		} finally {
+			TransactionBuilder.fromXDR = original;
 		}
 	});
 });

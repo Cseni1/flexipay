@@ -128,3 +128,11 @@ If **and only if** every `Leg.fundTxRef` is still `NULL` (no confirms/reconciles
 - Local operator reconcile CLI under `scripts/` (not HTTP ops)
 - `packages/adapter-stellar/` fee handoff consume + deposit decode
 - Orchestrator / CLI tests for CCR-23 §8
+
+## Implementation notes (PR #77 — usage only; CCR-23 contract unchanged)
+
+- After a successful `fundVault`, orchestrator persists `fundTxRef` immediately (pending). `fundOpIndex` and the rest of the identity stay null until verify + CAS. Pending alone is **not** confirmed/bound. If that first hash-persist fails, the on-chain crash-window for that hash **remains**.
+- Reconcile CLI (`scripts/ops/reconcile-deposit.ts`) takes expectations from the **payment** settle fund amount and the configured vault payer. Optional `--amount` / `--payer` are cross-checks only. `DATABASE_URL` and `FP_SETTLEMENT` come from the environment (required; no code defaults; no `--database-url`).
+- Reconcile uses a **DB-transaction row lock** (`SELECT … FOR UPDATE` on the settle `Leg`) before CAS bind.
+- Fee-bump / wrapper envelopes: internal deposits are **unsupported** and rejected by the decoder; the decoder is not extended for nested wrapper cases in this PR.
+- `advanceLockAttemptAfterTerminalPayout` remains a **test/helper** (keeps prior `externalRef` / `lockTxRef` / `releaseTxRef` in the attempt-bump event payload). No operator attempt-bump CLI in this PR; acceptance does not require one.

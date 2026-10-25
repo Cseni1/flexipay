@@ -1,5 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
+	FundDepositUnconfirmedError,
+	FundDepositVerifyError,
 	decideOnFailure,
 	isPaid,
 	nextLegIndex,
@@ -505,14 +507,14 @@ async function loadUnsealedSecret(
 	);
 }
 
-function settleFundAmount(
-	leg: Awaited<ReturnType<typeof loadRuntime>>["legs"][number],
-	rt: Awaited<ReturnType<typeof loadRuntime>>,
+/** CCR-23: settle fund requirement from payment principal + quoted fee / feeMode. */
+export function settleFundAmount(
+	leg: { amountInValue: string; amountInCurrency: string },
+	quotedFee: Money,
 	feeMode: FeeMode,
 ): Money {
 	const amount = moneyOf(leg.amountInValue, leg.amountInCurrency);
-	const quotedFee = rt.quotedFlexiPayFee;
-	if (!quotedFee || quotedFee.currency !== amount.currency) {
+	if (quotedFee.currency !== amount.currency) {
 		throw new Error(
 			"quote.fees.flexiPayFee missing or currency mismatch for settle lock (CCR-13)",
 		);
@@ -524,6 +526,57 @@ function settleFundAmount(
 				currency: amount.currency,
 			}
 		: amount;
+}
+
+/** Full deposit identity (hash + opIndex) — pending fundTxRef alone is not confirmed/bound. */
+export function isFundDepositConfirmed(leg: {
+	fundTxRef: string | null;
+	fundOpIndex: number | null;
+}): boolean {
+	return leg.fundTxRef != null && leg.fundOpIndex != null;
+}
+
+const FUND_VERIFY_MAX_ATTEMPTS = 3;
+const FUND_VERIFY_RETRY_MS = 25;
+
+function sleepMs(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableFundVerifyFailure(err: unknown): boolean {
+	if (err instanceof FundDepositVerifyError) {
+		// FAILED / ambiguous are durable; not_found may be RPC lag after submit.
+		return err.code === "not_found";
+	}
+	return true;
+}
+
+/**
+ * CCR-23: persist fundTxRef only (pending). fundOpIndex / amount / network / vault stay null.
+ * Does not mark the deposit confirmed or bound.
+ */
+export async function persistPendingFundTxRef(
+	db: Db,
+	legId: string,
+	fundTxRef: string,
+): Promise<"written" | "already_same"> {
+	const updated = await db.leg.updateMany({
+		where: { id: legId, fundTxRef: null },
+		data: {
+			fundTxRef,
+			fundOpIndex: null,
+			fundAmountValue: null,
+			fundAmountCurrency: null,
+			fundNetwork: null,
+			fundVaultId: null,
+		},
+	});
+	if (updated.count === 1) return "written";
+	const current = await db.leg.findUniqueOrThrow({ where: { id: legId } });
+	if (current.fundTxRef === fundTxRef) return "already_same";
+	throw new Error(
+		"settle leg already has a different fundTxRef (CCR-23 pending CAS)",
+	);
 }
 
 /** CCR-23: CAS-write confirmed deposit identity; rejects if already bound to another identity. */
@@ -539,6 +592,49 @@ export async function persistConfirmedFundDeposit(
 		fundVaultId: string;
 	},
 ): Promise<"written" | "already_same"> {
+	const current = await db.leg.findUniqueOrThrow({ where: { id: legId } });
+	if (
+		current.fundTxRef === deposit.fundTxRef &&
+		current.fundOpIndex === deposit.fundOpIndex &&
+		current.fundNetwork === deposit.fundNetwork &&
+		current.fundVaultId === deposit.fundVaultId &&
+		current.fundAmountValue === deposit.fundAmountValue &&
+		current.fundAmountCurrency === deposit.fundAmountCurrency
+	) {
+		return "already_same";
+	}
+
+	// Complete pending hash → full identity (fundTxRef already set, opIndex still null).
+	if (current.fundTxRef === deposit.fundTxRef && current.fundOpIndex === null) {
+		const completed = await db.leg.updateMany({
+			where: {
+				id: legId,
+				fundTxRef: deposit.fundTxRef,
+				fundOpIndex: null,
+			},
+			data: {
+				fundOpIndex: deposit.fundOpIndex,
+				fundAmountValue: deposit.fundAmountValue,
+				fundAmountCurrency: deposit.fundAmountCurrency,
+				fundNetwork: deposit.fundNetwork,
+				fundVaultId: deposit.fundVaultId,
+			},
+		});
+		if (completed.count === 1) return "written";
+		const again = await db.leg.findUniqueOrThrow({ where: { id: legId } });
+		if (
+			again.fundTxRef === deposit.fundTxRef &&
+			again.fundOpIndex === deposit.fundOpIndex &&
+			again.fundNetwork === deposit.fundNetwork &&
+			again.fundVaultId === deposit.fundVaultId
+		) {
+			return "already_same";
+		}
+		throw new Error(
+			"settle leg already has a different confirmed deposit (CCR-23 CAS)",
+		);
+	}
+
 	const updated = await db.leg.updateMany({
 		where: { id: legId, fundTxRef: null },
 		data: {
@@ -551,12 +647,12 @@ export async function persistConfirmedFundDeposit(
 		},
 	});
 	if (updated.count === 1) return "written";
-	const current = await db.leg.findUniqueOrThrow({ where: { id: legId } });
+	const after = await db.leg.findUniqueOrThrow({ where: { id: legId } });
 	if (
-		current.fundTxRef === deposit.fundTxRef &&
-		current.fundOpIndex === deposit.fundOpIndex &&
-		current.fundNetwork === deposit.fundNetwork &&
-		current.fundVaultId === deposit.fundVaultId
+		after.fundTxRef === deposit.fundTxRef &&
+		after.fundOpIndex === deposit.fundOpIndex &&
+		after.fundNetwork === deposit.fundNetwork &&
+		after.fundVaultId === deposit.fundVaultId
 	) {
 		return "already_same";
 	}
@@ -565,8 +661,79 @@ export async function persistConfirmedFundDeposit(
 	);
 }
 
+async function verifyAndCompleteFundIdentity(
+	db: Db,
+	payment: { id: string; organizationId: string },
+	legId: string,
+	fundTxRef: string,
+	payer: string,
+	fundAmount: Money,
+	adapters: OrchestratorAdapters,
+): Promise<void> {
+	let lastErr: unknown;
+	for (let attempt = 1; attempt <= FUND_VERIFY_MAX_ATTEMPTS; attempt++) {
+		try {
+			const confirmed = await adapters.settlement.verifyFundDeposit({
+				txRef: fundTxRef,
+				payer,
+				amount: fundAmount,
+			});
+			const write = await persistConfirmedFundDeposit(db, legId, confirmed);
+			if (write === "written") {
+				await emitPaymentEvent(
+					db,
+					payment.organizationId,
+					payment.id,
+					"payment.onchain",
+					{
+						phase: "fund",
+						fundTxRef: confirmed.fundTxRef,
+						fundOpIndex: confirmed.fundOpIndex,
+						legId,
+					},
+				);
+			}
+			return;
+		} catch (err) {
+			lastErr = err;
+			if (
+				attempt < FUND_VERIFY_MAX_ATTEMPTS &&
+				isRetryableFundVerifyFailure(err)
+			) {
+				await sleepMs(FUND_VERIFY_RETRY_MS);
+				continue;
+			}
+			break;
+		}
+	}
+
+	const detail = lastErr instanceof Error ? lastErr.message : String(lastErr);
+	await db.auditRow.create({
+		data: {
+			id: newId("aud"),
+			paymentId: payment.id,
+			entity: "leg",
+			entityId: legId,
+			fromStatus: "fund_pending",
+			toStatus: "fund_unconfirmed",
+			reason: `fund_verify_durable_failure:${fundTxRef}`,
+		},
+	});
+	await emitPaymentEvent(db, payment.organizationId, payment.id, "payment.onchain", {
+		phase: "fund_unconfirmed",
+		fundTxRef,
+		legId,
+		detail,
+	});
+	throw new FundDepositUnconfirmedError(
+		fundTxRef,
+		`fund deposit ${fundTxRef} not confirmed after verification: ${detail}`,
+	);
+}
+
 /**
  * CCR-23 §5: bump lockAttempt only after on-chain refunded/cancelled proof, under CAS + audit.
+ * Test/helper only today — no operator CLI; acceptance does not require a bump CLI.
  */
 export async function advanceLockAttemptAfterTerminalPayout(
 	db: Db,
@@ -578,7 +745,7 @@ export async function advanceLockAttemptAfterTerminalPayout(
 		include: { legs: { where: { kind: "settle" }, take: 1 } },
 	});
 	const settle = payment.legs[0];
-	if (!settle?.fundTxRef) {
+	if (!settle || !isFundDepositConfirmed(settle)) {
 		throw new Error("cannot advance lockAttempt without confirmed deposit (CCR-23)");
 	}
 	const previousAttempt = payment.lockAttempt;
@@ -604,6 +771,9 @@ export async function advanceLockAttemptAfterTerminalPayout(
 		);
 	}
 	const nextAttempt = previousAttempt + 1;
+	const priorExternalRef = settle.externalRef;
+	const priorLockTxRef = settle.lockTxRef;
+	const priorReleaseTxRef = settle.releaseTxRef;
 	const bumped = await db.payment.updateMany({
 		where: { id: paymentId, lockAttempt: previousAttempt },
 		data: { lockAttempt: nextAttempt },
@@ -633,6 +803,9 @@ export async function advanceLockAttemptAfterTerminalPayout(
 		nextAttempt,
 		payoutId,
 		reason: "lock_attempt_advanced_after_refund",
+		priorExternalRef,
+		priorLockTxRef,
+		priorReleaseTxRef,
 	});
 	return { previousAttempt, nextAttempt };
 }
@@ -659,14 +832,25 @@ async function executeSettle(
 			"quote.fees.flexiPayFee missing or currency mismatch for settle lock (CCR-13)",
 		);
 	}
-	const fundAmount = settleFundAmount(leg, rt, feeMode);
+	const fundAmount = settleFundAmount(leg, quotedFee, feeMode);
 
-	// CCR-23: confirmed deposit — never fundVault again; keep the same lockAttempt / external id.
+	// CCR-23: any existing fundTxRef — never fundVault again (replay-safe).
 	if (leg.fundTxRef) {
+		if (!isFundDepositConfirmed(leg)) {
+			await verifyAndCompleteFundIdentity(
+				db,
+				payment,
+				leg.id,
+				leg.fundTxRef,
+				adapters.vaultPayer,
+				fundAmount,
+				adapters,
+			);
+		}
 		const attempt = payment.lockAttempt;
 		if (attempt < 1) {
 			throw new Error(
-				"confirmed deposit present but lockAttempt < 1 (CCR-23 invariant)",
+				"fundTxRef present but lockAttempt < 1 (CCR-23 invariant)",
 			);
 		}
 		const recovered = await adapters.settlement.findLock(
@@ -725,20 +909,31 @@ async function executeSettle(
 		adapters.vaultPayer,
 		fundAmount,
 	);
-	const confirmed = await adapters.settlement.verifyFundDeposit({
-		txRef: funded.txRef,
-		payer: adapters.vaultPayer,
-		amount: fundAmount,
-	});
-	const write = await persistConfirmedFundDeposit(db, leg.id, confirmed);
-	if (write === "written") {
-		await emitPaymentEvent(db, payment.organizationId, payment.id, "payment.onchain", {
-			phase: "fund",
-			fundTxRef: confirmed.fundTxRef,
-			fundOpIndex: confirmed.fundOpIndex,
-			legId: leg.id,
-		});
+	// Persist hash immediately after successful fundVault — before verify/decode.
+	// Remaining crash window: if this persist fails, the on-chain hash may be stranded.
+	try {
+		await persistPendingFundTxRef(db, leg.id, funded.txRef);
+	} catch (persistErr) {
+		const detail =
+			persistErr instanceof Error ? persistErr.message : String(persistErr);
+		throw new Error(
+			`fund tx ${funded.txRef} submitted but fundTxRef persist failed; crash-window for this hash remains: ${detail}`,
+		);
 	}
+	await emitPaymentEvent(db, payment.organizationId, payment.id, "payment.onchain", {
+		phase: "fund_pending",
+		fundTxRef: funded.txRef,
+		legId: leg.id,
+	});
+	await verifyAndCompleteFundIdentity(
+		db,
+		payment,
+		leg.id,
+		funded.txRef,
+		adapters.vaultPayer,
+		fundAmount,
+		adapters,
+	);
 
 	await lockSettleAfterFund(db, rt, leg, adapters, attempt, amount, quotedFee, feeMode);
 }

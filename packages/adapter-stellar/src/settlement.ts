@@ -1,4 +1,5 @@
 import {
+	FundDepositVerifyError,
 	SettlementError,
 	money,
 	toMinor,
@@ -13,7 +14,7 @@ import {
 	type SettlementRef,
 	type SettlementStatus,
 } from "@flexipay/domain";
-import { Server } from "@stellar/stellar-sdk/rpc";
+import { Api, Server } from "@stellar/stellar-sdk/rpc";
 import type { CustodialDemoWalletProvider } from "./demo-wallets.ts";
 import { PayoutVault, type Payout } from "./vault-client.ts";
 import { VaultError, toVaultError } from "./vault-errors.ts";
@@ -22,6 +23,19 @@ import {
 	listVaultDepositInvokes,
 	matchSingleVaultDeposit,
 } from "./vault-deposit-decode.ts";
+
+/** CCR-23: on-chain getTransaction outcome before any envelope decode. */
+export type FundTxRpcStatus =
+	| "SUCCESS"
+	| "FAILED"
+	| "NOT_FOUND"
+	| "PENDING"
+	| "UNKNOWN";
+
+export interface FundTxFetchResult {
+	status: FundTxRpcStatus;
+	envelopeXdr?: string;
+}
 
 // Stellar settlement adapter (ARCHITECTURE §11.2, DEV_PLAN SC2). Same SettlementAdapter
 // contract as MockSettlementAdapter; real testnet tx hashes; fee from vault config().
@@ -41,7 +55,15 @@ export interface StellarSettlementOptions {
 	 * Defaults to USDC.
 	 */
 	assetCurrency?: string;
-	/** Test override: supply envelope XDR instead of RPC fetch. */
+	/**
+	 * Test override: full RPC fetch (status + optional envelope). When set, wins over
+	 * `fetchFundTxEnvelopeXdr`. SUCCESS is required before decode.
+	 */
+	fetchFundTx?: (txRef: string) => Promise<FundTxFetchResult>;
+	/**
+	 * Test override: envelope XDR only (treated as SUCCESS). Prefer `fetchFundTx` for
+	 * FAILED / NOT_FOUND negative fixtures.
+	 */
 	fetchFundTxEnvelopeXdr?: (txRef: string) => Promise<string>;
 }
 
@@ -53,6 +75,7 @@ export class StellarSettlementAdapter implements SettlementAdapter {
 	private readonly asset: string;
 	private readonly rpcUrl: string;
 	private readonly networkPassphrase: string;
+	private readonly fetchFundTx?: (txRef: string) => Promise<FundTxFetchResult>;
 	private readonly fetchFundTxEnvelopeXdr?: (txRef: string) => Promise<string>;
 
 	constructor(options: StellarSettlementOptions) {
@@ -62,6 +85,7 @@ export class StellarSettlementAdapter implements SettlementAdapter {
 		this.rpcUrl = options.rpcUrl;
 		this.networkPassphrase = options.networkPassphrase;
 		this.asset = options.assetCurrency ?? SETTLEMENT_ASSET;
+		this.fetchFundTx = options.fetchFundTx;
 		this.fetchFundTxEnvelopeXdr = options.fetchFundTxEnvelopeXdr;
 	}
 
@@ -85,10 +109,26 @@ export class StellarSettlementAdapter implements SettlementAdapter {
 		amount: Money;
 	}): Promise<ConfirmedFundDeposit> {
 		this.assertAsset(input.amount);
-		const envelopeXdr = this.fetchFundTxEnvelopeXdr
-			? await this.fetchFundTxEnvelopeXdr(input.txRef)
-			: await this.fetchEnvelopeXdrFromRpc(input.txRef);
-		const invokes = listVaultDepositInvokes(envelopeXdr, this.networkPassphrase);
+		const fetched = await this.fetchFundTxResult(input.txRef);
+		// CCR-23: only SUCCESS confirms a deposit — check before any envelope decode.
+		if (fetched.status !== "SUCCESS") {
+			const code =
+				fetched.status === "NOT_FOUND" ? "not_found" : "not_success";
+			throw new FundDepositVerifyError(
+				code,
+				`fund tx ${input.txRef} RPC status=${fetched.status}; deposit not confirmed`,
+			);
+		}
+		if (!fetched.envelopeXdr) {
+			throw new FundDepositVerifyError(
+				"not_found",
+				`fund tx ${input.txRef} SUCCESS but envelopeXdr missing`,
+			);
+		}
+		const invokes = listVaultDepositInvokes(
+			fetched.envelopeXdr,
+			this.networkPassphrase,
+		);
 		const hit = matchSingleVaultDeposit({
 			invokes,
 			vaultId: this.vaultId,
@@ -194,20 +234,42 @@ export class StellarSettlementAdapter implements SettlementAdapter {
 		return { network: "stellar", txRef: txHash };
 	}
 
-	private async fetchEnvelopeXdrFromRpc(txRef: string): Promise<string> {
-		const server = new Server(this.rpcUrl);
-		const got = await server.getTransaction(txRef);
-		const envelope =
-			got && typeof got === "object" && "envelopeXdr" in got
-				? (got as { envelopeXdr?: string | { toXDR?: (fmt: string) => string } })
-						.envelopeXdr
-				: undefined;
-		if (!envelope) {
-			throw new Error(`fund tx ${txRef} has no envelopeXdr on RPC`);
+	private async fetchFundTxResult(txRef: string): Promise<FundTxFetchResult> {
+		if (this.fetchFundTx) return this.fetchFundTx(txRef);
+		if (this.fetchFundTxEnvelopeXdr) {
+			return {
+				status: "SUCCESS",
+				envelopeXdr: await this.fetchFundTxEnvelopeXdr(txRef),
+			};
 		}
-		if (typeof envelope === "string") return envelope;
-		if (typeof envelope.toXDR === "function") return envelope.toXDR("base64");
-		throw new Error(`fund tx ${txRef} envelopeXdr is not decodable`);
+		return this.fetchFundTxFromRpc(txRef);
+	}
+
+	private async fetchFundTxFromRpc(txRef: string): Promise<FundTxFetchResult> {
+		const server = new Server(this.rpcUrl);
+		let got: Awaited<ReturnType<Server["getTransaction"]>>;
+		try {
+			got = await server.getTransaction(txRef);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			throw new Error(`fund tx ${txRef} RPC getTransaction failed: ${msg}`);
+		}
+		if (got.status === Api.GetTransactionStatus.NOT_FOUND) {
+			return { status: "NOT_FOUND" };
+		}
+		if (got.status === Api.GetTransactionStatus.FAILED) {
+			// Status checked before decode — do not surface envelope for FAILED.
+			return { status: "FAILED" };
+		}
+		if (got.status !== Api.GetTransactionStatus.SUCCESS) {
+			// PENDING / unresolved — does not confirm a deposit.
+			return { status: "PENDING" };
+		}
+		const envelopeXdr = envelopeXdrFromRpcResult(got);
+		if (!envelopeXdr) {
+			return { status: "SUCCESS" };
+		}
+		return { status: "SUCCESS", envelopeXdr };
 	}
 
 	private assertAsset(amount: Money): void {
@@ -231,6 +293,23 @@ export class StellarSettlementAdapter implements SettlementAdapter {
 		if (vaultErr) throw new SettlementError(vaultErr.code, { cause: vaultErr });
 		throw err;
 	}
+}
+
+function envelopeXdrFromRpcResult(got: {
+	envelopeXdr?: unknown;
+}): string | undefined {
+	const envelope = got.envelopeXdr;
+	if (!envelope) return undefined;
+	if (typeof envelope === "string") return envelope;
+	if (
+		typeof envelope === "object" &&
+		envelope !== null &&
+		"toXDR" in envelope &&
+		typeof (envelope as { toXDR: unknown }).toXDR === "function"
+	) {
+		return (envelope as { toXDR: (fmt: "base64") => string }).toXDR("base64");
+	}
+	return undefined;
 }
 
 function statusOf(payout: Payout, asset: string): SettlementStatus {

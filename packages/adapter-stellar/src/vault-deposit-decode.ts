@@ -32,8 +32,15 @@ export function listVaultDepositInvokes(
 			`fund tx envelope is not valid XDR: ${error instanceof Error ? error.message : String(error)}`,
 		)
 	}
-	const transaction =
-		parsed instanceof FeeBumpTransaction ? parsed.innerTransaction : parsed
+	// CCR-23: fee-bump / wrapper envelopes are unsupported for deposit verify — reject,
+	// do not unwrap inner deposits (decoder not extended for nested/wrapper cases).
+	if (parsed instanceof FeeBumpTransaction) {
+		throw new FundDepositVerifyError(
+			"not_found",
+			"fee-bump / wrapper envelopes are not supported for vault deposit verify",
+		)
+	}
+	const transaction = parsed
 	if (!(transaction instanceof Transaction)) {
 		throw new Error("fund tx envelope is not a Transaction")
 	}

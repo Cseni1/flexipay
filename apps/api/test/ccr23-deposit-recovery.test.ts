@@ -6,6 +6,7 @@ import {
 	type VaultTxFeeRejectReason,
 } from "@flexipay/adapter-stellar";
 import {
+	FundDepositUnconfirmedError,
 	FundDepositVerifyError,
 	loadConfig,
 	money,
@@ -237,8 +238,7 @@ describe("CCR-23 deposit recovery", () => {
 			reconcileDepositToPayment(db, vault, {
 				paymentId: b.paymentId,
 				fundTxRef: settleA.fundTxRef!,
-				payer: PAYER,
-				amount: money("10100000", "USDC"),
+				vaultPayer: PAYER,
 			}),
 		).rejects.toBeInstanceOf(ReconcileDepositError);
 	});
@@ -303,7 +303,7 @@ describe("CCR-23 deposit recovery", () => {
 		).toBe(1);
 	});
 
-	it("attempt bump only after refunded payout with CAS + audit", async () => {
+	it("attempt bump only after refunded payout with CAS + audit; keeps prior refs in event", async () => {
 		sim.controls.reset();
 		const vault = freshVault();
 		const { paymentId, adapters } = await seedClaimSettlePayment(vault);
@@ -312,6 +312,9 @@ describe("CCR-23 deposit recovery", () => {
 			where: { paymentId, kind: "settle" },
 		});
 		expect(settle.externalRef).toBeTruthy();
+		const priorExternalRef = settle.externalRef;
+		const priorLockTxRef = settle.lockTxRef;
+		const priorReleaseTxRef = settle.releaseTxRef;
 		await vault.refund(settle.externalRef!);
 
 		const advanced = await advanceLockAttemptAfterTerminalPayout(
@@ -326,10 +329,133 @@ describe("CCR-23 deposit recovery", () => {
 		expect(
 			audits.some((a) => a.reason === "lock_attempt_advanced_after_refund"),
 		).toBe(true);
+		const bumpEvent = (await db.event.findMany({ where: { paymentId } })).find(
+			(e) =>
+				(e.snapshot as { phase?: string }).phase === "lock_attempt_advanced",
+		);
+		expect(bumpEvent).toBeTruthy();
+		const snap = bumpEvent!.snapshot as {
+			priorExternalRef?: string | null;
+			priorLockTxRef?: string | null;
+			priorReleaseTxRef?: string | null;
+		};
+		expect(snap.priorExternalRef).toBe(priorExternalRef);
+		expect(snap.priorLockTxRef).toBe(priorLockTxRef);
+		expect(snap.priorReleaseTxRef).toBe(priorReleaseTxRef);
 
 		await expect(
 			advanceLockAttemptAfterTerminalPayout(db, paymentId, adapters),
 		).rejects.toThrow(/cannot advance lockAttempt/);
+	});
+
+	it("verification RPC failure: pending fundTxRef, no second deposit, not confirmed", async () => {
+		sim.controls.reset();
+		const vault = freshVault();
+		let funds = 0;
+		const origFund = vault.fundVault.bind(vault);
+		vault.fundVault = async (payer, amount) => {
+			funds += 1;
+			return origFund(payer, amount);
+		};
+		vault.verifyFundDeposit = async () => {
+			throw new Error("simulated RPC transport failure");
+		};
+		const { paymentId, adapters } = await seedClaimSettlePayment(vault);
+		const err = await fundAndRun(db, paymentId, adapters).catch((e) => e);
+		expect(err).toBeInstanceOf(FundDepositUnconfirmedError);
+		const settle = await db.leg.findFirstOrThrow({
+			where: { paymentId, kind: "settle" },
+		});
+		expect(settle.fundTxRef).toBeTruthy();
+		expect(settle.fundOpIndex).toBeNull();
+		expect(funds).toBe(1);
+
+		await expect(fundAndRun(db, paymentId, adapters)).rejects.toBeInstanceOf(
+			FundDepositUnconfirmedError,
+		);
+		expect(funds).toBe(1);
+	});
+
+	it("identity persist failure after verify: no second deposit, not confirmed", async () => {
+		sim.controls.reset();
+		const vault = freshVault();
+		let funds = 0;
+		const origFund = vault.fundVault.bind(vault);
+		vault.fundVault = async (payer, amount) => {
+			funds += 1;
+			return origFund(payer, amount);
+		};
+		const { paymentId, adapters } = await seedClaimSettlePayment(vault);
+		const settleBefore = await db.leg.findFirstOrThrow({
+			where: { paymentId, kind: "settle" },
+		});
+		const origUpdateMany = db.leg.updateMany.bind(db.leg);
+		let pendingWrites = 0;
+		db.leg.updateMany = (async (args: {
+			where?: { fundTxRef?: null | string; fundOpIndex?: null };
+			data?: { fundOpIndex?: number | null };
+		}) => {
+			const completing =
+				args?.where?.fundOpIndex === null &&
+				typeof args?.data?.fundOpIndex === "number";
+			if (completing) {
+				throw new Error("simulated identity persist failure");
+			}
+			if (args?.where?.fundTxRef === null) {
+				pendingWrites += 1;
+			}
+			return origUpdateMany(args as never);
+		}) as typeof db.leg.updateMany;
+
+		try {
+			const err = await fundAndRun(db, paymentId, adapters).catch((e) => e);
+			expect(err).toBeInstanceOf(FundDepositUnconfirmedError);
+			const settle = await db.leg.findFirstOrThrow({
+				where: { id: settleBefore.id },
+			});
+			expect(settle.fundTxRef).toBeTruthy();
+			expect(settle.fundOpIndex).toBeNull();
+			expect(pendingWrites).toBe(1);
+			expect(funds).toBe(1);
+
+			await expect(fundAndRun(db, paymentId, adapters)).rejects.toBeInstanceOf(
+				FundDepositUnconfirmedError,
+			);
+			expect(funds).toBe(1);
+		} finally {
+			db.leg.updateMany = origUpdateMany;
+		}
+	});
+
+	it("reconcile uses payment-derived amount/payer; wrong cross-check rejects; no binding", async () => {
+		sim.controls.reset();
+		const vault = freshVault();
+		const { paymentId } = await seedClaimSettlePayment(vault);
+		const fund = await vault.fundVault(PAYER, money("10100000", "USDC"));
+
+		await expect(
+			reconcileDepositToPayment(db, vault, {
+				paymentId,
+				fundTxRef: fund.txRef,
+				vaultPayer: PAYER,
+				amountCrossCheck: money("999", "USDC"),
+			}),
+		).rejects.toMatchObject({ code: "amount_mismatch" });
+
+		await expect(
+			reconcileDepositToPayment(db, vault, {
+				paymentId,
+				fundTxRef: fund.txRef,
+				vaultPayer: PAYER,
+				payerCrossCheck: "GWRONGPAYER000000000000000000000000000000000000000",
+			}),
+		).rejects.toMatchObject({ code: "payer_mismatch" });
+
+		const unbound = await db.leg.findFirstOrThrow({
+			where: { paymentId, kind: "settle" },
+		});
+		expect(unbound.fundTxRef).toBeNull();
+		expect(unbound.fundOpIndex).toBeNull();
 	});
 
 	it("reconcile lock/CAS/audit; multiple matching deposits rejected", async () => {
@@ -346,8 +472,7 @@ describe("CCR-23 deposit recovery", () => {
 			reconcileDepositToPayment(db, vault, {
 				paymentId,
 				fundTxRef: fund.txRef,
-				payer: PAYER,
-				amount: money("10100000", "USDC"),
+				vaultPayer: PAYER,
 			}),
 		).rejects.toBeInstanceOf(FundDepositVerifyError);
 
@@ -357,8 +482,9 @@ describe("CCR-23 deposit recovery", () => {
 		const ok = await reconcileDepositToPayment(db, vault2, {
 			paymentId: pay2,
 			fundTxRef: fund2.txRef,
-			payer: PAYER,
-			amount: money("10100000", "USDC"),
+			vaultPayer: PAYER,
+			amountCrossCheck: money("10100000", "USDC"),
+			payerCrossCheck: PAYER,
 		});
 		expect(ok.outcome).toBe("written");
 		expect(ok.fundOpIndex).toBe(0);

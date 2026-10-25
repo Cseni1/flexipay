@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createSettlement, settlementModeFromEnv } from "../src/settlement.ts";
 
 describe("FP_SETTLEMENT factory", () => {
-	it("defaults to mock", () => {
-		expect(settlementModeFromEnv({})).toBe("mock");
+	it("fail-fast when FP_SETTLEMENT is missing (no code default)", () => {
+		expect(() => settlementModeFromEnv({})).toThrow(/FP_SETTLEMENT is required/);
 	});
 
 	it("creates a mock adapter without secrets", async () => {

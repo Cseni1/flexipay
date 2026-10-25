@@ -224,9 +224,9 @@ export interface ConfirmedFundDeposit {
   fundVaultId: string;
 }
 
-export type FundDepositVerifyCode = "not_found" | "ambiguous";
+export type FundDepositVerifyCode = "not_found" | "ambiguous" | "not_success";
 
-/** CCR-23: zero or multiple matching vault deposits in a transaction. */
+/** CCR-23: zero/multiple matching deposits, or on-chain status is not SUCCESS. */
 export class FundDepositVerifyError extends Error {
   readonly code: FundDepositVerifyCode;
 
@@ -234,6 +234,17 @@ export class FundDepositVerifyError extends Error {
     super(message);
     this.name = "FundDepositVerifyError";
     this.code = code;
+  }
+}
+
+/** CCR-23: fundTxRef may be stored, but identity is not confirmed (verify failed durably). */
+export class FundDepositUnconfirmedError extends Error {
+  readonly fundTxRef: string;
+
+  constructor(fundTxRef: string, message: string) {
+    super(message);
+    this.name = "FundDepositUnconfirmedError";
+    this.fundTxRef = fundTxRef;
   }
 }
 
