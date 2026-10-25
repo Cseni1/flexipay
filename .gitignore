@@ -56,3 +56,6 @@ identity/
 apps/api/src/generated/
 # local embedded Postgres data
 apps/api/.pgdata/
+
+# E1 event vault secrets overlay (never commit)
+scripts/testnet/.env.secrets-anchor-vault

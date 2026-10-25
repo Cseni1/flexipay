@@ -275,3 +275,21 @@ Status: **approved** by the project owner on 23 Oct 2026. The documents `PRODUCT
 - **Forbidden:** shipping `FP_API_KEY` / `FP_*_SECRET` into the browser bundle; treating Playwright fixture PASS as DF2/DF3 acceptance; treating CF4 Accept UI gates as CCR-15 backend proof; claiming the Vite proxy authenticates production static hosting.
 - **Who implements:** **Freebuff (web)** on #29. **Integrator** accepts this CCR; does not implement the proxy. **Csaba (API)** keeps Bearer auth as today; no CORS change required for the proxy path.
 - **Acceptance:** CF1 can create quote/payment/fund through the **local** proxy **without** the key appearing in built assets or browser page-JS request headers. Fixture-only e2e does **not** close DF2/DF3.
+
+## CCR-20: reference-anchor (M1) env names + client surface (proposed, 25 Oct 2026)
+
+- **From:** Csenge Cursor (E1), event plan M1.
+- **Status:** **proposed — awaiting Claude.** Do not bind new HTTP fields until accepted.
+- **What:**
+  1. **Public env names** for the SDF reference anchor and an isolated second vault (anchor USDC issuer `GBBD47…`), without replacing baseline `FP_PAYOUT_VAULT_ID` / `FP_USDC_*` in `testnet-ids.env`:
+     - `FP_ANCHOR_HOME_DOMAIN`
+     - `FP_ANCHOR_USDC_ASSET` (full `CODE:ISSUER`)
+     - `FP_ANCHOR_USDC_CONTRACT_ID`
+     - `FP_EVENT_PAYOUT_VAULT_ID`
+     - `FP_EVENT_VAULT_FEE_BPS`
+     - `FP_EVENT_TREASURY_ADDRESS`
+  2. **Adapter exports** in `@flexipay/adapter-stellar`: `ReferenceAnchorClient` (SEP-10 / SEP-38 indicative `context=sep6` / SEP-24 interactive + poll), asset identity helpers, `sanitiseHostedUrl`. JWT and interactive URL query tokens stay server-side.
+  3. **M1 success rule:** SEP-24 status `completed` plus verified amount, asset identity, destination and memo; vault release hash recorded separately from anchor payment hash. Bank payout described as reference-anchor simulation.
+- **Who is affected:** `packages/adapter-stellar` (Csenge); `apps/api` + claim UI (Csaba) for wiring; DF7 (Freebuff) consumes the client.
+- **Needs:** Claude accepts or renames env keys; Csaba confirms API shape before any new routes; Freebuff aligns DF7 with exported methods in `packages/adapter-stellar/E1-HANDOFF.md`.
+- **Out of scope here:** SEP-45 / passkey (M2); changing baseline vault on-chain config; H1 execution (separate proposal in the handoff).
