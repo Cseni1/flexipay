@@ -7,7 +7,9 @@
 
 M1 bank payout is **reference-anchor simulation** on SDF `testanchor.stellar.org`, not a real bank receipt. Vault release and anchor payment are recorded as **separate** hashes.
 
-**Unit PASS ≠ M1 PASS.**
+**Unit PASS ≠ M1 PASS.**  
+**Package path (25 Oct):** deposit credit + vault #2 lock/release + classic memo withdraw → SEP-24 `completed` — see `scripts/demo/evidence/2026-10-25-e1-deposit-vault-withdraw.md`.  
+**Integrated M1:** still **PARTIAL** until Csaba claim API/UI journey works.
 
 ## Shared accounts / tx windows
 

@@ -44,8 +44,9 @@ TREASURY=$(stellar keys public-key fp-treasury)
 PAYER=$(stellar keys public-key fp-payer-demo)
 RECIPIENT_A=$(stellar keys public-key fp-recipient-a)
 
-log "Anchor USDC trustlines (classic) for payer + recipient A"
-for k in fp-payer-demo fp-recipient-a; do
+log "Anchor USDC trustlines (classic) for payer + recipient A + treasury"
+# Treasury must trust the vault token or claim fee transfer fails (Contract #13).
+for k in fp-payer-demo fp-recipient-a fp-treasury; do
 	stellar tx new change-trust --source-account "$k" --line "$ANCHOR_ASSET" --network "$NET" >/dev/null || true
 	echo "$k trusts $ANCHOR_ASSET"
 done
