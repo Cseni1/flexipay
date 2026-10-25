@@ -258,21 +258,36 @@ node scripts/demo/df7-anchor-lifecycle.ts            # plan + public-id checks
 node scripts/demo/df7-anchor-lifecycle.ts --preflight # also match recipient secret
 ```
 
-Network steps are explicitly gated and do not submit a classic payment:
+Network steps are explicitly gated:
 
 ```bash
 FP_DF7_ALLOW_NETWORK=1 node scripts/demo/df7-anchor-lifecycle.ts --readiness
 FP_DF7_ALLOW_NETWORK=1 FP_DF7_START_WITHDRAW=1 \
   node scripts/demo/df7-anchor-lifecycle.ts --start-withdraw
+FP_DF7_ALLOW_NETWORK=1 FP_DF7_SUBMIT_PAYMENT=1 \
+  FP_DF7_RECIPIENT_LOCK="LOCK recipient A <agent> DF7 <UTC>" \
+  node scripts/demo/df7-anchor-lifecycle.ts --pay --id <sep24-id>
+FP_DF7_ALLOW_NETWORK=1 node scripts/demo/df7-anchor-lifecycle.ts --reconcile
 FP_DF7_ALLOW_NETWORK=1 node scripts/demo/df7-anchor-lifecycle.ts \
   --poll --id <sep24-id> --anchor-tx-id <sep24-id> --vault-release-hash <64-hex>
 ```
 
 `--start-withdraw` writes the functional hosted URL to a `0600` private file and
 prints only the sanitised URL. The human completes the hosted withdrawal in a
-browser. Offline classification is available with `--classify`; `SUCCESS`
-requires `completed`, a passed amount/destination/memo assertion, and three
-distinct refs (anchor transaction id, anchor payment hash, vault release hash).
-`PENDING` includes non-terminal statuses, bounded timeouts and completed runs
-with missing refs. The classic memo payment remains intentionally unimplemented
-in this scaffold because it is a live transaction.
+browser. `--pay` is the classic-payment stage: it reuses the adapter's
+`submitClassicPaymentWithMemo`, validates the anchor's pending record (status,
+asset, amount, destination, memo), requires all three live gates, and saves the
+returned hash to a `0600` state file before any polling. It refuses when
+retained state exists. If submit outcome is uncertain, `--reconcile` performs a
+bounded, read-only Horizon scan of the recipient's recent memo-carrying
+transactions; it never resubmits and never recovers a hash from a mismatched
+payment.
+
+Offline classification is available with `--classify`. `SUCCESS` requires
+`completed`, a passed amount/destination/memo assertion, and all three refs
+(anchor transaction id, anchor payment hash, vault release hash) verified at the
+sources that produced them; the ids are not required to have different string
+values. A completed run with missing or unverified evidence is `NOT_VERIFIED`. A
+confirmed payment mismatch is `FAILURE`. `PENDING` covers non-terminal statuses
+and bounded timeouts. `--poll` recomputes completion against the retained
+payment expectation and the anchor's published `stellar_transaction_id`.
