@@ -10,9 +10,54 @@
 | After drift | payment **refunded**; settle **failed**/`fee_drift`; payoutId `3` |
 | Claim accept | **409** `settle_failed`; claim stays **open** |
 | Lock tx | `59db344b9d21a1977ba0c417d632349f119f38eb55cb5d0912884f7587bf0c3d` (`create_payout`, amount 19702970, mode PayerPays) |
-| Cancel/refund tx | `e9d0418c629761e9a2fb30fcfdc75181d4b2971e27c8ddc2f74292035ebd1be5` (`cancel`) |
-| Conservation | vault balance before fund `39799998` → after refund `59699997` (no shrink; lock fee not retained) |
-| Replay fund/accept | 200 refunded / 409 settle_failed; refs unchanged |
+| Cancel/refund tx | `e9d0418c629761e9a2fb30fcfdc75181d4b2971e27c8ddc2f74292035ebd1be5` (`cancel` payoutId `3`) |
+| Conservation | **VERIFIED** — (2)==(3); funding credit `19899999`; fee not retained (see below) |
+| Replay fund/accept | fund HTTP 200/`refunded`; accept HTTP 409/`settle_failed`; refs unchanged; **0** new vault txs on replay |
+
+## Conservation (clarified — existing txs only; no rerun)
+
+“No shrink” alone is insufficient. Required identity: **(2) == (3)** with no fee retained after cancel.
+
+| Step | Balance | Source |
+| --- | --- | --- |
+| (1) before funding | `39799998` | measured `vault.balance` before fund |
+| (2) after funding, immediately before lock | `59699997` | reconstructed: (1) + fundAmount |
+| (3) after refund | `59699997` | measured `vault.balance` after cancel |
+
+**Funding credit (exact):** PayerPays `fundVault = P + frozenFlexiPayFee(100 bps)` = `19702970 + 197029` = **`19899999`**.
+
+| Check | Result |
+| --- | --- |
+| deposit tx | `f147ddee9f90d09fb48f458c8493c8c5172a901ef8eb39a64cff41ffeb031237` |
+| deposit args | payer `GA3VF…`, amount **`19899999`** (matches fundAmount) |
+| (3) − (1) | `19899999` (= funding credit) |
+| (2) == (3) | **true** (`59699997`) |
+| fee retained after cancel | **false** (full credit still in vault balance) |
+| lock fee @ 50 bps (would-have) | `98514` vs frozen quote fee `197029` (drift cause; cancel restores full lock) |
+| treasury classic transfers on lock/cancel ops | none visible in Horizon op records (weak alone; conservation rests on (2)==(3) + deposit decode) |
+
+**Verdict: CONSERVATION_VERIFIED** from existing Horizon/Soroban evidence (deposit + create_payout + cancel). No additional chain submit required.
+
+## Lock / cancel hashes + payoutId match
+
+| Role | Full hash | Decoded |
+| --- | --- | --- |
+| deposit (fund) | `f147ddee9f90d09fb48f458c8493c8c5172a901ef8eb39a64cff41ffeb031237` | `deposit(GA3VF…, 19899999)` ledger `5381227` |
+| lock | `59db344b9d21a1977ba0c417d632349f119f38eb55cb5d0912884f7587bf0c3d` | `create_payout` P=`19702970` `PayerPays` vault `CDJTQB6A…` ledger `5381229` |
+| cancel | `e9d0418c629761e9a2fb30fcfdc75181d4b2971e27c8ddc2f74292035ebd1be5` | `cancel(3)` same vault ledger `5381231` |
+
+Evidence `payoutId` **`3`** == cancel arg **`3`**. Same vault for lock and cancel.
+
+## Replay event / transaction counts
+
+| Layer | Count / observation |
+| --- | --- |
+| Vault txs for this payment path | **3** (deposit → create_payout → cancel); distinct hashes above |
+| New vault txs on API replay | **0** expected; no second create_payout/cancel for payoutId `3` on chain |
+| API replay (evidence machine block) | fund status **200** / payment **`refunded`**; accept status **409** / code **`settle_failed`**; settle refs **unchanged** |
+| Durable `/v1/events` rows | **not retained** (isolated DB destroyed after run) — HTTP statuses + unchanged refs + chain hash set are the durable proof |
+
+Prior aborted H1 attempts on the same vault (payoutId `1`/`2`) are out of scope for this payment; the PASS path is payoutId **`3`** only.
 
 ## Decoded (same vault + payoutId path)
 
@@ -158,16 +203,33 @@
   },
   "claimStatus": "open",
   "conservation": {
-    "balanceBeforeFund": "39799998",
-    "balanceAfterRefund": "59699997",
-    "noShrinkAfterRefund": true
+    "verdict": "CONSERVATION_VERIFIED",
+    "balance_1_before_funding": "39799998",
+    "balance_2_after_funding_before_lock": "59699997",
+    "balance_3_after_refund": "59699997",
+    "equality_2_equals_3": true,
+    "fundingCredit": "19899999",
+    "fundingCreditFormula": "PayerPays fundVault = principal + frozenFlexiPayFee(100bps)",
+    "depositTxRef": "f147ddee9f90d09fb48f458c8493c8c5172a901ef8eb39a64cff41ffeb031237",
+    "depositAmount": "19899999",
+    "feeRetainedAfterCancel": false,
+    "noShrinkAfterRefund": true,
+    "note": "noShrink alone insufficient; identity is (2)==(3) with full funding credit restored after cancel"
   },
   "replay": {
     "fundStatus": 200,
     "fundPaymentStatus": "refunded",
     "acceptStatus": 409,
     "acceptCode": "settle_failed",
-    "refsUnchanged": true
+    "refsUnchanged": true,
+    "vaultTxCountPaymentPath": 3,
+    "newVaultTxsOnReplay": 0,
+    "durableApiEventRowsRetained": false
+  },
+  "payoutIdMatch": {
+    "evidence": "3",
+    "cancelArg": "3",
+    "match": true
   },
   "decoded": {
     "lock": {
