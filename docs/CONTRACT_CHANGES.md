@@ -299,26 +299,47 @@ Existing `GET /v1/claims/{token}` and `POST /v1/claims/{token}/accept` are uncha
 - Kit pin (implementation): `passkey-kit@0.19.1`, wallet WASM `97ce047884106b1c6c3bb40b8973cc48db1c4dad95c9e20462bf2c701daa764e`.
 - Deploy fee path: **shared deployer carrier** from the browser + backend **`FP_PAYER_DEMO_*` as RPC envelope source**. No new relayer service.
 
-### Deploy verification (before pay/sign)
+### HTTP idempotency (deploy + submit)
+
+Reuse `IdempotencyRecord` / `withIdempotency` (`apps/api/src/app.ts`):  
+`requestHash = sha256(method + " " + path + " " + JSON.stringify(body))` — **hash only**, never store secret-bearing request bodies.  
+Scope: `organizationId` = the claim payment’s `organizationId` (load claim by token first).
+
+**Unique scope / foreign-response rule:** `@@unique([organizationId, key])` alone is not enough. The hash **must** include the full path (with claim token). Same Idempotency-Key on another claim path or different body → `requestHash` mismatch → `409 idempotency_conflict` (never return another claim’s cached body).
+
+**Before returning a cached `responseBody`:** re-load the claim by URL token; verify the token is still valid for that payment (`tokenHash`, not expired into a forbidden state for this call); verify `payment.organizationId` still matches the idempotency row’s `organizationId`. If the claim is gone or unbound → `404` / `409`, do **not** return the cache.
+
+**Forbidden in `responseBody`:** plaintext `authEntries` / `signedAuthEntries` / `signedTx` / claim secret. Deploy/submit success bodies (`contractId`, tx hashes, `ClaimView`, `releaseTxRef`) are fine. Prepare does not use Idempotency-Key (secret-bearing `authEntries`).
+
+Atomic prepare **reserve** and on-chain **pendingTx*** recovery remain separate from HTTP idempotency.
+
+### Deploy verification and claim-bound recovery
 
 1. Parse `signedTx`; single `CreateContractV2` invoke; single matching auth entry; shared deployer preimage.
 2. Derived `contractId` equals body `contractId`; WASM hash equals the pinned hash.
-3. **Constructor / wallet init args:** the CreateContractV2 constructor arguments must include a GENESIS Secp256r1 signer whose credential id matches `keyIdBase64` (and the proof material consistent with passkey-kit birth rules). Reject on mismatch (`422 invalid_deploy_tx` / `constructor_mismatch`).
-4. Only then rebuild with `FP_PAYER_DEMO`, simulate, sign, send. After SUCCESS, RPC-verify birth (contract created, wasm, ledger) before `status: "deployed"`.
+3. **Constructor / wallet init args:** CreateContractV2 constructor must include a GENESIS Secp256r1 signer whose credential id matches `keyIdBase64`. Mismatch → `422 constructor_mismatch` / `invalid_deploy_tx`.
+4. Rebuild with `FP_PAYER_DEMO`, simulate. **Before send:** persist on `ClaimLink` `passkeyDeployPendingContractId` (= body `contractId`), `passkeyDeployPendingTxHash`, sealed recovery envelope (`passkeyDeployPendingSealed` / nonce).
+5. Send once. On RPC **SUCCESS:** set `passkeyContractId`, `passkeyDeployTxHash`; clear or keep pending fields per implementer; return deploy response.
+6. **Restart / lost HTTP:** if `passkeyDeployTxHash` or `passkeyDeployPendingTxHash` is set → **first** `rpc.getTransaction(thatHash)`.
+   - **SUCCESS** → return the same `contractId` / deploy hash; **no** new deploy.
+   - **PENDING** → wait/poll the **same** hash; do not rebuild.
+   - **NOT_FOUND** or **RPC timeout** is **not** FAILED. Restore the sealed envelope for that pending hash and re-query / re-submit **the same** transaction bytes if the network never accepted them; **no blind rebuild**, **no new deploy** with a new hash while the pending binding exists.
+   - **FAILED** (proven failed envelope) → only then a documented recovery may build a new tx under a **new** pending hash after clearing the failed pending binding; never while SUCCESS/PENDING/unknown.
 
-### Prepare / secret material
+### Prepare / secret material / ledger expiry
 
-- Prepare builds vault `claim(id, secret, to=contractId)` auth entries. Response **must not** include a `secret` / `secretHex` field.
-- **`authEntries` are secret-bearing:** `require_auth` on `to` authorises the full call args, so the claim secret bytes appear inside each entry’s `rootInvocation` args. Treat response bodies as secret; never log, store in browser storage, or put in evidence files.
-- Persist prepare row `PasskeyClaimPrepare`: sealed `authEntries` (CCR-11 seal key), plus plaintext fingerprints (`authInvocationFingerprints`, `authNonces`, `authAddresses`, `signatureExpirationLedger`) for submit checks without logging XDR.
+- Prepare builds vault `claim(id, secret, to=contractId)` auth entries. No `secret` / `secretHex` JSON field.
+- **`authEntries` are secret-bearing** (secret in `rootInvocation` args). Seal at rest on `PasskeyClaimPrepare`; never log; never put in IdempotencyRecord.
+- **`signatureExpirationLedger`:** one prepare-level value. Backend stamps **every** unsigned auth entry with this ledger. Browser **must** call `signAuthEntry(..., { expiration: prepare.signatureExpirationLedger })`. Kit-default or any other ledger → submit `422 auth_mismatch`. Submit checks each signed entry’s ledger equals the prepare row.
 
-### Submit — durable reserve, hash-before-send, restart
+### Submit — reserve, hash-before-send, single success ref
 
-1. **Atomic reservation:** transactionally move prepare `open → reserved` (ledger still ≤ `signatureExpirationLedger`, claim still open), bind `submitIdempotencyKeyHash`. Concurrent second reserve fails (`409`).
-2. Validate each `signedAuthEntries[i]` against prepare: **address**, **nonce**, **rootInvocation fingerprint**, **signatureExpirationLedger** (and length/order). Mismatch → `422 auth_mismatch`.
-3. Build the fully signed release envelope (payer source + signed auth). **Before** `sendTransaction`: persist `pendingTxHash` and **sealed** recovery payload (`pendingTxSealed` / nonce).
-4. Send once. On success set `releaseTxHash`, prepare `submitted`, complete claim settle as today.
-5. **Restart / lost response:** if `pendingTxHash` is set, **first** `rpc.getTransaction(pendingTxHash)`. SUCCESS → finish from that hash; PENDING → wait/poll; FAILED / NOT_FOUND only then may rebuild under the **same** reservation (never a parallel second release while the first hash is unknown-success). Replay with same Idempotency-Key returns the stored success.
+1. **Atomic reservation:** `PasskeyClaimPrepare` `open → reserved` (`reservedAt`) while claim open and ledger ≤ `signatureExpirationLedger`. Concurrent second reserve → `409`.
+2. Validate each `signedAuthEntries[i]`: address, nonce, rootInvocation fingerprint, **signatureExpirationLedger** (length/order). Mismatch → `422 auth_mismatch`.
+3. Build release envelope. **Before send:** persist `pendingTxHash` + sealed `pendingTxSealed` / nonce on the prepare row.
+4. Send once. On SUCCESS: write settle **`Leg.releaseTxRef`** (CCR-12), prepare `submitted`, complete claim settle as today. **Do not** store a separate prepare `releaseTxHash`.
+5. Submit **200** includes `releaseTxRef` = that settle leg’s `releaseTxRef` (sole success tx ref).
+6. **Restart / lost HTTP:** if prepare `pendingTxHash` set → `getTransaction` first. SUCCESS → finish by writing/reading `Leg.releaseTxRef`; PENDING → wait; NOT_FOUND/timeout → restore sealed envelope for the **same** hash (not FAILED); proven FAILED → documented recovery only. Idempotent HTTP replay uses `IdempotencyRecord` after claim re-validation; if settle already has `releaseTxRef`, return it.
 
 ### Errors (stable codes)
 
@@ -326,11 +347,12 @@ Existing `GET /v1/claims/{token}` and `POST /v1/claims/{token}/accept` are uncha
 
 ### Persistence
 
-- New table `PasskeyClaimPrepare` (Prisma + migration `20261025112500_ccr20_passkey_prepare`). Apply migration only after CCR ACK (or on the task branch for local M2 work).
+- `ClaimLink` passkey deploy columns + `PasskeyClaimPrepare` (migration `20261025112500_ccr20_passkey_prepare`).
+- Apply migration only after CCR ACK (or local M2 disposable DB).
 - No change to public `ClaimView` shape in this CCR.
 
 ### Acceptance (after ACK + implementation)
 
 - Domain contract tests for the three request/response schemas and OpenAPI stubs.
-- Testnet: deploy hash + release hash; vault Claimed to `C…`; evidence without secrets/tokens.
+- Testnet: deploy hash + `Leg.releaseTxRef`; vault Claimed to `C…`; evidence without secrets/tokens.
 - Manual passkey ceremony on a real authenticator (virtual authenticator is not biometrics proof).

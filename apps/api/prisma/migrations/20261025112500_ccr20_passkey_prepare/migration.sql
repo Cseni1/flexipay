@@ -1,5 +1,17 @@
--- CCR-20 (ELFOGADÁSRA VÁR): PasskeyClaimPrepare for M2 passkey claim flow.
+-- CCR-20 (ELFOGADÁSRA VÁR): passkey prepare + claim-bound deploy recovery.
 -- Do not treat as accepted until docs/CONTRACT_CHANGES.md CCR-20 is ACK'd.
+-- Release success remains Leg.releaseTxRef (CCR-12); no prepare.releaseTxHash.
+
+-- ClaimLink: durable deploy binding (contractId + pending tx BEFORE send).
+ALTER TABLE "ClaimLink" ADD COLUMN "passkeyContractId" TEXT;
+ALTER TABLE "ClaimLink" ADD COLUMN "passkeyDeployTxHash" TEXT;
+ALTER TABLE "ClaimLink" ADD COLUMN "passkeyDeployPendingContractId" TEXT;
+ALTER TABLE "ClaimLink" ADD COLUMN "passkeyDeployPendingTxHash" TEXT;
+ALTER TABLE "ClaimLink" ADD COLUMN "passkeyDeployPendingSealed" BYTEA;
+ALTER TABLE "ClaimLink" ADD COLUMN "passkeyDeployPendingSealedNonce" BYTEA;
+
+CREATE INDEX "ClaimLink_passkeyDeployPendingTxHash_idx" ON "ClaimLink"("passkeyDeployPendingTxHash");
+CREATE INDEX "ClaimLink_passkeyDeployTxHash_idx" ON "ClaimLink"("passkeyDeployTxHash");
 
 CREATE TABLE "PasskeyClaimPrepare" (
     "id" TEXT NOT NULL,
@@ -16,18 +28,14 @@ CREATE TABLE "PasskeyClaimPrepare" (
     "authEntriesSealed" BYTEA NOT NULL,
     "authEntriesSealedNonce" BYTEA NOT NULL,
     "reservedAt" TIMESTAMP(3),
-    "submitIdempotencyKeyHash" TEXT,
     "pendingTxHash" TEXT,
     "pendingTxSealed" BYTEA,
     "pendingTxSealedNonce" BYTEA,
-    "releaseTxHash" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "PasskeyClaimPrepare_pkey" PRIMARY KEY ("id")
 );
-
-CREATE UNIQUE INDEX "PasskeyClaimPrepare_submitIdempotencyKeyHash_key" ON "PasskeyClaimPrepare"("submitIdempotencyKeyHash");
 
 CREATE INDEX "PasskeyClaimPrepare_paymentId_status_idx" ON "PasskeyClaimPrepare"("paymentId", "status");
 

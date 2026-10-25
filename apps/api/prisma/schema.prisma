@@ -197,10 +197,27 @@ model ClaimLink {
   expiresAt DateTime
   status    String   @default("open") // open | accepted | expired
   createdAt DateTime @default(now())
+
+  /// CCR-20 (ELFOGADÁSRA VÁR): passkey wallet bound to this claim after deploy SUCCESS.
+  passkeyContractId String?
+  /// Final successful deploy tx hash (hex). Sole durable deploy success ref for this claim.
+  passkeyDeployTxHash String?
+  /// Target C… bound BEFORE send (with pending hash). Must match body.contractId.
+  passkeyDeployPendingContractId String?
+  /// Persisted BEFORE rpc send. Hex hash of the assembled deploy tx.
+  passkeyDeployPendingTxHash String?
+  /// Sealed deploy recovery envelope (CCR-11 seal). Secret-bearing carrier XDR.
+  passkeyDeployPendingSealed Bytes?
+  passkeyDeployPendingSealedNonce Bytes?
+
+  @@index([passkeyDeployPendingTxHash])
+  @@index([passkeyDeployTxHash])
 }
 
 /// CCR-20 (ELFOGADÁSRA VÁR): durable passkey prepare + submit reservation for M2.
 /// Not accepted shared interface until integrator ACK. Secret-bearing blobs use CCR-11 seal key.
+/// HTTP idempotency for deploy/submit uses IdempotencyRecord (payment.organizationId), not this table.
+/// Release success is Leg.releaseTxRef only — no releaseTxHash here.
 model PasskeyClaimPrepare {
   id                        String   @id
   paymentId                 String
@@ -210,6 +227,7 @@ model PasskeyClaimPrepare {
   contractId                String
   payoutId                  String
   networkPassphrase         String
+  /// Sole ledger expiry for every auth entry (backend → sign → submit).
   signatureExpirationLedger Int
   /// open | reserved | submitted | expired | failed
   status                    String   @default("open")
@@ -222,17 +240,13 @@ model PasskeyClaimPrepare {
   /// AES-256-GCM sealed unsigned auth entry XDRs (JSON string[]); secret-bearing.
   authEntriesSealed         Bytes
   authEntriesSealedNonce    Bytes
-  /// Atomic submit reservation (CCR-20 §submit).
+  /// Atomic submit reservation (open → reserved). Separate from HTTP IdempotencyRecord.
   reservedAt                DateTime?
-  /// sha256 hex of Idempotency-Key; unique when set.
-  submitIdempotencyKeyHash  String?  @unique
-  /// Persisted BEFORE rpc send (CCR-20 §submit). Hex hash of the assembled release tx.
+  /// Persisted BEFORE rpc send. Hex hash of the assembled release tx.
   pendingTxHash             String?
-  /// Sealed recovery payload (signed envelope XDR or equivalent); secret-bearing.
+  /// Sealed recovery payload (signed envelope XDR); secret-bearing.
   pendingTxSealed           Bytes?
   pendingTxSealedNonce      Bytes?
-  /// Final successful release hash (may equal pendingTxHash).
-  releaseTxHash             String?
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 

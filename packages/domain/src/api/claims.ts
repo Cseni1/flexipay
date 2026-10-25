@@ -168,11 +168,16 @@ export const PasskeyPrepareResponseSchema = z
     prepareId: z.string().min(1),
     payoutId: z.string().min(1),
     networkPassphrase: z.string().min(1),
-    /** Soroban auth signatureExpirationLedger (u32 ledger seq). */
+    /**
+     * Sole allowed Soroban auth signatureExpirationLedger (u32) for every entry.
+     * Client must pass this exact value to signAuthEntry; kit-default / other ledgers
+     * are rejected on submit (CCR-20).
+     */
     signatureExpirationLedger: z.number().int().positive(),
     /**
      * Unsigned SorobanAuthorizationEntry XDRs (base64), one per required C… auth.
      * SECRET-BEARING: rootInvocation includes vault claim secret bytes.
+     * Never store plaintext in IdempotencyRecord.responseBody.
      */
     authEntries: z.array(Base64XdrSchema).min(1),
   })
@@ -186,6 +191,7 @@ export const PasskeySubmitRequestSchema = z
     contractId: StellarContractIdSchema,
     /**
      * signAuthEntry results (base64), same length/order as prepare.authEntries.
+     * Each entry's signatureExpirationLedger must equal prepare.signatureExpirationLedger.
      * SECRET-BEARING: same invocation args as unsigned entries.
      */
     signedAuthEntries: z.array(Base64XdrSchema).min(1),
@@ -199,7 +205,11 @@ export const PasskeySubmitResponseSchema = z
     claim: ClaimViewSchema,
     paymentId: z.string().min(1),
     paymentStatus: PaymentStatusSchema,
-    releaseTxHash: z.string().regex(/^[a-f0-9]{64}$/, "lowercase hex tx hash"),
+    /**
+     * Settle leg `Leg.releaseTxRef` (CCR-12). Sole success tx ref for the release;
+     * not a separate prepare-row hash.
+     */
+    releaseTxRef: z.string().min(1),
   })
   .strict();
 

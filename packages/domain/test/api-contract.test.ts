@@ -445,12 +445,12 @@ describe("CCR-20 passkey claim schemas (ELFOGADÁSRA VÁR)", () => {
         },
         paymentId: "pay_demo_1",
         paymentStatus: "paid",
-        releaseTxHash: "b".repeat(64),
-      }).releaseTxHash,
+        releaseTxRef: "b".repeat(64),
+      }).releaseTxRef,
     ).toBe("b".repeat(64));
   });
 
-  it("rejects invalid contract ids, empty XDR, and secretHex fields on wire schemas", () => {
+  it("rejects invalid contract ids, empty XDR, secretHex, and legacy releaseTxHash", () => {
     expect(
       PasskeyDeployRequestSchema.safeParse({
         contractId: "G" + "A".repeat(55),
@@ -485,6 +485,35 @@ describe("CCR-20 passkey claim schemas (ELFOGADÁSRA VÁR)", () => {
         secretHex: "deadbeef",
       }).success,
     ).toBe(false);
+    expect(
+      PasskeySubmitResponseSchema.safeParse({
+        claim: {
+          paymentId: "pay_demo_1",
+          status: "accepted",
+          paymentStatus: "paid",
+          expiresAt: T1,
+          amount: moneyPhp("560000"),
+          corridor: {
+            from: { country: "US", currency: "USD" },
+            to: { country: "PH", currency: "PHP" },
+          },
+          allowedDestinationTypes: ["crypto_wallet"],
+          simulated: true,
+        },
+        paymentId: "pay_demo_1",
+        paymentStatus: "paid",
+        releaseTxHash: "b".repeat(64),
+      }).success,
+    ).toBe(false);
+    expect(
+      PasskeyPrepareResponseSchema.parse({
+        prepareId: "ppk_1",
+        payoutId: "1",
+        networkPassphrase: "Test SDF Network ; September 2015",
+        signatureExpirationLedger: 4_500_000,
+        authEntries: [fakeXdr],
+      }).signatureExpirationLedger,
+    ).toBe(4_500_000);
   });
 
   it("stubs the three passkey paths as auth none with CCR-20 schemas", () => {
