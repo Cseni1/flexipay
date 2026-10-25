@@ -68,6 +68,8 @@ export async function startTestServer(): Promise<TestServer> {
 		async stop() {
 			await new Promise((r) => server.close(r));
 			await db.$disconnect();
+			// Brief pause so Windows releases PG data-dir handles before rmdir.
+			await new Promise((r) => setTimeout(r, 150));
 			await pg.stop();
 		},
 	};

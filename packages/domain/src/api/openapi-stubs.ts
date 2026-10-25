@@ -6,6 +6,9 @@ import {
 import {
 	AnchorIndicativePriceRequestSchema,
 	AnchorIndicativePriceResponseSchema,
+	AnchorPayPendingResponseSchema,
+	AnchorPayRequestSchema,
+	AnchorPayResponseSchema,
 	AnchorWithdrawRequestSchema,
 	AnchorWithdrawResponseSchema,
 	AnchorWithdrawStatusResponseSchema,
@@ -212,18 +215,28 @@ export const A0_OPENAPI_STUBS: readonly ApiOpenApiStub[] = [
 		method: "post",
 		path: "/v1/claims/{token}/anchor/withdraw",
 		summary:
-			"Public: start reference-anchor SEP-24 withdraw; returns sanitised hosted URL",
+			"Public: start reference-anchor SEP-24 withdraw; first response may include interactiveUrl",
 		auth: "none",
 		body: AnchorWithdrawRequestSchema,
 		success: { status: 200, schema: AnchorWithdrawResponseSchema },
 	},
 	{
-		// CCR-22 — poll SEP-24 withdraw status (memo value never returned).
+		// CCR-22 — poll SEP-24 withdraw status (read-only; separate refs).
 		method: "get",
 		path: "/v1/claims/{token}/anchor/withdraw/{anchorTxId}",
-		summary: "Public: SEP-24 withdraw status for this claim's anchorTxId",
+		summary: "Public: read-only SEP-24 withdraw status for this claim's anchorTxId",
 		auth: "none",
 		success: { status: 200, schema: AnchorWithdrawStatusResponseSchema },
+	},
+	{
+		// CCR-22 — custodial classic memo payment after interactive KYC.
+		method: "post",
+		path: "/v1/claims/{token}/anchor/withdraw/{anchorTxId}/pay",
+		summary:
+			"Public: submit classic memo payment to anchor (persist-before-send); 200/202",
+		auth: "none",
+		body: AnchorPayRequestSchema,
+		success: { status: 200, schema: AnchorPayResponseSchema },
 	},
 	{
 		// Request from ARCHITECTURE §10 + CCR-4; no approved response body on main.
