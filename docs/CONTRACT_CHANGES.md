@@ -521,7 +521,7 @@ Any other failure (fee ceiling, timeout, NOT_FOUND, uncertain submit, generic lo
 
 **Behaviour with confirmed deposit:** on `VaultTxFeeError` during lock (e.g. `fee_exceeds_ceiling`, `fee_exceeds_uint32`, `ceiling_not_configured`, `double_counted_resource_fee`): keep `fundTxRef`; no attempt bump; no new deposit.
 
-**Gap note:** as of this amendment, `vault-tx-fee.ts` lives on `event/csenge-cursor/sdk-fee-build` and is **not yet on `main`**; no open GitHub PR was listed for that branch at amendment time. Implement PR must depend on that handoff landing (or being reachable) — CCR-23 does not redefine the fee types.
+**Landed:** `vault-tx-fee.ts` is on `main` (PR #75, merged at `16875c0`). Import `VaultTxFeeError`, `VaultTxFeeRejectReason`, `SOROBAN_TX_FEE_CEILING_ENV` and `parseSorobanTxFeeCeiling` from `@flexipay/adapter-stellar` (`packages/adapter-stellar/src/index.ts`). CCR-23 does not redefine the fee types.
 
 ### 7. Migration
 
