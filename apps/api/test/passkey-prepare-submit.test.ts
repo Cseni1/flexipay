@@ -148,8 +148,8 @@ describe("CCR-21 passkey prepare/submit routes (no live testnet)", () => {
 					passkeyContractId: FAKE_CONTRACT,
 					passkeyDeployTxHash: "ef".repeat(32),
 					vaultClaimHashHex: "11".repeat(32),
-					secretSealed: sealed,
-					secretSealedNonce: nonce,
+					secretSealed: new Uint8Array(sealed),
+					secretSealedNonce: new Uint8Array(nonce),
 				},
 			});
 			const payment = await t.db.payment.findUniqueOrThrow({

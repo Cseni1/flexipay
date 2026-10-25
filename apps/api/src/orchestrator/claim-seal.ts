@@ -57,7 +57,7 @@ export function unsealClaimSecret(
 export function sealBytes(
 	plaintext: Buffer,
 	key: Buffer,
-): { sealed: Buffer; nonce: Buffer } {
+): { sealed: Uint8Array<ArrayBuffer>; nonce: Uint8Array<ArrayBuffer> } {
 	const nonce = randomBytes(NONCE_LEN);
 	const cipher = createCipheriv(ALGO, key, nonce);
 	const sealed = Buffer.concat([
@@ -65,7 +65,8 @@ export function sealBytes(
 		cipher.final(),
 		cipher.getAuthTag(),
 	]);
-	return { sealed, nonce };
+	// Prisma `Bytes` columns accept ArrayBuffer-backed arrays only, not Buffer<ArrayBufferLike>.
+	return { sealed: new Uint8Array(sealed), nonce: new Uint8Array(nonce) };
 }
 
 export function unsealBytes(
