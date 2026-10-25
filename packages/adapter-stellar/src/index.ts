@@ -22,3 +22,45 @@ export {
 	loadTestnetEnvFiles,
 } from "./factory.ts";
 export type { SettlementMode, CreateStellarSettlementOptions } from "./factory.ts";
+
+export {
+	parseClassicAssetLine,
+	classicAssetLine,
+	sep38AssetString,
+	sameAsset,
+	assertAssetIdentity,
+} from "./anchor-asset.ts";
+export type { StellarAssetIdentity } from "./anchor-asset.ts";
+
+export { loadAnchorToml } from "./anchor-toml.ts";
+export type { AnchorTomlEndpoints, AnchorTomlResult } from "./anchor-toml.ts";
+
+export {
+	ReferenceAnchorClient,
+	AnchorClientError,
+	isSep24Success,
+	isSep24Failure,
+	isSep24Terminal,
+	SEP24_SUCCESS_STATUSES,
+	SEP24_FAILURE_STATUSES,
+} from "./anchor-client.ts";
+export type {
+	IndicativePrice,
+	Sep24InteractiveSession,
+	Sep24InteractiveWithdraw,
+	Sep24TransactionView,
+	AnchorPaymentExpectation,
+	ReferenceAnchorClientOptions,
+	Sep24TxStatus,
+} from "./anchor-client.ts";
+
+export { sanitiseHostedUrl, redactUrlQuery, maskBearerToken } from "./anchor-url.ts";
+
+export { loadAnchorEventEnv, ANCHOR_ENV_NAMES } from "./anchor-env.ts";
+export type { AnchorEventEnv } from "./anchor-env.ts";
+
+export { submitClassicPaymentWithMemo } from "./anchor-classic-payment.ts";
+export type {
+	ClassicPaymentResult,
+	SubmitClassicPaymentOptions,
+} from "./anchor-classic-payment.ts";
