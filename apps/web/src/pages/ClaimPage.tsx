@@ -1,6 +1,6 @@
 import {
 	anchorAmountProblemCopy,
-	anchorSellAmount,
+	anchorCashOutSupport,
 } from "@flexipay/web-lib/anchor-amount"
 import { type ClaimView } from "@flexipay/web-lib/claim-contract"
 import { buildClaimEndpoint } from "@flexipay/web-lib/claim-endpoint"
@@ -316,7 +316,7 @@ export default function ClaimPage() {
 	}
 
 	const selectAnchor = () => {
-		if (expired || accepting || !anchorAmount?.ok) return
+		if (expired || accepting || !anchorCashOut?.available) return
 		setPasskeySelected(false)
 		setAnchorSelected(true)
 		setSelectedType("")
@@ -343,10 +343,11 @@ export default function ClaimPage() {
 	const paymentAcceptable = claim
 		? PAYMENT_ACCEPTABLE_STATUSES.has(claim.paymentStatus)
 		: false
-	// CCR-22 quotes and withdraws USDC major units. The claim amount is the only cash-out
-	// amount on this page, so it must convert exactly and sit inside the anchor's 1–10 limit.
-	const anchorAmount = claim
-		? anchorSellAmount(claim.amount.amount, claim.amount.currency)
+	// CCR-22: the withdraw body omits `amount`, so the API uses the claim settle net. The
+	// indicative quote is limited to 1–10 USDC of the claim amount and is skipped otherwise;
+	// the gross claim amount is never substituted for the net.
+	const anchorCashOut = claim
+		? anchorCashOutSupport(claim.amount.amount, claim.amount.currency)
 		: null
 	const hasSupportedType =
 		claim?.allowedDestinationTypes.some(supportsClaimAccept) ?? false
@@ -562,7 +563,7 @@ export default function ClaimPage() {
 											</span>
 										</label>
 										<label
-											className={`option-card${anchorAmount?.ok ? "" : " option-card--unavailable"}`}
+											className={`option-card${anchorCashOut?.available ? "" : " option-card--unavailable"}`}
 											data-testid="claim-anchor-option"
 										>
 											<input
@@ -570,7 +571,9 @@ export default function ClaimPage() {
 												name="receive"
 												value="anchor"
 												checked={anchorSelected}
-												disabled={expired || accepting || !anchorAmount?.ok}
+												disabled={
+													expired || accepting || !anchorCashOut?.available
+												}
 												onChange={selectAnchor}
 											/>
 											<span className="option-card__body">
@@ -578,10 +581,10 @@ export default function ClaimPage() {
 													Cash out to bank (reference anchor)
 												</span>
 												<span className="option-card__detail">
-													{anchorAmount?.ok
+													{anchorCashOut?.available
 														? "Reference anchor on testnet, in the anchor's sandbox. Starts after the vault release to a classic G… wallet."
-														: anchorAmount
-															? anchorAmountProblemCopy(anchorAmount.problem)
+														: anchorCashOut
+															? anchorAmountProblemCopy(anchorCashOut.problem)
 															: "Not available for this claim."}
 												</span>
 											</span>
@@ -603,12 +606,12 @@ export default function ClaimPage() {
 											)}
 											onUseCryptoWallet={useCryptoWallet}
 										/>
-									) : null}
-									{anchorSelected && anchorAmount?.ok ? (
+									) : null}{" "}
+									{anchorSelected && anchorCashOut?.available ? (
 										<AnchorClaimSection
 											key={`anchor-${claimToken}`}
 											token={claimToken ?? ""}
-											sellAmount={anchorAmount.sellAmount}
+											quoteAmount={anchorCashOut.quoteAmount}
 											claim={claim}
 											claimExpired={expired}
 											onUseCryptoWallet={useCryptoWallet}
@@ -657,7 +660,6 @@ export default function ClaimPage() {
 											{acceptError}
 										</Notice>
 									) : null}
-
 									{passkeySelected ||
 									anchorSelected ? null : hasSupportedType ? (
 										<>
@@ -688,7 +690,7 @@ export default function ClaimPage() {
 									{/* M1 anchor cash-out needs the vault release first, so it is reachable only
 									    after the claim is accepted to a classic G… account. Same panel, no
 									    new screen; the release and anchor statuses stay separate inside. */}
-									{claim.status === "accepted" && anchorAmount?.ok ? (
+									{claim.status === "accepted" && anchorCashOut?.available ? (
 										<div className="stack" data-testid="anchor-accepted-block">
 											<p className="option-card__title">
 												Cash out to bank (reference anchor)
@@ -696,21 +698,21 @@ export default function ClaimPage() {
 											<AnchorClaimSection
 												key={`anchor-accepted-${claimToken}`}
 												token={claimToken ?? ""}
-												sellAmount={anchorAmount.sellAmount}
+												quoteAmount={anchorCashOut.quoteAmount}
 												claim={claim}
 												claimExpired={expired}
 											/>
 										</div>
-									) : null}
+									) : null}{" "}
 									{claim.status === "accepted" &&
-									anchorAmount &&
-									!anchorAmount.ok ? (
+									anchorCashOut &&
+									!anchorCashOut.available ? (
 										<Notice
 											tone="info"
 											data-testid="anchor-accepted-unavailable"
 										>
 											Reference anchor cash-out unavailable:{" "}
-											{anchorAmountProblemCopy(anchorAmount.problem)}
+											{anchorAmountProblemCopy(anchorCashOut.problem)}
 										</Notice>
 									) : null}
 								</>

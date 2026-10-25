@@ -5,6 +5,9 @@
 export {
 	AnchorIndicativePriceRequestSchema,
 	AnchorIndicativePriceResponseSchema,
+	AnchorPayPendingResponseSchema,
+	AnchorPayRequestSchema,
+	AnchorPayResponseSchema,
 	AnchorUsdcMajorAmountSchema,
 	AnchorWithdrawRequestSchema,
 	AnchorWithdrawResponseSchema,
@@ -24,6 +27,9 @@ export {
 export type {
 	AnchorIndicativePriceRequest,
 	AnchorIndicativePriceResponse,
+	AnchorPayPendingResponse,
+	AnchorPayRequest,
+	AnchorPayResponse,
 	AnchorWithdrawRequest,
 	AnchorWithdrawResponse,
 	AnchorWithdrawStatusResponse,
