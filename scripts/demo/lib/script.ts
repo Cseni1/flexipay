@@ -99,7 +99,15 @@ export async function execute(
 					"DF3 checks the lock and release invoke this contract; a successful hash alone is not proof",
 			})
 		}
-		// CCR-13 fee checks use the frozen quote fee (and vault math identities), not
+		if (!parsed.env.assetContractId) {
+			blockers.push({
+				what: "FP_USDC_CONTRACT_ID is not set, so the vault token cannot be checked",
+				owner: "caller / Csaba (integration)",
+				detail:
+					"the vault config() token must equal the published settlement asset; no ticker-only fallback is accepted",
+			})
+		}
+		// Fee checks use the frozen quote fee and the vault's on-chain config(), not
 		// an independently chosen FP_VAULT_FEE_BPS. Adapter/API still use that env at boot.
 	}
 	if (blockers.length > 0) return flow.finish("BLOCKED", blockers)

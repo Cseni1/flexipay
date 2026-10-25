@@ -4,11 +4,13 @@ import {
 	FeeBumpTransaction,
 	StrKey,
 	TransactionBuilder,
+	contract,
 	scValToNative,
 	xdr,
 } from "@stellar/stellar-sdk"
 import { AssertionFailure, fail } from "./assertions.ts"
 import { BlockedError } from "./report.ts"
+import type { PaymentView, QuoteView } from "./types.ts"
 
 // A 64-hex string only looks like a Stellar hash. DF3 proves the vault release, not merely a
 // successful transaction: the lock must be a create_payout for this payment, and the release must
@@ -28,12 +30,33 @@ export interface VaultReleaseProof extends StellarProof {
 	payoutId: string
 	recipient: string
 	contractId: string
+	/** The vault’s token contract, read from on-chain config(), not a caller setting. */
+	assetContractId: string
+	/** Fixed vault fee in bps, read from on-chain config(). */
+	vaultFeeBps: number
+	/** Fixed vault treasury, read from on-chain config(). */
+	treasuryAddress: string
 	/** Lock input principal P (settle amountIn), from create_payout (CCR-13). */
 	principal: string
 	feeMode: FeeMode
 	fee: string
 	/** Release return value: P for PayerPays, P − fee for RecipientPays. */
 	net: string
+	/** The matching on-chain token transfer to the recipient (asset proof). */
+	transfer: TokenTransfer
+}
+
+export interface VaultConfig {
+	token: string
+	treasury: string
+	feeBps: number
+}
+
+export interface TokenTransfer {
+	contractId: string
+	from: string
+	to: string
+	amount: string
 }
 
 export interface ContractInvocation {
@@ -281,11 +304,333 @@ const nativeSymbol = (value: unknown, where: string): string => {
 	return fail(`${where}: expected a contract symbol`)
 }
 
-const lockExternalId = (paymentId: string, attempt = 1): string =>
+export const vaultExternalId = (paymentId: string, attempt = 1): string =>
 	createHash("sha256").update(`${paymentId}:${attempt}`, "utf8").digest("hex")
 
 const secretHash = (secretHex: string): string =>
 	createHash("sha256").update(Buffer.from(secretHex, "hex")).digest("hex")
+
+export function parseVaultConfig(value: unknown): VaultConfig {
+	if (!Array.isArray(value) || value.length !== 3) {
+		fail("vault config() did not return (token, treasury, fee_bps)")
+	}
+	const [token, treasury, feeBps] = value
+	if (typeof token !== "string" || !StrKey.isValidContract(token)) {
+		fail("vault config() token is not a Stellar contract address")
+	}
+	if (
+		typeof treasury !== "string" ||
+		!StrKey.isValidEd25519PublicKey(treasury)
+	) {
+		fail("vault config() treasury is not a Stellar account address")
+	}
+	if (
+		typeof feeBps !== "number" ||
+		!Number.isInteger(feeBps) ||
+		feeBps < 0 ||
+		feeBps > 1000
+	) {
+		fail(`vault config() fee_bps ${String(feeBps)} is outside 0..1000`)
+	}
+	return { token, treasury, feeBps }
+}
+
+function metaEvents(meta: xdr.TransactionMeta): xdr.ContractEvent[] {
+	const events: xdr.ContractEvent[] = []
+	const version = meta.switch()
+	if (version === 3) {
+		const soroban = meta.v3().sorobanMeta()
+		if (soroban) events.push(...soroban.events())
+	} else if (version === 4) {
+		const v4 = meta.v4()
+		events.push(...v4.events().map((event) => event.event()))
+		for (const operation of v4.operations()) {
+			events.push(...operation.events())
+		}
+	}
+	return events
+}
+
+/** Decodes token-transfer events from result meta; no API field is used for asset proof. */
+export function parseTokenTransfers(resultMetaXdr: string): TokenTransfer[] {
+	let meta: xdr.TransactionMeta
+	try {
+		meta = xdr.TransactionMeta.fromXDR(resultMetaXdr, "base64")
+	} catch (error) {
+		throw new AssertionFailure(
+			`transaction resultMetaXdr is not valid XDR: ${error instanceof Error ? error.message : String(error)}`,
+		)
+	}
+	const out: TokenTransfer[] = []
+	const seen = new Set<string>()
+	for (const event of metaEvents(meta)) {
+		const encoded = event.toXDR("base64")
+		if (seen.has(encoded)) continue
+		seen.add(encoded)
+		const contractId = event.contractId()
+		if (!contractId) continue
+		const body = event.body()
+		if (body.switch() !== 0) continue
+		const v0 = body.v0()
+		const topics = v0.topics()
+		// SAC transfer events carry [transfer, from, to] and may append the classic asset line.
+		if (topics.length < 3) continue
+		const kind = scValToNative(topics[0])
+		if (kind !== "transfer") continue
+		const from = nativeEventAddress(topics[1], "token transfer from")
+		const to = nativeEventAddress(topics[2], "token transfer to")
+		const amount = scValToNative(v0.data())
+		if (typeof amount !== "bigint" || amount < 0n) {
+			fail("token transfer event has no non-negative integer amount")
+		}
+		out.push({
+			contractId: StrKey.encodeContract(contractId as unknown as Buffer),
+			from,
+			to,
+			amount: amount.toString(),
+		})
+	}
+	return out
+}
+
+const nativeEventAddress = (value: xdr.ScVal, where: string): string => {
+	const decoded = scValToNative(value)
+	if (typeof decoded === "string" && decoded.length > 0) return decoded
+	return fail(`${where}: expected a Stellar address`)
+}
+
+interface ContractReader {
+	config(): Promise<{ result: unknown }>
+	payout_by_external(args: {
+		payer: string
+		external_id: Buffer
+	}): Promise<{ result: unknown }>
+}
+
+function contractResult(value: unknown, where: string): unknown {
+	if (
+		typeof value === "object" &&
+		value !== null &&
+		"isErr" in value &&
+		typeof (value as { isErr?: unknown }).isErr === "function"
+	) {
+		const result = value as {
+			isErr(): boolean
+			unwrap(): unknown
+			unwrapErr?(): unknown
+		}
+		if (result.isErr()) {
+			fail(`${where}: contract call returned an error`)
+		}
+		return result.unwrap()
+	}
+	return value
+}
+
+function withTimeout<T>(
+	promise: Promise<T>,
+	timeoutMs: number,
+	what: string,
+): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined
+	const timeout = new Promise<never>((_, reject) => {
+		timer = setTimeout(() => {
+			reject(
+				new BlockedError([
+					{
+						what: `${what} timed out after ${timeoutMs}ms`,
+						owner: "Stellar RPC / integration",
+					},
+				]),
+			)
+		}, timeoutMs)
+	})
+	return Promise.race([promise, timeout]).finally(() => {
+		if (timer) clearTimeout(timer)
+	})
+}
+
+async function contractReader(options: {
+	vaultContractId: string
+	rpcUrl: string
+	networkPassphrase: string
+}): Promise<ContractReader> {
+	return (await contract.Client.from({
+		contractId: options.vaultContractId,
+		rpcUrl: options.rpcUrl,
+		networkPassphrase: options.networkPassphrase,
+	})) as unknown as ContractReader
+}
+
+/** Reads the vault's fixed token, treasury and fee from the contract, not from env. */
+export async function readVaultConfig(options: {
+	vaultContractId: string
+	rpcUrl: string
+	networkPassphrase: string
+	timeoutMs: number
+}): Promise<VaultConfig> {
+	if (!StrKey.isValidContract(options.vaultContractId)) {
+		fail(`configured vault id is not a Stellar contract address`)
+	}
+	let tx: { result: unknown }
+	try {
+		tx = await withTimeout(
+			(async () => {
+				const reader = await contractReader(options)
+				return reader.config()
+			})(),
+			options.timeoutMs,
+			"vault config()",
+		)
+	} catch (error) {
+		if (error instanceof BlockedError) throw error
+		throw new BlockedError([
+			{
+				what: `vault config() is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+				owner: "Stellar RPC / integration",
+			},
+		])
+	}
+	return parseVaultConfig(contractResult(tx.result, "vault config()"))
+}
+
+/** On-chain lookup by (payer, external id); used to prove a domestic row has no lock. */
+export async function readVaultPayoutByExternal(options: {
+	vaultContractId: string
+	payerAddress: string
+	externalIdHex: string
+	rpcUrl: string
+	networkPassphrase: string
+	timeoutMs: number
+}): Promise<string | undefined> {
+	if (!StrKey.isValidContract(options.vaultContractId)) {
+		fail(`configured vault id is not a Stellar contract address`)
+	}
+	if (!StrKey.isValidEd25519PublicKey(options.payerAddress)) {
+		fail("payer address is not a Stellar account address")
+	}
+	if (!/^[0-9a-fA-F]{64}$/.test(options.externalIdHex)) {
+		fail("external id must be 32 bytes")
+	}
+	let tx: { result: unknown }
+	try {
+		tx = await withTimeout(
+			(async () => {
+				const reader = await contractReader(options)
+				return reader.payout_by_external({
+					payer: options.payerAddress,
+					external_id: Buffer.from(options.externalIdHex, "hex"),
+				})
+			})(),
+			options.timeoutMs,
+			"vault payout_by_external()",
+		)
+	} catch (error) {
+		if (error instanceof BlockedError) throw error
+		throw new BlockedError([
+			{
+				what: `vault payout_by_external() is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+				owner: "Stellar RPC / integration",
+			},
+		])
+	}
+	const value = contractResult(tx.result, "vault payout_by_external()")
+	if (value === null || value === undefined) return undefined
+	return nativeId(value, "vault payout_by_external()")
+}
+
+/**
+ * H3: verifies a paid direct/claim payment's lock and release against the frozen quote and the
+ * vault's on-chain token/fee config. Missing refs are BLOCKED; contradictory data is FAIL.
+ */
+export async function verifyVaultPayment(options: {
+	payment: PaymentView
+	quote: QuoteView
+	recipientAddress: string
+	vaultContractId: string
+	expectedAssetContractId: string
+	rpcUrl: string
+	networkPassphrase: string
+	timeoutMs: number
+}): Promise<VaultReleaseProof> {
+	if (options.payment.status !== "paid") {
+		fail(
+			`payment ${options.payment.id} is ${options.payment.status}, expected paid`,
+		)
+	}
+	const settle = options.payment.legs.find((leg) => leg.kind === "settle")
+	if (!settle) fail(`payment ${options.payment.id} has no settle leg`)
+	if (settle.status !== "succeeded") {
+		fail(
+			`payment ${options.payment.id} settle leg is ${settle.status}, not succeeded`,
+		)
+	}
+	const quoteSettle = options.quote.route.find((leg) => leg.kind === "settle")
+	if (!quoteSettle?.amountIn || !quoteSettle.amountOut) {
+		fail(`quote ${options.quote.id} has no frozen settle amounts`)
+	}
+	if (!options.quote.feeMode) {
+		fail(`quote ${options.quote.id} has no feeMode`)
+	}
+	if (!options.quote.fees)
+		fail(`quote ${options.quote.id} has no fee breakdown`)
+	if (!settle.amountIn || !settle.amountOut) {
+		fail(`payment ${options.payment.id} settle leg has no frozen amounts`)
+	}
+	if (
+		settle.amountIn.amount !== quoteSettle.amountIn.amount ||
+		settle.amountIn.currency !== quoteSettle.amountIn.currency ||
+		settle.amountOut.amount !== quoteSettle.amountOut.amount ||
+		settle.amountOut.currency !== quoteSettle.amountOut.currency
+	) {
+		fail(
+			`payment ${options.payment.id} settle amounts do not match quote ${options.quote.id}`,
+		)
+	}
+	if (!settle.externalRef) {
+		throw new BlockedError([
+			{
+				what: `payment ${options.payment.id} has no settle payoutId`,
+				owner: "CC2 / integration",
+				detail: "CCR-12 requires settle.externalRef",
+			},
+		])
+	}
+	if (!settle.lockTxRef) {
+		throw new BlockedError([
+			{
+				what: `payment ${options.payment.id} has no settle lockTxRef`,
+				owner: "CC2 / integration",
+				detail: "CCR-12 requires lockTxRef",
+			},
+		])
+	}
+	if (!settle.releaseTxRef) {
+		throw new BlockedError([
+			{
+				what: `payment ${options.payment.id} has no settle releaseTxRef`,
+				owner: "CC2 / integration",
+				detail: "CCR-12 requires releaseTxRef for a paid payment",
+			},
+		])
+	}
+	return verifyVaultRelease({
+		paymentId: options.payment.id,
+		payoutId: settle.externalRef,
+		lockHash: settle.lockTxRef,
+		releaseHash: settle.releaseTxRef,
+		recipientAddress: options.recipientAddress,
+		vaultContractId: options.vaultContractId,
+		principal: settle.amountIn.amount,
+		feeMode: options.quote.feeMode,
+		fee: options.quote.fees.flexiPayFee.amount,
+		net: quoteSettle.amountOut.amount,
+		expectedAssetContractId: options.expectedAssetContractId,
+		rpcUrl: options.rpcUrl,
+		networkPassphrase: options.networkPassphrase,
+		timeoutMs: options.timeoutMs,
+	})
+}
 
 /** Verifies that `hash` is a successful transaction on the configured testnet. */
 export async function verifyStellarTransaction(options: {
@@ -324,7 +669,7 @@ export async function verifyStellarTransaction(options: {
  * - release: claim(P, …, recipientAddress) on the same vault.
  * Both transactions must be SUCCESS, distinct, and on the configured testnet.
  */
-export async function verifyVaultRelease(options: {
+export async function verifyVaultReleaseWithConfig(options: {
 	paymentId: string
 	/** CCR-12: settle.externalRef, the vault payoutId returned by the lock. */
 	payoutId: string
@@ -332,17 +677,15 @@ export async function verifyVaultRelease(options: {
 	releaseHash: string
 	recipientAddress: string
 	vaultContractId: string
+	/** Public testnet asset id; must equal the vault's on-chain config token. */
+	expectedAssetContractId: string
+	/** Read from vault config() by the caller, never from a caller-selected fee env. */
+	vaultConfig: VaultConfig
 	/** CCR-13 frozen settle principal, fee mode, fee and net from quote/payment. */
 	principal: string
 	feeMode: FeeMode
 	fee: string
 	net: string
-	/**
-	 * Deployed vault fee bps from public testnet evidence (`testnet-ids.env`). When set, fee must
-	 * equal f(P) at that rate. When omitted, fee must equal f(P) for some 0..1000 bps (mock).
-	 * Never a caller-chosen acceptance env override.
-	 */
-	vaultFeeBps?: number
 	rpcUrl: string
 	networkPassphrase: string
 	timeoutMs: number
@@ -354,6 +697,14 @@ export async function verifyVaultRelease(options: {
 	}
 	if (!StrKey.isValidContract(options.vaultContractId)) {
 		fail(`configured vault id is not a Stellar contract address`)
+	}
+	if (!StrKey.isValidContract(options.expectedAssetContractId)) {
+		fail(`expected asset id is not a Stellar contract address`)
+	}
+	if (options.vaultConfig.token !== options.expectedAssetContractId) {
+		fail(
+			`vault config token ${options.vaultConfig.token} is not the expected asset ${options.expectedAssetContractId}`,
+		)
 	}
 	// Adapter returns vault u64 ids via BigInt.toString() (decimal). Reject hashes/labels.
 	if (!/^[1-9][0-9]*$/.test(options.payoutId)) {
@@ -402,7 +753,7 @@ export async function verifyVaultRelease(options: {
 			"lock create_payout has no external id, claim hash, amount or fee mode",
 		)
 	}
-	const expectedExternalId = lockExternalId(options.paymentId)
+	const expectedExternalId = vaultExternalId(options.paymentId)
 	const seenExternalId = nativeHex(lockInvocation.args[1], "lock external id")
 	if (seenExternalId !== expectedExternalId) {
 		fail(
@@ -432,33 +783,18 @@ export async function verifyVaultRelease(options: {
 		)
 	}
 
-	// Frozen quote fee (CCR-13). Against deployed evidence use that bps; otherwise any 0..1000.
+	// Frozen quote fee (CCR-13), checked against the fixed bps in the vault's on-chain config.
 	const principalMinor = BigInt(options.principal)
 	const feeMinor = BigInt(options.fee)
-	if (options.vaultFeeBps !== undefined) {
-		const bps = options.vaultFeeBps
-		if (!Number.isInteger(bps) || bps < 0 || bps > 1000) {
-			fail(`vault fee bps ${bps} is outside 0..1000`)
-		}
-		const computedFee = ((principalMinor * BigInt(bps)) / 10_000n).toString()
-		if (computedFee !== options.fee) {
-			fail(
-				`frozen fee ${options.fee} is not f(P)=${computedFee} at deployed ${bps} bps`,
-			)
-		}
-	} else {
-		let feeMatchesVaultMath = false
-		for (let bps = 0; bps <= 1000; bps++) {
-			if ((principalMinor * BigInt(bps)) / 10_000n === feeMinor) {
-				feeMatchesVaultMath = true
-				break
-			}
-		}
-		if (!feeMatchesVaultMath) {
-			fail(
-				`frozen fee ${options.fee} is not f(P)=floor(P*bps/10000) for any vault fee 0..1000 bps`,
-			)
-		}
+	const bps = options.vaultConfig.feeBps
+	if (!Number.isInteger(bps) || bps < 0 || bps > 1000) {
+		fail(`vault fee bps ${bps} is outside 0..1000`)
+	}
+	const computedFee = ((principalMinor * BigInt(bps)) / 10_000n).toString()
+	if (computedFee !== options.fee) {
+		fail(
+			`frozen fee ${options.fee} is not f(P)=${computedFee} at on-chain ${bps} bps`,
+		)
 	}
 	const computedNet =
 		options.feeMode === "PayerPays"
@@ -524,6 +860,31 @@ export async function verifyVaultRelease(options: {
 		fail(`release returned net ${net}, expected ${computedNet}`)
 	}
 
+	// Asset/net must be proven from token-transfer metadata. If the release has no transfer
+	// events at all, this is an evidence gap (BLOCKED / NOT VERIFIED), not a pass.
+	const transfers = parseTokenTransfers(release.resultMetaXdr)
+	if (transfers.length === 0) {
+		throw new BlockedError([
+			{
+				what: "NOT VERIFIED: release transaction has no token-transfer event; asset and net are not proven",
+				owner: "Stellar RPC / transaction metadata",
+				detail: `release ${options.releaseHash}`,
+			},
+		])
+	}
+	const transfer = transfers.find(
+		(candidate) =>
+			candidate.contractId === options.expectedAssetContractId &&
+			candidate.from === options.vaultContractId &&
+			candidate.to === options.recipientAddress &&
+			candidate.amount === net,
+	)
+	if (!transfer) {
+		fail(
+			`release has no ${options.expectedAssetContractId} transfer from vault ${options.vaultContractId} to ${options.recipientAddress} for ${net}`,
+		)
+	}
+
 	return {
 		hash: options.releaseHash,
 		status: release.status,
@@ -533,9 +894,39 @@ export async function verifyVaultRelease(options: {
 		payoutId,
 		recipient,
 		contractId: options.vaultContractId,
+		assetContractId: options.vaultConfig.token,
+		vaultFeeBps: options.vaultConfig.feeBps,
+		treasuryAddress: options.vaultConfig.treasury,
 		principal,
 		feeMode,
 		fee: options.fee,
 		net,
+		transfer,
 	}
+}
+
+/** Reads the vault config from chain, then verifies the payment against it. */
+export async function verifyVaultRelease(options: {
+	paymentId: string
+	payoutId: string
+	lockHash: string
+	releaseHash: string
+	recipientAddress: string
+	vaultContractId: string
+	expectedAssetContractId: string
+	principal: string
+	feeMode: FeeMode
+	fee: string
+	net: string
+	rpcUrl: string
+	networkPassphrase: string
+	timeoutMs: number
+}): Promise<VaultReleaseProof> {
+	const vaultConfig = await readVaultConfig({
+		vaultContractId: options.vaultContractId,
+		rpcUrl: options.rpcUrl,
+		networkPassphrase: options.networkPassphrase,
+		timeoutMs: options.timeoutMs,
+	})
+	return verifyVaultReleaseWithConfig({ ...options, vaultConfig })
 }
