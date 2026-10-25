@@ -43,11 +43,15 @@ export interface IndicativePrice {
 export interface Sep24InteractiveSession {
 	/** Anchor transaction id (safe for evidence). */
 	id: string;
-	/** Sanitised URL for evidence (no query/token). */
+	/**
+	 * Origin+pathname only (query/hash stripped). For logs, evidence, and safe
+	 * display — **not** a browser navigation target.
+	 */
 	urlSanitised: string;
 	/**
-	 * Full interactive URL including any session material. Server-side only;
-	 * do not put in evidence JSON or git.
+	 * Full interactive URL including session query params. Deliver to the browser
+	 * for navigation (API field or server redirect). Never write to logs, evidence,
+	 * or git. SEP-10 JWT remains on the client instance, separate from this URL.
 	 */
 	url: string;
 	type: string;
@@ -307,7 +311,8 @@ export class ReferenceAnchorClient {
 
 	/**
 	 * Starts a SEP-24 interactive **withdraw** (M1 cash-out). Requires {@link authenticate}.
-	 * Returns the full URL for the server to open; evidence must use urlSanitised.
+	 * Returns functional `url` (for browser navigation / server redirect) and
+	 * `urlSanitised` (logs/evidence only).
 	 */
 	async startWithdrawInteractive(opts: {
 		amount: string;

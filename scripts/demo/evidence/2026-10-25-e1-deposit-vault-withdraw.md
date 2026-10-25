@@ -82,7 +82,7 @@ Vault release hash ≠ anchor payment hash (recorded separately, as required).
 Precise wiring only; Cursor does not own claim routes/UI.
 
 1. **Env (CCR-20 accepted):** load `scripts/testnet/testnet-ids-anchor-vault.env` for anchor vault (`FP_ANCHOR_VAULT_*` + `FP_ANCHOR_HOME_DOMAIN` / `FP_ANCHOR_USDC_*`); keep baseline `FP_PAYOUT_VAULT_ID` / `FP_USDC_*` for non-M1 paths. (See rename note above for names used during this run.)
-2. **Server-only:** SEP-10 JWT on `ReferenceAnchorClient` instance; never return interactive `url` token query to the browser — open hosted URL from server or a one-time redirect that does not log the token.
+2. **JWT vs hosted URL:** SEP-10 JWT stays on `ReferenceAnchorClient` (server). Browser must reach the **functional** interactive `url` (session params intact) via API response or server redirect that does **not** log the raw URL. `urlSanitised` is for logs/evidence/display only — not the navigation target.
 3. **Claim cash-out sequence:** after vault release to custodial recipient → `startWithdrawInteractive` → wait until `withdraw_anchor_account` + `withdraw_memo` + `amount_in` → `submitClassicPaymentWithMemo` **once** → `waitForTerminal` → persist `{ vaultReleaseTx, classicPaymentTx, sep24Id, status }` separately.
 4. **Duplicate guard:** if poll times out, reconcile Horizon by `classicPaymentTx` / SEP-24 `stellar_transaction_id` before any second submit.
 5. **UI:** show indicative SEP-38 price as indicative; show asset as code+issuer; do not claim real bank settlement (reference-anchor simulation).

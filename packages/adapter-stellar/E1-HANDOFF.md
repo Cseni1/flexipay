@@ -49,7 +49,7 @@ Import from `@flexipay/adapter-stellar`:
 | SEP-10 classic | **Yes** | |
 | SEP-38 indicative price | **Yes** | `sep6` only |
 | SEP-24 **deposit** interactive | **Yes** | funds classic account with GBBD47 USDC |
-| Hosted deposit completion | **Manual / UI** | open `url` server-side; poll `waitForTerminal` |
+| Hosted deposit completion | **Manual / UI** | browser must open functional `url` (session params); poll `waitForTerminal` |
 | Vault #2 deploy + ids file | **Script** | `setup-anchor-vault.sh` |
 | Vault #2 `deposit` (Soroban) | **Existing** `StellarSettlementAdapter.fundVault` once env points at anchor vault | needs funded classic SAC balance |
 | SEP-24 **withdraw** interactive | **Yes** | |
@@ -76,8 +76,8 @@ Secrets overlay (gitignored): `.env.secrets-anchor-vault`.
 
 ## Asks for Csaba (API / UI) — server calls only; he proposes shapes
 
-1. **Indicative price** — server calls `indicativeWithdrawPrice`; label indicative in UI.
-2. **Start withdrawal / hosted URL** — server calls `startWithdrawInteractive`; open `url` server-side; never put JWT/query token in browser logs or evidence (`urlSanitised` only).
+1. **Indicative price** — server calls `indicativeWithdrawPrice`; label indicative in UI. A transient SEP-38 **502** may get **one** bounded retry after diagnosis; do **not** blindly retry `startWithdrawInteractive` or `submitClassicPaymentWithMemo`.
+2. **Start withdrawal / hosted URL** — server calls `startWithdrawInteractive`. **SEP-10 JWT stays on the server** (client instance). The **browser must navigate the functional hosted `url`**, including required session query params, via the agreed API response or a **server redirect** that does not log the raw URL. `urlSanitised` / `sanitiseHostedUrl` strip query/hash — they are for **logs, evidence, and safe display only**, not a navigation target (not proven functional without session params).
 3. **Poll status** — server calls `getTransaction` / `waitForTerminal` until terminal; then classic memo payment once if custodial.
 4. Persist three refs: anchor tx id, anchor payment hash, vault release hash.
 5. UI copy: “reference anchor on testnet, pays a US-dollar bank account in a sandbox”.
@@ -87,7 +87,7 @@ Secrets overlay (gitignored): `.env.secrets-anchor-vault`.
 
 - DF7: deposit may already be done by Cursor; if not, coordinate LOCK on payer first.
 - Withdraw path: LOCK recipient A → authenticate → interactive → classic memo payment → `waitForTerminal` → `assertSuccessfulWithdraw`.
-- Record vault release vs anchor payment separately; `urlSanitised` only in evidence.
+- Record vault release vs anchor payment separately; evidence/logs use `urlSanitised` only (never the functional `url` query).
 
 ## H1 — Claude **approved** (run gated)
 
@@ -107,4 +107,4 @@ Evidence: `scripts/demo/evidence/2026-10-25-h2-seal-key-negative.md` (script: `s
 
 ## Sunday 17:30 Lisbon
 
-Price + sanitised hosted URL minimum; else M1 PARTIAL.
+Price + hosted interactive flow reachable (functional URL delivered without logging secrets); else M1 PARTIAL.
