@@ -833,6 +833,83 @@ export async function completeClaimSettle(
 	return { status: after.status as PaymentStatus };
 }
 
+/**
+ * CCR-21 passkey submit: after RPC SUCCESS for the passkey-authorized vault claim,
+ * persist Leg.releaseTxRef and finish claim/payment the same way as custodial release.
+ * Does not call SettlementAdapter.release (auth was already submitted on-chain).
+ */
+export async function recordPasskeyClaimRelease(
+	db: Db,
+	paymentId: string,
+	adapters: OrchestratorAdapters,
+	releaseTxRef: string,
+): Promise<{ status: PaymentStatus }> {
+	const payment = await db.payment.findUniqueOrThrow({
+		where: { id: paymentId },
+		include: { legs: { orderBy: { position: "asc" } }, claimLink: true },
+	});
+	const settle = payment.legs.find((l) => l.kind === "settle");
+	if (settle && (settle.status === "failed" || settle.errorCode === "fee_drift")) {
+		throw new ClaimReleaseRefusedError(
+			`settle leg failed (${settle.errorCode ?? "failed"}); claim release refused (CCR-15)`,
+		);
+	}
+	if (payment.status !== "processing") {
+		throw new Error(`recordPasskeyClaimRelease requires processing, got ${payment.status}`);
+	}
+	if (!settle || settle.status !== "processing" || !settle.externalRef) {
+		throw new Error("settle leg is not waiting for release");
+	}
+	if (settle.releaseTxRef) {
+		if (settle.releaseTxRef !== releaseTxRef) {
+			throw new Error("settle leg already released with a different tx ref");
+		}
+		const after = await db.payment.findUniqueOrThrow({ where: { id: paymentId } });
+		return { status: after.status as PaymentStatus };
+	}
+
+	await db.leg.update({
+		where: { id: settle.id },
+		data: { releaseTxRef },
+	});
+
+	await emitPaymentEvent(db, payment.organizationId, paymentId, "payment.onchain", {
+		phase: "release",
+		payoutId: settle.externalRef,
+		releaseTxRef,
+		legId: settle.id,
+	});
+	await transitionLeg(db, paymentId, settle.id, "processing", "succeeded");
+	await emitPaymentEvent(db, payment.organizationId, paymentId, "leg.succeeded", {
+		legId: settle.id,
+	});
+
+	if (payment.claimLink && payment.claimLink.status === "open") {
+		await db.claimLink.update({
+			where: { paymentId },
+			data: { status: "accepted" },
+		});
+		await emitPaymentEvent(db, payment.organizationId, paymentId, "claim.accepted");
+	}
+
+	const legs = await db.leg.findMany({
+		where: { paymentId },
+		orderBy: { position: "asc" },
+	});
+	if (isPaid(legStates(legs))) {
+		await transitionPayment(
+			db,
+			paymentId,
+			payment.organizationId,
+			"processing",
+			"paid",
+		);
+	}
+
+	const after = await db.payment.findUniqueOrThrow({ where: { id: paymentId } });
+	return { status: after.status as PaymentStatus };
+}
+
 async function handleLegFailure(
 	db: Db,
 	paymentId: string,

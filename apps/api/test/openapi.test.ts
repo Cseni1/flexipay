@@ -1,13 +1,32 @@
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { A0_OPENAPI_STUBS } from "@flexipay/domain";
 import { ROUTES } from "../src/app.ts";
 import { buildOpenApi, stubsNotYetMounted } from "../src/openapi/spec.ts";
 
+/** CCR-21 M2: all three passkey routes mounted on the event branch. */
+const CCR20_UNMOUNTED_PASSKEY: readonly string[] = [];
+
+/** Repo root for this worktree: apps/api/test → ../../.. */
+const WORKTREE_ROOT = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
+const EXPECTED_DOMAIN_ENTRY = resolve(
+  WORKTREE_ROOT,
+  "packages/domain/src/index.ts",
+);
+
 describe("OpenAPI", () => {
   const doc = buildOpenApi();
   const stubs = stubsNotYetMounted();
+
+  it("resolves @flexipay/domain from this worktree (not another checkout)", () => {
+    const resolved = fileURLToPath(import.meta.resolve("@flexipay/domain"));
+    expect(resolve(resolved)).toBe(EXPECTED_DOMAIN_ENTRY);
+    expect(pathToFileURL(resolved).href.startsWith(pathToFileURL(WORKTREE_ROOT).href)).toBe(
+      true,
+    );
+  });
 
   it("lists every mounted route", () => {
     for (const r of ROUTES) expect(doc.paths[r.path]?.[r.method], `${r.method} ${r.path}`).toBeDefined();
@@ -22,8 +41,35 @@ describe("OpenAPI", () => {
     expect(stubs.length).toBe(unmounted.length);
   });
 
-  it("mounts every A0 stub route (CC3 complete): none is left as a stub", () => {
-    expect(stubs.map((s) => `${s.method} ${s.path}`)).toEqual([]);
+  it("keeps CC3 + all CCR-21 passkey routes mounted (no passkey stubs left)", () => {
+    expect(stubs.map((s) => `${s.method} ${s.path}`).sort()).toEqual(
+      [...CCR20_UNMOUNTED_PASSKEY].sort(),
+    );
+    for (const path of [
+      "/v1/claims/{token}/passkey/deploy",
+      "/v1/claims/{token}/passkey/prepare",
+      "/v1/claims/{token}/passkey/submit",
+    ]) {
+      expect(ROUTES.some((r) => r.method === "post" && r.path === path)).toBe(true);
+    }
+  });
+
+  it("documents passkey submit 200 released and 202 pending without releaseTxRef on 202", () => {
+    const op = doc.paths["/v1/claims/{token}/passkey/submit"].post as {
+      responses: Record<string, { content?: { "application/json": { schema: { required?: string[]; properties?: Record<string, unknown> } } } }>;
+    };
+    expect(op.responses["200"]).toBeDefined();
+    expect(op.responses["202"]).toBeDefined();
+    const released = op.responses["200"].content!["application/json"].schema;
+    const pending = op.responses["202"].content!["application/json"].schema;
+    expect(released.required).toEqual(
+      expect.arrayContaining(["claim", "paymentId", "paymentStatus", "releaseTxRef"]),
+    );
+    expect(pending.required).toEqual(
+      expect.arrayContaining(["status", "prepareId", "paymentId", "paymentStatus", "pendingTxHash"]),
+    );
+    expect(pending.required ?? []).not.toContain("releaseTxRef");
+    expect(pending.properties?.releaseTxRef).toBeUndefined();
   });
 
   it("documents mounted routes plus A0 stubs with no duplicates", () => {

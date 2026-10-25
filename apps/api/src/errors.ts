@@ -1,5 +1,6 @@
 // API errors are JSON { code, message } with HTTP 400, 401, 404, 409 or 422 (ARCHITECTURE §10).
 export type ApiStatus = 400 | 401 | 404 | 409 | 422 | 500 | 502;
+// 400 also used for missing_idempotency_key on public passkey deploy/submit.
 
 export class ApiError extends Error {
   readonly status: ApiStatus;

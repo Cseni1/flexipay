@@ -1,5 +1,6 @@
 import { type ClaimView } from "@flexipay/web-lib/claim-contract"
 import { buildClaimEndpoint } from "@flexipay/web-lib/claim-endpoint"
+import { isPasskeyWalletConfigured } from "@flexipay/web-lib/passkey-config"
 import { useEffect, useRef, useState } from "react"
 import { useParams } from "react-router-dom"
 import {
@@ -8,6 +9,7 @@ import {
 	describeClaimError,
 	getClaim,
 } from "../api/claimClient"
+import { PasskeyClaimSection } from "../components/claim/PasskeyClaimSection"
 import {
 	Button,
 	InfoPopover,
@@ -190,6 +192,7 @@ export default function ClaimPage() {
 	const [pollError, setPollError] = useState<string | null>(null)
 	const [reloadKey, setReloadKey] = useState(0)
 	const [selectedType, setSelectedType] = useState<DestinationType | "">("")
+	const [passkeySelected, setPasskeySelected] = useState(false)
 	const [detail, setDetail] = useState("")
 	const [accepting, setAccepting] = useState(false)
 	const [acceptError, setAcceptError] = useState<string | null>(null)
@@ -288,7 +291,25 @@ export default function ClaimPage() {
 
 	const updateSelection = (type: DestinationType) => {
 		if (!supportsClaimAccept(type)) return
+		setPasskeySelected(false)
 		setSelectedType(type)
+		setDetail("")
+		setAcceptError(null)
+		idempotencyKey.current = null
+	}
+
+	const selectPasskey = () => {
+		if (expired || accepting || !isPasskeyWalletConfigured) return
+		setPasskeySelected(true)
+		setSelectedType("")
+		setDetail("")
+		setAcceptError(null)
+		idempotencyKey.current = null
+	}
+
+	const useCryptoWallet = () => {
+		setPasskeySelected(false)
+		setSelectedType("")
 		setDetail("")
 		setAcceptError(null)
 		idempotencyKey.current = null
@@ -487,9 +508,76 @@ export default function ClaimPage() {
 													</span>
 												</label>
 											)
-										})}
+										})}{" "}
+										{/* CCR-20 deploy is accepted and mounted; prepare/submit are still stubs, so the
+										    deployed panel says claim signing is unavailable. The anchor cash-out stays
+										    a visibly unavailable reference (M1). The G-address crypto flow is untouched. */}
+										<label
+											className={`option-card${isPasskeyWalletConfigured ? "" : " option-card--unavailable"}`}
+											data-testid="claim-passkey-option"
+										>
+											<input
+												type="radio"
+												name="receive"
+												value="passkey"
+												checked={passkeySelected}
+												disabled={
+													expired || accepting || !isPasskeyWalletConfigured
+												}
+												onChange={selectPasskey}
+											/>
+											<span className="option-card__body">
+												<span className="option-card__title">
+													Create passkey wallet
+												</span>
+												<span className="option-card__detail">
+													{isPasskeyWalletConfigured
+														? "Stellar testnet contract account, unlocked by your fingerprint or face."
+														: "Not available in this build: the public testnet RPC URL or network passphrase is not configured."}
+												</span>
+											</span>
+										</label>
+										<label
+											className="option-card option-card--unavailable"
+											data-testid="claim-anchor-option"
+										>
+											<input
+												type="radio"
+												name="receive"
+												value="anchor"
+												disabled
+												checked={false}
+												readOnly
+											/>
+											<span className="option-card__body">
+												<span className="option-card__title">
+													Cash out to bank (reference anchor)
+												</span>
+												<span className="option-card__detail">
+													Not available in this build.
+												</span>
+											</span>
+										</label>
 									</fieldset>
-									{claim.allowedDestinationTypes.some(
+									<p className="form-note">
+										A crypto wallet address works today. The passkey wallet is
+										created on testnet and signs the release with your
+										fingerprint or face. The reference anchor cash-out is not
+										available in this build.
+									</p>
+									{passkeySelected ? (
+										<PasskeyClaimSection
+											key={claimToken}
+											token={claimToken ?? ""}
+											claimExpired={expired}
+											claimClosed={CLOSED_PAYMENT_STATUSES.has(
+												claim.paymentStatus,
+											)}
+											onUseCryptoWallet={useCryptoWallet}
+										/>
+									) : null}
+									{!passkeySelected &&
+									claim.allowedDestinationTypes.some(
 										(type) => !supportsClaimAccept(type),
 									) ? (
 										<Notice tone="warning">
@@ -498,7 +586,7 @@ export default function ClaimPage() {
 											are not selectable.
 										</Notice>
 									) : null}
-									{selectedType ? (
+									{!passkeySelected && selectedType ? (
 										<div className="claim-detail">
 											<TextField
 												id="claim-detail"
@@ -516,22 +604,22 @@ export default function ClaimPage() {
 											/>
 										</div>
 									) : null}
-									{expired ? (
+									{!passkeySelected && expired ? (
 										<Notice tone="warning">
 											This claim link has expired. No release was made by this
 											page.
 										</Notice>
 									) : null}
-									{!paymentAcceptable ? (
+									{!passkeySelected && !paymentAcceptable ? (
 										<Notice tone="warning">{notReadyMessage(claim)}</Notice>
 									) : null}
-									{acceptError ? (
+									{!passkeySelected && acceptError ? (
 										<Notice tone="warning" data-testid="claim-accept-error">
 											{acceptError}
 										</Notice>
 									) : null}
 
-									{hasSupportedType ? (
+									{passkeySelected ? null : hasSupportedType ? (
 										<>
 											<Button
 												onClick={() => void handleAccept()}

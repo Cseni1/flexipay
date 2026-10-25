@@ -24,7 +24,12 @@ type PathOp = {
   auth: "api_key" | "none";
   body?: z.ZodType;
   query?: z.ZodType;
-  success: { status: 200 | 201; schema?: z.ZodType };
+  success: { status: 200 | 201 | 202; schema?: z.ZodType };
+  extraResponses?: ReadonlyArray<{
+    status: 202;
+    description: string;
+    schema: z.ZodType;
+  }>;
 };
 
 /** Query parameters come from the route's own zod query schema, so docs cannot drift. */
@@ -70,6 +75,12 @@ function addPath(
     responses["422"] = {
       description: "Not eligible or business-rule failure",
       content: { "application/json": { schema: ERROR_SCHEMA } },
+    };
+  }
+  for (const extra of r.extraResponses ?? []) {
+    responses[String(extra.status)] = {
+      description: extra.description,
+      content: json(extra.schema),
     };
   }
   const parameters: unknown[] = [

@@ -17,7 +17,7 @@ import {
 import { defineRoute, type RouteDef } from "../routes.ts";
 import type { ApiRuntime } from "../runtime.ts";
 
-async function loadClaimByToken(db: import("../db.ts").Db, token: string) {
+export async function loadClaimByToken(db: import("../db.ts").Db, token: string) {
 	const tokenHash = sha256Hex(token);
 	const link = await db.claimLink.findUnique({
 		where: { tokenHash },
@@ -33,9 +33,9 @@ async function loadClaimByToken(db: import("../db.ts").Db, token: string) {
 	return link;
 }
 
-type LoadedClaim = NonNullable<Awaited<ReturnType<typeof loadClaimByToken>>>;
+export type LoadedClaim = NonNullable<Awaited<ReturnType<typeof loadClaimByToken>>>;
 
-function toClaimView(link: LoadedClaim, now: Date): ClaimView {
+export function toClaimView(link: LoadedClaim, now: Date): ClaimView {
 	const q = link.payment.quote;
 	const dest = q.destination as {
 		type: string;

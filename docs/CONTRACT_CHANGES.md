@@ -302,3 +302,113 @@ Status: **approved** by the project owner on 23 Oct 2026. The documents `PRODUCT
 - **What:** Same-token vault at `fee_bps=50` (baseline GBBO6N SAC); baseline vault at 100 untouched; isolated DB; public API expects **409 `fee_drift`**, payment **`refunded`**, claim accept **409 `settle_failed`**, one lock + one refund on-chain, idempotent replays without duplicate funding/locks/refunds; prove payer vault balance conserved across lock→refund.
 - **Doc:** `scripts/demo/H1-REPRODUCTION.md`.
 - **Out of scope:** re-running E1/H2; changing CCR-15 wire shape; other chains.
+
+## CCR-21: public passkey claim API (M2) — **ACK'd** (944cabb / renumbered from draft CCR-20)
+
+- **From:** Csaba Cursor M2 plan (`event/csaba-cursor/m2-passkey`); EVENT_PLAN §4 E2.
+- **Status:** **ACK'd** by Csaba (implementation base `944cabb`). Number **CCR-21** because **CCR-20** is the accepted reference-anchor surface on `main`. Deploy/prepare/submit mount on the event branch. Still **not** merged to `main` until the event gate.
+- **Who implements:** Csaba Cursor (API + `packages/adapter-stellar`); Freebuff wires `apps/web` / proxy allowlist against mounted paths.
+- **Out of scope:** E1 anchor, H1/H2, fee sponsorship, SEP-45 passkey→bank, web UI in this CCR.
+
+### Public routes (`auth: none`)
+
+| Method | Path | Idempotency-Key | Body schema | 200 schema |
+|---|---|---|---|---|
+| POST | `/v1/claims/{token}/passkey/deploy` | required | `PasskeyDeployRequestSchema` | `PasskeyDeployResponseSchema` |
+| POST | `/v1/claims/{token}/passkey/prepare` | not used | `PasskeyPrepareRequestSchema` | `PasskeyPrepareResponseSchema` |
+| POST | `/v1/claims/{token}/passkey/submit` | required | `PasskeySubmitRequestSchema` | `PasskeySubmitResponseSchema` |
+
+Existing `GET /v1/claims/{token}` and `POST /v1/claims/{token}/accept` are unchanged (G / custodial DF3 path).
+
+### Wire encoding (no alternates)
+
+- Every `signedTx`, `authEntries[]`, `signedAuthEntries[]` value is **base64 Stellar XDR** (`toXDR("base64")` / `fromXDR(..., "base64")`).
+- Kit pin (implementation): `passkey-kit@0.19.1`, wallet WASM `97ce047884106b1c6c3bb40b8973cc48db1c4dad95c9e20462bf2c701daa764e`.
+- Deploy fee path: **shared deployer carrier** from the browser + backend **`FP_PAYER_DEMO_*` as RPC envelope source**. No new relayer service.
+
+### HTTP idempotency (deploy + submit)
+
+Reuse `IdempotencyRecord` / `withIdempotency` (`apps/api/src/app.ts`):  
+`requestHash = sha256(method + " " + path + " " + JSON.stringify(body))` — **hash only**, never store secret-bearing request bodies.  
+Scope: `organizationId` = the claim payment’s `organizationId` (load claim by token first).
+
+**Unique scope / foreign-response rule:** `@@unique([organizationId, key])` alone is not enough. The hash **must** include the full path (with claim token). Same Idempotency-Key on another claim path or different body → `requestHash` mismatch → `409 idempotency_conflict` (never return another claim’s cached body).
+
+**Before returning a cached `responseBody`:** re-load the claim by URL token; verify the token is still valid for that payment (`tokenHash`, not expired into a forbidden state for this call); verify `payment.organizationId` still matches the idempotency row’s `organizationId`. If the claim is gone or unbound → `404` / `409`, do **not** return the cache.
+
+**Forbidden in `responseBody`:** plaintext `authEntries` / `signedAuthEntries` / `signedTx` / claim secret. Deploy/submit success bodies (`contractId`, tx hashes, `ClaimView`, `releaseTxRef`) are fine. Prepare does not use Idempotency-Key (secret-bearing `authEntries`).
+
+Atomic prepare **reserve** and on-chain **pendingTx*** recovery remain separate from HTTP idempotency.
+
+### Deploy verification and claim-bound recovery
+
+1. Parse `signedTx`; single `CreateContractV2` invoke; single matching auth entry; shared deployer preimage.
+2. Derived `contractId` equals body `contractId`; WASM hash equals the pinned hash.
+3. **Constructor / wallet init args:** CreateContractV2 constructor must include a GENESIS Secp256r1 signer whose credential id matches `keyIdBase64`. Mismatch → `422 constructor_mismatch` / `invalid_deploy_tx`.
+4. Rebuild with `FP_PAYER_DEMO`, simulate. **Before send:** persist on `ClaimLink` `passkeyDeployPendingContractId` (= body `contractId`), `passkeyDeployPendingTxHash`, sealed recovery envelope (`passkeyDeployPendingSealed` / nonce).
+5. Send once. On RPC **SUCCESS:** set `passkeyContractId`, `passkeyDeployTxHash`; clear or keep pending fields per implementer; return deploy response.
+6. **Restart / lost HTTP:** if `passkeyDeployTxHash` or `passkeyDeployPendingTxHash` is set → **first** `rpc.getTransaction(thatHash)`.
+   - **SUCCESS** → return the same `contractId` / deploy hash; **no** new deploy.
+   - **PENDING** → wait/poll the **same** hash; do not rebuild.
+   - **NOT_FOUND** or **RPC timeout** is **not** FAILED. Restore the sealed envelope for that pending hash and re-query / re-submit **the same** transaction bytes if the network never accepted them; **no blind rebuild**, **no new deploy** with a new hash while the pending binding exists.
+   - **FAILED** (proven failed envelope) → only then a documented recovery may build a new tx under a **new** pending hash after clearing the failed pending binding; never while SUCCESS/PENDING/unknown.
+
+### Prepare / secret material / ledger expiry
+
+- Prepare builds vault `claim(id, secret, to=contractId)` auth entries. No `secret` / `secretHex` JSON field.
+- **`authEntries` are secret-bearing** (secret in `rootInvocation` args). Seal at rest on `PasskeyClaimPrepare`; never log; never put in IdempotencyRecord.
+- **`signatureExpirationLedger`:** one prepare-level value. Backend stamps **every** unsigned auth entry with this ledger. Browser **must** call `signAuthEntry(..., { expiration: prepare.signatureExpirationLedger })`. Kit-default or any other ledger → submit `422 auth_mismatch`. Submit checks each signed entry’s ledger equals the prepare row.
+
+### Submit — reserve, hash-before-send, HTTP 200 vs 202
+
+1. **Atomic reservation:** `PasskeyClaimPrepare` `open → reserved` (`reservedAt`) while claim open and ledger ≤ `signatureExpirationLedger`. Concurrent second reserve → `409`.
+2. Validate each `signedAuthEntries[i]`: address, nonce, rootInvocation fingerprint, **signatureExpirationLedger** (length/order). Mismatch → `422 auth_mismatch`.
+3. Build release envelope. **Before send:** persist `pendingTxHash` + sealed `pendingTxSealed` / nonce on the prepare row.
+4. Send / recover per RPC rules below. **Do not** store a separate prepare `releaseTxHash`.
+5. **HTTP responses:**
+   - **`200` + `PasskeySubmitResponseSchema`:** only when RPC reports **SUCCESS** for the release and settle **`Leg.releaseTxRef`** is written. Body includes required `releaseTxRef` (= that leg field).
+   - **`202` + `PasskeySubmitPendingResponseSchema`:** when the envelope is persisted and/or submitted but release is **not** yet confirmed (`PENDING`, waiting, or re-query after NOT_FOUND/timeout while still bound to the same `pendingTxHash`). Body: `{ status: "pending", prepareId, paymentId, paymentStatus, pendingTxHash }`. **No `releaseTxRef`.** Client must not treat 202 as paid/released; poll `GET /v1/claims/{token}` or retry submit with the same Idempotency-Key.
+   - Never return **200** with a required `releaseTxRef` before the release is verified.
+6. **Restart / lost HTTP:** if prepare `pendingTxHash` set → `getTransaction` first. SUCCESS → write/read `Leg.releaseTxRef` then **200**; PENDING → **202** (same pending hash); NOT_FOUND/timeout → restore sealed envelope for the **same** hash (not FAILED), respond **202** until SUCCESS or proven FAILED; proven FAILED → documented recovery only. Idempotent HTTP replay uses `IdempotencyRecord` after claim re-validation; cached body must match the outcome (200 vs 202) — never a foreign claim.
+
+### Errors (stable codes)
+
+`404 not_found`; `409 expired` | `invalid_state` | `settle_failed` | `prepare_expired` | `auth_expired` | `idempotency_conflict`; `422 invalid_deploy_tx` | `contract_mismatch` | `wasm_mismatch` | `constructor_mismatch` | `invalid_contract_id` | `auth_mismatch`; `502 deploy_failed` | `prepare_failed` | `release_failed`.
+
+### Persistence
+
+- `ClaimLink` passkey deploy columns + `PasskeyClaimPrepare` (migration `20261025112500_ccr20_passkey_prepare`; historical folder name, CCR-21 content).
+- Apply migration only after CCR ACK (or local M2 disposable DB).
+- No change to public `ClaimView` shape in this CCR.
+
+### Acceptance (after ACK + implementation)
+
+- Domain contract tests for the three request/response schemas and OpenAPI stubs.
+- Testnet: deploy hash + `Leg.releaseTxRef`; vault Claimed to `C…`; evidence without secrets/tokens.
+- Manual passkey ceremony on a real authenticator (virtual authenticator is not biometrics proof).
+
+## CCR-22: claim-link reference-anchor HTTP (M1 wiring) — **ELFOGADÁSRA VÁR**
+
+- **From:** CCR-20 (accepted): “Csaba proposes request shapes in his PR; no additional CCR wait for the three server calls.”
+- **Status:** **ELFOGADÁSRA VÁR.** Not an accepted shared interface until the integrator ACKs. Adapter client surface remains CCR-20; this CCR only proposes **public claim HTTP** for Csaba ↔ Freebuff/Csenge wiring.
+- **Out of scope:** DF7 script, `submitClassicPaymentWithMemo` refactor, SEP-45, changing CCR-20 env names.
+
+### Public routes (`auth: none`, claim token)
+
+| Method | Path | Idempotency-Key | Body | Success |
+|---|---|---|---|---|
+| POST | `/v1/claims/{token}/anchor/indicative-price` | not used | `{ sellAmount: string }` (USDC major units, 1–10) | `{ indicative: true, context: "sep6", sellAmount, buyAmount, buyAsset, sellAsset, price }` |
+| POST | `/v1/claims/{token}/anchor/withdraw` | required | `{ amount: string, type?: string }` | `{ anchorTxId: string, urlSanitised: string, kind: "withdrawal" }` — **never** raw hosted URL with query token in logs/evidence; open `url` only server-side if needed |
+| GET | `/v1/claims/{token}/anchor/withdraw/{anchorTxId}` | n/a | — | `{ anchorTxId, status, amountIn?, withdrawAnchorAccount?, withdrawMemoPresent: boolean, stellarTransactionId? }` |
+
+### Claim / settle connection (Csaba)
+
+1. Claim must be open; settle path uses **anchor vault** (`FP_ANCHOR_VAULT_*`) when the quote route selected reference-anchor cash-out (provider registration TBD — no routing rewrite in this CCR).
+2. After vault release to the recipient classic `G…`, server may call withdraw + (custodial) classic memo payment; persist **three** refs on the settle leg / payment events: SEP-24 `anchorTxId`, anchor payment hash (`stellar_transaction_id` / classic `txHash`), vault `Leg.releaseTxRef`.
+3. UI copy: “reference anchor on testnet, pays a US-dollar bank account in a sandbox”.
+4. Passkey (CCR-21) and anchor (CCR-20/22) remain separate claim options; no SEP-45 in this CCR.
+
+### Errors (stable codes, proposed)
+
+`404 not_found`; `409 expired` \| `invalid_state` \| `settle_failed`; `422 amount_out_of_range` \| `anchor_asset_mismatch`; `502 anchor_unavailable` \| `sep24_failed`.
+
