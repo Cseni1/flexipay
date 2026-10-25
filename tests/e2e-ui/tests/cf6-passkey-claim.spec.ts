@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import {
 	canApprovePasskeyClaim,
+	canCheckPasskeyRelease,
 	canRetryPasskeyStep,
 	initialPasskeyFlow,
 	passkeyClaimReducer,
@@ -102,7 +103,12 @@ const toAwaitingSignature = (): PasskeyClaimFlowState => {
 		deployTxHash: DEPLOY_HASH,
 	})
 	flow = passkeyClaimReducer(flow, { type: "prepare_started" })
-	flow = passkeyClaimReducer(flow, { type: "prepared", prepareId: "prep_1" })
+	flow = passkeyClaimReducer(flow, {
+		type: "prepared",
+		prepareId: "prep_1",
+		signatureExpirationLedger: 1234,
+		authEntryCount: 1,
+	})
 	return flow
 }
 
@@ -129,14 +135,15 @@ test.describe("CF6 passkey claim flow state", () => {
 		let flow = toAwaitingSignature()
 		expect(canApprovePasskeyClaim(flow, false)).toBe(true)
 
+		flow = passkeyClaimReducer(flow, { type: "signing_started" })
 		flow = passkeyClaimReducer(flow, {
-			type: "signature_approved",
+			type: "signed",
 			submitIdempotencyKey: "submit-key-1",
 		})
 		expect(flow.phase).toBe("submitting")
 
 		const afterSecondClick = passkeyClaimReducer(flow, {
-			type: "signature_approved",
+			type: "signed",
 			submitIdempotencyKey: "submit-key-2",
 		})
 		expect(afterSecondClick).toBe(flow)
@@ -145,7 +152,7 @@ test.describe("CF6 passkey claim flow state", () => {
 		flow = passkeyClaimReducer(flow, {
 			type: "submit_rejected",
 			message: "Network error.",
-			retryable: true,
+			retry: "submit",
 		})
 		expect(flow.phase).toBe("retryable_error")
 		expect(canRetryPasskeyStep(flow, false)).toBe(true)
@@ -153,6 +160,40 @@ test.describe("CF6 passkey claim flow state", () => {
 		flow = passkeyClaimReducer(flow, { type: "retry" })
 		expect(flow.phase).toBe("submitting")
 		expect(flow.submitIdempotencyKey).toBe("submit-key-1")
+	})
+
+	test("a new prepare never inherits the previous submit key", () => {
+		let flow = toAwaitingSignature()
+		flow = passkeyClaimReducer(flow, { type: "signing_started" })
+		flow = passkeyClaimReducer(flow, {
+			type: "signed",
+			submitIdempotencyKey: "submit-key-1",
+		})
+		flow = passkeyClaimReducer(flow, {
+			type: "submit_rejected",
+			message: "The signing window expired.",
+			retry: "prepare",
+		})
+		expect(flow.submitIdempotencyKey).toBe("submit-key-1")
+
+		flow = passkeyClaimReducer(flow, { type: "retry" })
+		expect(flow.phase).toBe("preparing")
+		expect(flow.submitIdempotencyKey).toBeNull()
+		expect(flow.prepareId).toBeNull()
+
+		flow = passkeyClaimReducer(flow, {
+			type: "prepared",
+			prepareId: "prep_2",
+			signatureExpirationLedger: 1500,
+			authEntryCount: 1,
+		})
+		flow = passkeyClaimReducer(flow, { type: "signing_started" })
+		flow = passkeyClaimReducer(flow, {
+			type: "signed",
+			submitIdempotencyKey: "submit-key-2",
+		})
+		expect(flow.phase).toBe("submitting")
+		expect(flow.submitIdempotencyKey).toBe("submit-key-2")
 	})
 
 	test("a deploy retry reuses the deploy idempotency key", () => {
@@ -213,7 +254,12 @@ test.describe("CF6 passkey claim flow state", () => {
 		expect(canApprovePasskeyClaim(expired, true)).toBe(false)
 		expect(
 			passkeyClaimReducer(expired, {
-				type: "signature_approved",
+				type: "signing_started",
+			}).phase,
+		).toBe("expired")
+		expect(
+			passkeyClaimReducer(expired, {
+				type: "signed",
 				submitIdempotencyKey: "submit-key-1",
 			}).phase,
 		).toBe("expired")
@@ -223,42 +269,77 @@ test.describe("CF6 passkey claim flow state", () => {
 		expect(cancelled.submitIdempotencyKey).toBeNull()
 
 		const submitting = passkeyClaimReducer(awaiting, {
-			type: "signature_approved",
+			type: "signing_started",
+		})
+		const signing = passkeyClaimReducer(submitting, {
+			type: "signed",
 			submitIdempotencyKey: "submit-key-1",
 		})
 		// Cancelling must not hide a submission that may already be in flight.
-		expect(passkeyClaimReducer(submitting, { type: "cancelled" })).toBe(
-			submitting,
-		)
+		expect(passkeyClaimReducer(signing, { type: "cancelled" })).toBe(signing)
+	})
+
+	test("a dismissed signature keeps the prepared claim signable", () => {
+		let flow = toAwaitingSignature()
+		flow = passkeyClaimReducer(flow, { type: "signing_started" })
+		flow = passkeyClaimReducer(flow, {
+			type: "signature_dismissed",
+			message: "The signature was dismissed.",
+		})
+		expect(flow.phase).toBe("awaiting_signature")
+		expect(flow.message).toMatch(/dismissed/)
+		expect(flow.submitIdempotencyKey).toBeNull()
+		expect(canApprovePasskeyClaim(flow, false)).toBe(true)
 	})
 
 	test("only an API-confirmed accepted+paid claim becomes verified", () => {
-		let flow = toAwaitingSignature()
-		flow = passkeyClaimReducer(flow, {
-			type: "signature_approved",
-			submitIdempotencyKey: "submit-key-1",
-		})
+		const submitted = () => {
+			let flow = toAwaitingSignature()
+			flow = passkeyClaimReducer(flow, { type: "signing_started" })
+			return passkeyClaimReducer(flow, {
+				type: "signed",
+				submitIdempotencyKey: "submit-key-1",
+			})
+		}
 
-		const processing = passkeyClaimReducer(flow, {
-			type: "submit_accepted",
-			claimStatus: "accepted",
+		const pending = passkeyClaimReducer(submitted(), {
+			type: "submit_pending",
+			pendingTxHash: "cd".repeat(32),
 			paymentStatus: "processing",
 		})
-		expect(processing.phase).toBe("processing")
-		expect(processing.verified).toBeNull()
+		expect(pending.phase).toBe("processing")
+		expect(pending.verified).toBeNull()
+		expect(pending.releaseTxRef).toBeNull()
+		expect(canCheckPasskeyRelease(pending)).toBe(true)
 
-		const unconfirmed = passkeyClaimReducer(flow, {
-			type: "submit_accepted",
-			claimStatus: "open",
+		const recheck = passkeyClaimReducer(pending, { type: "submit_retry" })
+		expect(recheck.phase).toBe("submitting")
+		expect(recheck.submitIdempotencyKey).toBe("submit-key-1")
+
+		const unconfirmed = passkeyClaimReducer(submitted(), {
+			type: "submit_settled",
+			claimStatus: "accepted",
 			paymentStatus: "paid",
+			releaseTxRef: "",
 		})
 		expect(unconfirmed.phase).toBe("unconfirmed")
 		expect(unconfirmed.verified).toBeNull()
 
-		const verified = passkeyClaimReducer(flow, {
-			type: "submit_accepted",
+		const releasedOnly = passkeyClaimReducer(submitted(), {
+			type: "submit_settled",
+			claimStatus: "open",
+			paymentStatus: "paid",
+			releaseTxRef: "release-ref-1",
+		})
+		expect(releasedOnly.phase).toBe("released")
+		expect(releasedOnly.verified).toBeNull()
+		expect(releasedOnly.releaseTxRef).toBe("release-ref-1")
+
+		const verified = passkeyClaimReducer(submitted(), {
+			type: "submit_settled",
 			claimStatus: "accepted",
 			paymentStatus: "paid",
+			releaseTxRef: "release-ref-1",
 		})
 		expect(verified.phase).toBe("verified")
 		expect(verified.verified).toEqual({
@@ -601,7 +682,7 @@ const readTree = async (
 }
 
 test.describe("CF6 passkey source guards", () => {
-	test("one passkey-kit boundary, deploy only, no test hook in production code", async () => {
+	test("one passkey client boundary, no test hook and no auth header in production code", async () => {
 		const files = [
 			...(await readTree(join(repoRoot, "apps/web/src"))),
 			...(await readTree(join(repoRoot, "packages/web-lib"))),
@@ -609,21 +690,13 @@ test.describe("CF6 passkey source guards", () => {
 		expect(files.length).toBeGreaterThan(10)
 
 		for (const file of files) {
-			// The prepare/submit routes are not wired: their payloads can carry the claim secret.
-			expect(
-				file.text,
-				`${file.path} must not call prepare/submit`,
-			).not.toMatch(/passkey\/(prepare|submit)/i)
-			expect(file.text, `${file.path} must not build auth entries`).not.toMatch(
-				/signedAuthEntries/,
-			)
 			expect(
 				file.text,
 				`${file.path} must not set an Authorization header`,
 			).not.toMatch(/Authorization\s*:|headers\.set\(\s*["']authorization/i)
 			// A test/fixture override must never ship inside the app.
 			expect(file.text, `${file.path} must not expose a test hook`).not.toMatch(
-				/__passkeyTest|window\.__/,
+				/__passkeyTest|__passkeySignTest|window\.__/,
 			)
 			expect(
 				file.text,
@@ -637,17 +710,40 @@ test.describe("CF6 passkey source guards", () => {
 		expect(sdkImporters).toEqual([
 			join(repoRoot, "apps/web/src/api/passkeyWallet.ts"),
 		])
-		// No static SDK import: the wallet kit is a lazy chunk, not part of the page entry.
+		// No static value import: the wallet kit is a lazy chunk, not part of the page entry.
+		// A type-only import is erased at build time and is allowed.
 		expect(
-			files.filter((file) => /from\s+["']passkey-kit["']/.test(file.text)),
+			files.filter((file) =>
+				/^\s*import\s+(?!type\b)[^\n;]*from\s+["']passkey-kit["']/m.test(
+					file.text,
+				),
+			),
 		).toEqual([])
 
-		const deployRoutes = files
-			.filter((file) => /passkey\/deploy/.test(file.text))
+		// All three CCR-21 routes are called from exactly one module.
+		const routeCallers = files
+			.filter((file) => /passkey\/(deploy|prepare|submit)/.test(file.text))
 			.map((file) => file.path)
-		expect(deployRoutes).toContain(
+		expect(routeCallers).toEqual([
 			join(repoRoot, "apps/web/src/api/claimClient.ts"),
+		])
+		const client = await readFile(
+			join(repoRoot, "apps/web/src/api/claimClient.ts"),
+			"utf8",
 		)
+		for (const route of ["deploy", "prepare", "submit"])
+			expect(client).toContain(`/passkey/${route}`)
+
+		// The local proxy opens exactly those three passkey paths and nothing wider.
+		const proxy = await readFile(join(repoRoot, "apps/web/vite.proxy.ts"), "utf8")
+		const passkeyRules = proxy
+			.split("\n")
+			.filter((line) => /claimRule\("POST"/.test(line) && /passkey/.test(line))
+		expect(passkeyRules).toHaveLength(3)
+		for (const route of ["deploy", "prepare", "submit"])
+			expect(
+				passkeyRules.filter((line) => line.includes(`passkey\\/${route}`)),
+			).toHaveLength(1)
 	})
 
 	test("the web-lib re-exports the accepted shared schemas instead of copying them", async () => {
@@ -656,7 +752,15 @@ test.describe("CF6 passkey source guards", () => {
 			"utf8",
 		)
 		expect(contract).toContain("../domain/src/api/claims.ts")
-		expect(contract).toContain("PasskeyDeployRequestSchema")
+		for (const schema of [
+			"PasskeyDeployRequestSchema",
+			"PasskeyPrepareRequestSchema",
+			"PasskeyPrepareResponseSchema",
+			"PasskeySubmitRequestSchema",
+			"PasskeySubmitResponseSchema",
+			"PasskeySubmitPendingResponseSchema",
+		])
+			expect(contract).toContain(schema)
 		expect(contract).not.toMatch(/z\.object\(\{[^}]*keyIdBase64/s)
 	})
 

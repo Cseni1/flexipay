@@ -35,6 +35,7 @@ interface StubState {
 	contractId: string
 	keyIdBase64: string
 	signedTx: string
+	deployHashes: string[]
 }
 
 type StubWindow = { __passkeyTest?: StubState }
@@ -46,6 +47,16 @@ export class PasskeyWalletError extends Error {
 		this.name = "PasskeyWalletError"
 		this.code = code
 	}
+}
+
+export function rememberPasskeyDeploy(hash) {
+	window.__passkeyTest?.deployHashes?.push(hash)
+}
+
+export function forgetPasskeyWallet() {}
+
+export async function signPasskeyClaimAuthEntries() {
+	throw new PasskeyWalletError("failed", "Signing is not part of this fixture.")
 }
 
 export async function createPasskeyWallet() {
@@ -97,6 +108,7 @@ async function installStub(
 		contractId: CONTRACT_ID,
 		keyIdBase64: KEY_ID,
 		signedTx: SIGNED_TX,
+		deployHashes: [],
 		...overrides,
 	}
 	await page.addInitScript((state) => {
@@ -226,8 +238,9 @@ test.describe("CF7 passkey wallet deploy", () => {
 
 		await expect(page.getByTestId("passkey-deployed")).toBeVisible()
 		await expect(page.getByTestId("passkey-deploy-hash")).toBeVisible()
-		await expect(page.getByTestId("passkey-signing-unavailable")).toBeVisible()
-		await expect(page.getByTestId("passkey-prepare")).toHaveCount(0)
+		// The chain continues with prepare; nothing is submitted until the user asks.
+		await expect(page.getByTestId("passkey-prepare")).toBeEnabled()
+		await expect(page.getByTestId("passkey-approve")).toHaveCount(0)
 
 		expect(await stub.creates()).toBe(1)
 		const calls = mock.deployCalls()
