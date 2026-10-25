@@ -20,10 +20,13 @@ import {
 	PasskeyWalletError,
 	abandonPasskeyCreationAuth,
 	bindPasskeyWallet,
+	clearPasskeyResumeRecord,
 	confirmPasskeyCreationAuth,
 	createPasskeyWallet,
 	forgetPasskeyWallet,
+	releasePasskeyWalletMemory,
 	rememberPasskeyDeploy,
+	resumePasskeyWallet,
 	signPasskeyClaimAuthEntries,
 } from "../../api/passkeyWallet"
 import {
@@ -34,6 +37,7 @@ import {
 
 // Controller for the CCR-21 passkey claim: create → deploy → Bind (explicit click) → prepare →
 // sign → submit. Binding never auto-starts after create; Bind retries reuse the same credential.
+// Reload can resume Bind from public tab-scoped store facts (see passkeyWallet).
 //
 // Secret-bearing values (unsigned and signed auth entries) live only in this controller's
 // in-memory refs: never React state, never logs, never browser storage. A network retry of the
@@ -107,16 +111,40 @@ export function usePasskeyClaim({
 	const preparing = useRef(false)
 	const signing = useRef(false)
 	const submitting = useRef(false)
+	const tokenRef = useRef(token)
 
-	useEffect(
-		() => () => {
+	useEffect(() => {
+		const previous = tokenRef.current
+		tokenRef.current = token
+		let cancelled = false
+
+		void (async () => {
+			if (previous !== token) {
+				await clearPasskeyResumeRecord(previous)
+				forgetPasskeyWallet()
+			} else {
+				releasePasskeyWalletMemory()
+			}
+			carrier.current = null
+			prepared.current = null
+			const resumed = await resumePasskeyWallet(token)
+			if (cancelled || !resumed) return
+			dispatch({
+				type: "wallet_resumed",
+				contractId: resumed.contractId,
+				deployTxHash: resumed.deployTxHash,
+			})
+		})()
+
+		return () => {
+			cancelled = true
 			abort.current?.abort()
 			prepared.current = null
 			carrier.current = null
-			forgetPasskeyWallet()
-		},
-		[],
-	)
+			// Keep public resume facts in the tab store so a reload can restore Bind.
+			releasePasskeyWalletMemory()
+		}
+	}, [token])
 
 	const sendDeploy = useCallback(
 		async (attemptId: number) => {
@@ -135,7 +163,8 @@ export function usePasskeyClaim({
 				)
 				if (attempt.current !== attemptId) return
 				carrier.current = null
-				rememberPasskeyDeploy(response.deployTxHash)
+				await rememberPasskeyDeploy(response.deployTxHash, token)
+				if (attempt.current !== attemptId) return
 				dispatch({
 					type: "deploy_succeeded",
 					deployTxHash: response.deployTxHash,
@@ -148,6 +177,11 @@ export function usePasskeyClaim({
 						carrier.current = null
 						dispatch({ type: "expired" })
 						return
+					}
+					if (cause.code === "contract_mismatch") {
+						// Drop the mismatched in-memory ceremony; keep any earlier resume record.
+						carrier.current = null
+						releasePasskeyWalletMemory()
 					}
 					dispatch({
 						type: "deploy_failed",
@@ -448,7 +482,7 @@ export function usePasskeyClaim({
 
 	/**
 	 * Explicit Bind wallet click. Starts the binding ceremony on the click stack without an
-	 * intervening module-load await (kit already held from create). Never calls createWallet.
+	 * intervening module-load await (kit already held from create/resume). Never calls createWallet.
 	 */
 	const bind = useCallback(() => {
 		if (binding.current || creating.current || deploying.current) return
@@ -486,6 +520,10 @@ export function usePasskeyClaim({
 						cause instanceof PasskeyWalletError
 							? cause.message
 							: "The passkey wallet could not be bound on this device.",
+					diagnostic:
+						cause instanceof PasskeyWalletError
+							? (cause.bindDiagnostic ?? null)
+							: null,
 				})
 			})
 			.finally(() => {
@@ -573,8 +611,9 @@ export function usePasskeyClaim({
 		abandonPasskeyCreationAuth()
 		carrier.current = null
 		prepared.current = null
+		forgetPasskeyWallet(token)
 		dispatch({ type: "cancelled" })
-	}, [])
+	}, [token])
 
 	return {
 		flow,

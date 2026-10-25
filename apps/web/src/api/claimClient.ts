@@ -281,6 +281,14 @@ export const describePasskeyDeployError = (
 			expired: false,
 		}
 	}
+	if (error.status === 422 && error.code === "contract_mismatch") {
+		return {
+			message:
+				"This claim already has a passkey wallet from an earlier attempt. If this browser still holds it, reload resumes Bind; otherwise use a crypto wallet address",
+			retryable: false,
+			expired: false,
+		}
+	}
 	if (error.status === 422) {
 		return {
 			message: `The claim API rejected the wallet deploy transaction (${error.code}).`,

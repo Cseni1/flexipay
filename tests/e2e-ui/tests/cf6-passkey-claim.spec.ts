@@ -6,6 +6,7 @@ import {
 	canApprovePasskeyClaim,
 	canBindPasskeyWallet,
 	canCheckPasskeyRelease,
+	canCreatePasskeyWallet,
 	canPreparePasskeyClaim,
 	canRetryPasskeyStep,
 	initialPasskeyFlow,
@@ -133,6 +134,21 @@ test.describe("CF6 passkey claim flow state", () => {
 		})
 		expect(flow.phase).toBe("unsupported")
 		expect(flow.submitIdempotencyKey).toBeNull()
+	})
+
+	test("wallet_resumed restores deployed Bind without Create", () => {
+		let flow = accepted()
+		expect(canCreatePasskeyWallet(flow)).toBe(true)
+		flow = passkeyClaimReducer(flow, {
+			type: "wallet_resumed",
+			contractId: "CFIXTUREWALLET",
+			deployTxHash: DEPLOY_HASH,
+		})
+		expect(flow.phase).toBe("deployed")
+		expect(flow.contractId).toBe("CFIXTUREWALLET")
+		expect(flow.deployTxHash).toBe(DEPLOY_HASH)
+		expect(canCreatePasskeyWallet(flow)).toBe(false)
+		expect(canBindPasskeyWallet(flow)).toBe(true)
 	})
 
 	test("a submit is issued once and retried with the same idempotency key", () => {
@@ -831,7 +847,7 @@ test.describe("CF6 passkey source guards", () => {
 		expect(contract).not.toMatch(/z\.object\(\{[^}]*keyIdBase64/s)
 	})
 
-	test("claim UI files never log or store the passkey payload", async () => {
+	test("claim UI files never log or store secret passkey payload", async () => {
 		const claimFiles = [
 			"apps/web/src/api/claimClient.ts",
 			"apps/web/src/api/passkeyWallet.ts",
@@ -845,12 +861,22 @@ test.describe("CF6 passkey source guards", () => {
 		]
 		for (const relative of claimFiles) {
 			const text = await readFile(join(repoRoot, relative), "utf8")
+			expect(text, `${relative} must not send analytics`).not.toMatch(
+				/analytics|posthog|segment|gtag/i,
+			)
+			if (relative === "apps/web/src/api/passkeyWallet.ts") {
+				// Resume may keep ONLY public deploy facts in sessionStorage.
+				expect(text).toMatch(/sessionStorage/)
+				expect(text).not.toMatch(/localStorage|indexedDB/)
+				expect(text).toMatch(/PASSKEY_RESUME_STORAGE_KEYS/)
+				// Bind failures may console.warn a non-sensitive diagnostic object only.
+				expect(text).toMatch(/console\.warn\(\s*["']\[passkey-bind\]["']/)
+				expect(text).not.toMatch(/console\.(log|debug|info|error)\(/)
+				continue
+			}
 			expect(text, `${relative} must not log`).not.toMatch(/console\./)
 			expect(text, `${relative} must not use browser storage`).not.toMatch(
 				/localStorage|sessionStorage|indexedDB/,
-			)
-			expect(text, `${relative} must not send analytics`).not.toMatch(
-				/analytics|posthog|segment|gtag/i,
 			)
 		}
 	})

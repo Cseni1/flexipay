@@ -83,6 +83,14 @@ export function rememberPasskeyDeploy(hash) {
 
 export function forgetPasskeyWallet() {}
 
+export function releasePasskeyWalletMemory() {}
+
+export async function clearPasskeyResumeRecord() {}
+
+export async function resumePasskeyWallet() {
+	return null
+}
+
 export async function bindPasskeyWallet() {
 	const state = window.__passkeySignTest
 	state.binds += 1
