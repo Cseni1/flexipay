@@ -9,6 +9,12 @@ import {
   CreateQuoteRequestSchema,
   EVENT_TYPES,
   EventSchema,
+  PasskeyDeployRequestSchema,
+  PasskeyDeployResponseSchema,
+  PasskeyPrepareRequestSchema,
+  PasskeyPrepareResponseSchema,
+  PasskeySubmitRequestSchema,
+  PasskeySubmitResponseSchema,
   PaymentDetailSchema,
   PaymentSchema,
   QuoteSchema,
@@ -382,6 +388,132 @@ describe("A0 sandbox schemas", () => {
   });
 });
 
+describe("CCR-20 passkey claim schemas (ELFOGADÁSRA VÁR)", () => {
+  const contractId = "C" + "A".repeat(55);
+  const fakeXdr = "AAAAAgAAAAA="; // non-empty base64 placeholder (not a real envelope)
+
+  it("accepts deploy / prepare / submit request and response shapes", () => {
+    expect(
+      PasskeyDeployRequestSchema.parse({
+        contractId,
+        keyIdBase64: "dGVzdC1rZXk",
+        signedTx: fakeXdr,
+      }).contractId,
+    ).toBe(contractId);
+    expect(
+      PasskeyDeployResponseSchema.parse({
+        contractId,
+        deployTxHash: "a".repeat(64),
+        creationLedger: 1,
+        status: "deployed",
+      }).status,
+    ).toBe("deployed");
+
+    expect(PasskeyPrepareRequestSchema.parse({ contractId }).contractId).toBe(
+      contractId,
+    );
+    const prepared = PasskeyPrepareResponseSchema.parse({
+      prepareId: "ppk_1",
+      payoutId: "1",
+      networkPassphrase: "Test SDF Network ; September 2015",
+      signatureExpirationLedger: 4_500_000,
+      authEntries: [fakeXdr],
+    });
+    expect(prepared.authEntries).toHaveLength(1);
+
+    expect(
+      PasskeySubmitRequestSchema.parse({
+        prepareId: "ppk_1",
+        contractId,
+        signedAuthEntries: [fakeXdr],
+      }).prepareId,
+    ).toBe("ppk_1");
+    expect(
+      PasskeySubmitResponseSchema.parse({
+        claim: {
+          paymentId: "pay_demo_1",
+          status: "accepted",
+          paymentStatus: "paid",
+          expiresAt: T1,
+          amount: moneyPhp("560000"),
+          corridor: {
+            from: { country: "US", currency: "USD" },
+            to: { country: "PH", currency: "PHP" },
+          },
+          allowedDestinationTypes: ["crypto_wallet"],
+          simulated: true,
+        },
+        paymentId: "pay_demo_1",
+        paymentStatus: "paid",
+        releaseTxHash: "b".repeat(64),
+      }).releaseTxHash,
+    ).toBe("b".repeat(64));
+  });
+
+  it("rejects invalid contract ids, empty XDR, and secretHex fields on wire schemas", () => {
+    expect(
+      PasskeyDeployRequestSchema.safeParse({
+        contractId: "G" + "A".repeat(55),
+        keyIdBase64: "dGVzdC1rZXk",
+        signedTx: fakeXdr,
+      }).success,
+    ).toBe(false);
+    expect(
+      PasskeyPrepareResponseSchema.safeParse({
+        prepareId: "ppk_1",
+        payoutId: "1",
+        networkPassphrase: "Test SDF Network ; September 2015",
+        signatureExpirationLedger: 1,
+        authEntries: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      PasskeySubmitRequestSchema.safeParse({
+        prepareId: "ppk_1",
+        contractId,
+        signedAuthEntries: [fakeXdr],
+        secretHex: "deadbeef",
+      }).success,
+    ).toBe(false);
+    expect(
+      PasskeyPrepareResponseSchema.safeParse({
+        prepareId: "ppk_1",
+        payoutId: "1",
+        networkPassphrase: "Test SDF Network ; September 2015",
+        signatureExpirationLedger: 1,
+        authEntries: [fakeXdr],
+        secretHex: "deadbeef",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("stubs the three passkey paths as auth none with CCR-20 schemas", () => {
+    const passkey = A0_OPENAPI_STUBS.filter((s) =>
+      s.path.includes("/passkey/"),
+    );
+    expect(passkey.map((s) => `${s.method} ${s.path}`).sort()).toEqual(
+      [
+        "post /v1/claims/{token}/passkey/deploy",
+        "post /v1/claims/{token}/passkey/prepare",
+        "post /v1/claims/{token}/passkey/submit",
+      ].sort(),
+    );
+    for (const s of passkey) {
+      expect(s.auth).toBe("none");
+      expect(s.success.schema).toBeDefined();
+    }
+    expect(
+      passkey.find((s) => s.path.endsWith("/deploy"))?.body,
+    ).toBe(PasskeyDeployRequestSchema);
+    expect(
+      passkey.find((s) => s.path.endsWith("/prepare"))?.body,
+    ).toBe(PasskeyPrepareRequestSchema);
+    expect(
+      passkey.find((s) => s.path.endsWith("/submit"))?.body,
+    ).toBe(PasskeySubmitRequestSchema);
+  });
+});
+
 describe("A0 OpenAPI stubs", () => {
   it("covers the DEV_PLAN A0 surfaces exactly once each", () => {
     const paths = A0_OPENAPI_STUBS.map((s) => `${s.method.toUpperCase()} ${s.path}`).sort();
@@ -395,6 +527,9 @@ describe("A0 OpenAPI stubs", () => {
         "GET /v1/payments/{id}",
         "POST /v1/batches",
         "POST /v1/claims/{token}/accept",
+        "POST /v1/claims/{token}/passkey/deploy",
+        "POST /v1/claims/{token}/passkey/prepare",
+        "POST /v1/claims/{token}/passkey/submit",
         "POST /v1/endpoints",
         "POST /v1/payments",
         "POST /v1/payments/{id}/cancel",

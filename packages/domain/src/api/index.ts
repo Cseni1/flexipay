@@ -47,16 +47,30 @@ export {
 } from "./payments.ts";
 
 export {
+  Base64XdrSchema,
   CLAIM_LINK_STATUSES,
   ClaimAcceptEndpointSchema,
   ClaimAcceptRequestSchema,
   ClaimAcceptResponseSchema,
   ClaimLinkStatusSchema,
   ClaimViewSchema,
+  PasskeyDeployRequestSchema,
+  PasskeyDeployResponseSchema,
+  PasskeyPrepareRequestSchema,
+  PasskeyPrepareResponseSchema,
+  PasskeySubmitRequestSchema,
+  PasskeySubmitResponseSchema,
+  StellarContractIdSchema,
   type ClaimAcceptRequest,
   type ClaimAcceptResponse,
   type ClaimLinkStatus,
   type ClaimView,
+  type PasskeyDeployRequest,
+  type PasskeyDeployResponse,
+  type PasskeyPrepareRequest,
+  type PasskeyPrepareResponse,
+  type PasskeySubmitRequest,
+  type PasskeySubmitResponse,
 } from "./claims.ts";
 
 export {

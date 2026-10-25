@@ -7,6 +7,12 @@ import {
 	ClaimAcceptRequestSchema,
 	ClaimAcceptResponseSchema,
 	ClaimViewSchema,
+	PasskeyDeployRequestSchema,
+	PasskeyDeployResponseSchema,
+	PasskeyPrepareRequestSchema,
+	PasskeyPrepareResponseSchema,
+	PasskeySubmitRequestSchema,
+	PasskeySubmitResponseSchema,
 } from "./claims.ts";
 import {
 	CreateEndpointRequestSchema,
@@ -141,6 +147,36 @@ export const A0_OPENAPI_STUBS: readonly ApiOpenApiStub[] = [
 		auth: "none",
 		body: ClaimAcceptRequestSchema,
 		success: { status: 200, schema: ClaimAcceptResponseSchema },
+	},
+	{
+		// CCR-20 ELFOGADÁSRA VÁR — passkey wallet deploy (M2). Not accepted until integrator ACK.
+		method: "post",
+		path: "/v1/claims/{token}/passkey/deploy",
+		summary:
+			"Public (pending CCR-20): submit passkey-kit createWallet carrier; backend pays with FP_PAYER_DEMO",
+		auth: "none",
+		body: PasskeyDeployRequestSchema,
+		success: { status: 200, schema: PasskeyDeployResponseSchema },
+	},
+	{
+		// CCR-20 ELFOGADÁSRA VÁR — prepare vault claim auth entries (secret-bearing XDR).
+		method: "post",
+		path: "/v1/claims/{token}/passkey/prepare",
+		summary:
+			"Public (pending CCR-20): build vault claim auth entries for a C… passkey wallet",
+		auth: "none",
+		body: PasskeyPrepareRequestSchema,
+		success: { status: 200, schema: PasskeyPrepareResponseSchema },
+	},
+	{
+		// CCR-20 ELFOGADÁSRA VÁR — submit signed auth; durable reserve before send.
+		method: "post",
+		path: "/v1/claims/{token}/passkey/submit",
+		summary:
+			"Public (pending CCR-20): submit passkey-signed claim auth; idempotent release",
+		auth: "none",
+		body: PasskeySubmitRequestSchema,
+		success: { status: 200, schema: PasskeySubmitResponseSchema },
 	},
 	{
 		// Request from ARCHITECTURE §10 + CCR-4; no approved response body on main.

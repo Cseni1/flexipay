@@ -275,3 +275,62 @@ Status: **approved** by the project owner on 23 Oct 2026. The documents `PRODUCT
 - **Forbidden:** shipping `FP_API_KEY` / `FP_*_SECRET` into the browser bundle; treating Playwright fixture PASS as DF2/DF3 acceptance; treating CF4 Accept UI gates as CCR-15 backend proof; claiming the Vite proxy authenticates production static hosting.
 - **Who implements:** **Freebuff (web)** on #29. **Integrator** accepts this CCR; does not implement the proxy. **Csaba (API)** keeps Bearer auth as today; no CORS change required for the proxy path.
 - **Acceptance:** CF1 can create quote/payment/fund through the **local** proxy **without** the key appearing in built assets or browser page-JS request headers. Fixture-only e2e does **not** close DF2/DF3.
+
+## CCR-20: public passkey claim API (M2) — **ELFOGADÁSRA VÁR**
+
+- **From:** Csaba Cursor M2 plan (`event/csaba-cursor/m2-passkey`); EVENT_PLAN §4 E2.
+- **Status:** **ELFOGADÁSRA VÁR / pending acceptance.** Schemas + Prisma draft + OpenAPI stubs + domain contract tests are on the task branch for review. **Not** an accepted shared interface until the integrator explicitly ACKs this CCR. Routes must not mount on `main` before ACK.
+- **Who implements after ACK:** Csaba Cursor (API + `packages/adapter-stellar`); Freebuff wires `apps/web` / proxy allowlist against these paths; domain schemas stay under integrator ownership once accepted.
+- **Out of scope:** E1 anchor, H1/H2, fee sponsorship, SEP-45 passkey→bank, web UI in this CCR.
+
+### Public routes (`auth: none`)
+
+| Method | Path | Idempotency-Key | Body schema | 200 schema |
+|---|---|---|---|---|
+| POST | `/v1/claims/{token}/passkey/deploy` | required | `PasskeyDeployRequestSchema` | `PasskeyDeployResponseSchema` |
+| POST | `/v1/claims/{token}/passkey/prepare` | not used | `PasskeyPrepareRequestSchema` | `PasskeyPrepareResponseSchema` |
+| POST | `/v1/claims/{token}/passkey/submit` | required | `PasskeySubmitRequestSchema` | `PasskeySubmitResponseSchema` |
+
+Existing `GET /v1/claims/{token}` and `POST /v1/claims/{token}/accept` are unchanged (G / custodial DF3 path).
+
+### Wire encoding (no alternates)
+
+- Every `signedTx`, `authEntries[]`, `signedAuthEntries[]` value is **base64 Stellar XDR** (`toXDR("base64")` / `fromXDR(..., "base64")`).
+- Kit pin (implementation): `passkey-kit@0.19.1`, wallet WASM `97ce047884106b1c6c3bb40b8973cc48db1c4dad95c9e20462bf2c701daa764e`.
+- Deploy fee path: **shared deployer carrier** from the browser + backend **`FP_PAYER_DEMO_*` as RPC envelope source**. No new relayer service.
+
+### Deploy verification (before pay/sign)
+
+1. Parse `signedTx`; single `CreateContractV2` invoke; single matching auth entry; shared deployer preimage.
+2. Derived `contractId` equals body `contractId`; WASM hash equals the pinned hash.
+3. **Constructor / wallet init args:** the CreateContractV2 constructor arguments must include a GENESIS Secp256r1 signer whose credential id matches `keyIdBase64` (and the proof material consistent with passkey-kit birth rules). Reject on mismatch (`422 invalid_deploy_tx` / `constructor_mismatch`).
+4. Only then rebuild with `FP_PAYER_DEMO`, simulate, sign, send. After SUCCESS, RPC-verify birth (contract created, wasm, ledger) before `status: "deployed"`.
+
+### Prepare / secret material
+
+- Prepare builds vault `claim(id, secret, to=contractId)` auth entries. Response **must not** include a `secret` / `secretHex` field.
+- **`authEntries` are secret-bearing:** `require_auth` on `to` authorises the full call args, so the claim secret bytes appear inside each entry’s `rootInvocation` args. Treat response bodies as secret; never log, store in browser storage, or put in evidence files.
+- Persist prepare row `PasskeyClaimPrepare`: sealed `authEntries` (CCR-11 seal key), plus plaintext fingerprints (`authInvocationFingerprints`, `authNonces`, `authAddresses`, `signatureExpirationLedger`) for submit checks without logging XDR.
+
+### Submit — durable reserve, hash-before-send, restart
+
+1. **Atomic reservation:** transactionally move prepare `open → reserved` (ledger still ≤ `signatureExpirationLedger`, claim still open), bind `submitIdempotencyKeyHash`. Concurrent second reserve fails (`409`).
+2. Validate each `signedAuthEntries[i]` against prepare: **address**, **nonce**, **rootInvocation fingerprint**, **signatureExpirationLedger** (and length/order). Mismatch → `422 auth_mismatch`.
+3. Build the fully signed release envelope (payer source + signed auth). **Before** `sendTransaction`: persist `pendingTxHash` and **sealed** recovery payload (`pendingTxSealed` / nonce).
+4. Send once. On success set `releaseTxHash`, prepare `submitted`, complete claim settle as today.
+5. **Restart / lost response:** if `pendingTxHash` is set, **first** `rpc.getTransaction(pendingTxHash)`. SUCCESS → finish from that hash; PENDING → wait/poll; FAILED / NOT_FOUND only then may rebuild under the **same** reservation (never a parallel second release while the first hash is unknown-success). Replay with same Idempotency-Key returns the stored success.
+
+### Errors (stable codes)
+
+`404 not_found`; `409 expired` | `invalid_state` | `settle_failed` | `prepare_expired` | `auth_expired` | `idempotency_conflict`; `422 invalid_deploy_tx` | `contract_mismatch` | `wasm_mismatch` | `constructor_mismatch` | `invalid_contract_id` | `auth_mismatch`; `502 deploy_failed` | `prepare_failed` | `release_failed`.
+
+### Persistence
+
+- New table `PasskeyClaimPrepare` (Prisma + migration `20261025112500_ccr20_passkey_prepare`). Apply migration only after CCR ACK (or on the task branch for local M2 work).
+- No change to public `ClaimView` shape in this CCR.
+
+### Acceptance (after ACK + implementation)
+
+- Domain contract tests for the three request/response schemas and OpenAPI stubs.
+- Testnet: deploy hash + release hash; vault Claimed to `C…`; evidence without secrets/tokens.
+- Manual passkey ceremony on a real authenticator (virtual authenticator is not biometrics proof).

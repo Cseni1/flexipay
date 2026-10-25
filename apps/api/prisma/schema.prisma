@@ -130,10 +130,11 @@ model Payment {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  legs       Leg[]
-  events     Event[]
-  claimLink  ClaimLink?
-  audit      AuditRow[]
+  legs             Leg[]
+  events           Event[]
+  claimLink        ClaimLink?
+  passkeyPrepares  PasskeyClaimPrepare[]
+  audit            AuditRow[]
 
   @@unique([organizationId, externalId])
   @@index([organizationId, status])
@@ -196,6 +197,48 @@ model ClaimLink {
   expiresAt DateTime
   status    String   @default("open") // open | accepted | expired
   createdAt DateTime @default(now())
+}
+
+/// CCR-20 (ELFOGADÁSRA VÁR): durable passkey prepare + submit reservation for M2.
+/// Not accepted shared interface until integrator ACK. Secret-bearing blobs use CCR-11 seal key.
+model PasskeyClaimPrepare {
+  id                        String   @id
+  paymentId                 String
+  payment                   Payment  @relation(fields: [paymentId], references: [id])
+  /// sha256 of the claim URL token (same as ClaimLink.tokenHash).
+  tokenHash                 String
+  contractId                String
+  payoutId                  String
+  networkPassphrase         String
+  signatureExpirationLedger Int
+  /// open | reserved | submitted | expired | failed
+  status                    String   @default("open")
+  /// JSON string[]: sha256 hex of each unsigned rootInvocation XDR (order matches auth entries).
+  authInvocationFingerprints Json
+  /// JSON string[]: Soroban auth nonce per entry (decimal string).
+  authNonces                Json
+  /// JSON string[]: expected auth address per entry (C…).
+  authAddresses             Json
+  /// AES-256-GCM sealed unsigned auth entry XDRs (JSON string[]); secret-bearing.
+  authEntriesSealed         Bytes
+  authEntriesSealedNonce    Bytes
+  /// Atomic submit reservation (CCR-20 §submit).
+  reservedAt                DateTime?
+  /// sha256 hex of Idempotency-Key; unique when set.
+  submitIdempotencyKeyHash  String?  @unique
+  /// Persisted BEFORE rpc send (CCR-20 §submit). Hex hash of the assembled release tx.
+  pendingTxHash             String?
+  /// Sealed recovery payload (signed envelope XDR or equivalent); secret-bearing.
+  pendingTxSealed           Bytes?
+  pendingTxSealedNonce      Bytes?
+  /// Final successful release hash (may equal pendingTxHash).
+  releaseTxHash             String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@index([paymentId, status])
+  @@index([tokenHash])
+  @@index([pendingTxHash])
 }
 
 model WebhookSubscription {
