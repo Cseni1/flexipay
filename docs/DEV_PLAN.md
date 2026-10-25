@@ -108,6 +108,8 @@ Time boxes are for an agent working alone in its lane.
 
 **Cut order if behind** (cut from the top): the alternatives list in the quote (keep the chosen route and the exclusions); DF1 as a script only (it already is); the Playwright flows (keep smoke tests); CF4 polish; real Stellar for anything except DF3. **Never cut:** DF2, DF3 on testnet, DF4 (retry then refund), DF5 reason, the route explanation, the simulated labels.
 
+> **Superseded for the event by [`EVENT_PLAN.md`](EVENT_PLAN.md)** (23 to 25 Oct 2026): it follows the published judging page, in which Scale does not pick a track, review is asynchronous and the deadline is Monday 12:00. Sections 7 and 11 below are kept for history.
+
 ## 7. Event plan (Lisbon)
 
 | Time | What |
@@ -165,7 +167,7 @@ Typecheck, lint, tests and secret scan pass; only shared interfaces used; simula
 | Stellar adapter (SC2) slips | DF3 on the mock, labelled; the vault and testnet scripts already work; the event needs SC2 for the passkey claim, so it is the first thing fixed on arrival |
 | Agent output has bugs | Contracts and tests exist for the hard parts; acceptance by demo script; small pull requests; one reviewer runs the flow before merging |
 | Test anchor down or using a different asset | Simulated bank payout, stated in the demo |
-| Passkey wallet stuck by Sunday 17:30 | Second Composed tool becomes fee sponsorship |
+| Passkey wallet stuck by Sunday 17:30 | Report it PARTIAL with the furthest stage reached; do not swap milestones. Scale is a standalone track, so no second tool is needed |
 | Venue Wi-Fi fails | Offline mode (`npm run demo:offline`) plus the recorded video |
 | Tiredness overnight | Sleep in shifts; no merges without review |
 | Late submission | Submit at 11:30, not 12:00 |
