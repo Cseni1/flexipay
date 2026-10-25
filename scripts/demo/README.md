@@ -245,3 +245,34 @@ vault. CCR-11's Stellar path does not.
    the API level, while the browser covers the eligible bank route.
 5. CCR-11 passes on Stellar testnet. Mock-mode restart remains unsupported by
    the in-memory mock vault; that is a mock limitation, not a Stellar gap.
+
+## DF7 anchor lifecycle (scaffold, not run)
+
+`df7-anchor-lifecycle.ts` is the Stellar reference-anchor scaffold. It consumes
+Cursor's `scripts/testnet/testnet-ids-anchor-vault.env` (CCR-20 names) and the
+git-ignored `.env.secrets-anchor-vault` overlay; it never writes a competing ids
+file. Default mode is local and transactional-side-effect free:
+
+```bash
+node scripts/demo/df7-anchor-lifecycle.ts            # plan + public-id checks
+node scripts/demo/df7-anchor-lifecycle.ts --preflight # also match recipient secret
+```
+
+Network steps are explicitly gated and do not submit a classic payment:
+
+```bash
+FP_DF7_ALLOW_NETWORK=1 node scripts/demo/df7-anchor-lifecycle.ts --readiness
+FP_DF7_ALLOW_NETWORK=1 FP_DF7_START_WITHDRAW=1 \
+  node scripts/demo/df7-anchor-lifecycle.ts --start-withdraw
+FP_DF7_ALLOW_NETWORK=1 node scripts/demo/df7-anchor-lifecycle.ts \
+  --poll --id <sep24-id> --anchor-tx-id <sep24-id> --vault-release-hash <64-hex>
+```
+
+`--start-withdraw` writes the functional hosted URL to a `0600` private file and
+prints only the sanitised URL. The human completes the hosted withdrawal in a
+browser. Offline classification is available with `--classify`; `SUCCESS`
+requires `completed`, a passed amount/destination/memo assertion, and three
+distinct refs (anchor transaction id, anchor payment hash, vault release hash).
+`PENDING` includes non-terminal statuses, bounded timeouts and completed runs
+with missing refs. The classic memo payment remains intentionally unimplemented
+in this scaffold because it is a live transaction.
