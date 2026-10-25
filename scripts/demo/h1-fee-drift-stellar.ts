@@ -540,7 +540,11 @@ async function executeScenario(baseline: Record<string, string>): Promise<void> 
 	console.log("vault balance after refund", balanceAfterRefund.toString());
 	// fundVault deposits then lock then refund restores locked; net = deposit remains.
 	// Conservation for the lock leg: after refund, no fee retained from the drifted lock.
-	const settleIn = String(settle.amountIn?.amount ?? settle.amountIn ?? "");
+	const settleIn = String(
+		(settle.amountIn as { amount?: string } | undefined)?.amount ??
+			settle.amountIn ??
+			"",
+	);
 	void settleIn;
 
 	const acceptBody = {

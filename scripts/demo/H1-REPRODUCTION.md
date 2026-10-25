@@ -39,6 +39,24 @@
 - Secrets: local only; no tokens in evidence.
 - After run: evidence file under `scripts/demo/evidence/`; delete private claim token; leave baseline `testnet-ids.env` unchanged.
 
+## Independent Freebuff rerun (25 Oct 2026)
+
+A second run of the same scenario exists as evidence of an independent public-API
+reproduction. It used the same isolated 50-bps vault but a new payment and payout
+`4`; it did not modify the canonical run above (payout `3`).
+
+- **Status:** PASS.
+- **Tested commit:** `1607bdc` (branch based on `5bd347d`, later reconciled with main).
+- **Driver:** `scripts/demo/h1-fee-drift-freebuff.ts` (gated; adds a stopped-API
+  database audit and exact payer-balance conservation).
+- **Evidence:**
+  `scripts/demo/evidence/2026-10-25-h1-fee-drift-freebuff-restart.md`.
+- **Payer window:** held for the run; `UNLOCK` recorded at `12:29:49Z`.
+
+```bash
+FP_H1_CLAUDE_APPROVED=1 FP_H1_EXECUTE=1 node scripts/demo/h1-fee-drift-freebuff.ts
+```
+
 ## Driver modes (no accidental run)
 
 ```bash
