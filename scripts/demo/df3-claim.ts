@@ -212,6 +212,7 @@ await execute(
 				!env.stellarRpcUrl ||
 				!env.stellarNetworkPassphrase ||
 				!env.payoutVaultId ||
+				!env.assetContractId ||
 				!env.recipientAddress
 			) {
 				throw new BlockedError([
@@ -267,11 +268,11 @@ await execute(
 				releaseHash: releaseTxRef,
 				recipientAddress: env.recipientAddress,
 				vaultContractId: env.payoutVaultId,
+				expectedAssetContractId: env.assetContractId,
 				principal: quotedSettle.amountIn.amount,
 				feeMode: quote.feeMode,
 				fee: quote.fees.flexiPayFee.amount,
 				net: quotedSettle.amountOut.amount,
-				vaultFeeBps,
 				rpcUrl: env.stellarRpcUrl,
 				networkPassphrase: env.stellarNetworkPassphrase,
 				timeoutMs: env.timeoutMs,

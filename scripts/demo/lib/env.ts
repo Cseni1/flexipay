@@ -24,6 +24,10 @@ export interface DemoEnv {
 	stellarNetworkPassphrase?: string
 	/** Public payout_vault contract id (FP_PAYOUT_VAULT_ID), never a key. */
 	payoutVaultId?: string
+	/** Public USDC Stellar Asset Contract id (FP_USDC_CONTRACT_ID), never a key. */
+	assetContractId?: string
+	/** Public payer/demo account used for vault locks (FP_PAYER_DEMO_ADDRESS). */
+	payerAddress?: string
 }
 
 /**
@@ -160,6 +164,12 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): EnvResult {
 				: {}),
 			...(source.FP_PAYOUT_VAULT_ID?.trim()
 				? { payoutVaultId: source.FP_PAYOUT_VAULT_ID.trim() }
+				: {}),
+			...(source.FP_USDC_CONTRACT_ID?.trim()
+				? { assetContractId: source.FP_USDC_CONTRACT_ID.trim() }
+				: {}),
+			...(source.FP_PAYER_DEMO_ADDRESS?.trim()
+				? { payerAddress: source.FP_PAYER_DEMO_ADDRESS.trim() }
 				: {}),
 		},
 	}
