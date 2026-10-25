@@ -426,3 +426,128 @@ Atomic prepare **reserve** and on-chain **pendingTx*** recovery remain separate 
 
 `404 not_found`; `409 expired` \| `invalid_state` \| `settle_failed` \| `idempotency_conflict`; `422 amount_out_of_range` \| `anchor_asset_mismatch`; `502 anchor_unavailable` \| `sep24_failed` \| `classic_payment_failed`.
 
+## CCR-23: confirmed deposit + lock recovery (deposit stranded after fee-overflow) — **ELFOGADVA (amended)**
+
+- **From:** M2 fee-overflow evidence (`scripts/demo/evidence/2026-10-25-m2-fee-overflow-*.md`); `executeSettle` in `apps/api/src/orchestrator/run.ts` always `fundVault` then `lock`, bumps `Payment.lockAttempt` before deposit, and **discards** `SettlementAdapter.fundVault`’s `SettlementRef`. Failed `create_payout` after a successful on-chain `deposit` leaves settle `processing` with null `externalRef` / `lockTxRef`; replay bumps attempt and deposits again.
+- **Status:** **ELFOGADVA (amended)** — Claude acceptance with the amendments below. This PR remains **documentation only**. **No runtime implementation, no Prisma apply, no shared-DB write, no funding/deposit/lock/release/`/pay`.** Do not replay `pay_b61…` / `pay_a254…`. **Implementation starts only after this PR (#76) is merged by Claude, in a separate implement PR.** Parallel SDK fee build-once work (Csenge Cursor, `event/csenge-cursor/sdk-fee-build`) is **not duplicated** here — CCR-23 consumes its typed fee surface.
+- **Does not rename** collect/settle models or CCR-12 fields (`Leg.externalRef` = vault payoutId; `lockTxRef`; `releaseTxRef`).
+- **Withdrawn proposals (do not implement):** HTTP `POST /v1/ops/deposits/reconcile`, `FP_OPS_ORG_IDS`, invented domain code `resource_fee_ceiling`, assumed `fundOpIndex = 0`, “data-loss-free” drop of populated fund columns.
+
+### Gap (verified on `origin/main`)
+
+1. `fundVault` already returns `{ network, txRef }` (`packages/domain` + stellar/mock adapters). Orchestrator **does not persist** it.
+2. Replay skips deposit only when `leg.externalRef` is set or `findLock(payer, paymentId, lockAttempt)` hits. Fee-overflow / lost lock with **no** on-chain payout → **neither** path applies → **second deposit**.
+3. Vault contract errors (`SettlementError` / `VaultError` 1–12) are typed; resource-fee / assemble overflow today often surfaces as a generic string (e.g. `Got 5261104576`). No durable “deposit confirmed” gate exists.
+4. There is **no** separate Prisma “fund” leg kind. Funding runs inside **settle** execution. Mapping stays on the **settle** `Leg` (new nullable columns), not a rename of collect/settle.
+
+### 1. Confirmed deposit (settle leg)
+
+After a successful on-chain vault `deposit` and **before** `lock` / `create_payout`, persist on the settle `Leg`:
+
+| Field | Meaning |
+|---|---|
+| `fundTxRef` | Transaction hash (or mock ref) from `fundVault` → `SettlementRef.txRef` |
+| `fundOpIndex` | 0-based operation index of the **decoded** matching `deposit` invoke (never assumed `0`) |
+| `fundAmountValue` | Exact deposited minor units (string integer) |
+| `fundAmountCurrency` | Settlement asset (e.g. `USDC`) |
+| `fundNetwork` | `SettlementNetwork`: `stellar` \| `mock` |
+| `fundVaultId` | Vault contract id (C…) or mock vault id used for that deposit |
+
+**Confirmed** means these fields are written only after a successful `fundVault` receipt **and** on-chain (or mock) decode that identifies **exactly one** matching vault `deposit` for the expected network / vault / payer / amount. Unknown historical deposits are **never** auto-marked confirmed (operator local CLI reconcile only — §2).
+
+**Confirmed-deposit replay (§4):** if settle `fundTxRef` is set → **new deposit is forbidden**. Replay uses the **same** `lockAttempt` and derived external id, with existing lock / `findLock` recovery checks. `NOT_FOUND` / timeout do **not** authorise attempt bump or a new deposit.
+
+### 2. Operator-only reconciliation (local CLI)
+
+- **Surface:** operator-only **local CLI** (implement later under `scripts/` — exact command name in the implement PR). **Not** an HTTP ops route. **`FP_OPS_ORG_IDS` is withdrawn.**
+- **Behaviour:** given payment id + deposit tx ref (and network as needed), decode on-chain; require **exactly one** matching vault `deposit` (network, vault, payer, amount, successful deposit); reject if multiple matching deposit invokes appear in the tx; bind identity via **DB lock + compare-and-swap** onto the settle leg only when fund columns are still null and the partial unique index allows; write **audit** (and payment event as applicable). Never log secrets.
+- **Forbidden:** any public `/v1/claims/*` (or other public claim path) performing deposit reconciliation or binding.
+
+### 3. One deposit → one payment (identity + unique)
+
+A Stellar transaction **may** contain multiple operations. Decode must not treat `fundTxRef` alone as identity.
+
+**Deposit identity:**
+
+```text
+(fundNetwork, fundVaultId, fundTxRef, fundOpIndex)
+```
+
+- PostgreSQL **partial unique** index on those four columns **`WHERE "fundTxRef" IS NOT NULL`** (global — one deposit cannot fund two payments).
+- `fundOpIndex` (and the rest of the tuple) comes from **actual decode**, not a presumed index `0`.
+- If decode finds **zero** matching vault deposits → reject bind. If **more than one** matching vault `deposit` invoke → **reject** (ambiguous; no auto-pick).
+- Writer/auto-confirm path: if the submitted fund tx decodes to multiple internal vault deposits matching the criteria → **reject** confirm (do not persist fund columns).
+- Second payment bind to an already-used identity → reject (unique / CAS failure); stable API/CLI code chosen at implement time without inventing fee-error names.
+
+### 4. Lock recovery (stable attempt / external id)
+
+Counters remain CCR-15: **`Payment.lockAttempt`** drives `sha256("<paymentId>:<lockAttempt>")` / `findLock`; **`Leg.attempt`** is CCR-14 provider retry only.
+
+**After confirmed deposit (`fundTxRef` set), before durable lock (`externalRef` / `lockTxRef`):**
+
+1. Do **not** call `fundVault` (no new deposit).
+2. Keep the **current** `lockAttempt` and external id.
+3. Run existing lock / recovery checks: `findLock(vaultPayer, paymentId, lockAttempt)` for the current attempt; on hit persist `externalRef` (and `lockTxRef` when available through existing adapter paths) and resume CCR-15; on miss retry `lock` with the **same** attempt only.
+
+**`findLock` NOT_FOUND, RPC timeout, or uncertain lock submit are not proof the attempt is free** — no attempt bump, no new deposit.
+
+### 5. Attempt bump (only verified refunded / cancelled)
+
+`lockAttempt` may increase **only** when **all** hold, under **CAS + audit**:
+
+1. Confirmed deposit already bound to this payment; and
+2. On-chain (or mock) proof that the **current** attempt’s payout is **refunded** or **cancelled** (vault terminal state that frees that external id); and
+3. Durable audit/event records previous attempt, new attempt, payoutId / external id, and a documented reason for the advance.
+
+Any other failure (fee ceiling, timeout, NOT_FOUND, uncertain submit, generic lock error) **must not** auto-bump. Public `/fund` replay must not bump. Operator CLI may advance only with the same on-chain proof + CAS + audit.
+
+**Discovery of prior successful / uncertain lock:** `findLock` for current attempt; if `externalRef` set, `settlement.status(payoutId)`. Uncertain lock → re-check; never bump; never re-fund.
+
+### 6. Typed fee ceiling — SDK handoff mapping (no invented codes)
+
+**Required env:** `FP_SOROBAN_TX_FEE_CEILING_STROOPS` (stroops, non-negative integer ≤ uint32 max). **No code default.** A local testnet value such as `20000000` may exist only in **local runtime env** — it must **not** be committed as config, `.env.example` fallback, or hard-coded default.
+
+**Typed surface (accepted SDK handoff — do not invent parallel names):** branch `event/csenge-cursor/sdk-fee-build`, module `packages/adapter-stellar/src/vault-tx-fee.ts`:
+
+| Export | Role |
+|---|---|
+| `SOROBAN_TX_FEE_CEILING_ENV` | `"FP_SOROBAN_TX_FEE_CEILING_STROOPS"` |
+| `VaultTxFeeError` | Typed error (`name: "VaultTxFeeError"`) |
+| `VaultTxFeeRejectReason` | `missing_built` \| `missing_simulation_data` \| `resource_fee_mismatch` \| `double_counted_resource_fee` \| `fee_exceeds_uint32` \| `ceiling_not_configured` \| `fee_exceeds_ceiling` \| `negative_or_invalid_fee` |
+| `parseSorobanTxFeeCeiling` | Missing/blank → `null` (not configured); never invents a default |
+| `validateSorobanTxFee` / `rebuildAndValidateVaultWriteFee` | Single-count fee validate + ceiling check; never caps/truncates |
+
+**Orchestrator / API mapping:** propagate `VaultTxFeeError` (at least `reason`, and fee detail fields when present). **Do not** introduce a separate invented domain code such as `resource_fee_ceiling`. Vault contract `FeeTooHigh` (#4) stays distinct from `VaultTxFeeError`.
+
+**Behaviour with confirmed deposit:** on `VaultTxFeeError` during lock (e.g. `fee_exceeds_ceiling`, `fee_exceeds_uint32`, `ceiling_not_configured`, `double_counted_resource_fee`): keep `fundTxRef`; no attempt bump; no new deposit.
+
+**Landed:** `vault-tx-fee.ts` is on `main` (PR #75, merged at `16875c0`). Import `VaultTxFeeError`, `VaultTxFeeRejectReason`, `SOROBAN_TX_FEE_CEILING_ENV` and `parseSorobanTxFeeCeiling` from `@flexipay/adapter-stellar` (`packages/adapter-stellar/src/index.ts`). CCR-23 does not redefine the fee types.
+
+### 7. Migration
+
+See **`docs/DEPOSIT_RECOVERY_MIGRATION.md`** (amended with CCR-23). Nullable settle-leg fund columns + partial unique index; **no** invented confirmed backfill; **backup required** before migrating a DB that holds stranded payments; rollback/restore must **preserve** recovery data (dropping populated fund columns is **not** data-loss-free).
+
+### 8. Targeted tests (implement PR — not this docs PR)
+
+- Confirmed deposit then fund replay → **no** second deposit; **same** `lockAttempt` / external id; existing lock/`findLock` path used.
+- Failed lock (no `externalRef`) then replay → stable attempt/external id; lock retried; no new deposit.
+- Two payments / binds for the same deposit identity → one rejected (partial unique / CAS).
+- Tx decode with **multiple** matching vault deposits → confirm/reconcile **rejected**.
+- `VaultTxFeeError` with reason `fee_exceeds_ceiling` (and sibling reasons as applicable) on lock → typed error surfaced; no new deposit; attempt unchanged; `FP_SOROBAN_TX_FEE_CEILING_STROOPS` required (`ceiling_not_configured` when unset).
+- Uncertain lock (`NOT_FOUND` / timeout) → no blind new deposit; **no** attempt bump.
+- Attempt bump only after on-chain refunded/cancelled proof + CAS + audit; other failures do not bump.
+- Local CLI reconcile: lock + CAS + audit; public claim path cannot reconcile.
+
+### Who implements (after #76 merge — separate PR)
+
+- Orchestrator + Prisma + local reconcile CLI: Csaba lane.
+- Fee rebuild/validate: consume Csenge `vault-tx-fee` handoff; no duplicate SDK fee surgery.
+- No shared-DB migrate without backup (§7 migration doc).
+
+### Closed by this amendment (former open questions)
+
+1. Ceiling env = `FP_SOROBAN_TX_FEE_CEILING_STROOPS` (required; no default). Testnet `20000000` = local runtime only.
+2. Reconcile = local CLI only; HTTP ops + `FP_OPS_ORG_IDS` withdrawn.
+3. `fundOpIndex` from decode only; multi-deposit match → reject.
+4. Historical stranded balances: CLI bind only; withdraw policy remains out of product scope here.
+
