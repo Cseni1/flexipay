@@ -29,3 +29,7 @@ Shared classic accounts (from baseline identities, also listed in the event ids 
 ## Done (Cursor, 25 Oct ~11:19–11:24Z)
 
 Package path completed under LOCK rules (payer then recipient A). Evidence: `scripts/demo/evidence/2026-10-25-e1-deposit-vault-withdraw.md`. Freebuff may reuse balances/hashes for DF7/H3 decode; coordinate before overlapping live submits on the same accounts.
+
+## Done (Cursor, 25 Oct ~11:37–11:38Z) — H2
+
+LOCK payer+recipientA for H2 seal-key negative on **baseline** vault → UNLOCK. Evidence: `scripts/demo/evidence/2026-10-25-h2-seal-key-negative.md`.

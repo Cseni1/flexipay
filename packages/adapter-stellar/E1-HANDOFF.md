@@ -95,9 +95,10 @@ Same-token second vault at `fee_bps=50`, baseline vault untouched; quote on base
 3. Process B: same DB, env → H1 vault (verifyConfig OK).  
 4. Fund → drift path. Restore baseline env.
 
-## H2 — Cursor later
+## H2 — PASS (25 Oct)
 
-Isolated DB + dedicated claim; wrong seal key → fail, no release; restore key → **same claim** accepts.
+Isolated DB + dedicated claim; wrong seal key → fail, no release; restore key → **same claim** accepts.  
+Evidence: `scripts/demo/evidence/2026-10-25-h2-seal-key-negative.md` (script: `scripts/demo/h2-seal-key-negative.ts`). Baseline vault; not the anchor vault #2 path.
 
 ## Sunday 17:30 Lisbon
 
