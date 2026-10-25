@@ -4,8 +4,9 @@
 // claim token. Those live only in the controller's in-memory refs, never in React state, logs or
 // browser storage. The full chain is:
 //
-//   wallet create → deploy → prepare → passkey sign → submit
+//   wallet create → deploy → Bind wallet → prepare → passkey sign → submit
 //
+// Create and Bind are separate user gestures. Binding never auto-starts after create/deploy.
 // Submit semantics: 200 + releaseTxRef is a confirmed release (paid only when the API says so);
 // 202 is pending and never paid. A network retry reuses the same submit body and idempotency key;
 // a new prepare gets a new key.
@@ -18,8 +19,13 @@ export type PasskeyClaimPhase =
 	| "idle"
 	| "creating_wallet"
 	| "deploying"
+	/** Deploy confirmed; waiting for an explicit Bind wallet click. */
 	| "deployed"
 	| "deploy_failed"
+	| "binding"
+	| "binding_failed"
+	/** Credential bound; claim prepare/sign may proceed. */
+	| "bound"
 	| "preparing"
 	| "awaiting_signature"
 	| "signing"
@@ -35,8 +41,9 @@ export type PasskeyClaimPhase =
 	| "expired"
 	| "retryable_error"
 
-/** Which step a retry would repeat. `create` needs a fresh passkey ceremony and a new key. */
-export type PasskeyRetryTarget = "create" | "deploy" | "prepare" | "submit"
+/** Which step a retry would repeat. `create` needs a fresh passkey; `bind` reuses the credential. */
+export type PasskeyRetryTarget =
+	"create" | "deploy" | "bind" | "prepare" | "submit"
 
 export interface PasskeyVerifiedClaim {
 	claimStatus: "accepted"
@@ -75,6 +82,10 @@ export type PasskeyClaimEvent =
 	| { type: "wallet_creation_failed"; message: string }
 	| { type: "deploy_succeeded"; deployTxHash: string }
 	| { type: "deploy_failed"; message: string; retryable?: boolean }
+	| { type: "bind_started" }
+	| { type: "bind_succeeded" }
+	| { type: "bind_failed"; message: string }
+	| { type: "bind_cancelled"; message: string }
 	| { type: "prepare_started" }
 	| {
 			type: "prepared"
@@ -112,6 +123,7 @@ export type PasskeyClaimEvent =
 const BUSY_PHASES = new Set<PasskeyClaimPhase>([
 	"creating_wallet",
 	"deploying",
+	"binding",
 	"preparing",
 	"signing",
 	"submitting",
@@ -165,8 +177,13 @@ export const isPasskeyTerminal = (phase: PasskeyClaimPhase): boolean =>
 export const canCreatePasskeyWallet = (flow: PasskeyClaimFlowState): boolean =>
 	flow.phase === "idle"
 
+/** Explicit Bind wallet click only; never starts from create/deploy completion. */
+export const canBindPasskeyWallet = (flow: PasskeyClaimFlowState): boolean =>
+	(flow.phase === "deployed" || flow.phase === "binding_failed") &&
+	Boolean(flow.contractId && flow.deployTxHash)
+
 export const canPreparePasskeyClaim = (flow: PasskeyClaimFlowState): boolean =>
-	flow.phase === "deployed"
+	flow.phase === "bound"
 
 /** Approval is refused once the claim is no longer open at `expiresAt`. */
 export const canApprovePasskeyClaim = (
@@ -189,6 +206,7 @@ export const canRetryPasskeyStep = (
 	!claimExpired &&
 	flow.retry !== null &&
 	(flow.phase === "deploy_failed" || flow.phase === "retryable_error")
+// Binding failures reuse the Bind wallet button (same credential), not Retry→create.
 
 export function passkeyClaimReducer(
 	state: PasskeyClaimFlowState,
@@ -252,8 +270,47 @@ export function passkeyClaimReducer(
 				message: event.message,
 			}
 
+		case "bind_started":
+			if (state.phase !== "deployed" && state.phase !== "binding_failed")
+				return unchanged(state)
+			if (!state.contractId || !state.deployTxHash) return unchanged(state)
+			return {
+				...state,
+				phase: "binding",
+				retry: null,
+				message: null,
+			}
+
+		case "bind_succeeded":
+			if (state.phase !== "binding") return unchanged(state)
+			return {
+				...state,
+				phase: "bound",
+				retry: null,
+				message: null,
+			}
+
+		case "bind_failed":
+			if (state.phase !== "binding") return unchanged(state)
+			return {
+				...state,
+				phase: "binding_failed",
+				retry: "bind",
+				message: event.message,
+			}
+
+		case "bind_cancelled":
+			if (state.phase !== "binding") return unchanged(state)
+			// Same credential remains; Bind retry must not create a new wallet.
+			return {
+				...state,
+				phase: "binding_failed",
+				retry: "bind",
+				message: event.message,
+			}
+
 		case "prepare_started":
-			if (state.phase !== "deployed" && state.phase !== "retryable_error")
+			if (state.phase !== "bound" && state.phase !== "retryable_error")
 				return unchanged(state)
 			if (state.phase === "retryable_error" && state.retry !== "prepare")
 				return unchanged(state)
@@ -425,6 +482,17 @@ export function passkeyClaimReducer(
 				return {
 					...state,
 					phase: "deploying",
+					retry: null,
+					message: null,
+				}
+			}
+			if (state.phase === "binding_failed") {
+				if (state.retry !== "bind") return unchanged(state)
+				if (!state.contractId || !state.deployTxHash) return unchanged(state)
+				// Re-bind the existing credential; never createWallet again.
+				return {
+					...state,
+					phase: "binding",
 					retry: null,
 					message: null,
 				}

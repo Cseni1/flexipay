@@ -49,6 +49,8 @@ interface ActiveWallet {
 	contractId: string
 	keyIdBase64: string
 	deployTxHash: string | null
+	/** True after confirmWalletCreation + connectWallet from an explicit Bind click. */
+	bound: boolean
 }
 
 /** In-memory only: the created passkey wallet for this page session. */
@@ -150,21 +152,60 @@ export async function createPasskeyWallet(): Promise<CreatedPasskeyWallet> {
 		contractId,
 		keyIdBase64,
 		deployTxHash: null,
+		bound: false,
 	}
 	return { contractId, keyIdBase64, signedTx }
 }
 
 /**
- * Records the API-confirmed deploy hash for the in-memory wallet. Signing is refused until the
- * API confirmed the deploy, so a pending/unknown deploy can never sign a claim.
+ * Records the API-confirmed deploy hash for the in-memory wallet. Binding and signing are
+ * refused until the API confirmed the deploy, so a pending/unknown deploy can never proceed.
  */
 export function rememberPasskeyDeploy(deployTxHash: string): void {
-	if (active) active.deployTxHash = deployTxHash
+	if (active) {
+		active.deployTxHash = deployTxHash
+		// A new deploy confirmation invalidates any prior bind for this session wallet.
+		active.bound = false
+	}
 }
 
 /** Drops the in-memory wallet (token change or logout); never persisted anywhere. */
 export function forgetPasskeyWallet(): void {
 	active = null
+}
+
+/**
+ * Binds the already-created credential to the API-confirmed deploy.
+ *
+ * Must be started from a user click: this function does not await module loads first — the kit
+ * from createWallet stays in memory — so confirmWalletCreation / connectWallet keep the gesture.
+ * Never calls createWallet. Cancel or failure leaves the same credential for a Bind retry.
+ */
+export async function bindPasskeyWallet(): Promise<void> {
+	const wallet = active
+	if (!wallet) {
+		throw new PasskeyWalletError(
+			"no_wallet",
+			"This page no longer holds the passkey wallet. A reload cannot resume it; use a crypto wallet address instead.",
+		)
+	}
+	if (!wallet.deployTxHash) {
+		throw new PasskeyWalletError(
+			"no_wallet",
+			"The wallet deploy is not confirmed yet, so the passkey was not bound.",
+		)
+	}
+	if (wallet.bound) return
+
+	try {
+		// First awaits are the binding ceremonies themselves — no prior kit/module load.
+		await wallet.kit.confirmWalletCreation(wallet.created, wallet.deployTxHash)
+		await wallet.kit.connectWallet({ keyId: wallet.keyIdBase64 })
+		wallet.bound = true
+	} catch (cause) {
+		wallet.bound = false
+		throw toWalletError(cause)
+	}
 }
 
 export interface SignPasskeyClaimInput {
@@ -198,6 +239,12 @@ export async function signPasskeyClaimAuthEntries({
 			"The wallet deploy is not confirmed yet, so no claim signature was made.",
 		)
 	}
+	if (!wallet.bound) {
+		throw new PasskeyWalletError(
+			"no_wallet",
+			"Bind the passkey wallet before approving the claim. Nothing was signed.",
+		)
+	}
 	if (authEntries.length === 0) {
 		throw new PasskeyWalletError(
 			"failed",
@@ -213,12 +260,7 @@ export async function signPasskeyClaimAuthEntries({
 			])
 
 		const entries = authEntries.map((entry) => decodeAuthEntryXdr(entry))
-
-		// The API-confirmed deploy must be verified once, then the wallet is connected with a
-		// fresh possession check before any signature is produced.
-		await wallet.kit.confirmWalletCreation(wallet.created, wallet.deployTxHash)
-		await wallet.kit.connectWallet({ keyId: wallet.keyIdBase64 })
-
+		// Binding already ran from the Bind wallet click; sign only reuses that session.
 		const signer = new PasskeySigner(wallet.keyIdBase64)
 		const signed: string[] = []
 		for (const entry of entries) {

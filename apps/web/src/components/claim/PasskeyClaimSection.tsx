@@ -17,7 +17,7 @@ export function PasskeyClaimSection({
 	claimClosed,
 	onUseCryptoWallet,
 }: PasskeyClaimSectionProps) {
-	const { flow, create, prepare, approve, checkRelease, retry, cancel } =
+	const { flow, create, bind, prepare, approve, checkRelease, retry, cancel } =
 		usePasskeyClaim({ token })
 
 	return (
@@ -26,6 +26,7 @@ export function PasskeyClaimSection({
 			claimExpired={claimExpired}
 			claimClosed={claimClosed}
 			onCreate={create}
+			onBind={bind}
 			onPrepare={prepare}
 			onApprove={approve}
 			onCheckRelease={checkRelease}
