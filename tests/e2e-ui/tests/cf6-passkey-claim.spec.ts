@@ -9,7 +9,7 @@ import {
 	passkeyClaimReducer,
 	type PasskeyClaimFlowState,
 } from "../../../apps/web/src/components/claim/passkey-claim-flow.ts"
-import { SENSITIVE_MARKER } from "./passkey-m2-proposal.ts"
+import { SENSITIVE_MARKER } from "./passkey-sensitive-fixture.ts"
 
 // CF6 covers the prepared passkey claim UI (M2) without a backend. Fixture PASS here is not a
 // passkey run, not a testnet claim and not API acceptance: the physical passkey run is separate.
@@ -72,7 +72,9 @@ async function mockClaimApi(page: Page, options: ClaimMockOptions = {}) {
 	return {
 		requests: () => requests,
 		passkeyRequests: () =>
-			requests.filter((entry) => /passkey/i.test(entry.url)),
+			requests.filter((entry) =>
+				/\/v1\/claims\/[^/]+\/passkey\//.test(entry.url),
+			),
 		claimRequests: () =>
 			requests.filter((entry) => entry.url.includes("/v1/claims/")),
 	}
@@ -83,7 +85,9 @@ async function mockClaimApi(page: Page, options: ClaimMockOptions = {}) {
 // ---------------------------------------------------------------------------
 
 const accepted = (): PasskeyClaimFlowState =>
-	initialPasskeyFlow({ contractAccepted: true, supported: true })
+	initialPasskeyFlow({ deployAvailable: true, supported: true })
+
+const DEPLOY_HASH = "ab".repeat(32)
 
 const toAwaitingSignature = (): PasskeyClaimFlowState => {
 	let flow = accepted()
@@ -93,25 +97,28 @@ const toAwaitingSignature = (): PasskeyClaimFlowState => {
 		contractId: "CFIXTUREWALLET",
 		deployIdempotencyKey: "deploy-key-1",
 	})
-	flow = passkeyClaimReducer(flow, { type: "deploy_succeeded" })
+	flow = passkeyClaimReducer(flow, {
+		type: "deploy_succeeded",
+		deployTxHash: DEPLOY_HASH,
+	})
 	flow = passkeyClaimReducer(flow, { type: "prepare_started" })
 	flow = passkeyClaimReducer(flow, { type: "prepared", prepareId: "prep_1" })
 	return flow
 }
 
 test.describe("CF6 passkey claim flow state", () => {
-	test("no accepted contract keeps the flow unavailable even when WebAuthn exists", () => {
+	test("missing public passkey config keeps the flow unavailable", () => {
 		expect(
-			initialPasskeyFlow({ contractAccepted: false, supported: true }).phase,
+			initialPasskeyFlow({ deployAvailable: false, supported: true }).phase,
 		).toBe("unavailable")
 		expect(
-			initialPasskeyFlow({ contractAccepted: false, supported: false }).phase,
+			initialPasskeyFlow({ deployAvailable: false, supported: false }).phase,
 		).toBe("unavailable")
 	})
 
 	test("a browser without WebAuthn is unsupported, not silently available", () => {
 		const flow = initialPasskeyFlow({
-			contractAccepted: true,
+			deployAvailable: true,
 			supported: false,
 		})
 		expect(flow.phase).toBe("unsupported")
@@ -163,6 +170,40 @@ test.describe("CF6 passkey claim flow state", () => {
 		flow = passkeyClaimReducer(flow, { type: "retry" })
 		expect(flow.phase).toBe("deploying")
 		expect(flow.deployIdempotencyKey).toBe("deploy-key-1")
+	})
+
+	test("a failed wallet ceremony retries the ceremony, not an empty deploy", () => {
+		let flow = accepted()
+		flow = passkeyClaimReducer(flow, { type: "wallet_creation_started" })
+		flow = passkeyClaimReducer(flow, {
+			type: "wallet_creation_failed",
+			message: "The passkey wallet could not be created on this device.",
+		})
+		expect(flow.phase).toBe("deploy_failed")
+		expect(flow.retry).toBe("create")
+		expect(flow.deployIdempotencyKey).toBeNull()
+
+		flow = passkeyClaimReducer(flow, { type: "retry" })
+		expect(flow.phase).toBe("creating_wallet")
+		expect(flow.contractId).toBeNull()
+		expect(flow.deployIdempotencyKey).toBeNull()
+	})
+
+	test("a non-retryable deploy rejection offers no retry button", () => {
+		let flow = accepted()
+		flow = passkeyClaimReducer(flow, { type: "wallet_creation_started" })
+		flow = passkeyClaimReducer(flow, {
+			type: "wallet_created",
+			contractId: "CFIXTUREWALLET",
+			deployIdempotencyKey: "deploy-key-1",
+		})
+		flow = passkeyClaimReducer(flow, {
+			type: "deploy_failed",
+			message: "rejected",
+			retryable: false,
+		})
+		expect(flow.retry).toBeNull()
+		expect(canRetryPasskeyStep(flow, false)).toBe(false)
 	})
 
 	test("expiry and cancel cannot produce a submit or a fake success", () => {
@@ -234,7 +275,7 @@ test.describe("CF6 passkey claim flow state", () => {
 test.describe("CF6 claim page passkey option", () => {
 	test.use({ viewport: { width: 390, height: 844 } })
 
-	test("passkey and anchor options are visible but unavailable, crypto still claims", async ({
+	test("the passkey option opens the deploy panel and crypto still claims", async ({
 		page,
 	}) => {
 		const consoleMessages: string[] = []
@@ -250,10 +291,11 @@ test.describe("CF6 claim page passkey option", () => {
 		await expect(passkeyOption).toBeVisible()
 		await expect(
 			passkeyOption.getByRole("radio", { name: /Create passkey wallet/ }),
-		).toBeDisabled()
-		await expect(
-			passkeyOption.getByText(/passkey claim API contract is not accepted/),
-		).toBeVisible()
+		).toBeEnabled()
+		await passkeyOption.getByRole("radio").check()
+		await expect(page.getByTestId("passkey-panel")).toBeVisible()
+		await expect(page.getByTestId("passkey-create")).toBeEnabled()
+		await expect(page.getByTestId("passkey-signing-unavailable")).toHaveCount(0)
 
 		const anchorOption = page.getByTestId("claim-anchor-option")
 		await expect(anchorOption).toBeVisible()
@@ -268,8 +310,11 @@ test.describe("CF6 claim page passkey option", () => {
 		await expect(page.getByText(/https?:\/\//i)).toHaveCount(0)
 		await expect(page.getByText(/indicative/i)).toHaveCount(0)
 
-		// The G-address crypto claim still works: the passkey work is not a regression.
+		// Selecting the crypto option closes the passkey panel.
 		await page.getByRole("radio", { name: /Crypto wallet/ }).check()
+		await expect(page.getByTestId("passkey-panel")).toHaveCount(0)
+
+		// The G-address crypto claim still works: the passkey work is not a regression.
 		await page.getByLabel("Stellar testnet wallet address").fill(cryptoAddress)
 		await page.getByTestId("claim-accept").click()
 		await expect(page.getByText("Claim Accepted")).toBeVisible()
@@ -360,9 +405,9 @@ test.describe("CF6 passkey state gallery", () => {
 			).toBeVisible()
 		}
 
-		// The live detection panel stays unavailable while the contract is not accepted.
+		// Live detection uses the accepted deploy contract and a WebAuthn-capable browser.
 		await expect(
-			scenario(page, "live-support").locator('[data-passkey-phase="unavailable"]'),
+			scenario(page, "live-support").locator('[data-passkey-phase="idle"]'),
 		).toBeVisible()
 
 		expect(
@@ -391,14 +436,12 @@ test.describe("CF6 passkey state gallery", () => {
 			unsupported.getByText(/cannot create a passkey wallet/),
 		).toBeVisible()
 		await expect(unsupported.getByTestId("passkey-create")).toHaveCount(0)
-		await expect(
-			unsupported.getByTestId("passkey-use-crypto"),
-		).toBeVisible()
+		await expect(unsupported.getByTestId("passkey-use-crypto")).toBeVisible()
 
-		// The contract gate still wins in this build: live detection cannot enable the option.
+		// Live detection also reports the missing WebAuthn API as unsupported.
 		await expect(
 			scenario(page, "live-support").locator(
-				'[data-passkey-phase="unavailable"]',
+				'[data-passkey-phase="unsupported"]',
 			),
 		).toBeVisible()
 	})
@@ -451,12 +494,8 @@ test.describe("CF6 passkey state gallery", () => {
 		).toBeDisabled()
 
 		const expiredTerminal = scenario(page, "expired")
-		await expect(
-			expiredTerminal.getByTestId("passkey-expired"),
-		).toBeVisible()
-		await expect(
-			expiredTerminal.getByTestId("passkey-approve"),
-		).toHaveCount(0)
+		await expect(expiredTerminal.getByTestId("passkey-expired")).toBeVisible()
+		await expect(expiredTerminal.getByTestId("passkey-approve")).toHaveCount(0)
 	})
 
 	test("the submitting state cannot be submitted twice", async ({ page }) => {
@@ -476,7 +515,9 @@ test.describe("CF6 passkey state gallery", () => {
 		).toBeDisabled()
 
 		const staticSubmitting = scenario(page, "submitting")
-		await expect(staticSubmitting.getByTestId("passkey-submitting")).toBeDisabled()
+		await expect(
+			staticSubmitting.getByTestId("passkey-submitting"),
+		).toBeDisabled()
 		await expect(staticSubmitting.getByTestId("passkey-approve")).toHaveCount(0)
 		await expect(staticSubmitting.getByTestId("passkey-cancel")).toHaveCount(0)
 	})
@@ -489,9 +530,7 @@ test.describe("CF6 passkey state gallery", () => {
 		const verified = scenario(page, "verified")
 		await expect(verified.getByTestId("passkey-verified")).toBeVisible()
 		await expect(verified.getByText(/Confirmed by the claim API/)).toBeVisible()
-		await expect(
-			verified.locator('[data-status="paid"]'),
-		).toBeVisible()
+		await expect(verified.locator('[data-status="paid"]')).toBeVisible()
 
 		for (const name of [
 			"unavailable",
@@ -508,10 +547,7 @@ test.describe("CF6 passkey state gallery", () => {
 			"unconfirmed",
 			"retryable_error",
 		]) {
-			const text = (await scenario(page, name).innerText()).replace(
-				/\s+/g,
-				" ",
-			)
+			const text = (await scenario(page, name).innerText()).replace(/\s+/g, " ")
 			expect(text, `scenario ${name} must not claim success`).not.toMatch(
 				/\bPaid\b|\bCompleted\b/,
 			)
@@ -540,10 +576,12 @@ test.describe("CF6 passkey state gallery", () => {
 })
 
 // ---------------------------------------------------------------------------
-// Source guards: the app must not carry an unaccepted passkey API binding
+// Source guards: one SDK boundary, deploy only, no secrets in logs or storage
 // ---------------------------------------------------------------------------
 
-const readTree = async (root: string): Promise<{ path: string; text: string }[]> => {
+const readTree = async (
+	root: string,
+): Promise<{ path: string; text: string }[]> => {
 	const out: { path: string; text: string }[] = []
 	const walk = async (directory: string) => {
 		const entries = await readdir(directory, { withFileTypes: true })
@@ -563,7 +601,7 @@ const readTree = async (root: string): Promise<{ path: string; text: string }[]>
 }
 
 test.describe("CF6 passkey source guards", () => {
-	test("production code has no passkey client, route or SDK binding", async () => {
+	test("one passkey-kit boundary, deploy only, no test hook in production code", async () => {
 		const files = [
 			...(await readTree(join(repoRoot, "apps/web/src"))),
 			...(await readTree(join(repoRoot, "packages/web-lib"))),
@@ -571,28 +609,67 @@ test.describe("CF6 passkey source guards", () => {
 		expect(files.length).toBeGreaterThan(10)
 
 		for (const file of files) {
-			expect(file.text, `${file.path} must not call a passkey route`).not.toMatch(
-				/passkey\/(deploy|prepare|submit)/i,
-			)
+			// The prepare/submit routes are not wired: their payloads can carry the claim secret.
+			expect(
+				file.text,
+				`${file.path} must not call prepare/submit`,
+			).not.toMatch(/passkey\/(prepare|submit)/i)
 			expect(file.text, `${file.path} must not build auth entries`).not.toMatch(
-				/signedAuthEntries|signedTx|keyIdBase64/,
-			)
-			expect(file.text, `${file.path} must not import an SDK`).not.toMatch(
-				/passkey-kit|passkey-kit@/,
+				/signedAuthEntries/,
 			)
 			expect(
 				file.text,
 				`${file.path} must not set an Authorization header`,
 			).not.toMatch(/Authorization\s*:|headers\.set\(\s*["']authorization/i)
+			// A test/fixture override must never ship inside the app.
+			expect(file.text, `${file.path} must not expose a test hook`).not.toMatch(
+				/__passkeyTest|window\.__/,
+			)
+			expect(
+				file.text,
+				`${file.path} must not carry a Stellar secret`,
+			).not.toMatch(/\bS[A-Z2-7]{55}\b|FP_[A-Z_]*SECRET/)
 		}
+
+		const sdkImporters = files
+			.filter((file) => /import\(\s*["']passkey-kit["']\s*\)/.test(file.text))
+			.map((file) => file.path)
+		expect(sdkImporters).toEqual([
+			join(repoRoot, "apps/web/src/api/passkeyWallet.ts"),
+		])
+		// No static SDK import: the wallet kit is a lazy chunk, not part of the page entry.
+		expect(
+			files.filter((file) => /from\s+["']passkey-kit["']/.test(file.text)),
+		).toEqual([])
+
+		const deployRoutes = files
+			.filter((file) => /passkey\/deploy/.test(file.text))
+			.map((file) => file.path)
+		expect(deployRoutes).toContain(
+			join(repoRoot, "apps/web/src/api/claimClient.ts"),
+		)
+	})
+
+	test("the web-lib re-exports the accepted shared schemas instead of copying them", async () => {
+		const contract = await readFile(
+			join(repoRoot, "packages/web-lib/claim-contract.ts"),
+			"utf8",
+		)
+		expect(contract).toContain("../domain/src/api/claims.ts")
+		expect(contract).toContain("PasskeyDeployRequestSchema")
+		expect(contract).not.toMatch(/z\.object\(\{[^}]*keyIdBase64/s)
 	})
 
 	test("claim UI files never log or store the passkey payload", async () => {
 		const claimFiles = [
 			"apps/web/src/api/claimClient.ts",
+			"apps/web/src/api/passkeyWallet.ts",
 			"apps/web/src/pages/ClaimPage.tsx",
 			"apps/web/src/components/claim/PasskeyClaimPanel.tsx",
+			"apps/web/src/components/claim/PasskeyClaimSection.tsx",
 			"apps/web/src/components/claim/passkey-claim-flow.ts",
+			"apps/web/src/components/claim/usePasskeyClaim.ts",
+			"packages/web-lib/passkey-config.ts",
 		]
 		for (const relative of claimFiles) {
 			const text = await readFile(join(repoRoot, relative), "utf8")

@@ -171,9 +171,8 @@ export function PasskeyClaimPanel({
 							</p>
 						) : null}
 						<Notice tone="warning" data-testid="passkey-signing-unavailable">
-							Claim signing is not available yet: the prepare and submit routes
-							are not enabled on this claim API. Nothing has been paid or
-							completed by this page; your claim is still open.
+							Claim signing is not part of this build yet. Nothing has been paid
+							or completed by this page; your claim is still open.
 						</Notice>
 						{fallback}
 					</>
@@ -188,7 +187,9 @@ export function PasskeyClaimPanel({
 						<p className="form-note">
 							{flow.retry === "create"
 								? "Retrying asks your device for a passkey again; the earlier attempt created no wallet."
-								: "Retrying sends the same deploy request with the same idempotency key, so no second wallet is created."}
+								: flow.retry === "deploy"
+									? "Retrying sends the same deploy request with the same idempotency key, so no second wallet is created."
+									: "This attempt cannot be repeated with the same request. Use a crypto wallet address instead."}
 						</p>
 						<div className="claim-demo">
 							{retry}

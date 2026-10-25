@@ -27,6 +27,13 @@ export default defineConfig({
 			...(process.env as Record<string, string>),
 			FP_API_URL: "http://127.0.0.1:5199",
 			FP_API_KEY: "",
+			// Public, non-secret Stellar testnet values. They enable the passkey option in the
+			// browser; the wallet kit itself is replaced by a deterministic module fixture in
+			// CF7, so no RPC request leaves the test browser.
+			PUBLIC_STELLAR_NETWORK: "TESTNET",
+			PUBLIC_STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015",
+			PUBLIC_STELLAR_RPC_URL: "https://soroban-testnet.stellar.org",
+			PUBLIC_STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org",
 		},
 	},
 })
