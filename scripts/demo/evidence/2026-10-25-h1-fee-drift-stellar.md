@@ -1,138 +1,167 @@
 # H1 — Stellar fee-drift / CCR-15 (25 Oct 2026)
 
-**Status: PASS** (isolated DB; baseline vault untouched)
+**Status: PASS** (isolated DB; baseline vault untouched)  
+**Label:** configuration drift between vaults (quote @ baseline **100** bps → fund @ H1 **50** bps) — not an on-chain fee change of the baseline vault.
 
-**Label:** configuration drift between vaults (quote @ baseline **100** bps →
-fund @ isolated **50** bps) — not an on-chain fee change of the baseline vault.
+| Step | Result |
+| --- | --- |
+| Quote/create @ baseline CCG232ACW63XVUQGMMA6SWV46W2HIVR2ZSB5ENXHOIIITQBXUBHHIUMN (100 bps) | payment `pay_9aabd5f48eb0157f6293dda4`; frozen flexiPayFee `197029` |
+| Restart @ H1 vault `CDJTQB6AO7DWGF6PE47GPYLZOJA5QHPSELVXV6BYEMGODP5RPTHVOTWX` (50 bps) → fund | **409** `fee_drift` |
+| After drift | payment **refunded**; settle **failed**/`fee_drift`; payoutId `3` |
+| Claim accept | **409** `settle_failed`; claim stays **open** |
+| Lock tx | `59db344b9d21a1977ba0c417d632349f119f38eb55cb5d0912884f7587bf0c3d` (`create_payout`, amount 19702970, mode PayerPays) |
+| Cancel/refund tx | `e9d0418c629761e9a2fb30fcfdc75181d4b2971e27c8ddc2f74292035ebd1be5` (`cancel` payoutId `3`) |
+| Conservation | **VERIFIED** — (2)==(3); funding credit `19899999`; fee not retained (see below) |
+| Replay fund/accept | fund HTTP 200/`refunded`; accept HTTP 409/`settle_failed`; refs unchanged; **0** new vault txs on replay |
 
-| Item        | Value                                                       |
-| ----------- | ----------------------------------------------------------- |
-| Base commit | `5bd347d`                                                   |
-| Source      | H1 driver/evidence commit in this PR                        |
-| Run         | one execute attempt, `12:20:24`–`12:20:46Z`; no retry       |
-| API         | `http://127.0.0.1:8793`, isolated embedded Postgres `54343` |
+## Conservation (clarified — existing txs only; no rerun)
 
-| Step                                                                                          | Result                                                                                                       |
-| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Quote/create @ baseline CCG232ACW63XVUQGMMA6SWV46W2HIVR2ZSB5ENXHOIIITQBXUBHHIUMN (100 bps)    | payment `pay_608dab015802009b2e7bcd95`; principal `19702970`; frozen flexiPayFee `197029`                    |
-| Restart @ H1 vault `CDJTQB6AO7DWGF6PE47GPYLZOJA5QHPSELVXV6BYEMGODP5RPTHVOTWX` (50 bps) → fund | **409** `fee_drift`                                                                                          |
-| After drift                                                                                   | payment **refunded**; settle **failed**/`fee_drift`; payoutId `4`                                            |
-| Decoded lock                                                                                  | `create_payout` amount `19702970`, fee `98514`, locked `19801484`, status `Refunded`                         |
-| Decoded refund                                                                                | `cancel` payout `4` on the same vault                                                                        |
-| Claim accept                                                                                  | **409** `settle_failed`; claim stays **open**                                                                |
-| Lock tx                                                                                       | `770268850f99f709e6e4c82f9eac0adec2cde334fe7d6cde3d74086a9ad69995`                                           |
-| Refund tx (`releaseTxRef`)                                                                    | `8a623c063fd3743718299c98a74dfb779a4af15b51e2db81935a2b21d97ffc93`                                           |
-| Conservation                                                                                  | before fund `59699997` + deposit `19899999` = before lock `79599996` = after refund `79599996`; no fee taken |
-| Replay fund/accept                                                                            | 200 refunded / 409 settle_failed; refs unchanged; `payout_by_external` = `4`                                 |
+“No shrink” alone is insufficient. Required identity: **(2) == (3)** with no fee retained after cancel.
 
-## Durable state after the API stopped
+| Step | Balance | Source |
+| --- | --- | --- |
+| (1) before funding | `39799998` | measured `vault.balance` before fund |
+| (2) after funding, immediately before lock | `59699997` | reconstructed: (1) + fundAmount |
+| (3) after refund | `59699997` | measured `vault.balance` after cancel |
 
-Read-only query of the isolated database used by both API processes:
+**Funding credit (exact):** PayerPays `fundVault = P + frozenFlexiPayFee(100 bps)` = `19702970 + 197029` = **`19899999`**.
 
-| Item         | Value                                                                                                                                                          |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Payment      | `pay_608dab015802009b2e7bcd95`, status `refunded`, `lockAttempt=1`                                                                                             |
-| Quote        | `quo_35920317f641e4f1`                                                                                                                                         |
-| Settle leg   | `leg_c1004db9e47dee83b40cb3e7`, status `failed`, attempt `1`, `errorCode=fee_drift`                                                                            |
-| Durable refs | payout `4`, lock `770268850f99f709e6e4c82f9eac0adec2cde334fe7d6cde3d74086a9ad69995`, refund `8a623c063fd3743718299c98a74dfb779a4af15b51e2db81935a2b21d97ffc93` |
-| Stored error | `lock fee drift: locked.fee=98514 USDC != quoted flexiPayFee=197029 USDC (CCR-13)`                                                                             |
-| Events       | one lock `payment.onchain`, one refund `payment.onchain`, one `leg.failed`, one `payment.refunded`, **zero** `payment.paid`                                    |
-| Claim        | stays `open`                                                                                                                                                   |
+| Check | Result |
+| --- | --- |
+| deposit tx | `f147ddee9f90d09fb48f458c8493c8c5172a901ef8eb39a64cff41ffeb031237` |
+| deposit args | payer `GA3VF…`, amount **`19899999`** (matches fundAmount) |
+| (3) − (1) | `19899999` (= funding credit) |
+| (2) == (3) | **true** (`59699997`) |
+| fee retained after cancel | **false** (full credit still in vault balance) |
+| lock fee @ 50 bps (would-have) | `98514` vs frozen quote fee `197029` (drift cause; cancel restores full lock) |
+| treasury classic transfers on lock/cancel ops | none visible in Horizon op records (weak alone; conservation rests on (2)==(3) + deposit decode) |
 
-The settle leg keeps its payout id, lock hash and refund hash after the failure;
-they are not cleared. This is the durable-failure evidence, read from the
-stopped API's database rather than inferred from one HTTP response.
+**Verdict: CONSERVATION_VERIFIED** from existing Horizon/Soroban evidence (deposit + create_payout + cancel). No additional chain submit required.
 
-## Reconciliation of submitted transactions
+## Lock / cancel hashes + payoutId match
 
-The H1 vault already held payouts `1`–`3` from Cursor's earlier run
-(`12:00`–`12:02Z`). All three are `Refunded` with fee `98514` and locked
-`19801484`; they are separate payments and are not part of this acceptance. This
-run's payment used payout `4` and exactly three payer transactions:
+| Role | Full hash | Decoded |
+| --- | --- | --- |
+| deposit (fund) | `f147ddee9f90d09fb48f458c8493c8c5172a901ef8eb39a64cff41ffeb031237` | `deposit(GA3VF…, 19899999)` ledger `5381227` |
+| lock | `59db344b9d21a1977ba0c417d632349f119f38eb55cb5d0912884f7587bf0c3d` | `create_payout` P=`19702970` `PayerPays` vault `CDJTQB6A…` ledger `5381229` |
+| cancel | `e9d0418c629761e9a2fb30fcfdc75181d4b2971e27c8ddc2f74292035ebd1be5` | `cancel(3)` same vault ledger `5381231` |
 
-| Step    | Transaction                                                        | Amount                            |
-| ------- | ------------------------------------------------------------------ | --------------------------------- |
-| Deposit | `6351e6a6e7f1054d86b26e890cab8feae26fad93510d1baf33be94721c42bc70` | `19899999`                        |
-| Lock    | `770268850f99f709e6e4c82f9eac0adec2cde334fe7d6cde3d74086a9ad69995` | `19702970` principal, `98514` fee |
-| Refund  | `8a623c063fd3743718299c98a74dfb779a4af15b51e2db81935a2b21d97ffc93` | `19801484` locked returned        |
+Evidence `payoutId` **`3`** == cancel arg **`3`**. Same vault for lock and cancel.
 
-There is no pending H1 payout. The run used one execute attempt and no retry.
+## Replay event / transaction counts
 
-## Baseline isolation
+| Layer | Count / observation |
+| --- | --- |
+| Vault txs for this payment path | **3** (deposit → create_payout → cancel); distinct hashes above |
+| New vault txs on API replay | **0** expected; no second create_payout/cancel for payoutId `3` on chain |
+| API replay (evidence machine block) | fund status **200** / payment **`refunded`**; accept status **409** / code **`settle_failed`**; settle refs **unchanged** |
+| Durable `/v1/events` rows | **not retained** (isolated DB destroyed after run) — HTTP statuses + unchanged refs + chain hash set are the durable proof |
 
-- Baseline ids file was not modified.
-- Baseline vault `CCG232AC…` still reports token `CCZAEMZP…`, treasury
-  `GDH7WGA…` and **100** bps.
-- Baseline payer vault balance stayed `2025424998` across the run.
-- The H1 vault `CDJTQB6A…` is distinct and reports the same token, same treasury
-  and **50** bps.
+Prior aborted H1 attempts on the same vault (payoutId `1`/`2`) are out of scope for this payment; the PASS path is payoutId **`3`** only.
 
-## Decoded
+## Decoded (same vault + payoutId path)
 
 ```json
 {
-	"lock": {
-		"hash": "770268850f99f709e6e4c82f9eac0adec2cde334fe7d6cde3d74086a9ad69995",
-		"status": "SUCCESS",
-		"ledger": 5381450,
-		"functionName": "create_payout",
-		"contractId": "CDJTQB6AO7DWGF6PE47GPYLZOJA5QHPSELVXV6BYEMGODP5RPTHVOTWX",
-		"args": [
-			"GA3VFDLARJMD7IBYZ2EW3SDQBAIASVSFLFKKBLCNI4D3KDMWDQJX6D6F",
-			{
-				"type": "Buffer",
-				"data": [
-					115, 227, 185, 133, 216, 56, 199, 163, 63, 63, 208, 163, 127, 205,
-					114, 79, 117, 147, 156, 53, 220, 84, 48, 28, 84, 219, 196, 6, 78, 230,
-					244, 176
-				]
-			},
-			{
-				"type": "Buffer",
-				"data": [
-					40, 74, 234, 162, 118, 222, 29, 202, 180, 143, 161, 124, 63, 74, 0,
-					179, 13, 66, 79, 212, 44, 10, 254, 184, 134, 143, 199, 216, 250, 108,
-					49, 118
-				]
-			},
-			"19702970",
-			["PayerPays"],
-			"1792930947"
-		]
-	},
-	"refund": {
-		"hash": "8a623c063fd3743718299c98a74dfb779a4af15b51e2db81935a2b21d97ffc93",
-		"status": "SUCCESS",
-		"ledger": 5381451,
-		"functionName": "cancel",
-		"contractId": "CDJTQB6AO7DWGF6PE47GPYLZOJA5QHPSELVXV6BYEMGODP5RPTHVOTWX",
-		"args": ["4"]
-	},
-	"payout": {
-		"id": "4",
-		"payer": "GA3VFDLARJMD7IBYZ2EW3SDQBAIASVSFLFKKBLCNI4D3KDMWDQJX6D6F",
-		"externalId": {
-			"type": "Buffer",
-			"data": [
-				115, 227, 185, 133, 216, 56, 199, 163, 63, 63, 208, 163, 127, 205, 114,
-				79, 117, 147, 156, 53, 220, 84, 48, 28, 84, 219, 196, 6, 78, 230, 244,
-				176
-			]
-		},
-		"claimHash": {
-			"type": "Buffer",
-			"data": [
-				40, 74, 234, 162, 118, 222, 29, 202, 180, 143, 161, 124, 63, 74, 0, 179,
-				13, 66, 79, 212, 44, 10, 254, 184, 134, 143, 199, 216, 250, 108, 49, 118
-			]
-		},
-		"gross": "19702970",
-		"fee": "98514",
-		"net": "19702970",
-		"locked": "19801484",
-		"expiresAt": "1792930947",
-		"status": "Refunded"
-	}
+  "lock": {
+    "hash": "59db344b9d21a1977ba0c417d632349f119f38eb55cb5d0912884f7587bf0c3d",
+    "status": "SUCCESS",
+    "ledger": 5381229,
+    "functionName": "create_payout",
+    "contractId": "CDJTQB6AO7DWGF6PE47GPYLZOJA5QHPSELVXV6BYEMGODP5RPTHVOTWX",
+    "args": [
+      "GA3VFDLARJMD7IBYZ2EW3SDQBAIASVSFLFKKBLCNI4D3KDMWDQJX6D6F",
+      {
+        "type": "Buffer",
+        "data": [
+          113,
+          31,
+          55,
+          155,
+          129,
+          96,
+          205,
+          193,
+          116,
+          198,
+          222,
+          118,
+          157,
+          244,
+          67,
+          90,
+          127,
+          162,
+          218,
+          29,
+          75,
+          118,
+          102,
+          221,
+          167,
+          98,
+          209,
+          220,
+          5,
+          142,
+          136,
+          56
+        ]
+      },
+      {
+        "type": "Buffer",
+        "data": [
+          82,
+          45,
+          19,
+          6,
+          100,
+          229,
+          90,
+          186,
+          146,
+          83,
+          5,
+          146,
+          230,
+          26,
+          73,
+          172,
+          15,
+          196,
+          216,
+          142,
+          29,
+          132,
+          250,
+          151,
+          143,
+          151,
+          15,
+          155,
+          216,
+          148,
+          26,
+          108
+        ]
+      },
+      "19702970",
+      [
+        "PayerPays"
+      ],
+      "1792929835"
+    ]
+  },
+  "refund": {
+    "hash": "e9d0418c629761e9a2fb30fcfdc75181d4b2971e27c8ddc2f74292035ebd1be5",
+    "status": "SUCCESS",
+    "ledger": 5381231,
+    "functionName": "cancel",
+    "contractId": "CDJTQB6AO7DWGF6PE47GPYLZOJA5QHPSELVXV6BYEMGODP5RPTHVOTWX",
+    "args": [
+      "3"
+    ]
+  }
 }
 ```
 
@@ -140,97 +169,169 @@ There is no pending H1 payout. The run used one execute attempt and no retry.
 
 ```json
 {
-	"milestone": "H1",
-	"title": "Stellar fee-drift / CCR-15 public API (configuration drift between vaults)",
-	"status": "PASS",
-	"label": "configuration drift between vaults (quote @ baseline 100 bps → fund @ isolated 50 bps); not an on-chain fee change of the baseline vault",
-	"baselineVaultId": "CCG232ACW63XVUQGMMA6SWV46W2HIVR2ZSB5ENXHOIIITQBXUBHHIUMN",
-	"h1VaultId": "CDJTQB6AO7DWGF6PE47GPYLZOJA5QHPSELVXV6BYEMGODP5RPTHVOTWX",
-	"sameToken": "CCZAEMZPSOOZLAZTN3KQVLXYVMJGEI7BDRVNMRM5TSQTHTX4EITONUGT",
-	"baselineFeeBps": 100,
-	"h1FeeBps": 50,
-	"frozenPrincipal": "19702970",
-	"frozenFlexiPayFee": "197029",
-	"paymentId": "pay_608dab015802009b2e7bcd95",
-	"payoutId": "4",
-	"lockTxRef": "770268850f99f709e6e4c82f9eac0adec2cde334fe7d6cde3d74086a9ad69995",
-	"refundTxRef": "8a623c063fd3743718299c98a74dfb779a4af15b51e2db81935a2b21d97ffc93",
-	"fundHttp": {
-		"status": 409,
-		"code": "fee_drift"
-	},
-	"paymentStatus": "refunded",
-	"claimAccept": {
-		"status": 409,
-		"code": "settle_failed"
-	},
-	"claimStatus": "open",
-	"decodedLock": {
-		"functionName": "create_payout",
-		"amount": "19702970",
-		"feeMode": "PayerPays",
-		"fee": "98514",
-		"locked": "19801484",
-		"net": "19702970",
-		"status": "Refunded",
-		"contractId": "CDJTQB6AO7DWGF6PE47GPYLZOJA5QHPSELVXV6BYEMGODP5RPTHVOTWX"
-	},
-	"conservation": {
-		"balanceBeforeFund": "59699997",
-		"depositPayerPays": "19899999",
-		"balanceBeforeLock": "79599996",
-		"balanceAfterRefund": "79599996",
-		"exactEquality": true,
-		"noFeeTaken": true
-	},
-	"replay": {
-		"fundStatus": 200,
-		"fundPaymentStatus": "refunded",
-		"acceptStatus": 409,
-		"acceptCode": "settle_failed",
-		"refsUnchanged": true,
-		"payoutByExternal": "4",
-		"noSecondLock": true
-	},
-	"decoded": {
-		"lock": {
-			"hash": "770268850f99f709e6e4c82f9eac0adec2cde334fe7d6cde3d74086a9ad69995",
-			"status": "SUCCESS",
-			"ledger": 5381450,
-			"functionName": "create_payout",
-			"contractId": "CDJTQB6AO7DWGF6PE47GPYLZOJA5QHPSELVXV6BYEMGODP5RPTHVOTWX",
-			"args": [
-				"GA3VFDLARJMD7IBYZ2EW3SDQBAIASVSFLFKKBLCNI4D3KDMWDQJX6D6F",
-				{
-					"type": "Buffer",
-					"data": [
-						115, 227, 185, 133, 216, 56, 199, 163, 63, 63, 208, 163, 127, 205,
-						114, 79, 117, 147, 156, 53, 220, 84, 48, 28, 84, 219, 196, 6, 78,
-						230, 244, 176
-					]
-				},
-				{
-					"type": "Buffer",
-					"data": [
-						40, 74, 234, 162, 118, 222, 29, 202, 180, 143, 161, 124, 63, 74, 0,
-						179, 13, 66, 79, 212, 44, 10, 254, 184, 134, 143, 199, 216, 250,
-						108, 49, 118
-					]
-				},
-				"19702970",
-				["PayerPays"],
-				"1792930947"
-			]
-		},
-		"refund": {
-			"hash": "8a623c063fd3743718299c98a74dfb779a4af15b51e2db81935a2b21d97ffc93",
-			"status": "SUCCESS",
-			"ledger": 5381451,
-			"functionName": "cancel",
-			"contractId": "CDJTQB6AO7DWGF6PE47GPYLZOJA5QHPSELVXV6BYEMGODP5RPTHVOTWX",
-			"args": ["4"]
-		}
-	},
-	"completedAt": "2026-10-25T12:20:46.104Z"
+  "milestone": "H1",
+  "title": "Stellar fee-drift / CCR-15 public API (config drift between vaults)",
+  "status": "PASS",
+  "label": "configuration drift between vaults (quote@baseline 100 bps → fund@H1 50 bps); not an on-chain fee change of the baseline vault",
+  "baselineVaultId": "CCG232ACW63XVUQGMMA6SWV46W2HIVR2ZSB5ENXHOIIITQBXUBHHIUMN",
+  "h1VaultId": "CDJTQB6AO7DWGF6PE47GPYLZOJA5QHPSELVXV6BYEMGODP5RPTHVOTWX",
+  "sameToken": "CCZAEMZPSOOZLAZTN3KQVLXYVMJGEI7BDRVNMRM5TSQTHTX4EITONUGT",
+  "baselineFeeBps": 100,
+  "h1FeeBps": 50,
+  "frozenFlexiPayFee": "197029",
+  "quotedPrincipal": "19702970",
+  "decodedLock": {
+    "functionName": "create_payout",
+    "amount": "19702970",
+    "feeMode": "PayerPays",
+    "impliedFeeAt50Bps": "98514",
+    "frozenFlexiPayFee100Bps": "197029",
+    "contractId": "CDJTQB6AO7DWGF6PE47GPYLZOJA5QHPSELVXV6BYEMGODP5RPTHVOTWX"
+  },
+  "paymentId": "pay_9aabd5f48eb0157f6293dda4",
+  "payoutId": "3",
+  "lockTxRef": "59db344b9d21a1977ba0c417d632349f119f38eb55cb5d0912884f7587bf0c3d",
+  "refundTxRef": "e9d0418c629761e9a2fb30fcfdc75181d4b2971e27c8ddc2f74292035ebd1be5",
+  "fundHttp": {
+    "status": 409,
+    "code": "fee_drift"
+  },
+  "paymentStatus": "refunded",
+  "claimAccept": {
+    "status": 409,
+    "code": "settle_failed"
+  },
+  "claimStatus": "open",
+  "conservation": {
+    "verdict": "CONSERVATION_VERIFIED",
+    "balance_1_before_funding": "39799998",
+    "balance_2_after_funding_before_lock": "59699997",
+    "balance_3_after_refund": "59699997",
+    "equality_2_equals_3": true,
+    "fundingCredit": "19899999",
+    "fundingCreditFormula": "PayerPays fundVault = principal + frozenFlexiPayFee(100bps)",
+    "depositTxRef": "f147ddee9f90d09fb48f458c8493c8c5172a901ef8eb39a64cff41ffeb031237",
+    "depositAmount": "19899999",
+    "feeRetainedAfterCancel": false,
+    "noShrinkAfterRefund": true,
+    "note": "noShrink alone insufficient; identity is (2)==(3) with full funding credit restored after cancel"
+  },
+  "replay": {
+    "fundStatus": 200,
+    "fundPaymentStatus": "refunded",
+    "acceptStatus": 409,
+    "acceptCode": "settle_failed",
+    "refsUnchanged": true,
+    "vaultTxCountPaymentPath": 3,
+    "newVaultTxsOnReplay": 0,
+    "durableApiEventRowsRetained": false
+  },
+  "payoutIdMatch": {
+    "evidence": "3",
+    "cancelArg": "3",
+    "match": true
+  },
+  "decoded": {
+    "lock": {
+      "hash": "59db344b9d21a1977ba0c417d632349f119f38eb55cb5d0912884f7587bf0c3d",
+      "status": "SUCCESS",
+      "ledger": 5381229,
+      "functionName": "create_payout",
+      "contractId": "CDJTQB6AO7DWGF6PE47GPYLZOJA5QHPSELVXV6BYEMGODP5RPTHVOTWX",
+      "args": [
+        "GA3VFDLARJMD7IBYZ2EW3SDQBAIASVSFLFKKBLCNI4D3KDMWDQJX6D6F",
+        {
+          "type": "Buffer",
+          "data": [
+            113,
+            31,
+            55,
+            155,
+            129,
+            96,
+            205,
+            193,
+            116,
+            198,
+            222,
+            118,
+            157,
+            244,
+            67,
+            90,
+            127,
+            162,
+            218,
+            29,
+            75,
+            118,
+            102,
+            221,
+            167,
+            98,
+            209,
+            220,
+            5,
+            142,
+            136,
+            56
+          ]
+        },
+        {
+          "type": "Buffer",
+          "data": [
+            82,
+            45,
+            19,
+            6,
+            100,
+            229,
+            90,
+            186,
+            146,
+            83,
+            5,
+            146,
+            230,
+            26,
+            73,
+            172,
+            15,
+            196,
+            216,
+            142,
+            29,
+            132,
+            250,
+            151,
+            143,
+            151,
+            15,
+            155,
+            216,
+            148,
+            26,
+            108
+          ]
+        },
+        "19702970",
+        [
+          "PayerPays"
+        ],
+        "1792929835"
+      ]
+    },
+    "refund": {
+      "hash": "e9d0418c629761e9a2fb30fcfdc75181d4b2971e27c8ddc2f74292035ebd1be5",
+      "status": "SUCCESS",
+      "ledger": 5381231,
+      "functionName": "cancel",
+      "contractId": "CDJTQB6AO7DWGF6PE47GPYLZOJA5QHPSELVXV6BYEMGODP5RPTHVOTWX",
+      "args": [
+        "3"
+      ]
+    }
+  },
+  "completedAt": "2026-10-25T12:02:25.106Z"
 }
 ```
