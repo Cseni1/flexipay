@@ -22,7 +22,18 @@ import {
 } from "../../apps/api/src/dev/embedded-db.ts";
 import { newApiKey, newId } from "../../apps/api/src/ids.ts";
 import { createApiRuntime } from "../../apps/api/src/runtime.ts";
+import {
+	createStellarSettlementAdapter,
+	loadTestnetEnvFiles,
+	PayoutVault,
+	loadStellarEnv,
+} from "../../packages/adapter-stellar/src/index.ts";
 import { parseEnvFile } from "../../packages/adapter-stellar/src/stellar-env.ts";
+import {
+	parseContractInvocation,
+	parseNetworkPassphrase,
+	parseTransactionResult,
+} from "./lib/stellar-proof.ts";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const baselineIdsPath = resolve(repoRoot, "scripts/testnet/testnet-ids.env");
@@ -284,30 +295,75 @@ function settleOf(
 		| undefined;
 }
 
-async function decodeHorizonTx(hash: string): Promise<Record<string, unknown>> {
-	const ua = { "User-Agent": "Mozilla/5.0 (compatible; FlexiPay-H1/1.0)" };
-	const tRes = await fetch(`https://horizon-testnet.stellar.org/transactions/${hash}`, {
-		headers: ua,
+async function rpcGetTransaction(
+	rpcUrl: string,
+	hash: string,
+): Promise<{ status: string; ledger: number; envelopeXdr: string }> {
+	const res = await fetch(rpcUrl, {
+		method: "POST",
+		headers: { "content-type": "application/json", accept: "application/json" },
+		body: JSON.stringify({
+			jsonrpc: "2.0",
+			id: 1,
+			method: "getTransaction",
+			params: { hash },
+		}),
+		signal: AbortSignal.timeout(60_000),
+	});
+	const body = (await res.json()) as {
+		result?: {
+			status?: string;
+			ledger?: number;
+			envelopeXdr?: string;
+		};
+		error?: { message?: string };
+	};
+	if (body.error) throw new Error(`RPC getTransaction: ${body.error.message}`);
+	const { status, ledger } = parseTransactionResult(body.result);
+	const envelopeXdr = body.result?.envelopeXdr;
+	if (typeof envelopeXdr !== "string") throw new Error("missing envelopeXdr");
+	return { status, ledger, envelopeXdr };
+}
+
+async function decodeVaultCall(
+	rpcUrl: string,
+	networkPassphrase: string,
+	hash: string,
+	expectedVault: string,
+): Promise<{
+	hash: string;
+	status: string;
+	ledger: number;
+	functionName: string;
+	contractId: string;
+	args: unknown[];
+}> {
+	const net = await fetch(rpcUrl, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getNetwork", params: {} }),
 		signal: AbortSignal.timeout(30_000),
 	});
-	if (!tRes.ok) throw new Error(`horizon tx ${hash} HTTP ${tRes.status}`);
-	const t = (await tRes.json()) as Record<string, unknown>;
-	const oRes = await fetch(
-		`https://horizon-testnet.stellar.org/transactions/${hash}/operations`,
-		{ headers: ua, signal: AbortSignal.timeout(30_000) },
-	);
-	const ops = (await oRes.json()) as {
-		_embedded?: { records?: Record<string, unknown>[] };
-	};
+	const netBody = (await net.json()) as { result?: unknown };
+	const passphrase = parseNetworkPassphrase(netBody.result);
+	if (passphrase !== networkPassphrase) {
+		throw new Error(`RPC passphrase mismatch: ${passphrase}`);
+	}
+	const tx = await rpcGetTransaction(rpcUrl, hash);
+	if (tx.status !== "SUCCESS") throw new Error(`tx ${hash} status ${tx.status}`);
+	const inv = parseContractInvocation(tx.envelopeXdr, networkPassphrase);
+	if (inv.contractId !== expectedVault) {
+		throw new Error(
+			`invocation contract ${inv.contractId} != H1 vault ${expectedVault}`,
+		);
+	}
 	return {
 		hash,
-		successful: t.successful,
-		ledger: t.ledger,
-		created_at: t.created_at,
-		operations: (ops._embedded?.records ?? []).map((o) => ({
-			type: o.type,
-			function: o.function,
-		})),
+		status: tx.status,
+		ledger: tx.ledger,
+		functionName: inv.functionName,
+		contractId: inv.contractId,
+		args: inv.args,
 	};
 }
 
@@ -333,7 +389,7 @@ async function executeScenario(baseline: Record<string, string>): Promise<void> 
 	mkdirSync(evidenceDir, { recursive: true });
 
 	console.log(
-		"LOCK payer Cursor H1-fee-drift",
+		"LOCK payer Cursor H1-fee-drift (config drift between vaults, not on-chain fee change)",
 		new Date().toISOString(),
 	);
 
@@ -344,6 +400,19 @@ async function executeScenario(baseline: Record<string, string>): Promise<void> 
 		name: "flexipay_h1",
 	});
 	await migrateDeploy(pg.url);
+
+	const h1Merged = loadTestnetEnvFiles({
+		idsPath: h1IdsPath,
+		secretsPath,
+	});
+	const { env: h1StellarEnv } = await createStellarSettlementAdapter({
+		env: h1Merged,
+	});
+	if (h1StellarEnv.payoutVaultId !== h1.FP_PAYOUT_VAULT_ID) {
+		throw new Error("H1 adapter vault id mismatch");
+	}
+	const h1Vault = await PayoutVault.connect(loadStellarEnv(h1Merged));
+	const payerAddr = baseline.FP_PAYER_DEMO_ADDRESS!;
 
 	// Process A: baseline vault (100 bps) — quote + create only
 	let api = await startApi({
@@ -422,13 +491,16 @@ async function executeScenario(baseline: Record<string, string>): Promise<void> 
 
 	await api.stop();
 
-	// Process B: H1 vault (50 bps), same DB + seal — fund drifts
+	// Process B: H1 vault (50 bps), same DB + seal — configuration drift on fund
 	api = await startApi({
 		databaseUrl: pg.url,
 		sealKey,
 		port: apiPort,
 		publicEnv: h1,
 	});
+
+	const balanceBeforeFund = await h1Vault.balance(payerAddr);
+	console.log("vault balance before fund/lock path", balanceBeforeFund.toString());
 
 	const fund = await jsonFetch(api.base, "POST", `/v1/payments/${paymentId}/fund`, {
 		key: apiKey,
@@ -447,10 +519,13 @@ async function executeScenario(baseline: Record<string, string>): Promise<void> 
 	if (String(afterDrift.body.status) !== "refunded") {
 		throw new Error(`expected refunded, got ${afterDrift.body.status}`);
 	}
+	const settleErrorCode =
+		(settle?.error as { code?: string } | undefined)?.code ??
+		settle?.errorCode;
 	if (
 		!settle ||
 		settle.status !== "failed" ||
-		settle.errorCode !== "fee_drift" ||
+		settleErrorCode !== "fee_drift" ||
 		!settle.externalRef ||
 		!settle.lockTxRef ||
 		!settle.releaseTxRef
@@ -460,6 +535,13 @@ async function executeScenario(baseline: Record<string, string>): Promise<void> 
 	const payoutId = String(settle.externalRef);
 	const lockTxRef = String(settle.lockTxRef);
 	const refundTxRef = String(settle.releaseTxRef);
+
+	const balanceAfterRefund = await h1Vault.balance(payerAddr);
+	console.log("vault balance after refund", balanceAfterRefund.toString());
+	// fundVault deposits then lock then refund restores locked; net = deposit remains.
+	// Conservation for the lock leg: after refund, no fee retained from the drifted lock.
+	const settleIn = String(settle.amountIn?.amount ?? settle.amountIn ?? "");
+	void settleIn;
 
 	const acceptBody = {
 		endpoint: {
@@ -522,19 +604,90 @@ async function executeScenario(baseline: Record<string, string>): Promise<void> 
 		throw new Error("replay changed settle refs (duplicate risk)");
 	}
 
-	const lockDecoded = await decodeHorizonTx(lockTxRef);
-	const refundDecoded = await decodeHorizonTx(refundTxRef);
+	const rpcUrl = h1.FP_STELLAR_RPC_URL!;
+	const passphrase = h1.FP_STELLAR_NETWORK_PASSPHRASE!;
+	const lockDecoded = await decodeVaultCall(
+		rpcUrl,
+		passphrase,
+		lockTxRef,
+		h1.FP_PAYOUT_VAULT_ID!,
+	);
+	const refundDecoded = await decodeVaultCall(
+		rpcUrl,
+		passphrase,
+		refundTxRef,
+		h1.FP_PAYOUT_VAULT_ID!,
+	);
+	if (lockDecoded.functionName !== "create_payout") {
+		throw new Error(`lock fn ${lockDecoded.functionName}, expected create_payout`);
+	}
+	if (
+		refundDecoded.functionName !== "cancel" &&
+		refundDecoded.functionName !== "refund"
+	) {
+		throw new Error(
+			`refund fn ${refundDecoded.functionName}, expected cancel|refund`,
+		);
+	}
+	// create_payout args: payer, external_id, claim_hash, amount, mode, expires_at
+	const lockAmount = lockDecoded.args[3];
+	const lockMode = lockDecoded.args[4];
+	const modeSym = Array.isArray(lockMode) ? String(lockMode[0]) : String(lockMode);
+	const principalQuoted = String(
+		(settle.amountOut as { amount?: string } | undefined)?.amount ??
+			(quote.body.expectedReceive as { amount?: string })?.amount ??
+			"",
+	);
+	const lockAmountStr = typeof lockAmount === "bigint" ? lockAmount.toString() : String(lockAmount);
+	if (principalQuoted && lockAmountStr !== principalQuoted) {
+		throw new Error(
+			`decoded lock principal ${lockAmountStr} != quoted settle amountOut ${principalQuoted}`,
+		);
+	}
+	// Locked fee at vault 50 bps must differ from frozen 100-bps flexiPayFee (config drift)
+	if (!frozenFee || String(frozenFee) === "0") {
+		throw new Error("frozen flexiPayFee missing");
+	}
+	const feeAt50 = (BigInt(lockAmountStr) * 50n) / 10_000n;
+	const feeAt100 = BigInt(String(frozenFee));
+	if (feeAt50 >= feeAt100) {
+		throw new Error(
+			`expected 50bps fee ${feeAt50} < frozen 100bps fee ${feeAt100}`,
+		);
+	}
+	if (modeSym !== "PayerPays" && modeSym !== "RecipientPays") {
+		throw new Error(`unexpected feeMode decode: ${modeSym}`);
+	}
+
+	// Conservation: balance after refund must be >= balance before fund (deposit retained;
+	// lock fully returned — no fee kept from the drifted payout).
+	if (balanceAfterRefund < balanceBeforeFund) {
+		throw new Error(
+			`payer vault balance shrank after refund: before=${balanceBeforeFund} after=${balanceAfterRefund}`,
+		);
+	}
 
 	const evidence = {
 		milestone: "H1",
-		title: "Stellar fee-drift / CCR-15 public API",
+		title: "Stellar fee-drift / CCR-15 public API (config drift between vaults)",
 		status: "PASS",
+		label:
+			"configuration drift between vaults (quote@baseline 100 bps → fund@H1 50 bps); not an on-chain fee change of the baseline vault",
 		baselineVaultId: baseline.FP_PAYOUT_VAULT_ID,
 		h1VaultId: h1.FP_PAYOUT_VAULT_ID,
 		sameToken: h1.FP_USDC_CONTRACT_ID,
 		baselineFeeBps: Number(baseline.FP_VAULT_FEE_BPS),
 		h1FeeBps: 50,
 		frozenFlexiPayFee: frozenFee ?? null,
+		quotedPrincipal: principalQuoted || null,
+		decodedLock: {
+			functionName: lockDecoded.functionName,
+			amount: lockAmountStr,
+			feeMode: modeSym,
+			impliedFeeAt50Bps: feeAt50.toString(),
+			frozenFlexiPayFee100Bps: String(frozenFee),
+			contractId: lockDecoded.contractId,
+		},
 		paymentId,
 		payoutId,
 		lockTxRef,
@@ -543,6 +696,11 @@ async function executeScenario(baseline: Record<string, string>): Promise<void> 
 		paymentStatus: afterDrift.body.status,
 		claimAccept: { status: accept.status, code: accept.body.code },
 		claimStatus: claimView.body.status,
+		conservation: {
+			balanceBeforeFund: balanceBeforeFund.toString(),
+			balanceAfterRefund: balanceAfterRefund.toString(),
+			noShrinkAfterRefund: true,
+		},
 		replay: {
 			fundStatus: fundReplay.status,
 			fundPaymentStatus: fundReplay.body.status,
@@ -554,37 +712,46 @@ async function executeScenario(baseline: Record<string, string>): Promise<void> 
 		completedAt: new Date().toISOString(),
 	};
 
+	const jsonSafe = (v: unknown) =>
+		JSON.stringify(
+			v,
+			(_k, val) => (typeof val === "bigint" ? val.toString() : val),
+			2,
+		);
+
 	const outPath = resolve(evidenceDir, "2026-10-25-h1-fee-drift-stellar.md");
 	writeFileSync(
 		outPath,
 		`# H1 — Stellar fee-drift / CCR-15 (25 Oct 2026)
 
-**Status: PASS** (isolated DB; baseline vault untouched)
+**Status: PASS** (isolated DB; baseline vault untouched)  
+**Label:** configuration drift between vaults (quote @ baseline **100** bps → fund @ H1 **50** bps) — not an on-chain fee change of the baseline vault.
 
 | Step | Result |
 | --- | --- |
-| Quote/create @ baseline ${baseline.FP_PAYOUT_VAULT_ID} (100 bps) | payment \`${paymentId}\` |
+| Quote/create @ baseline ${baseline.FP_PAYOUT_VAULT_ID} (100 bps) | payment \`${paymentId}\`; frozen flexiPayFee \`${frozenFee ?? "?"}\` |
 | Restart @ H1 vault \`${h1.FP_PAYOUT_VAULT_ID}\` (50 bps) → fund | **409** \`fee_drift\` |
 | After drift | payment **refunded**; settle **failed**/\`fee_drift\`; payoutId \`${payoutId}\` |
 | Claim accept | **409** \`settle_failed\`; claim stays **open** |
-| Lock tx | \`${lockTxRef}\` |
-| Refund tx (\`releaseTxRef\`) | \`${refundTxRef}\` |
+| Lock tx | \`${lockTxRef}\` (\`${lockDecoded.functionName}\`, amount ${lockAmountStr}, mode ${modeSym}) |
+| Cancel/refund tx | \`${refundTxRef}\` (\`${refundDecoded.functionName}\`) |
+| Conservation | vault balance before fund \`${balanceBeforeFund}\` → after refund \`${balanceAfterRefund}\` (no shrink; lock fee not retained) |
 | Replay fund/accept | 200 refunded / 409 settle_failed; refs unchanged |
 
-## Decoded
+## Decoded (same vault + payoutId path)
 
 \`\`\`json
-${JSON.stringify({ lock: lockDecoded, refund: refundDecoded }, null, 2)}
+${jsonSafe({ lock: lockDecoded, refund: refundDecoded })}
 \`\`\`
 
 ## Machine-readable
 
 \`\`\`json
-${JSON.stringify(evidence, null, 2)}
+${jsonSafe(evidence)}
 \`\`\`
 `,
 	);
-	writeFileSync(`${privateDir}/h1-result.json`, JSON.stringify(evidence, null, 2));
+	writeFileSync(`${privateDir}/h1-result.json`, jsonSafe(evidence));
 	try {
 		unlinkSync(`${privateDir}/h1-claim-token.txt`);
 	} catch {

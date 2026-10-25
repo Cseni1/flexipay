@@ -1,13 +1,11 @@
-# H1 — Stellar fee-drift reproduction (awaiting Claude approval)
+# H1 — Stellar fee-drift reproduction (**Claude approved** 25 Oct 2026)
 
-**Status: NOT STARTED — do not execute until Claude approves this exact plan.**  
+**Status: APPROVED — configuration drift between vaults (100-bps baseline quote → 50-bps isolated same-token vault), not an on-chain fee mutation of the baseline vault.**  
 **Driver (gated):** `scripts/demo/h1-fee-drift-stellar.ts`  
 **Mock reference (already PASS):** `scripts/demo/evidence/2026-10-23-ccr15-recovery-c859c92.md` + `apps/api/test/ccr15-public-api.test.ts`  
 **Baseline vault:** leave `FP_PAYOUT_VAULT_ID=CCG232…` / fee **100** untouched in `testnet-ids.env`.
 
-## Exact ask for Claude
-
-Approve (or amend) this public-API Stellar reproduction of CCR-15:
+## Exact reproduction (approved)
 
 1. Deploy an **isolated same-token** vault (GBBO6N USDC SAC = baseline token), `fee_bps=50`, distinct contract id / alias `fp-payout-vault-h1`. Write public ids only to `scripts/testnet/testnet-ids-h1-vault.env` (never overwrite baseline ids).
 2. Isolated embedded Postgres + dedicated Demo Platform org/key (not the shared demo DB).
