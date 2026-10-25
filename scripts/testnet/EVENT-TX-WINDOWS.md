@@ -33,3 +33,7 @@ Package path completed under LOCK rules (payer then recipient A). Evidence: `scr
 ## Done (Cursor, 25 Oct ~11:37–11:38Z) — H2
 
 LOCK payer+recipientA for H2 seal-key negative on **baseline** vault → UNLOCK. Evidence: `scripts/demo/evidence/2026-10-25-h2-seal-key-negative.md`.
+
+## Done (Cursor, 25 Oct ~12:00–12:02Z) — H1
+
+LOCK **payer** Cursor H1-fee-drift (config drift between vaults on isolated H1 vault) → fund/lock/cancel → **UNLOCK payer** (released ~12:02Z). Recipient A not held. Evidence: `scripts/demo/evidence/2026-10-25-h1-fee-drift-stellar.md`. Freebuff may use payer freely; no H3/DF7 work from this lane.
