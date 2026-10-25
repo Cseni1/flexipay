@@ -8,6 +8,7 @@
     "./contract": "./contract.ts",
     "./claim-contract": "./claim-contract.ts",
     "./claim-endpoint": "./claim-endpoint.ts",
+    "./anchor-amount": "./anchor-amount.ts",
     "./passkey-config": "./passkey-config.ts",
     "./passkey-auth": "./passkey-auth.ts",
     "./styles.css": "./styles.css"

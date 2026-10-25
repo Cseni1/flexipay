@@ -1,3 +1,7 @@
+import {
+	anchorAmountProblemCopy,
+	anchorCashOutSupport,
+} from "@flexipay/web-lib/anchor-amount"
 import { type ClaimView } from "@flexipay/web-lib/claim-contract"
 import { buildClaimEndpoint } from "@flexipay/web-lib/claim-endpoint"
 import { isPasskeyWalletConfigured } from "@flexipay/web-lib/passkey-config"
@@ -9,6 +13,7 @@ import {
 	describeClaimError,
 	getClaim,
 } from "../api/claimClient"
+import { AnchorClaimSection } from "../components/claim/AnchorClaimSection"
 import { PasskeyClaimSection } from "../components/claim/PasskeyClaimSection"
 import {
 	Button,
@@ -193,6 +198,7 @@ export default function ClaimPage() {
 	const [reloadKey, setReloadKey] = useState(0)
 	const [selectedType, setSelectedType] = useState<DestinationType | "">("")
 	const [passkeySelected, setPasskeySelected] = useState(false)
+	const [anchorSelected, setAnchorSelected] = useState(false)
 	const [detail, setDetail] = useState("")
 	const [accepting, setAccepting] = useState(false)
 	const [acceptError, setAcceptError] = useState<string | null>(null)
@@ -292,6 +298,7 @@ export default function ClaimPage() {
 	const updateSelection = (type: DestinationType) => {
 		if (!supportsClaimAccept(type)) return
 		setPasskeySelected(false)
+		setAnchorSelected(false)
 		setSelectedType(type)
 		setDetail("")
 		setAcceptError(null)
@@ -300,7 +307,18 @@ export default function ClaimPage() {
 
 	const selectPasskey = () => {
 		if (expired || accepting || !isPasskeyWalletConfigured) return
+		setAnchorSelected(false)
 		setPasskeySelected(true)
+		setSelectedType("")
+		setDetail("")
+		setAcceptError(null)
+		idempotencyKey.current = null
+	}
+
+	const selectAnchor = () => {
+		if (expired || accepting || !anchorCashOut?.available) return
+		setPasskeySelected(false)
+		setAnchorSelected(true)
 		setSelectedType("")
 		setDetail("")
 		setAcceptError(null)
@@ -309,6 +327,7 @@ export default function ClaimPage() {
 
 	const useCryptoWallet = () => {
 		setPasskeySelected(false)
+		setAnchorSelected(false)
 		setSelectedType("")
 		setDetail("")
 		setAcceptError(null)
@@ -324,6 +343,12 @@ export default function ClaimPage() {
 	const paymentAcceptable = claim
 		? PAYMENT_ACCEPTABLE_STATUSES.has(claim.paymentStatus)
 		: false
+	// CCR-22: the withdraw body omits `amount`, so the API uses the claim settle net. The
+	// indicative quote is limited to 1–10 USDC of the claim amount and is skipped otherwise;
+	// the gross claim amount is never substituted for the net.
+	const anchorCashOut = claim
+		? anchorCashOutSupport(claim.amount.amount, claim.amount.currency)
+		: null
 	const hasSupportedType =
 		claim?.allowedDestinationTypes.some(supportsClaimAccept) ?? false
 	const canAccept =
@@ -538,23 +563,29 @@ export default function ClaimPage() {
 											</span>
 										</label>
 										<label
-											className="option-card option-card--unavailable"
+											className={`option-card${anchorCashOut?.available ? "" : " option-card--unavailable"}`}
 											data-testid="claim-anchor-option"
 										>
 											<input
 												type="radio"
 												name="receive"
 												value="anchor"
-												disabled
-												checked={false}
-												readOnly
+												checked={anchorSelected}
+												disabled={
+													expired || accepting || !anchorCashOut?.available
+												}
+												onChange={selectAnchor}
 											/>
 											<span className="option-card__body">
 												<span className="option-card__title">
 													Cash out to bank (reference anchor)
 												</span>
 												<span className="option-card__detail">
-													Not available in this build.
+													{anchorCashOut?.available
+														? "Reference anchor on testnet, in the anchor's sandbox. Starts after the vault release to a classic G… wallet."
+														: anchorCashOut
+															? anchorAmountProblemCopy(anchorCashOut.problem)
+															: "Not available for this claim."}
 												</span>
 											</span>
 										</label>
@@ -562,8 +593,8 @@ export default function ClaimPage() {
 									<p className="form-note">
 										A crypto wallet address works today. The passkey wallet is
 										created on testnet and signs the release with your
-										fingerprint or face. The reference anchor cash-out is not
-										available in this build.
+										fingerprint or face. The reference anchor cash-out is a
+										testnet demo for 1 to 10 USDC, after the vault release.
 									</p>
 									{passkeySelected ? (
 										<PasskeyClaimSection
@@ -575,8 +606,19 @@ export default function ClaimPage() {
 											)}
 											onUseCryptoWallet={useCryptoWallet}
 										/>
+									) : null}{" "}
+									{anchorSelected && anchorCashOut?.available ? (
+										<AnchorClaimSection
+											key={`anchor-${claimToken}`}
+											token={claimToken ?? ""}
+											quoteAmount={anchorCashOut.quoteAmount}
+											claim={claim}
+											claimExpired={expired}
+											onUseCryptoWallet={useCryptoWallet}
+										/>
 									) : null}
 									{!passkeySelected &&
+									!anchorSelected &&
 									claim.allowedDestinationTypes.some(
 										(type) => !supportsClaimAccept(type),
 									) ? (
@@ -586,7 +628,7 @@ export default function ClaimPage() {
 											are not selectable.
 										</Notice>
 									) : null}
-									{!passkeySelected && selectedType ? (
+									{!passkeySelected && !anchorSelected && selectedType ? (
 										<div className="claim-detail">
 											<TextField
 												id="claim-detail"
@@ -604,22 +646,22 @@ export default function ClaimPage() {
 											/>
 										</div>
 									) : null}
-									{!passkeySelected && expired ? (
+									{!passkeySelected && !anchorSelected && expired ? (
 										<Notice tone="warning">
 											This claim link has expired. No release was made by this
 											page.
 										</Notice>
 									) : null}
-									{!passkeySelected && !paymentAcceptable ? (
+									{!passkeySelected && !anchorSelected && !paymentAcceptable ? (
 										<Notice tone="warning">{notReadyMessage(claim)}</Notice>
 									) : null}
-									{!passkeySelected && acceptError ? (
+									{!passkeySelected && !anchorSelected && acceptError ? (
 										<Notice tone="warning" data-testid="claim-accept-error">
 											{acceptError}
 										</Notice>
 									) : null}
-
-									{passkeySelected ? null : hasSupportedType ? (
+									{passkeySelected ||
+									anchorSelected ? null : hasSupportedType ? (
 										<>
 											<Button
 												onClick={() => void handleAccept()}
@@ -641,9 +683,39 @@ export default function ClaimPage() {
 									)}
 								</>
 							) : (
-								<Notice tone={closedClaimTone(claim)}>
-									{closedClaimMessage(claim)}
-								</Notice>
+								<>
+									<Notice tone={closedClaimTone(claim)}>
+										{closedClaimMessage(claim)}
+									</Notice>
+									{/* M1 anchor cash-out needs the vault release first, so it is reachable only
+									    after the claim is accepted to a classic G… account. Same panel, no
+									    new screen; the release and anchor statuses stay separate inside. */}
+									{claim.status === "accepted" && anchorCashOut?.available ? (
+										<div className="stack" data-testid="anchor-accepted-block">
+											<p className="option-card__title">
+												Cash out to bank (reference anchor)
+											</p>
+											<AnchorClaimSection
+												key={`anchor-accepted-${claimToken}`}
+												token={claimToken ?? ""}
+												quoteAmount={anchorCashOut.quoteAmount}
+												claim={claim}
+												claimExpired={expired}
+											/>
+										</div>
+									) : null}{" "}
+									{claim.status === "accepted" &&
+									anchorCashOut &&
+									!anchorCashOut.available ? (
+										<Notice
+											tone="info"
+											data-testid="anchor-accepted-unavailable"
+										>
+											Reference anchor cash-out unavailable:{" "}
+											{anchorAmountProblemCopy(anchorCashOut.problem)}
+										</Notice>
+									) : null}
+								</>
 							)}
 
 							{pollError ? <Notice tone="warning">{pollError}</Notice> : null}
