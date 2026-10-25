@@ -58,6 +58,7 @@ apps/api/src/generated/
 apps/api/.pgdata/
 apps/api/.pgdata-h2-seal/
 apps/api/.pgdata-h1-drift/
+apps/api/.pgdata-h1-drift-freebuff/
 
 # E1 event vault secrets overlay (never commit)
 scripts/testnet/.env.secrets-anchor-vault
