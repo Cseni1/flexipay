@@ -268,6 +268,10 @@ FP_DF7_ALLOW_NETWORK=1 FP_DF7_SUBMIT_PAYMENT=1 \
   FP_DF7_RECIPIENT_LOCK="LOCK recipient A <agent> DF7 <UTC>" \
   node scripts/demo/df7-anchor-lifecycle.ts --pay --id <sep24-id>
 FP_DF7_ALLOW_NETWORK=1 node scripts/demo/df7-anchor-lifecycle.ts --reconcile
+FP_DF7_ALLOW_NETWORK=1 FP_DF7_SUBMIT_PAYMENT=1 \
+  FP_DF7_RECIPIENT_LOCK="LOCK recipient A <agent> DF7 <UTC>" \
+  FP_DF7_REBROADCAST_CONFIRM=<retained-hash> \
+  node scripts/demo/df7-anchor-lifecycle.ts --rebroadcast
 FP_DF7_ALLOW_NETWORK=1 node scripts/demo/df7-anchor-lifecycle.ts \
   --poll --id <sep24-id> --anchor-tx-id <sep24-id> --vault-release-hash <64-hex>
 ```
@@ -275,19 +279,32 @@ FP_DF7_ALLOW_NETWORK=1 node scripts/demo/df7-anchor-lifecycle.ts \
 `--start-withdraw` writes the functional hosted URL to a `0600` private file and
 prints only the sanitised URL. The human completes the hosted withdrawal in a
 browser. `--pay` is the classic-payment stage: it reuses the adapter's
-`submitClassicPaymentWithMemo`, validates the anchor's pending record (status,
-asset, amount, destination, memo), requires all three live gates, and saves the
-returned hash to a `0600` state file before any polling. It refuses when
-retained state exists. If submit outcome is uncertain, `--reconcile` performs a
-bounded, read-only Horizon scan of the recipient's recent memo-carrying
-transactions; it never resubmits and never recovers a hash from a mismatched
-payment.
+`buildAndSignClassicPaymentWithMemo` and `submitSignedClassicPayment`, validates
+the anchor's pending record (status, asset, amount, destination, memo), and
+requires all three live gates. It first acquires an exclusive operation lock,
+then re-reads state and signs. Before submission it serialises the signed
+envelope, proves it restores to the same hash, and publishes a new `0600` state
+(create-if-absent) with the hash, XDR, network, finite bounds of at least 60s
+and payment expectation. A persistence failure aborts without submitting. It
+refuses when retained state or another process's lock exists; a stale lock is
+never broken automatically.
+
+`--reconcile` looks up only the retained hash on Horizon and verifies the
+successful payment operation's source, destination, asset, amount and memo. A
+found-but-failed transaction is `FAILED`. `NOT_FOUND` never resends. Local time
+is not expiry evidence: `EXPIRED` requires the latest ledger close to be more
+than 60s past `maxTime`, the hash to be `NOT_FOUND`, and the source sequence to
+be below the envelope sequence; otherwise the result is `UNRESOLVED`.
+`--rebroadcast` requires the operator to echo the retained hash and submits the
+identical stored envelope only while it is inside its original time bounds.
 
 Offline classification is available with `--classify`. `SUCCESS` requires
-`completed`, a passed amount/destination/memo assertion, and all three refs
-(anchor transaction id, anchor payment hash, vault release hash) verified at the
-sources that produced them; the ids are not required to have different string
-values. A completed run with missing or unverified evidence is `NOT_VERIFIED`. A
-confirmed payment mismatch is `FAILURE`. `PENDING` covers non-terminal statuses
-and bounded timeouts. `--poll` recomputes completion against the retained
-payment expectation and the anchor's published `stellar_transaction_id`.
+`completed`, an anchor `stellar_transaction_id` matching the retained payment
+hash, a passed amount/destination/memo assertion, and all three refs (anchor
+transaction id, anchor payment hash, vault release hash) verified at the sources
+that produced them; the ids are not required to have different string values. A
+completed run with missing or unverified evidence is `NOT_VERIFIED`. A payment
+confirmed while the anchor is still pending is `PENDING`. A confirmed payment
+mismatch is `FAILURE`. `PENDING` covers non-terminal statuses and bounded
+timeouts. `--poll` recomputes completion against the retained payment
+expectation and the anchor's published `stellar_transaction_id`.

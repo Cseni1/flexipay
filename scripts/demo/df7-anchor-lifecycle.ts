@@ -7,10 +7,10 @@
  * - reports the lifecycle stages and classifies success/failure/pending;
  * - can perform read-only anchor readiness/polling and start a hosted session
  *   behind network gates;
- * - can submit the classic memo payment exactly once behind network + submit +
- *   recipient-window gates, retaining the hash before any polling;
- * - reconciles an uncertain submission against bounded Horizon reads without a
- *   second submit.
+ * - can build/sign one classic memo payment, atomically persist its exact hash,
+ *   XDR, network, time bounds and expectation, then submit it behind network +
+ *   submit + recipient-window gates;
+ * - reconciles only the retained hash against Horizon without a second submit;
  *
  * The full hosted URL is for browser navigation only. It is written to a 0600
  * private file; logs and evidence receive the sanitised origin+pathname.
@@ -23,13 +23,22 @@ import { relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import {
 	AnchorClientError,
+	buildAndSignClassicPaymentWithMemo,
 	parseEnvFile,
-	submitClassicPaymentWithMemo,
+	submitSignedClassicPayment,
 	type AnchorPaymentExpectation,
 } from "../../packages/adapter-stellar/src/index.ts"
 import {
 	DF7_AMOUNT,
+	DF7_MIN_TIME_BOUNDS_SECONDS,
+	acquireDf7Lock,
+	classifyStoredPaymentExpiry,
 	checkDf7PaymentGates,
+	checkDf7RebroadcastGates,
+	reconcileStoredHash,
+	restoreSignedPayment,
+	runDf7PaymentAttempt,
+	updateDf7PaymentState,
 	checkDf7Prerequisites,
 	classifyDf7Lifecycle,
 	createDf7AnchorClient,
@@ -38,8 +47,6 @@ import {
 	parseDf7Amount,
 	planDf7Stages,
 	readDf7PaymentState,
-	reconcileAnchorPayment,
-	saveDf7PaymentState,
 	saveHostedUrlForBrowser,
 	validateAnchorPayment,
 	verifyAnchorCompletion,
@@ -239,6 +246,40 @@ function requirePaymentGate(): string {
 	return gates.lock!
 }
 
+const DF7_TIME_BOUNDS_SECONDS = DF7_MIN_TIME_BOUNDS_SECONDS * 2
+
+/**
+ * Holds the CLI lock across a read-only/rebroadcast mode. `process.exit` skips
+ * `finally`, so cleanup is attached to exit/signals; release still verifies the
+ * token and never removes another process's lock.
+ */
+function holdDf7Lock(mode: "reconcile" | "rebroadcast"): void {
+	const acquired = acquireDf7Lock({ mode })
+	if (!acquired.ok) {
+		line("blocked", acquired.reason)
+		line("lock", acquired.path)
+		if (acquired.holder) {
+			line(
+				"holder",
+				`pid=${acquired.holder.pid ?? "?"} mode=${acquired.holder.mode ?? "?"} acquired=${acquired.holder.acquiredAt ?? "?"}`,
+			)
+		}
+		line("note", "stale locks are never broken automatically")
+		line("result", "BLOCKED")
+		process.exit(2)
+	}
+	const release = (): boolean => acquired.lock.release()
+	process.once("exit", release)
+	process.once("SIGINT", () => {
+		release()
+		process.exit(130)
+	})
+	process.once("SIGTERM", () => {
+		release()
+		process.exit(143)
+	})
+}
+
 const HORIZON =
 	process.env.FP_STELLAR_HORIZON_URL?.trim() ||
 	"https://horizon-testnet.stellar.org"
@@ -263,68 +304,98 @@ function embeddedRecords(body: Record<string, unknown>): unknown[] {
 	return embedded.records
 }
 
+function operationRows(raw: unknown): HorizonPaymentOperation[] {
+	if (typeof raw !== "object" || raw === null) return []
+	const value = raw as Record<string, unknown>
+	return [
+		{
+			type: typeof value.type === "string" ? value.type : undefined,
+			source_account:
+				typeof value.source_account === "string"
+					? value.source_account
+					: undefined,
+			destination:
+				typeof value.destination === "string" ? value.destination : undefined,
+			asset_type:
+				typeof value.asset_type === "string" ? value.asset_type : undefined,
+			asset_code:
+				typeof value.asset_code === "string" ? value.asset_code : undefined,
+			asset_issuer:
+				typeof value.asset_issuer === "string" ? value.asset_issuer : undefined,
+			amount: typeof value.amount === "string" ? value.amount : undefined,
+		},
+	]
+}
+
 /**
- * Bounded reconciliation read: the latest `limit` transactions for the recipient,
- * with operations fetched only for memo-carrying records (at most 5). Read-only;
- * no signature and no submit.
+ * Look up the exact hash retained before submission. A 404 is returned as
+ * undefined; other Horizon faults throw. Read-only; no submit is possible here.
  */
-async function fetchRecentTransactions(
-	account: string,
-	memo: string,
-	memoType: string,
-	limit = 20,
-): Promise<HorizonTransactionRecord[]> {
+async function fetchTransactionByHash(
+	hash: string,
+): Promise<HorizonTransactionRecord | undefined> {
 	const base = HORIZON.replace(/\/+$/, "")
-	const list = await horizonJson(
-		`${base}/accounts/${encodeURIComponent(account)}/transactions?order=desc&limit=${limit}`,
-	)
-	const rows: HorizonTransactionRecord[] = []
-	let opFetches = 0
-	for (const raw of embeddedRecords(list).slice(0, limit)) {
-		if (typeof raw !== "object" || raw === null) continue
-		const tx = raw as Record<string, unknown>
-		const row: HorizonTransactionRecord = {
-			hash: typeof tx.hash === "string" ? tx.hash : undefined,
-			successful:
-				typeof tx.successful === "boolean" ? tx.successful : undefined,
-			memo: typeof tx.memo === "string" ? tx.memo : undefined,
-			memo_type: typeof tx.memo_type === "string" ? tx.memo_type : undefined,
-			created_at: typeof tx.created_at === "string" ? tx.created_at : undefined,
-		}
-		const candidate =
-			row.hash &&
-			row.memo === memo &&
-			(row.memo_type ?? "text").toLowerCase() === memoType
-		if (candidate && opFetches < 5) {
-			opFetches += 1
-			const ops = await horizonJson(
-				`${base}/transactions/${row.hash}/operations?order=asc&limit=20`,
-			)
-			row.operations = embeddedRecords(ops).flatMap((op) => {
-				if (typeof op !== "object" || op === null) return []
-				const value = op as Record<string, unknown>
-				const out: HorizonPaymentOperation = {
-					type: typeof value.type === "string" ? value.type : undefined,
-					destination:
-						typeof value.destination === "string"
-							? value.destination
-							: undefined,
-					asset_type:
-						typeof value.asset_type === "string" ? value.asset_type : undefined,
-					asset_code:
-						typeof value.asset_code === "string" ? value.asset_code : undefined,
-					asset_issuer:
-						typeof value.asset_issuer === "string"
-							? value.asset_issuer
-							: undefined,
-					amount: typeof value.amount === "string" ? value.amount : undefined,
-				}
-				return [out]
-			})
-		}
-		rows.push(row)
+	const res = await fetch(`${base}/transactions/${encodeURIComponent(hash)}`, {
+		headers: { Accept: "application/json" },
+		signal: AbortSignal.timeout(15_000),
+	})
+	if (res.status === 404) return undefined
+	const body = (await res.json().catch(() => ({}))) as Record<string, unknown>
+	if (!res.ok) {
+		throw new Error(`Horizon ${res.status} for /transactions/{hash}`)
 	}
-	return rows
+	if (body.hash !== hash) {
+		throw new Error("Horizon lookup returned a different transaction hash")
+	}
+	const row: HorizonTransactionRecord = {
+		hash,
+		source_account:
+			typeof body.source_account === "string" ? body.source_account : undefined,
+		successful:
+			typeof body.successful === "boolean" ? body.successful : undefined,
+		memo: typeof body.memo === "string" ? body.memo : undefined,
+		memo_type: typeof body.memo_type === "string" ? body.memo_type : undefined,
+		created_at:
+			typeof body.created_at === "string" ? body.created_at : undefined,
+	}
+	if (row.successful) {
+		const ops = await horizonJson(
+			`${base}/transactions/${encodeURIComponent(hash)}/operations?order=asc&limit=20`,
+		)
+		row.operations = embeddedRecords(ops).flatMap(operationRows)
+	}
+	return row
+}
+
+/** Latest Horizon ledger close, used only as authoritative expiry evidence. */
+async function fetchLatestLedgerClose(): Promise<number> {
+	const base = HORIZON.replace(/\/+$/, "")
+	const body = await horizonJson(`${base}/ledgers?order=desc&limit=1`)
+	const first = embeddedRecords(body)[0]
+	if (typeof first !== "object" || first === null) {
+		throw new Error("Horizon returned no ledger")
+	}
+	const closedAt = (first as Record<string, unknown>).closed_at
+	if (typeof closedAt !== "string") {
+		throw new Error("Horizon ledger has no closed_at")
+	}
+	const millis = Date.parse(closedAt)
+	if (!Number.isFinite(millis)) {
+		throw new Error("Horizon ledger closed_at is invalid")
+	}
+	return Math.floor(millis / 1000)
+}
+
+async function fetchAccountSequence(account: string): Promise<string> {
+	const base = HORIZON.replace(/\/+$/, "")
+	const body = await horizonJson(
+		`${base}/accounts/${encodeURIComponent(account)}`,
+	)
+	const sequence = body.sequence
+	if (typeof sequence !== "string" || !/^\d+$/.test(sequence)) {
+		throw new Error("Horizon account has no decimal sequence")
+	}
+	return sequence
 }
 
 function proofFromArgs(): {
@@ -457,27 +528,6 @@ async function payMode(): Promise<never> {
 	const expectedAmount = option("amount")
 		? parseDf7Amount(option("amount")!)
 		: undefined
-	let existing: Df7PaymentState | undefined
-	try {
-		existing = readDf7PaymentState()
-	} catch (error) {
-		line("blocked", error instanceof Error ? error.message : String(error))
-		line("result", "BLOCKED")
-		process.exit(2)
-	}
-	if (existing) {
-		line(
-			"blocked",
-			`existing payment state ${df7PaymentStatePath()} status=${existing.status} hash=${existing.anchorPaymentHash ?? "(none)"}`,
-		)
-		line(
-			"note",
-			"run --reconcile to recover or confirm the hash; this script never submits a second payment",
-		)
-		line("result", "BLOCKED")
-		process.exit(2)
-	}
-
 	const { pre } = preflight(true)
 	printBlockers(pre.blockers)
 	if (pre.blockers.length > 0 || !pre.env || !pre.recipient) {
@@ -508,6 +558,8 @@ async function payMode(): Promise<never> {
 				},
 				proof: proofFromArgs(),
 				withdrawAssertion: "not-run",
+				anchorStellarTransactionId: option("anchor-stellar-tx"),
+				retainedPaymentHash: option("anchor-payment-hash"),
 			})
 			line("result", classification.outcome)
 			for (const reason of classification.reasons) line("reason", reason)
@@ -563,78 +615,82 @@ async function payMode(): Promise<never> {
 				: "anchor record published no asset; validated the requested session asset",
 		)
 
-		const startedAt = new Date().toISOString()
-		const intent: Df7PaymentState = {
-			version: 1,
-			anchorTransactionId: tx.id,
-			anchorPaymentHash: null,
-			status: "submitting",
-			expectation,
-			startedAt,
-			updatedAt: startedAt,
-		}
+		const eventEnv = pre.env
+		const recipient = pre.recipient
+		let attempt
 		try {
-			saveDf7PaymentState(intent)
-		} catch (error) {
-			line(
-				"error",
-				`could not retain pre-submit intent: ${error instanceof Error ? error.message : String(error)}`,
-			)
-			line("result", "BLOCKED")
-			line("next", "fix the private state path before submitting")
-			process.exit(2)
-		}
-		line("state", `intent saved ${df7PaymentStatePath()}`)
-
-		let submitted: { txHash: string }
-		try {
-			submitted = await submitClassicPaymentWithMemo({
-				source: pre.recipient,
+			attempt = await runDf7PaymentAttempt({
+				anchorTransactionId: tx.id,
 				expectation,
-				networkPassphrase: pre.env.networkPassphrase,
+				networkPassphrase: eventEnv.networkPassphrase,
+				sign: () =>
+					buildAndSignClassicPaymentWithMemo({
+						source: recipient,
+						expectation,
+						networkPassphrase: eventEnv.networkPassphrase,
+						horizonUrl: HORIZON,
+						timeoutSeconds: DF7_TIME_BOUNDS_SECONDS,
+					}),
+				submit: async (restored, persisted) => {
+					const submitted = await submitSignedClassicPayment({
+						horizonUrl: HORIZON,
+						signedTx: restored,
+						expectedTxHash: persisted.anchorPaymentHash,
+						destination: persisted.expectation.destination,
+						amount: persisted.expectation.amount,
+						asset: {
+							code: persisted.expectation.asset.code,
+							issuer: persisted.expectation.asset.issuer,
+							networkPassphrase: persisted.networkPassphrase,
+						},
+					})
+					return { txHash: submitted.txHash }
+				},
 			})
 		} catch (error) {
-			const uncertain: Df7PaymentState = {
-				...intent,
-				status: "uncertain",
-				updatedAt: new Date().toISOString(),
-			}
-			try {
-				saveDf7PaymentState(uncertain)
-			} catch {
-				/* the uncertain state must not hide the original error */
-			}
 			line(
 				"error",
-				`classic payment outcome uncertain: ${error instanceof Error ? error.message : String(error)}`,
+				`could not build/sign the classic payment: ${error instanceof Error ? error.message : String(error)}`,
 			)
+			line("result", "FAILURE")
+			line("next", "no payment was signed or submitted")
+			process.exit(1)
+		}
+
+		if (attempt.kind === "BLOCKED") {
+			for (const reason of attempt.reasons) line("blocked", reason)
+			if (attempt.path) line("lock", attempt.path)
+			if (attempt.holder) {
+				line(
+					"holder",
+					`pid=${attempt.holder.pid ?? "?"} mode=${attempt.holder.mode ?? "?"} acquired=${attempt.holder.acquiredAt ?? "?"}`,
+				)
+			}
+			line(
+				"note",
+				"a retained or concurrently held state is never overwritten; stale locks are never broken automatically",
+			)
+			line("result", "BLOCKED")
+			process.exit(2)
+		}
+		if (attempt.kind === "PENDING") {
+			line("error", attempt.reason)
+			line("payment", `retained hash ${attempt.state.anchorPaymentHash}`)
+			if (attempt.path) line("state", `${attempt.path} (0600)`)
 			line(
 				"uncertain",
-				`DO NOT RETRY. Run --reconcile for ${tx.id} before any new submit.`,
+				"DO NOT RETRY. Run --reconcile against the retained hash.",
 			)
 			line("result", "PENDING")
 			process.exit(2)
 		}
 
-		const submittedState: Df7PaymentState = {
-			...intent,
-			status: "submitted",
-			anchorPaymentHash: submitted.txHash,
-			updatedAt: new Date().toISOString(),
-		}
-		try {
-			saveDf7PaymentState(submittedState)
-		} catch (error) {
-			line(
-				"error",
-				`submitted hash ${submitted.txHash} could not be persisted: ${error instanceof Error ? error.message : String(error)}`,
-			)
-			line("result", "BLOCKED")
-			line("next", "do not poll or resubmit until the hash is retained")
-			process.exit(2)
-		}
-		line("payment", `hash ${submitted.txHash}`)
-		line("state", "hash retained before any polling")
+		line("payment", `hash ${attempt.state.anchorPaymentHash}`)
+		line(
+			"bounds",
+			`${new Date(attempt.state.timeBounds.minTime * 1000).toISOString()} .. ${new Date(attempt.state.timeBounds.maxTime * 1000).toISOString()}`,
+		)
+		line("state", `signed payment retained at ${attempt.path} (0600)`)
 		line("result", "PENDING")
 		line(
 			"next",
@@ -748,6 +804,8 @@ async function pollMode(): Promise<never> {
 			withdrawAssertion,
 			paymentMismatch,
 			paymentProblems,
+			anchorStellarTransactionId: tx.stellarTransactionId,
+			retainedPaymentHash: refs.anchorPaymentHash,
 		})
 		line("result", classification.outcome)
 		for (const reason of classification.reasons) line("reason", reason)
@@ -782,15 +840,10 @@ async function pollMode(): Promise<never> {
 
 async function reconcileMode(): Promise<never> {
 	requireNetworkGate()
-	const { publicEnv, pre } = preflight(false)
+	holdDf7Lock("reconcile")
+	const { pre } = preflight(false)
 	printBlockers(pre.blockers)
 	if (pre.blockers.length > 0 || !pre.env) {
-		line("result", "BLOCKED")
-		process.exit(2)
-	}
-	const address = publicEnv.FP_RECIPIENT_A_ADDRESS?.trim()
-	if (!address) {
-		line("blocked", "FP_RECIPIENT_A_ADDRESS is missing from the anchor ids")
 		line("result", "BLOCKED")
 		process.exit(2)
 	}
@@ -809,22 +862,31 @@ async function reconcileMode(): Promise<never> {
 	}
 	line(
 		"state",
-		`${df7PaymentStatePath()} status=${state.status} hash=${state.anchorPaymentHash ?? "(none)"}`,
+		`${df7PaymentStatePath()} status=${state.status} hash=${state.anchorPaymentHash}`,
 	)
 	line("horizon", HORIZON)
+	line("lookup", `stored hash ${state.anchorPaymentHash}`)
 	line(
 		"note",
 		"read-only reconciliation; no signature, no submit, no second payment",
 	)
 
-	const memoType = (state.expectation.memoType ?? "text").toLowerCase()
-	let transactions: HorizonTransactionRecord[]
+	let storedTx: ReturnType<typeof restoreSignedPayment>
 	try {
-		transactions = await fetchRecentTransactions(
-			address,
-			state.expectation.memo,
-			memoType,
+		storedTx = restoreSignedPayment(state)
+	} catch (error) {
+		line("blocked", error instanceof Error ? error.message : String(error))
+		line("result", "BLOCKED")
+		line(
+			"next",
+			"the retained envelope cannot be reconciled; inspect it manually",
 		)
+		process.exit(2)
+	}
+
+	let record: HorizonTransactionRecord | undefined
+	try {
+		record = await fetchTransactionByHash(state.anchorPaymentHash)
 	} catch (error) {
 		line("error", error instanceof Error ? error.message : String(error))
 		line("result", "NOT_VERIFIED")
@@ -832,35 +894,93 @@ async function reconcileMode(): Promise<never> {
 		process.exit(2)
 	}
 
-	const result = reconcileAnchorPayment({
+	if (!record) {
+		let ledgerCloseTime: number
+		let sourceSequence: string
+		try {
+			;[ledgerCloseTime, sourceSequence] = await Promise.all([
+				fetchLatestLedgerClose(),
+				fetchAccountSequence(storedTx.source),
+			])
+		} catch (error) {
+			line("error", error instanceof Error ? error.message : String(error))
+			line("result", "NOT_VERIFIED")
+			line(
+				"next",
+				"expiry evidence unavailable; remain blocked and do not claim expiry from local time",
+			)
+			process.exit(2)
+		}
+		const expiry = classifyStoredPaymentExpiry({
+			timeBounds: state.timeBounds,
+			ledgerCloseTime,
+			hashNotFound: true,
+			envelopeSequence: storedTx.sequence,
+			sourceSequence,
+		})
+		for (const reason of expiry.reasons) line("expiry", reason)
+		if (expiry.outcome === "EXPIRED") {
+			line(
+				"payment",
+				`retained hash ${state.anchorPaymentHash} is confirmed NOT_FOUND`,
+			)
+			line(
+				"expiry",
+				"EXPIRED with ledger, NOT_FOUND and sequence evidence; this does not authorise a replacement",
+			)
+			line("result", "EXPIRED")
+			line(
+				"next",
+				"state is retained; any replacement is an explicitly authorised operator action only",
+			)
+			process.exit(2)
+		}
+		line("result", "NOT_FOUND")
+		line(
+			"next",
+			"UNRESOLVED; remain blocked; local time cannot establish expiry and nothing is resent automatically",
+		)
+		process.exit(2)
+	}
+
+	const result = reconcileStoredHash({
+		storedHash: state.anchorPaymentHash,
+		sourceAccount: storedTx.source,
 		expectation: state.expectation,
-		transactions,
+		transaction: record,
 	})
-	line(
-		"scan",
-		`${result.inspected} recent transactions; operations read only for memo matches`,
-	)
 	for (const reason of result.reasons) line("reason", reason)
 
 	if (result.outcome === "RECONCILED") {
-		const hash = result.hashes[0]!
 		const now = new Date().toISOString()
 		try {
-			saveDf7PaymentState({
-				...state,
-				status: "reconciled",
-				anchorPaymentHash: hash,
-				reconciledAt: now,
-				updatedAt: now,
+			updateDf7PaymentState({
+				expected: {
+					status: state.status,
+					anchorPaymentHash: state.anchorPaymentHash,
+				},
+				next: {
+					...state,
+					status: "reconciled",
+					reconciledAt: now,
+					updatedAt: now,
+				},
 			})
 		} catch (error) {
-			line("error", error instanceof Error ? error.message : String(error))
+			line("blocked", error instanceof Error ? error.message : String(error))
 			line("result", "BLOCKED")
-			line("next", "do not poll or retry until the recovered hash is retained")
+			line(
+				"next",
+				"do not poll or retry until the confirmed state is reconciled",
+			)
 			process.exit(2)
 		}
-		line("payment", `hash ${hash} recovered from Horizon and retained`)
+		line("payment", `hash ${state.anchorPaymentHash} confirmed on Horizon`)
 		line("result", "RECONCILED")
+		line(
+			"lifecycle",
+			"PENDING: payment confirmation alone is not M1 PASS; SEP-24 completed and a matching stellar_transaction_id are still required",
+		)
 		line(
 			"next",
 			`run --poll --id ${state.anchorTransactionId}; do not submit again`,
@@ -871,13 +991,137 @@ async function reconcileMode(): Promise<never> {
 	line("result", result.outcome)
 	line(
 		"next",
-		result.outcome === "MISMATCH" || result.outcome === "AMBIGUOUS"
-			? "stop; preserve the mismatch; do not send another payment"
-			: "no payment submitted; re-check after the next ledger before any retry decision",
+		result.outcome === "MISMATCH" ||
+			result.outcome === "AMBIGUOUS" ||
+			result.outcome === "FAILED"
+			? "stop; preserve the evidence; do not send another payment"
+			: "no automatic resend; NOT_FOUND needs a human decision before any rebroadcast",
 	)
 	process.exit(
-		result.outcome === "MISMATCH" || result.outcome === "AMBIGUOUS" ? 1 : 2,
+		result.outcome === "MISMATCH" ||
+			result.outcome === "AMBIGUOUS" ||
+			result.outcome === "FAILED"
+			? 1
+			: 2,
 	)
+}
+
+async function rebroadcastMode(): Promise<never> {
+	requirePaymentGate()
+	holdDf7Lock("rebroadcast")
+	let state: Df7PaymentState | undefined
+	try {
+		state = readDf7PaymentState()
+	} catch (error) {
+		line("blocked", error instanceof Error ? error.message : String(error))
+		line("result", "BLOCKED")
+		process.exit(2)
+	}
+	if (!state) {
+		line("blocked", `no retained payment state at ${df7PaymentStatePath()}`)
+		line("result", "BLOCKED")
+		process.exit(2)
+	}
+	const gates = checkDf7RebroadcastGates({
+		state,
+		confirm: process.env.FP_DF7_REBROADCAST_CONFIRM,
+	})
+	if (gates.blockers.length > 0) {
+		for (const blocker of gates.blockers) line("blocked", blocker)
+		line(
+			"note",
+			"a new payment remains blocked pending a human decision; expired or ambiguous state is never cleared automatically",
+		)
+		line("result", "BLOCKED")
+		process.exit(2)
+	}
+
+	const prepared = { ...state }
+	const { pre } = preflight(false)
+	if (!pre.env) {
+		line("blocked", "anchor public ids are incomplete")
+		line("result", "BLOCKED")
+		process.exit(2)
+	}
+	let restored
+	try {
+		restored = restoreSignedPayment(prepared)
+	} catch (error) {
+		line("error", error instanceof Error ? error.message : String(error))
+		line("result", "BLOCKED")
+		process.exit(2)
+	}
+	line("rebroadcast", `identical signed hash ${prepared.anchorPaymentHash}`)
+	line("horizon", HORIZON)
+	line("note", "no rebuild, no re-sign; only the stored envelope is submitted")
+
+	try {
+		const submitted = await submitSignedClassicPayment({
+			horizonUrl: HORIZON,
+			signedTx: restored,
+			expectedTxHash: prepared.anchorPaymentHash,
+			destination: prepared.expectation.destination,
+			amount: prepared.expectation.amount,
+			asset: {
+				code: prepared.expectation.asset.code,
+				issuer: prepared.expectation.asset.issuer,
+				networkPassphrase: prepared.networkPassphrase,
+			},
+		})
+		const now = new Date().toISOString()
+		try {
+			updateDf7PaymentState({
+				expected: {
+					status: prepared.status,
+					anchorPaymentHash: prepared.anchorPaymentHash,
+				},
+				next: {
+					...prepared,
+					status: "submitted",
+					updatedAt: now,
+				},
+			})
+		} catch (error) {
+			line(
+				"warn",
+				`rebroadcast hash ${submitted.txHash} is retained, but the status update failed: ${error instanceof Error ? error.message : String(error)}`,
+			)
+		}
+		line(
+			"payment",
+			`hash ${submitted.txHash} rebroadcast from the stored envelope`,
+		)
+		line("result", "PENDING")
+		line(
+			"next",
+			`run --reconcile, then --poll --id ${prepared.anchorTransactionId}`,
+		)
+		process.exit(2)
+	} catch (error) {
+		const now = new Date().toISOString()
+		try {
+			updateDf7PaymentState({
+				expected: {
+					status: prepared.status,
+					anchorPaymentHash: prepared.anchorPaymentHash,
+				},
+				next: {
+					...prepared,
+					status: "uncertain",
+					updatedAt: now,
+				},
+			})
+		} catch {
+			/* the stored hash and envelope remain authoritative */
+		}
+		line(
+			"error",
+			`rebroadcast outcome uncertain: ${error instanceof Error ? error.message : String(error)}`,
+		)
+		line("uncertain", "DO NOT RETRY. Run --reconcile against the stored hash.")
+		line("result", "PENDING")
+		process.exit(2)
+	}
 }
 
 function classifyMode(): never {
@@ -890,8 +1134,11 @@ function classifyMode(): never {
 	const classification = classifyDf7Lifecycle({
 		anchorStatus: status,
 		refs: refsFromArgs(),
+		proof: proofFromArgs(),
 		withdrawAssertion: parseAssertion(option("withdraw-check")),
 		timedOut: has("timed-out"),
+		anchorStellarTransactionId: option("anchor-stellar-tx"),
+		retainedPaymentHash: option("anchor-payment-hash"),
 	})
 	line("status", status)
 	printRefs(refsFromArgs())
@@ -912,6 +1159,7 @@ async function main(): Promise<void> {
 		"start-withdraw",
 		"pay",
 		"reconcile",
+		"rebroadcast",
 		"poll",
 		"classify",
 	].filter(has)
@@ -931,18 +1179,29 @@ async function main(): Promise<void> {
   FP_DF7_ALLOW_NETWORK=1 FP_DF7_SUBMIT_PAYMENT=1 \\
       FP_DF7_RECIPIENT_LOCK="LOCK recipient A <agent> DF7 <UTC>" \\
       node scripts/demo/df7-anchor-lifecycle.ts --pay --id <sep24-id>
-      one classic memo payment; retains the hash before polling
+      sign, persist the exact hash/XDR/time bounds, then submit once
   FP_DF7_ALLOW_NETWORK=1 node scripts/demo/df7-anchor-lifecycle.ts --reconcile
-      read-only Horizon reconciliation of an uncertain submit; never resubmits
+      read-only lookup of the retained hash; verifies source/destination/asset/
+      amount/memo; expiry needs ledger + NOT_FOUND + sequence evidence; never resubmits
+  FP_DF7_ALLOW_NETWORK=1 FP_DF7_SUBMIT_PAYMENT=1 \\
+      FP_DF7_RECIPIENT_LOCK="LOCK recipient A <agent> DF7 <UTC>" \\
+      FP_DF7_REBROADCAST_CONFIRM=<retained-hash> \\
+      node scripts/demo/df7-anchor-lifecycle.ts --rebroadcast
+      explicitly rebroadcast the identical stored envelope within its time bounds
   node scripts/demo/df7-anchor-lifecycle.ts --classify --anchor-status completed \\
-      --anchor-tx-id ... --anchor-payment-hash ... --vault-release-hash ... \\
-      --withdraw-check pass
+      --anchor-tx-id ... --anchor-payment-hash ... --anchor-stellar-tx ... \\
+      --vault-release-hash ... --withdraw-check pass
       offline classification; success requires completed + verified refs + a passed assertion
 
 The classic memo payment is implemented behind the three gates above. It is not
 executed by the plan, preflight, readiness, start-withdraw, poll or classify
-modes. --pay sends at most one payment and refuses when retained state exists;
-use --reconcile to recover the hash first.
+modes. --pay holds an exclusive operation lock, re-reads state, then signs and
+persists the exact envelope/hash/network/time bounds/expectation with
+create-if-absent before submitting. --reconcile never resends and checks the
+successful operation's source, destination, asset, amount and memo. Local time
+is not expiry evidence: EXPIRED needs a ledger close > maxTime + 60s, the hash
+NOT_FOUND, and source sequence below the envelope sequence. --rebroadcast needs
+an explicit hash confirmation and the original envelope's time bounds.
 `)
 		process.exit(0)
 	}
@@ -961,6 +1220,8 @@ use --reconcile to recover the hash first.
 			return payMode()
 		case "reconcile":
 			return reconcileMode()
+		case "rebroadcast":
+			return rebroadcastMode()
 		case "poll":
 			return pollMode()
 		case "classify":

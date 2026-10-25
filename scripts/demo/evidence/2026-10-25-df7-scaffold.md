@@ -94,8 +94,9 @@ test of the decision function, not a live run.
 
 ### Classic-payment stage (implemented, not executed)
 
-`--pay` reuses `submitClassicPaymentWithMemo`; there is no second payment
-implementation. Before any submit it requires:
+`--pay` reuses the adapter's split helpers `buildAndSignClassicPaymentWithMemo`
+and `submitSignedClassicPayment`; there is no second payment implementation.
+Before any submit it requires:
 
 1. `FP_DF7_ALLOW_NETWORK=1`;
 2. `FP_DF7_SUBMIT_PAYMENT=1`; and
@@ -118,28 +119,61 @@ a ticker-only declaration is a mismatch, not an identity. If the record
 publishes no asset, the CLI prints `asset-source` = requested session asset
 instead of claiming anchor-published proof.
 
-The submission state file (`/tmp/fp-df7-private/payment-state.json`, `0600`) is
-written before submit with status `submitting`, then rewritten with the returned
-hash and status `submitted` **before any polling**. A second `--pay` refuses
-while state exists. An uncertain submit is recorded as `uncertain` and prints
-`DO NOT RETRY`. A retry is never automated: even `NOT_FOUND` reconciliation
-needs an operator decision and explicit state handling before a new attempt, and
-reconciliation itself never resets or resends. `--reconcile` performs a bounded
-read-only Horizon scan (latest 20 recipient transactions, operations fetched
-only for memo-carrying records) and either retains a single matching hash,
-reports `NOT_FOUND`, `MISMATCH`, `AMBIGUOUS` or `NOT_VERIFIED`. It never
-submits. `--reconcile` requires only `FP_DF7_ALLOW_NETWORK=1` (read-only);
-without it the CLI prints that one blocker and makes no request.
+`--pay`, `--reconcile` and `--rebroadcast` first acquire an exclusive
+`operation.lock` (`0600`, PID/time/mode) in the private directory. A competing
+process is blocked with the holder's details; a stale lock is never broken
+automatically, and release checks the owning token before unlinking.
+
+Under the lock, the submission state file
+(`/tmp/fp-df7-private/payment-state.json`, `0600`) is published **before
+submit** with status `prepared`, the pre-submit hash, the exact base64 signed
+envelope, network passphrase, finite time bounds of at least 60s and the payment
+expectation. Initial creation is create-if-absent: a fully written and fsynced
+temp file is hard-linked into place, so an existing state cannot be replaced by
+rename. Subsequent status changes re-read and compare the expected status/hash
+before an atomic overwrite; an unexpected change blocks the operation. The
+persisted bytes are restored and hash-checked before the submit call. A
+persistence failure aborts before submission. The hash is retained even if the
+post-submit status update fails. An uncertain submit is recorded as `uncertain`
+and prints `DO NOT RETRY`; a second `--pay` never sends.
+
+A retry is never automated. `--reconcile` looks up the retained hash directly
+(`GET /transactions/{hash}`) and verifies the source, destination, asset, amount
+and memo of the successful payment operation. A found-but-failed transaction is
+`FAILED`. It reports `RECONCILED`, `NOT_FOUND`, `MISMATCH`, `FAILED` or
+`NOT_VERIFIED`; it never submits and never accepts a different memo-carrying
+payment. `NOT_FOUND` requires a human decision.
+
+Local time is not expiry evidence. `EXPIRED` requires the latest Horizon ledger
+close to be more than 60s past `maxTime`, the retained hash to be `NOT_FOUND`,
+and the source account sequence to be below the envelope sequence. If any
+condition is missing or unavailable, the result stays `UNRESOLVED`/blocked.
+`--rebroadcast` is the only resend path: it requires the three live gates plus
+`FP_DF7_REBROADCAST_CONFIRM` equal to the retained hash, and submits the
+identical stored envelope only while it is inside its original time bounds. A
+replacement payment is an explicitly authorised operator action; no automatic
+replacement path exists. `--reconcile` requires only `FP_DF7_ALLOW_NETWORK=1`
+(read-only); without it the CLI prints that one blocker and makes no request.
+
+#### Dependency on PR #68
+
+PR #68 (`7156e01`, split build/sign and submit helpers) merged to `main` as
+`78f0cf6` while this change was in progress. This branch was rebased onto that
+main and consumes the split helpers rather than copying them.
 
 ### Tests and typecheck
 
-- `npx vitest run tests/e2e/df7-scaffold.test.ts` — **25 tests passed**.
-- Targeted `tsc --noEmit` over the new script, helper and test — **passes**.
-- Repository-wide `tsc -p scripts/demo/tsconfig.json` currently reports the
-  pre-existing H1 driver error on `main` (`settle.amountIn`); PR #66 contains
-  that one-line fix. It is not duplicated here.
+- `npx vitest run tests/e2e/df7-scaffold.test.ts` — **26 tests passed**.
+- `npx vitest run tests/e2e/df7-pre-submit.test.ts` — **18 tests passed**:
+  persistence failure blocks submit, timeout-after-send recovery by stored hash,
+  restored hash/byte identity, source/memo reconciliation, evidence-based
+  expiry, minimum bounds, exclusive lock ownership, simultaneous `--pay`
+  attempts with one sign/one submit, and conflicting state updates.
+- `npx vitest run packages/adapter-stellar/test/anchor-classic-payment.test.ts`
+  — **5 tests passed** (the consumed split interface).
+- `npx tsc --noEmit -p scripts/demo/tsconfig.json` — **passes**.
 
-No network is used by the test file, and no test key is committed.
+No network is used by the tests, and no test key is committed.
 
 ## Lifecycle stages and status semantics
 
@@ -158,8 +192,10 @@ No network is used by the test file, and no test key is committed.
 
 Classification is explicit:
 
-- **SUCCESS** — anchor `completed`, local payment assertion `pass`, three refs
-  present and each verified at the source/role that produced it.
+- **SUCCESS** — anchor `completed`, its `stellar_transaction_id` matches the
+  retained payment hash, local payment assertion `pass`, three refs present and
+  each verified at the source/role that produced it. A payment confirmed while
+  the anchor is pending is `PENDING`, not PASS.
 - **FAILURE** — SEP-24 failure status, a failed payment assertion, a confirmed
   amount/asset/destination/memo mismatch, or an anchor `stellar_transaction_id`
   that differs from the retained payment hash.
