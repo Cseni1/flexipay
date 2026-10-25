@@ -20,6 +20,7 @@ export {
 	cancelPayment,
 	ClaimReleaseRefusedError,
 	completeClaimSettle,
+	recordPasskeyClaimRelease,
 	FeeDriftError,
 	fundAndRun,
 	getPaymentView,

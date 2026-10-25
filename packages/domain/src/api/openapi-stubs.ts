@@ -7,6 +7,13 @@ import {
 	ClaimAcceptRequestSchema,
 	ClaimAcceptResponseSchema,
 	ClaimViewSchema,
+	PasskeyDeployRequestSchema,
+	PasskeyDeployResponseSchema,
+	PasskeyPrepareRequestSchema,
+	PasskeyPrepareResponseSchema,
+	PasskeySubmitPendingResponseSchema,
+	PasskeySubmitRequestSchema,
+	PasskeySubmitResponseSchema,
 } from "./claims.ts";
 import {
 	CreateEndpointRequestSchema,
@@ -42,7 +49,13 @@ export interface ApiOpenApiStub {
 	summary: string;
 	auth: "api_key" | "none";
 	body?: ZodType;
-	success: { status: 200 | 201; schema?: ZodType };
+	success: { status: 200 | 201 | 202; schema?: ZodType };
+	/** Extra documented responses (e.g. CCR-20 submit 202 pending). */
+	extraResponses?: ReadonlyArray<{
+		status: 202;
+		description: string;
+		schema: ZodType;
+	}>;
 }
 
 export const A0_OPENAPI_STUBS: readonly ApiOpenApiStub[] = [
@@ -141,6 +154,43 @@ export const A0_OPENAPI_STUBS: readonly ApiOpenApiStub[] = [
 		auth: "none",
 		body: ClaimAcceptRequestSchema,
 		success: { status: 200, schema: ClaimAcceptResponseSchema },
+	},
+	{
+		// CCR-20 ACK'd — passkey wallet deploy (M2). Mounted on event/csaba-cursor/m2-passkey.
+		method: "post",
+		path: "/v1/claims/{token}/passkey/deploy",
+		summary:
+			"Public: submit passkey-kit createWallet carrier; backend pays with FP_PAYER_DEMO",
+		auth: "none",
+		body: PasskeyDeployRequestSchema,
+		success: { status: 200, schema: PasskeyDeployResponseSchema },
+	},
+	{
+		// CCR-20 ACK'd — prepare (M2). Mounted on event/csaba-cursor/m2-passkey.
+		method: "post",
+		path: "/v1/claims/{token}/passkey/prepare",
+		summary: "Public: build vault claim auth entries for a C… passkey wallet",
+		auth: "none",
+		body: PasskeyPrepareRequestSchema,
+		success: { status: 200, schema: PasskeyPrepareResponseSchema },
+	},
+	{
+		// CCR-20 ACK'd — submit (M2). 200 + releaseTxRef / 202 pending.
+		method: "post",
+		path: "/v1/claims/{token}/passkey/submit",
+		summary:
+			"Public: submit passkey-signed claim auth; 200 released / 202 pending",
+		auth: "none",
+		body: PasskeySubmitRequestSchema,
+		success: { status: 200, schema: PasskeySubmitResponseSchema },
+		extraResponses: [
+			{
+				status: 202,
+				description:
+					"Release tx persisted or awaiting confirmation; Leg.releaseTxRef not written yet",
+				schema: PasskeySubmitPendingResponseSchema,
+			},
+		],
 	},
 	{
 		// Request from ARCHITECTURE §10 + CCR-4; no approved response body on main.
