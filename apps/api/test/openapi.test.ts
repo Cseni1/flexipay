@@ -6,7 +6,7 @@ import { A0_OPENAPI_STUBS } from "@flexipay/domain";
 import { ROUTES } from "../src/app.ts";
 import { buildOpenApi, stubsNotYetMounted } from "../src/openapi/spec.ts";
 
-/** CCR-21 M2: all three passkey routes mounted on the event branch. */
+/** CCR-21 M2 + CCR-22 M1: passkey + anchor claim routes mounted on event branches. */
 const CCR20_UNMOUNTED_PASSKEY: readonly string[] = [];
 
 /** Repo root for this worktree: apps/api/test → ../../.. */
@@ -41,7 +41,7 @@ describe("OpenAPI", () => {
     expect(stubs.length).toBe(unmounted.length);
   });
 
-  it("keeps CC3 + all CCR-21 passkey routes mounted (no passkey stubs left)", () => {
+  it("keeps CC3 + CCR-21 passkey + CCR-22 anchor routes mounted", () => {
     expect(stubs.map((s) => `${s.method} ${s.path}`).sort()).toEqual(
       [...CCR20_UNMOUNTED_PASSKEY].sort(),
     );
@@ -52,6 +52,32 @@ describe("OpenAPI", () => {
     ]) {
       expect(ROUTES.some((r) => r.method === "post" && r.path === path)).toBe(true);
     }
+    expect(
+      ROUTES.some(
+        (r) =>
+          r.method === "post" &&
+          r.path === "/v1/claims/{token}/anchor/indicative-price",
+      ),
+    ).toBe(true);
+    expect(
+      ROUTES.some(
+        (r) => r.method === "post" && r.path === "/v1/claims/{token}/anchor/withdraw",
+      ),
+    ).toBe(true);
+    expect(
+      ROUTES.some(
+        (r) =>
+          r.method === "get" &&
+          r.path === "/v1/claims/{token}/anchor/withdraw/{anchorTxId}",
+      ),
+    ).toBe(true);
+    expect(
+      ROUTES.some(
+        (r) =>
+          r.method === "post" &&
+          r.path === "/v1/claims/{token}/anchor/withdraw/{anchorTxId}/pay",
+      ),
+    ).toBe(true);
   });
 
   it("documents passkey submit 200 released and 202 pending without releaseTxRef on 202", () => {

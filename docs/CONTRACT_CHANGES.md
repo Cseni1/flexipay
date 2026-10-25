@@ -387,10 +387,10 @@ Atomic prepare **reserve** and on-chain **pendingTx*** recovery remain separate 
 - Testnet: deploy hash + `Leg.releaseTxRef`; vault Claimed to `C…`; evidence without secrets/tokens.
 - Manual passkey ceremony on a real authenticator (virtual authenticator is not biometrics proof).
 
-## CCR-22: claim-link reference-anchor HTTP (M1 wiring) — **ELFOGADÁSRA VÁR**
+## CCR-22: claim-link reference-anchor HTTP (M1 wiring) — **ACK'd (integrator handoff)**
 
 - **From:** CCR-20 (accepted): “Csaba proposes request shapes in his PR; no additional CCR wait for the three server calls.”
-- **Status:** **ELFOGADÁSRA VÁR.** Not an accepted shared interface until the integrator ACKs. Adapter client surface remains CCR-20; this CCR only proposes **public claim HTTP** for Csaba ↔ Freebuff/Csenge wiring.
+- **Status:** **ACK'd** for M1 API wiring per integrator handoff (Csaba Cursor, branch `event/csaba-cursor/m1-anchor-api`). Adapter client surface remains CCR-20; this CCR is the **public claim HTTP** contract for Csaba ↔ Freebuff/Csenge.
 - **Out of scope:** DF7 script, `submitClassicPaymentWithMemo` refactor, SEP-45, changing CCR-20 env names.
 
 ### Public routes (`auth: none`, claim token)
@@ -398,17 +398,31 @@ Atomic prepare **reserve** and on-chain **pendingTx*** recovery remain separate 
 | Method | Path | Idempotency-Key | Body | Success |
 |---|---|---|---|---|
 | POST | `/v1/claims/{token}/anchor/indicative-price` | not used | `{ sellAmount: string }` (USDC major units, 1–10) | `{ indicative: true, context: "sep6", sellAmount, buyAmount, buyAsset, sellAsset, price }` |
-| POST | `/v1/claims/{token}/anchor/withdraw` | required | `{ amount: string, type?: string }` | `{ anchorTxId: string, urlSanitised: string, kind: "withdrawal" }` — **never** raw hosted URL with query token in logs/evidence; open `url` only server-side if needed |
-| GET | `/v1/claims/{token}/anchor/withdraw/{anchorTxId}` | n/a | — | `{ anchorTxId, status, amountIn?, withdrawAnchorAccount?, withdrawMemoPresent: boolean, stellarTransactionId? }` |
+| POST | `/v1/claims/{token}/anchor/withdraw` | required | `{ amount?: string, type?: "bank_account" }` — amount defaults to claim settle net; must not exceed net; anchor 1–10 still applies; type only `bank_account` or omitted | **First 200:** `{ anchorTxId, urlSanitised, interactiveUrl, kind: "withdrawal" }`. **Replay 200:** `{ anchorTxId, urlSanitised, kind }` (no `interactiveUrl`). Atomic DB reservation before SEP-24 start — concurrent keys cannot create two sessions. |
+| GET | `/v1/claims/{token}/anchor/withdraw/{anchorTxId}` | n/a | — | Read-only: `{ anchorTxId, status, amountIn?, withdrawAnchorAccount?, withdrawMemoPresent, anchorPaymentTxHash?, anchorStellarTransactionId?, vaultReleaseTxRef?, terminal }`. Never pays or starts a session. |
+| POST | `/v1/claims/{token}/anchor/withdraw/{anchorTxId}/pay` | required | `{}` | **200** `{ status: "submitted", anchorTxId, anchorPaymentTxHash }` after Horizon accept. **202** `{ status: "pending", anchorTxId, pendingTxHash }` when envelope is retained but outcome uncertain. Uses `buildAndSignClassicPaymentWithMemo` + `submitSignedClassicPayment`; sealed envelope + hash + time bounds persisted **before** send. |
+
+### Sensitive URL / JWT
+
+- `interactiveUrl` may appear **only** on the first successful withdraw HTTP response.
+- Full interactive URL / query JWT must **never** be written to DB, logs, payment events, or `IdempotencyRecord.responseBody`.
+- Replay/resume returns `urlSanitised` only; do not re-cache a body that still contains `interactiveUrl`.
+
+### Classic pay recovery
+
+- Atomic attempt reservation in DB before signing/submitting.
+- Persist sealed signed envelope, hash, and time bounds **before** Horizon submit.
+- `NOT_FOUND` / timeout after persist does **not** authorise a new payment — only the same envelope may be resubmitted (within time bounds), per CCR-22 / DF7 recovery rules.
+- Keep separate: `Leg.releaseTxRef` (vault), `ClaimLink.anchorPaymentTxHash` (our classic pay), `ClaimLink.anchorStellarTransactionId` (SEP-24 `stellar_transaction_id`).
 
 ### Claim / settle connection (Csaba)
 
-1. Claim must be open; settle path uses **anchor vault** (`FP_ANCHOR_VAULT_*`) when the quote route selected reference-anchor cash-out (provider registration TBD — no routing rewrite in this CCR).
-2. After vault release to the recipient classic `G…`, server may call withdraw + (custodial) classic memo payment; persist **three** refs on the settle leg / payment events: SEP-24 `anchorTxId`, anchor payment hash (`stellar_transaction_id` / classic `txHash`), vault `Leg.releaseTxRef`.
+1. Claim must be open or accepted after release; settle path may use **anchor vault** via the single `mapAnchorVaultToSettlementEnv` / `createAnchorSettlement` mapping (`FP_ANCHOR_VAULT_*` → settlement factory). Baseline `FP_PAYOUT_VAULT_ID` / `FP_USDC_*` must not mix. Provider registration / routing rewrite remains TBD — no corridor rewrite in this CCR.
+2. After vault release to the recipient classic `G…`, server may call withdraw + (custodial) classic memo `/pay`; persist the three refs separately as above.
 3. UI copy: “reference anchor on testnet, pays a US-dollar bank account in a sandbox”.
 4. Passkey (CCR-21) and anchor (CCR-20/22) remain separate claim options; no SEP-45 in this CCR.
 
-### Errors (stable codes, proposed)
+### Errors (stable codes)
 
-`404 not_found`; `409 expired` \| `invalid_state` \| `settle_failed`; `422 amount_out_of_range` \| `anchor_asset_mismatch`; `502 anchor_unavailable` \| `sep24_failed`.
+`404 not_found`; `409 expired` \| `invalid_state` \| `settle_failed` \| `idempotency_conflict`; `422 amount_out_of_range` \| `anchor_asset_mismatch`; `502 anchor_unavailable` \| `sep24_failed` \| `classic_payment_failed`.
 

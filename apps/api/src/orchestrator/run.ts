@@ -801,6 +801,7 @@ export async function completeClaimSettle(
 		payoutId: settle.externalRef,
 		releaseTxRef: released.txRef,
 		legId: settle.id,
+		destination: opts.destination,
 	});
 	await transitionLeg(db, paymentId, settle.id, "processing", "succeeded");
 	await emitPaymentEvent(db, payment.organizationId, paymentId, "leg.succeeded", {
@@ -808,9 +809,15 @@ export async function completeClaimSettle(
 	});
 
 	if (payment.claimLink && payment.claimLink.status === "open") {
+		// CCR-22: bind classic G… for SEP-10 withdraw auth (C… passkey stays null here).
+		const classic =
+			/^G[A-Z0-9]{55}$/.test(opts.destination) ? opts.destination : undefined;
 		await db.claimLink.update({
 			where: { paymentId },
-			data: { status: "accepted" },
+			data: {
+				status: "accepted",
+				...(classic ? { recipientClassicAddress: classic } : {}),
+			},
 		});
 		await emitPaymentEvent(db, payment.organizationId, paymentId, "claim.accepted");
 	}

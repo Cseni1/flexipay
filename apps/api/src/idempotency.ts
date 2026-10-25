@@ -21,6 +21,12 @@ export async function withIdempotency<T>(
 		 * Throw ApiError to refuse foreign/stale cache.
 		 */
 		beforeReturnCache?: () => Promise<void>;
+		/**
+		 * Transform body before IdempotencyRecord persistence (CCR-22: strip
+		 * interactiveUrl / JWT so the cache never holds the raw hosted URL).
+		 * The live first response still returns the unsanitised `result.body`.
+		 */
+		cacheBody?: (body: T) => unknown;
 	},
 ): Promise<{ status: number; body: unknown }> {
 	const key = req.header("idempotency-key");
@@ -52,6 +58,9 @@ export async function withIdempotency<T>(
 		return { status: found.responseStatus, body: found.responseBody };
 	}
 	const result = await run();
+	const storedBody = opts?.cacheBody
+		? opts.cacheBody(result.body)
+		: result.body;
 	await db.idempotencyRecord
 		.create({
 			data: {
@@ -60,7 +69,7 @@ export async function withIdempotency<T>(
 				key,
 				requestHash,
 				responseStatus: result.status,
-				responseBody: result.body as object,
+				responseBody: storedBody as object,
 			},
 		})
 		.catch(() => {});

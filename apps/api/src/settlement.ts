@@ -28,6 +28,12 @@ export interface CreateSettlementOptions {
 	now?: () => Date;
 	idsPath?: string;
 	secretsPath?: string;
+	/**
+	 * When true, do not load baseline `testnet-ids.env` — use `env` (and optional
+	 * secrets) only. Used by CCR-22 anchor vault mapping so baseline FP_USDC_* /
+	 * FP_PAYOUT_VAULT_ID cannot overwrite the mapped overlay.
+	 */
+	skipBaselineIds?: boolean;
 }
 
 /**
@@ -40,10 +46,14 @@ export async function createSettlement(
 	const env = options.env ?? process.env;
 	const mode = settlementModeFromEnv(env);
 	if (mode === "mock") {
-		const idsPath = options.idsPath ?? DEFAULT_IDS;
-		const publicEnv = existsSync(idsPath)
-			? loadTestnetEnvFiles({ idsPath, overlay: env })
-			: env;
+		const publicEnv = options.skipBaselineIds
+			? env
+			: (() => {
+					const idsPath = options.idsPath ?? DEFAULT_IDS;
+					return existsSync(idsPath)
+						? loadTestnetEnvFiles({ idsPath, overlay: env })
+						: env;
+				})();
 		const treasury =
 			publicEnv.FP_TREASURY_ADDRESS ??
 			"GDEMOTREASURY0000000000000000000000000000000000000000";
@@ -57,14 +67,25 @@ export async function createSettlement(
 		return { mode, adapter };
 	}
 
-	const idsPath = options.idsPath ?? DEFAULT_IDS;
 	const secretsPath = options.secretsPath ?? DEFAULT_SECRETS;
-	const merged = loadTestnetEnvFiles({
-		idsPath,
-		...(existsSync(secretsPath) ? { secretsPath } : {}),
-		overlay: env,
-	});
-	const { adapter } = await createStellarSettlementAdapter({ env: merged });
+	let stellarEnv: Record<string, string | undefined>;
+	if (options.skipBaselineIds) {
+		// Anchor overlay only: optional secrets file, then caller `env` wins.
+		stellarEnv = { ...env };
+		if (existsSync(secretsPath)) {
+			stellarEnv = loadTestnetEnvFiles({
+				idsPath: secretsPath,
+				overlay: env,
+			});
+		}
+	} else {
+		stellarEnv = loadTestnetEnvFiles({
+			idsPath: options.idsPath ?? DEFAULT_IDS,
+			...(existsSync(secretsPath) ? { secretsPath } : {}),
+			overlay: env,
+		});
+	}
+	const { adapter } = await createStellarSettlementAdapter({ env: stellarEnv });
 	return { mode, adapter };
 }
 

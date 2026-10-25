@@ -210,8 +210,32 @@ model ClaimLink {
   passkeyDeployPendingSealed Bytes?
   passkeyDeployPendingSealedNonce Bytes?
 
+  /// CCR-22: classic G… that received vault release (SEP-10 auth account for withdraw).
+  recipientClassicAddress String?
+  /// SEP-24 withdraw transaction id bound to this claim (unique across claims).
+  anchorTxId String? @unique
+  /// Sanitised hosted URL only (no query/token). Never store interactiveUrl/JWT.
+  anchorUrlSanitised String?
+  /// Amount (USDC major units) used when anchorTxId was started — blocks amount mismatch replay.
+  anchorWithdrawAmount String?
+  /// Atomic withdraw session reservation: null | starting | ready (before external SEP-24).
+  anchorSessionStatus String?
+  /// Our classic memo payment hash (build/sign before submit). Separate from SEP-24 stellar_transaction_id.
+  anchorPaymentTxHash String?
+  /// SEP-24 published stellar_transaction_id (anchor side). Never conflate with anchorPaymentTxHash.
+  anchorStellarTransactionId String?
+  /// CCR-22 /pay: pre-submit sealed signed envelope (CCR-11 seal). Never log.
+  anchorPayPendingTxHash String?
+  anchorPayPendingSealed Bytes?
+  anchorPayPendingSealedNonce Bytes?
+  anchorPayMinTime Int?
+  anchorPayMaxTime Int?
+  /// prepared | submitted | uncertain
+  anchorPayStatus String?
+
   @@index([passkeyDeployPendingTxHash])
   @@index([passkeyDeployTxHash])
+  @@index([anchorPayPendingTxHash])
 }
 
 /// CCR-21 (ELFOGADÁSRA VÁR): durable passkey prepare + submit reservation for M2.

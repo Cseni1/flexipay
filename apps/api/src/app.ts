@@ -8,6 +8,7 @@ import { withIdempotency } from "./idempotency.ts";
 import { isHttpRouteResult, type Ctx, type RouteDef } from "./routes.ts";
 import { batchRoutes } from "./routes/batches.ts";
 import { claimRoutes } from "./routes/claims.ts";
+import { anchorClaimRoutes } from "./routes/anchor-claims.ts";
 import { passkeyClaimRoutes, type CtxWithRequest } from "./routes/passkey-claims.ts";
 import { coreRoutes } from "./routes/core.ts";
 import { endpointRoutes } from "./routes/endpoints.ts";
@@ -26,6 +27,7 @@ export const ROUTES: RouteDef<any, any>[] = [
 	...eventRoutes,
 	...claimRoutes,
 	...passkeyClaimRoutes,
+	...anchorClaimRoutes,
 	...sandboxRoutes,
 ];
 
