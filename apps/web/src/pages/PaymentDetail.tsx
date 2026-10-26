@@ -46,6 +46,63 @@ const claimPageHref = (link: ClaimLinkHandle): string => {
 	}
 }
 
+const absoluteClaimUrl = (link: ClaimLinkHandle): string => {
+	try {
+		return new URL(claimPageHref(link), window.location.origin).toString()
+	} catch {
+		return link.url
+	}
+}
+
+// The claim token is a bearer secret and is never stored or logged: it lives only in the
+// navigation state from create and in this component's props.
+function ClaimLinkShare({ link }: { link: ClaimLinkHandle }) {
+	const url = absoluteClaimUrl(link)
+	const [copied, setCopied] = useState<"idle" | "copied" | "blocked">("idle")
+	const copy = async () => {
+		try {
+			await navigator.clipboard.writeText(url)
+			setCopied("copied")
+		} catch {
+			// Clipboard blocked: the field below is read-only text the user can select.
+			setCopied("blocked")
+		}
+	}
+	return (
+		<div className="claim-share" data-testid="claim-link-share">
+			<p className="field-label">Share this link with the recipient</p>
+			<input
+				className="text-field__input"
+				readOnly
+				value={url}
+				aria-label="Claim link"
+				data-testid="claim-link-url"
+				onFocus={(event) => event.currentTarget.select()}
+			/>
+			<div className="form-actions">
+				<Button type="button" variant="secondary" onClick={() => void copy()}>
+					Copy link
+				</Button>
+				<a href={claimPageHref(link)} target="_blank" rel="noreferrer">
+					open claim page
+				</a>
+				<span role="status" aria-live="polite" className="form-note">
+					{copied === "copied"
+						? "Copied"
+						: copied === "blocked"
+							? "Copy blocked by the browser: select the link above and copy it."
+							: ""}
+				</span>
+			</div>
+			<Notice>
+				This link is shown once. Copy it now: it can&apos;t be shown again once
+				you close this tab or open the payment elsewhere. It expires{" "}
+				{formatTimestamp(link.expiresAt)}.
+			</Notice>
+		</div>
+	)
+}
+
 export default function PaymentDetail() {
 	const { paymentId } = useParams<{ paymentId: string }>()
 	const location = useLocation()
@@ -219,15 +276,11 @@ export default function PaymentDetail() {
 							</div>
 
 							{claimLink ? (
-								<Notice>
-									Claim link ready until {formatTimestamp(claimLink.expiresAt)}:{" "}
-									<a
-										href={claimPageHref(claimLink)}
-										target="_blank"
-										rel="noreferrer"
-									>
-										open claim page
-									</a>
+								<ClaimLinkShare link={claimLink} />
+							) : payment.delivery === "claim_link" ? (
+								<Notice data-testid="claim-link-gone">
+									The claim link was shown once when the payment was created and
+									can&apos;t be shown again.
 								</Notice>
 							) : null}
 

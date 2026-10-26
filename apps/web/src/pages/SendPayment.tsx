@@ -8,6 +8,7 @@ import {
 	type Quote,
 	type RecipientKind,
 } from "@flexipay/web-lib/contract"
+import { friendlyQuoteError } from "@flexipay/web-lib/quote-errors"
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import {
@@ -380,9 +381,29 @@ export default function SendPayment() {
 
 						{formError ? <Notice tone="warning">{formError}</Notice> : null}
 						{quoteError ? (
-							<Notice tone="warning">
-								Quote request failed: {describeApiError(quoteError)}
-							</Notice>
+							<>
+								<Notice tone="warning" data-testid="quote-error">
+									Quote request failed:{" "}
+									{quoteError.reasons.length > 0
+										? friendlyQuoteError(quoteError.reasons).message
+										: describeApiError(quoteError)}
+								</Notice>
+								{quoteError.reasons.length > 0 ? (
+									<details
+										className="form-note"
+										data-testid="quote-error-details"
+									>
+										<summary>Technical details</summary>
+										<ul>
+											{quoteError.reasons.map((reason) => (
+												<li key={reason}>
+													<code className="code-text">{reason}</code>
+												</li>
+											))}
+										</ul>
+									</details>
+								) : null}
+							</>
 						) : null}
 
 						<div className="form-actions">
