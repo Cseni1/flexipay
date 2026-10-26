@@ -9,6 +9,7 @@
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "prepare": "git config core.hooksPath .husky",
+    "postinstall": "patch-package",
     "validate:config": "npm run validate:config --workspace @flexipay/domain",
     "test:domain": "npm test --workspace @flexipay/domain",
     "demo:offline": "node scripts/demo/offline.ts"
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "concurrently": "^10.0.5",
+    "patch-package": "^8.0.1",
     "prettier": "^3.8.3"
   },
   "prettier": "@theahaco/ts-config/prettier",

@@ -128,6 +128,12 @@ export async function bindPasskeyWallet() {
 			errorName: "WalletOwnershipError",
 			errorCode: 601,
 			reason: "birth_mismatch",
+			detail: "birth wasm mismatch",
+			causeName: "DOMException",
+			causeMessage: "The operation is insecure.",
+			hostname: window.location.hostname,
+			rpId: window.location.hostname,
+			allowedOrigins: [window.location.origin],
 			contractId: state.contractId,
 		}
 		console.warn("[passkey-bind]", diagnostic)
@@ -143,6 +149,12 @@ export async function bindPasskeyWallet() {
 			errorName: "WalletOwnershipError",
 			errorCode: 602,
 			reason: "signer_missing",
+			detail: "passkey not a live signer",
+			causeName: "NotAllowedError",
+			causeMessage: "The request is not allowed.",
+			hostname: window.location.hostname,
+			rpId: window.location.hostname,
+			allowedOrigins: [window.location.origin],
 			contractId: state.contractId,
 		}
 		console.warn("[passkey-bind]", diagnostic)
@@ -446,6 +458,9 @@ test.describe("CF10 passkey binding focus", () => {
 		await expect(diagnostic).toContainText("WalletOwnershipError")
 		await expect(diagnostic).toContainText("601")
 		await expect(diagnostic).toContainText("birth_mismatch")
+		await expect(diagnostic).toContainText("DOMException")
+		await expect(diagnostic).toContainText("host localhost")
+		await expect(diagnostic).toContainText("rpId localhost")
 		await expect(diagnostic).not.toContainText(SIGNED_TX)
 		await expect(diagnostic).not.toContainText(DEPLOY_HASH)
 		await expect(page.getByTestId("passkey-bind")).toBeEnabled()
@@ -473,6 +488,9 @@ test.describe("CF10 passkey binding focus", () => {
 		await expect(diagnostic).toContainText("WalletOwnershipError")
 		await expect(diagnostic).toContainText("602")
 		await expect(diagnostic).toContainText("signer_missing")
+		await expect(diagnostic).toContainText("NotAllowedError")
+		await expect(diagnostic).toContainText("host localhost")
+		await expect(diagnostic).toContainText("rpId localhost")
 		await expect(diagnostic).not.toContainText(SIGNED_TX)
 		await expect(diagnostic).not.toContainText(DEPLOY_HASH)
 		await expect(page.getByTestId("passkey-bind")).toBeEnabled()
