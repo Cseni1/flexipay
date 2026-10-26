@@ -78,8 +78,8 @@ const FEE_MODE_OPTIONS: { value: FeeMode; label: string }[] = FEE_MODES.map(
 		value,
 		label:
 			value === "PayerPays"
-				? "Payer pays the vault fee"
-				: "Recipient pays the vault fee",
+				? "I pay the fee (added on top)"
+				: "Recipient pays the fee (taken from what they receive)",
 	}),
 )
 
@@ -347,13 +347,13 @@ export default function SendPayment() {
 							/>
 							<SelectField
 								id="fee-mode"
-								label="Vault fee payer"
+								label="Who pays the fee? (Vault fee payer)"
 								value={form.feeMode}
 								options={[
-									{ value: "", label: "Select who pays the vault fee" },
+									{ value: "", label: "Choose who pays the fee" },
 									...FEE_MODE_OPTIONS,
 								]}
-								hint="Required explicitly. Ignored only when the chosen route has no settle leg."
+								hint="The 1% vault fee is either added to what you pay or taken from what the recipient gets. You must choose."
 								onChange={(event) =>
 									update({ feeMode: event.target.value as FeeMode | "" })
 								}
@@ -371,6 +371,7 @@ export default function SendPayment() {
 								id="recipient"
 								label="Recipient"
 								placeholder="Worker A"
+								hint="Paying someone new? Type their name here: they are added when you create the payment."
 								autoComplete="off"
 								value={form.recipientName}
 								onChange={(event) =>
