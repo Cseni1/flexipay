@@ -45,6 +45,18 @@ export interface PasskeyBindDiagnostic {
 	errorCode: string | number | null
 	/** Optional short context.reason from the kit (no hashes/XDR). */
 	reason: string | null
+	/** Optional short context.detail when it passes the sensitivity filter. */
+	detail: string | null
+	/** DOMException / Error name from context.cause when present. */
+	causeName: string | null
+	/** DOMException / Error message from context.cause when non-sensitive. */
+	causeMessage: string | null
+	/** window.location.hostname at Bind time. */
+	hostname: string | null
+	/** rpId the kit was constructed with. */
+	rpId: string | null
+	/** allowedOrigins the kit was constructed with. */
+	allowedOrigins: string[] | null
 	/** Deployed contract id only — the sole hash-like field allowed here. */
 	contractId: string
 }
@@ -89,6 +101,21 @@ interface ActiveWallet {
 	deployTxHash: string | null
 	/** True after confirmWalletCreation + connectWallet from an explicit Bind click. */
 	bound: boolean
+	rpId: string | null
+	allowedOrigins: string[] | null
+}
+
+const browserPasskeyOrigins = (): {
+	rpId: string | null
+	allowedOrigins: string[] | null
+} => {
+	if (typeof window === "undefined") return { rpId: null, allowedOrigins: null }
+	const hostname = window.location.hostname.trim()
+	const origin = window.location.origin.trim()
+	return {
+		rpId: hostname || null,
+		allowedOrigins: origin ? [origin] : null,
+	}
 }
 
 /** Public deploy facts only — never signedTx / auth / secrets / raw claim token. */
@@ -179,14 +206,31 @@ const looksSensitiveFragment = (value: string): boolean =>
 		value,
 	) || value.length > 160
 
-/** Extract kit class / code / optional reason without copying sensitive context. */
+const safeContextString = (value: unknown): string | null => {
+	if (typeof value !== "string") return null
+	const trimmed = value.trim()
+	if (!trimmed || looksSensitiveFragment(trimmed)) return null
+	return trimmed
+}
+
+/** Extract kit class / code / reason / detail / cause without sensitive context. */
 export function describePasskeyBindCause(cause: unknown): {
 	errorName: string
 	errorCode: string | number | null
 	reason: string | null
+	detail: string | null
+	causeName: string | null
+	causeMessage: string | null
 } {
 	if (typeof cause !== "object" || cause === null) {
-		return { errorName: "Error", errorCode: null, reason: null }
+		return {
+			errorName: "Error",
+			errorCode: null,
+			reason: null,
+			detail: null,
+			causeName: null,
+			causeMessage: null,
+		}
 	}
 	const errorName =
 		cause instanceof Error && cause.name.trim() ? cause.name : "Error"
@@ -195,18 +239,54 @@ export function describePasskeyBindCause(cause: unknown): {
 	const errorCode =
 		typeof rawCode === "number" || typeof rawCode === "string" ? rawCode : null
 	let reason: string | null = null
+	let detail: string | null = null
+	let causeName: string | null = null
+	let causeMessage: string | null = null
 	const context =
 		"context" in cause ? (cause as { context?: unknown }).context : undefined
 	if (context && typeof context === "object" && context !== null) {
-		const rawReason = (context as { reason?: unknown }).reason
-		if (
-			typeof rawReason === "string" &&
-			rawReason.trim() &&
-			!looksSensitiveFragment(rawReason)
-		)
-			reason = rawReason.trim()
+		reason = safeContextString((context as { reason?: unknown }).reason)
+		detail = safeContextString((context as { detail?: unknown }).detail)
+		const nested =
+			"cause" in context ? (context as { cause?: unknown }).cause : undefined
+		if (nested && typeof nested === "object" && nested !== null) {
+			const nestedName =
+				nested instanceof Error
+					? nested.name
+					: "name" in nested
+						? String((nested as { name: unknown }).name)
+						: ""
+			causeName = nestedName.trim() || null
+			const nestedMessage =
+				nested instanceof Error
+					? nested.message
+					: "message" in nested
+						? String((nested as { message: unknown }).message)
+						: ""
+			causeMessage = safeContextString(nestedMessage)
+		}
 	}
-	return { errorName, errorCode, reason }
+	// Also accept Error.cause (DOMException) when context.cause is absent.
+	if (!causeName && cause instanceof Error && cause.cause) {
+		const nested = cause.cause
+		if (nested && typeof nested === "object") {
+			const nestedName =
+				nested instanceof Error
+					? nested.name
+					: "name" in nested
+						? String((nested as { name: unknown }).name)
+						: ""
+			causeName = nestedName.trim() || null
+			const nestedMessage =
+				nested instanceof Error
+					? nested.message
+					: "message" in nested
+						? String((nested as { message: unknown }).message)
+						: ""
+			causeMessage = safeContextString(nestedMessage)
+		}
+	}
+	return { errorName, errorCode, reason, detail, causeName, causeMessage }
 }
 
 const logBindDiagnostic = (diagnostic: PasskeyBindDiagnostic): void => {
@@ -393,8 +473,6 @@ export async function createPasskeyWallet(
 		)
 	}
 
-	let created: CreateWalletResult
-	let kit: PasskeyKit
 	let gate: PasskeyWebAuthnGate | null = null
 	try {
 		const [{ PasskeyKit }, simple] = await Promise.all([
@@ -409,14 +487,38 @@ export async function createPasskeyWallet(
 		})
 		creationGate = gate
 		gate.beginCreationGate()
-		kit = new PasskeyKit({
+		const origins = browserPasskeyOrigins()
+		const kit = new PasskeyKit({
 			...passkeyWalletConfig,
+			...(origins.rpId ? { rpId: origins.rpId } : {}),
+			...(origins.allowedOrigins
+				? { allowedOrigins: origins.allowedOrigins }
+				: {}),
 			WebAuthn: gate.client,
 		})
-		created = await kit.createWallet(
+		const created = await kit.createWallet(
 			PASSKEY_WALLET_APP_NAME,
 			PASSKEY_WALLET_USER_NAME,
 		)
+		const { contractId, keyIdBase64, signedTx, publicKey } = created
+		if (!contractId || !keyIdBase64 || !signedTx || !publicKey?.length) {
+			active = null
+			throw new PasskeyWalletError(
+				"failed",
+				"The passkey wallet kit returned an incomplete deploy carrier.",
+			)
+		}
+		active = {
+			kit,
+			created,
+			contractId,
+			keyIdBase64,
+			deployTxHash: null,
+			bound: false,
+			rpId: origins.rpId,
+			allowedOrigins: origins.allowedOrigins,
+		}
+		return { contractId, keyIdBase64, signedTx }
 	} catch (cause) {
 		active = null
 		gate?.endCreationGate()
@@ -426,24 +528,6 @@ export async function createPasskeyWallet(
 		gate?.endCreationGate()
 		if (creationGate === gate) creationGate = null
 	}
-
-	const { contractId, keyIdBase64, signedTx, publicKey } = created
-	if (!contractId || !keyIdBase64 || !signedTx || !publicKey?.length) {
-		active = null
-		throw new PasskeyWalletError(
-			"failed",
-			"The passkey wallet kit returned an incomplete deploy carrier.",
-		)
-	}
-	active = {
-		kit,
-		created,
-		contractId,
-		keyIdBase64,
-		deployTxHash: null,
-		bound: false,
-	}
-	return { contractId, keyIdBase64, signedTx }
 }
 
 /**
@@ -498,7 +582,14 @@ export async function resumePasskeyWallet(
 		const { PasskeyKit } = await loadKitModule()
 		const publicKey = base64ToBytes(record.publicKey)
 		const keyId = base64urlToBytes(record.keyIdBase64)
-		const kit = new PasskeyKit({ ...passkeyWalletConfig })
+		const origins = browserPasskeyOrigins()
+		const kit = new PasskeyKit({
+			...passkeyWalletConfig,
+			...(origins.rpId ? { rpId: origins.rpId } : {}),
+			...(origins.allowedOrigins
+				? { allowedOrigins: origins.allowedOrigins }
+				: {}),
+		})
 		const created = {
 			rawResponse: {
 				id: record.keyIdBase64,
@@ -524,6 +615,8 @@ export async function resumePasskeyWallet(
 			keyIdBase64: record.keyIdBase64,
 			deployTxHash: record.deployTxHash,
 			bound: false,
+			rpId: origins.rpId,
+			allowedOrigins: origins.allowedOrigins,
 		}
 		activeStorageKey = key
 		return {
@@ -574,6 +667,13 @@ export async function bindPasskeyWallet(): Promise<void> {
 			errorName: meta.errorName,
 			errorCode: meta.errorCode,
 			reason: meta.reason,
+			detail: meta.detail,
+			causeName: meta.causeName,
+			causeMessage: meta.causeMessage,
+			hostname:
+				typeof window !== "undefined" ? window.location.hostname || null : null,
+			rpId: wallet.rpId,
+			allowedOrigins: wallet.allowedOrigins,
 			contractId: wallet.contractId,
 		}
 		logBindDiagnostic(bindDiagnostic)

@@ -29,7 +29,9 @@ export default defineConfig(({ mode }) => {
 			target: "esnext",
 		},
 		optimizeDeps: {
-			exclude: ["@stellar/stellar-xdr-json"],
+			// Exclude passkey-kit so Vite does not pre-bundle the unpatched tarball; the
+			// postinstall patch-package fix must be what the browser loads (see docs/STELLAR.md).
+			exclude: ["@stellar/stellar-xdr-json", "passkey-kit"],
 		},
 		define: {
 			global: "window",

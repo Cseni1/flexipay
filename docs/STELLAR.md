@@ -59,6 +59,27 @@ Anchor cash-out (SEP-10 / SEP-38 / SEP-24) and passkey smart-wallet claim are
 requirements under published rules (Scale is a standalone builder track;
 thematic tracks are Genesis-only). Fee sponsorship remains a stretch.
 
+## Passkey kit (M2) — unaudited + local patch
+
+The browser uses [passkey-kit](https://github.com/kalepail/passkey-kit) **0.19.1**.
+That package is **unaudited**; the claim UI says so and this build makes no
+real-money promise.
+
+**Signer null-expiry bug (patched):** `connectWallet` treated an empty Soroban
+`Option` signer expiration as present because it checked only
+`expiration !== undefined`. With `@stellar/stellar-sdk` 16.x that empty Option
+decodes as `null`, so the kit called `null.toString()` after the passkey step
+and Bind never completed. Repo root applies
+`patches/passkey-kit+0.19.1.patch` via `postinstall` → `patch-package`, changing
+the guard to `expiration !== undefined && expiration !== null`. **Remove the
+patch when upstream ships the fix.**
+
+**Vite cache:** `apps/web` excludes `passkey-kit` from `optimizeDeps` so the
+patched `node_modules` file is what the browser loads. After pulling this change
+once, clear the Vite pre-bundle cache (`rm -rf apps/web/node_modules/.vite` or
+delete that folder on Windows) before `npm run dev --workspace=@flexipay/web`,
+or a stale pre-bundle of the unpatched kit can linger.
+
 ## CCR-11 restart
 
 **PASS** on Stellar testnet (same persistent DB + seal key): original payout id

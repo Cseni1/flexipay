@@ -262,6 +262,24 @@ export function PasskeyClaimPanel({
 								{flow.bindDiagnostic.reason
 									? ` · ${flow.bindDiagnostic.reason}`
 									: ""}
+								{flow.bindDiagnostic.detail
+									? ` · ${flow.bindDiagnostic.detail}`
+									: ""}
+								{flow.bindDiagnostic.causeName
+									? ` · cause ${flow.bindDiagnostic.causeName}`
+									: ""}
+								{flow.bindDiagnostic.causeMessage
+									? `: ${flow.bindDiagnostic.causeMessage}`
+									: ""}
+								{flow.bindDiagnostic.hostname
+									? ` · host ${flow.bindDiagnostic.hostname}`
+									: ""}
+								{flow.bindDiagnostic.rpId
+									? ` · rpId ${flow.bindDiagnostic.rpId}`
+									: ""}
+								{flow.bindDiagnostic.allowedOrigins?.length
+									? ` · origins ${flow.bindDiagnostic.allowedOrigins.join(",")}`
+									: ""}
 								{" · "}
 								contract {truncated(flow.bindDiagnostic.contractId)}
 							</p>

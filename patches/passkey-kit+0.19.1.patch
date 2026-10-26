@@ -1,0 +1,13 @@
+diff --git a/node_modules/passkey-kit/dist/kit.js b/node_modules/passkey-kit/dist/kit.js
+index 6e33dee..cd6a754 100644
+--- a/node_modules/passkey-kit/dist/kit.js
++++ b/node_modules/passkey-kit/dist/kit.js
+@@ -349,7 +349,7 @@ export class PasskeyKit {
+                     continue;
+                 }
+                 const expiration = signerVal.values[1][0];
+-                if (expiration !== undefined) {
++                if (expiration !== undefined && expiration !== null) {
+                     signerExpirationLedger ??= await this.rpc.getLatestLedger();
+                     if (!/^(?:0|[1-9]\d*)$/.test(signerExpirationLedger.closeTime)) {
+                         lastMismatch = new WalletOwnershipError("The latest ledger has an invalid close timestamp", {

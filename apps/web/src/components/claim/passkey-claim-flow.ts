@@ -63,6 +63,12 @@ export interface PasskeyBindDiagnosticState {
 	errorName: string
 	errorCode: string | number | null
 	reason: string | null
+	detail: string | null
+	causeName: string | null
+	causeMessage: string | null
+	hostname: string | null
+	rpId: string | null
+	allowedOrigins: string[] | null
 	contractId: string
 }
 
