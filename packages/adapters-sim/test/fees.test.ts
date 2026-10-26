@@ -86,9 +86,15 @@ describe("limits (CCR-4 §3)", () => {
 			adapter.quote(payoutRequest(row(PH_WALLET), money("999", "PHP"))),
 		).rejects.toMatchObject({ code: "below_min" })
 
+		// One minor unit above whatever max the config currently sets.
+		const max = row(PH_BANK).limits?.max
+		if (!max) throw new Error("PH bank fixture must have a configured max")
 		await expect(
 			adapterOf(fresh(), PH_BANK).quote(
-				payoutRequest(row(PH_BANK), money("5000001", "PHP")),
+				payoutRequest(
+					row(PH_BANK),
+					money((BigInt(max.amount) + 1n).toString(), "PHP"),
+				),
 			),
 		).rejects.toMatchObject({ code: "above_max" })
 	})

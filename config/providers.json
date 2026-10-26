@@ -31,7 +31,7 @@
           "currency": "USD"
         },
         "max": {
-          "amount": "5000000",
+          "amount": "100000000000",
           "currency": "USD"
         }
       },
@@ -68,7 +68,7 @@
           "currency": "PHP"
         },
         "max": {
-          "amount": "5000000",
+          "amount": "100000000000",
           "currency": "PHP"
         }
       },
@@ -105,7 +105,7 @@
           "currency": "PHP"
         },
         "max": {
-          "amount": "1000000",
+          "amount": "100000000000",
           "currency": "PHP"
         }
       },
@@ -142,7 +142,7 @@
           "currency": "BRL"
         },
         "max": {
-          "amount": "2000000",
+          "amount": "100000000000",
           "currency": "BRL"
         }
       },
@@ -179,7 +179,7 @@
           "currency": "ZAR"
         },
         "max": {
-          "amount": "5000000",
+          "amount": "100000000000",
           "currency": "ZAR"
         }
       },
