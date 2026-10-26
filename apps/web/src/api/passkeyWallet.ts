@@ -24,17 +24,44 @@ type CreateWalletResult = Awaited<ReturnType<PasskeyKit["createWallet"]>>
 // the post-registration startAuthentication (Genesis binding proof) is gated behind an explicit
 // Confirm with passkey click so the authenticator runs from that user gesture. Deploy-time Bind
 // wallet remains a separate later step.
+//
+// After the API confirms deploy, ONLY public wallet facts are kept in sessionStorage (contractId,
+// keyIdBase64, publicKey base64, deployTxHash), keyed by a SHA-256 of the claim token — never the
+// raw token, signedTx, auth entries, claim secret, or other carriers. Storage access is try/catch;
+// a blocked store still allows the in-memory flow. Reload can resume Bind from those public facts.
 
 export type PasskeyWalletErrorCode =
 	"unsupported" | "cancelled" | "not_configured" | "no_wallet" | "failed"
 
+/** Which Bind kit call threw; never includes XDR, secrets, or tx hashes. */
+export type PasskeyBindStep = "confirmWalletCreation" | "connectWallet"
+
+/** Short, non-sensitive Bind failure facts for UI + console. */
+export interface PasskeyBindDiagnostic {
+	step: PasskeyBindStep
+	/** Kit / DOM error class name (e.g. WalletOwnershipError). */
+	errorName: string
+	/** PasskeyKitErrorCode numeric value or string code when present. */
+	errorCode: string | number | null
+	/** Optional short context.reason from the kit (no hashes/XDR). */
+	reason: string | null
+	/** Deployed contract id only — the sole hash-like field allowed here. */
+	contractId: string
+}
+
 export class PasskeyWalletError extends Error {
 	readonly code: PasskeyWalletErrorCode
+	readonly bindDiagnostic?: PasskeyBindDiagnostic
 
-	constructor(code: PasskeyWalletErrorCode, message: string) {
+	constructor(
+		code: PasskeyWalletErrorCode,
+		message: string,
+		options?: { bindDiagnostic?: PasskeyBindDiagnostic },
+	) {
 		super(message)
 		this.name = "PasskeyWalletError"
 		this.code = code
+		if (options?.bindDiagnostic) this.bindDiagnostic = options.bindDiagnostic
 	}
 }
 
@@ -49,6 +76,11 @@ export interface CreatePasskeyWalletHooks {
 	onAwaitingCreationConfirm?: () => void
 }
 
+export interface ResumedPasskeyWallet {
+	contractId: string
+	deployTxHash: string
+}
+
 interface ActiveWallet {
 	kit: PasskeyKit
 	created: CreateWalletResult
@@ -59,10 +91,24 @@ interface ActiveWallet {
 	bound: boolean
 }
 
-/** In-memory only: the created passkey wallet for this page session. */
+/** Public deploy facts only — never signedTx / auth / secrets / raw claim token. */
+interface StoredPasskeyResume {
+	v: 1
+	contractId: string
+	keyIdBase64: string
+	/** SEC-1 P-256 public key as standard base64 (not a secret). */
+	publicKey: string
+	deployTxHash: string
+}
+
+const STORAGE_PREFIX = "fp.passkey.resume.v1."
+
+/** In-memory wallet for this page session (plus optional public resume record). */
 let active: ActiveWallet | null = null
 /** Active gate for the in-flight createWallet (null when idle). */
 let creationGate: PasskeyWebAuthnGate | null = null
+/** sessionStorage key for the active claim's public resume record, when known. */
+let activeStorageKey: string | null = null
 
 /** passkey-kit error codes (WebAuthn range); kept numeric to avoid importing the SDK eagerly. */
 const WEBAUTHN_NOT_SUPPORTED = 3003
@@ -97,8 +143,18 @@ const isCancellation = (cause: unknown): boolean => {
 		: false
 }
 
-const toWalletError = (cause: unknown): PasskeyWalletError => {
-	if (cause instanceof PasskeyWalletError) return cause
+const toWalletError = (
+	cause: unknown,
+	options?: { bindDiagnostic?: PasskeyBindDiagnostic },
+): PasskeyWalletError => {
+	if (cause instanceof PasskeyWalletError) {
+		if (options?.bindDiagnostic && !cause.bindDiagnostic) {
+			return new PasskeyWalletError(cause.code, cause.message, {
+				bindDiagnostic: options.bindDiagnostic,
+			})
+		}
+		return cause
+	}
 	if (isCancellation(cause)) {
 		return new PasskeyWalletError(
 			"cancelled",
@@ -114,8 +170,142 @@ const toWalletError = (cause: unknown): PasskeyWalletError => {
 	return new PasskeyWalletError(
 		"failed",
 		"The passkey wallet could not be used on this device.",
+		options,
 	)
 }
+
+const looksSensitiveFragment = (value: string): boolean =>
+	/signedTx|authEntr|secret|Bearer|S[A-Z2-7]{55}|[a-f0-9]{64}|AAAA/i.test(
+		value,
+	) || value.length > 160
+
+/** Extract kit class / code / optional reason without copying sensitive context. */
+export function describePasskeyBindCause(cause: unknown): {
+	errorName: string
+	errorCode: string | number | null
+	reason: string | null
+} {
+	if (typeof cause !== "object" || cause === null) {
+		return { errorName: "Error", errorCode: null, reason: null }
+	}
+	const errorName =
+		cause instanceof Error && cause.name.trim() ? cause.name : "Error"
+	const rawCode =
+		"code" in cause ? (cause as { code: unknown }).code : undefined
+	const errorCode =
+		typeof rawCode === "number" || typeof rawCode === "string" ? rawCode : null
+	let reason: string | null = null
+	const context =
+		"context" in cause ? (cause as { context?: unknown }).context : undefined
+	if (context && typeof context === "object" && context !== null) {
+		const rawReason = (context as { reason?: unknown }).reason
+		if (
+			typeof rawReason === "string" &&
+			rawReason.trim() &&
+			!looksSensitiveFragment(rawReason)
+		)
+			reason = rawReason.trim()
+	}
+	return { errorName, errorCode, reason }
+}
+
+const logBindDiagnostic = (diagnostic: PasskeyBindDiagnostic): void => {
+	// Intentional operator diagnostic: class/code/step/contractId only — no XDR/keys/tokens.
+	console.warn("[passkey-bind]", diagnostic)
+}
+
+const bytesToBase64 = (bytes: Uint8Array): string => {
+	let binary = ""
+	for (const byte of bytes) binary += String.fromCharCode(byte)
+	return btoa(binary)
+}
+
+const base64ToBytes = (value: string): Uint8Array => {
+	const binary = atob(value)
+	const out = new Uint8Array(binary.length)
+	for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i)
+	return out
+}
+
+const base64urlToBytes = (value: string): Uint8Array => {
+	const padded = value.replace(/-/g, "+").replace(/_/g, "/")
+	const pad = padded.length % 4 === 0 ? "" : "=".repeat(4 - (padded.length % 4))
+	return base64ToBytes(padded + pad)
+}
+
+async function claimTokenHashHex(token: string): Promise<string> {
+	const digest = await crypto.subtle.digest(
+		"SHA-256",
+		new TextEncoder().encode(token),
+	)
+	return [...new Uint8Array(digest)]
+		.map((byte) => byte.toString(16).padStart(2, "0"))
+		.join("")
+}
+
+async function storageKeyForClaim(token: string): Promise<string> {
+	return `${STORAGE_PREFIX}${await claimTokenHashHex(token)}`
+}
+
+const readStoredResume = (key: string): StoredPasskeyResume | null => {
+	try {
+		const raw = sessionStorage.getItem(key)
+		if (!raw) return null
+		const parsed = JSON.parse(raw) as Partial<StoredPasskeyResume>
+		if (
+			parsed.v !== 1 ||
+			typeof parsed.contractId !== "string" ||
+			!parsed.contractId.trim() ||
+			typeof parsed.keyIdBase64 !== "string" ||
+			!parsed.keyIdBase64.trim() ||
+			typeof parsed.publicKey !== "string" ||
+			!parsed.publicKey.trim() ||
+			typeof parsed.deployTxHash !== "string" ||
+			!/^[a-f0-9]{64}$/i.test(parsed.deployTxHash)
+		)
+			return null
+		return {
+			v: 1,
+			contractId: parsed.contractId,
+			keyIdBase64: parsed.keyIdBase64,
+			publicKey: parsed.publicKey,
+			deployTxHash: parsed.deployTxHash.toLowerCase(),
+		}
+	} catch {
+		return null
+	}
+}
+
+const writeStoredResume = (key: string, record: StoredPasskeyResume): void => {
+	try {
+		sessionStorage.setItem(key, JSON.stringify(record))
+	} catch {
+		// Storage blocked or full: in-memory flow continues without resume.
+	}
+}
+
+const removeStoredKey = (key: string): void => {
+	try {
+		sessionStorage.removeItem(key)
+	} catch {
+		// ignore
+	}
+}
+
+const clearActiveStorageRecord = (): void => {
+	if (!activeStorageKey) return
+	removeStoredKey(activeStorageKey)
+	activeStorageKey = null
+}
+
+/** Public field names allowed in a resume record (tests assert this set). */
+export const PASSKEY_RESUME_STORAGE_KEYS = [
+	"v",
+	"contractId",
+	"keyIdBase64",
+	"publicKey",
+	"deployTxHash",
+] as const
 
 export function getCreationAuthSnapshot(): CreationAuthSnapshot | null {
 	return creationGate?.snapshot() ?? null
@@ -145,6 +335,46 @@ export function abandonPasskeyCreationAuth(): void {
 			name: "NotAllowedError",
 		}),
 	)
+}
+
+/**
+ * Drops only the in-memory wallet (and creation gate). Does not touch sessionStorage so a
+ * reload can still resume Bind from public deploy facts.
+ */
+export function releasePasskeyWalletMemory(): void {
+	abandonPasskeyCreationAuth()
+	active = null
+	creationGate = null
+}
+
+/**
+ * Drops the in-memory wallet and clears this page's public resume record when known.
+ * Pass `claimToken` to clear that claim's record even when memory was already released.
+ */
+export function forgetPasskeyWallet(claimToken?: string): void {
+	releasePasskeyWalletMemory()
+	clearActiveStorageRecord()
+	if (claimToken) {
+		void storageKeyForClaim(claimToken)
+			.then((key) => {
+				removeStoredKey(key)
+				if (activeStorageKey === key) activeStorageKey = null
+			})
+			.catch(() => {})
+	}
+}
+
+/** Clears the public resume record for a claim token (token change). Memory is untouched. */
+export async function clearPasskeyResumeRecord(
+	claimToken: string,
+): Promise<void> {
+	try {
+		const key = await storageKeyForClaim(claimToken)
+		removeStoredKey(key)
+		if (activeStorageKey === key) activeStorageKey = null
+	} catch {
+		// ignore
+	}
 }
 
 export async function createPasskeyWallet(
@@ -197,8 +427,8 @@ export async function createPasskeyWallet(
 		if (creationGate === gate) creationGate = null
 	}
 
-	const { contractId, keyIdBase64, signedTx } = created
-	if (!contractId || !keyIdBase64 || !signedTx) {
+	const { contractId, keyIdBase64, signedTx, publicKey } = created
+	if (!contractId || !keyIdBase64 || !signedTx || !publicKey?.length) {
 		active = null
 		throw new PasskeyWalletError(
 			"failed",
@@ -217,36 +447,108 @@ export async function createPasskeyWallet(
 }
 
 /**
- * Records the API-confirmed deploy hash for the in-memory wallet. Binding and signing are
- * refused until the API confirmed the deploy, so a pending/unknown deploy can never proceed.
+ * Records the API-confirmed deploy hash for the in-memory wallet and persists ONLY public
+ * facts for Bind resume after reload. Binding and signing are refused until the API confirmed
+ * the deploy, so a pending/unknown deploy can never proceed.
  */
-export function rememberPasskeyDeploy(deployTxHash: string): void {
-	if (active) {
-		active.deployTxHash = deployTxHash
-		active.bound = false
+export async function rememberPasskeyDeploy(
+	deployTxHash: string,
+	claimToken: string,
+): Promise<void> {
+	if (!active) return
+	const hash = deployTxHash.trim().toLowerCase()
+	if (!/^[a-f0-9]{64}$/.test(hash)) return
+	active.deployTxHash = hash
+	active.bound = false
+	try {
+		const key = await storageKeyForClaim(claimToken)
+		activeStorageKey = key
+		const publicKey = active.created.publicKey
+		if (!publicKey?.length) return
+		writeStoredResume(key, {
+			v: 1,
+			contractId: active.contractId,
+			keyIdBase64: active.keyIdBase64,
+			publicKey: bytesToBase64(publicKey),
+			deployTxHash: hash,
+		})
+	} catch {
+		// Storage or hashing unavailable: keep in-memory deploy only.
 	}
 }
 
-/** Drops the in-memory wallet (token change or logout); never persisted anywhere. */
-export function forgetPasskeyWallet(): void {
-	abandonPasskeyCreationAuth()
-	active = null
-	creationGate = null
+/**
+ * Rebuilds the in-memory wallet from public sessionStorage facts for this claim (if any).
+ * Bind remains a separate explicit click. Returns null when nothing is stored or storage fails.
+ */
+export async function resumePasskeyWallet(
+	claimToken: string,
+): Promise<ResumedPasskeyWallet | null> {
+	if (!hasWebAuthn() || !isPasskeyWalletConfigured) return null
+	let key: string
+	try {
+		key = await storageKeyForClaim(claimToken)
+	} catch {
+		return null
+	}
+	const record = readStoredResume(key)
+	if (!record) return null
+
+	try {
+		const { PasskeyKit } = await loadKitModule()
+		const publicKey = base64ToBytes(record.publicKey)
+		const keyId = base64urlToBytes(record.keyIdBase64)
+		const kit = new PasskeyKit({ ...passkeyWalletConfig })
+		const created = {
+			rawResponse: {
+				id: record.keyIdBase64,
+				rawId: record.keyIdBase64,
+				response: {
+					clientDataJSON: "",
+					attestationObject: "",
+				},
+				clientExtensionResults: {},
+				type: "public-key",
+			},
+			keyId,
+			keyIdBase64: record.keyIdBase64,
+			publicKey,
+			contractId: record.contractId,
+			// Deploy already confirmed by the API; Bind never resubmits this carrier.
+			signedTx: "",
+		} as CreateWalletResult
+		active = {
+			kit,
+			created,
+			contractId: record.contractId,
+			keyIdBase64: record.keyIdBase64,
+			deployTxHash: record.deployTxHash,
+			bound: false,
+		}
+		activeStorageKey = key
+		return {
+			contractId: record.contractId,
+			deployTxHash: record.deployTxHash,
+		}
+	} catch {
+		active = null
+		return null
+	}
 }
 
 /**
- * Binds the already-created credential to the API-confirmed deploy.
+ * Binds the already-created (or resumed) credential to the API-confirmed deploy.
  *
  * Must be started from a user click: this function does not await module loads first — the kit
- * from createWallet stays in memory — so confirmWalletCreation / connectWallet keep the gesture.
- * Never calls createWallet. Cancel or failure leaves the same credential for a Bind retry.
+ * from createWallet/resume stays in memory — so confirmWalletCreation / connectWallet keep the
+ * gesture. Never calls createWallet. Cancel or failure leaves the same credential for a Bind retry.
  */
 export async function bindPasskeyWallet(): Promise<void> {
 	const wallet = active
 	if (!wallet) {
 		throw new PasskeyWalletError(
 			"no_wallet",
-			"This page no longer holds the passkey wallet. A reload cannot resume it; use a crypto wallet address instead.",
+			"This page no longer holds the passkey wallet. If this browser still has the deploy record, reload to resume Bind; otherwise use a crypto wallet address instead.",
 		)
 	}
 	if (!wallet.deployTxHash) {
@@ -257,13 +559,25 @@ export async function bindPasskeyWallet(): Promise<void> {
 	}
 	if (wallet.bound) return
 
+	let step: PasskeyBindStep = "confirmWalletCreation"
 	try {
 		await wallet.kit.confirmWalletCreation(wallet.created, wallet.deployTxHash)
+		step = "connectWallet"
 		await wallet.kit.connectWallet({ keyId: wallet.keyIdBase64 })
 		wallet.bound = true
 	} catch (cause) {
 		wallet.bound = false
-		throw toWalletError(cause)
+		if (isCancellation(cause)) throw toWalletError(cause)
+		const meta = describePasskeyBindCause(cause)
+		const bindDiagnostic: PasskeyBindDiagnostic = {
+			step,
+			errorName: meta.errorName,
+			errorCode: meta.errorCode,
+			reason: meta.reason,
+			contractId: wallet.contractId,
+		}
+		logBindDiagnostic(bindDiagnostic)
+		throw toWalletError(cause, { bindDiagnostic })
 	}
 }
 
@@ -289,7 +603,7 @@ export async function signPasskeyClaimAuthEntries({
 	if (!wallet) {
 		throw new PasskeyWalletError(
 			"no_wallet",
-			"This page no longer holds the passkey wallet. A reload cannot resume it; use a crypto wallet address instead.",
+			"This page no longer holds the passkey wallet. If this browser still has the deploy record, reload to resume Bind; otherwise use a crypto wallet address instead.",
 		)
 	}
 	if (!wallet.deployTxHash) {

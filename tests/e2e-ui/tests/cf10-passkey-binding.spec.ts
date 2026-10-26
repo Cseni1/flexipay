@@ -35,6 +35,8 @@ interface StubState {
 	signs: number
 	confirm: "ok" | "cancel" | "error"
 	bind: "ok" | "cancel" | "error" | "hang"
+	/** When set, Bind fails at this kit step with a diagnostic. */
+	bindFailStep: null | "confirmWalletCreation" | "connectWallet"
 	bindDelay: number
 	confirmDelay: number
 	contractId: string
@@ -49,10 +51,11 @@ type StubWindow = { __passkeyBindTest?: StubState }
 
 const STUB_MODULE = `
 export class PasskeyWalletError extends Error {
-	constructor(code, message) {
+	constructor(code, message, options = {}) {
 		super(message)
 		this.name = "PasskeyWalletError"
 		this.code = code
+		if (options.bindDiagnostic) this.bindDiagnostic = options.bindDiagnostic
 	}
 }
 
@@ -102,6 +105,16 @@ export function forgetPasskeyWallet() {
 	abandonPasskeyCreationAuth()
 }
 
+export function releasePasskeyWalletMemory() {
+	abandonPasskeyCreationAuth()
+}
+
+export async function clearPasskeyResumeRecord() {}
+
+export async function resumePasskeyWallet() {
+	return null
+}
+
 export async function bindPasskeyWallet() {
 	const state = window.__passkeyBindTest
 	state.binds += 1
@@ -109,6 +122,36 @@ export async function bindPasskeyWallet() {
 		await new Promise((resolve) => setTimeout(resolve, state.bindDelay))
 	if (state.bind === "cancel")
 		throw new PasskeyWalletError("cancelled", "The bind prompt was dismissed.")
+	if (state.bindFailStep === "confirmWalletCreation") {
+		const diagnostic = {
+			step: "confirmWalletCreation",
+			errorName: "WalletOwnershipError",
+			errorCode: 601,
+			reason: "birth_mismatch",
+			contractId: state.contractId,
+		}
+		console.warn("[passkey-bind]", diagnostic)
+		throw new PasskeyWalletError(
+			"failed",
+			"The passkey wallet could not be bound on this device.",
+			{ bindDiagnostic: diagnostic },
+		)
+	}
+	if (state.bindFailStep === "connectWallet") {
+		const diagnostic = {
+			step: "connectWallet",
+			errorName: "WalletOwnershipError",
+			errorCode: 602,
+			reason: "signer_missing",
+			contractId: state.contractId,
+		}
+		console.warn("[passkey-bind]", diagnostic)
+		throw new PasskeyWalletError(
+			"failed",
+			"The passkey wallet could not be bound on this device.",
+			{ bindDiagnostic: diagnostic },
+		)
+	}
 	if (state.bind === "error")
 		throw new PasskeyWalletError(
 			"failed",
@@ -135,6 +178,7 @@ async function installStub(
 		signs: 0,
 		confirm: "ok",
 		bind: "ok",
+		bindFailStep: null,
 		bindDelay: 0,
 		confirmDelay: 0,
 		contractId: CONTRACT_ID,
@@ -379,5 +423,59 @@ test.describe("CF10 passkey binding focus", () => {
 				() => document.documentElement.scrollWidth <= window.innerWidth,
 			),
 		).toBe(true)
+	})
+
+	test("confirmWalletCreation failure shows step diagnostic under generic headline", async ({
+		page,
+	}) => {
+		const warnings: string[] = []
+		page.on("console", (message) => {
+			if (message.type() === "warning") warnings.push(message.text())
+		})
+		await installStub(page, { bindFailStep: "confirmWalletCreation" })
+		await mockClaim(page)
+		await openPasskey(page)
+		await createAndConfirm(page)
+		await page.getByTestId("passkey-bind").click()
+
+		await expect(page.getByTestId("passkey-bind-error")).toContainText(
+			/could not be bound/i,
+		)
+		const diagnostic = page.getByTestId("passkey-bind-diagnostic")
+		await expect(diagnostic).toContainText("confirmWalletCreation")
+		await expect(diagnostic).toContainText("WalletOwnershipError")
+		await expect(diagnostic).toContainText("601")
+		await expect(diagnostic).toContainText("birth_mismatch")
+		await expect(diagnostic).not.toContainText(SIGNED_TX)
+		await expect(diagnostic).not.toContainText(DEPLOY_HASH)
+		await expect(page.getByTestId("passkey-bind")).toBeEnabled()
+		expect(warnings.some((line) => /\[passkey-bind\]/.test(line))).toBe(true)
+	})
+
+	test("connectWallet failure shows step diagnostic under generic headline", async ({
+		page,
+	}) => {
+		const warnings: string[] = []
+		page.on("console", (message) => {
+			if (message.type() === "warning") warnings.push(message.text())
+		})
+		await installStub(page, { bindFailStep: "connectWallet" })
+		await mockClaim(page)
+		await openPasskey(page)
+		await createAndConfirm(page)
+		await page.getByTestId("passkey-bind").click()
+
+		await expect(page.getByTestId("passkey-bind-error")).toContainText(
+			/could not be bound/i,
+		)
+		const diagnostic = page.getByTestId("passkey-bind-diagnostic")
+		await expect(diagnostic).toContainText("connectWallet")
+		await expect(diagnostic).toContainText("WalletOwnershipError")
+		await expect(diagnostic).toContainText("602")
+		await expect(diagnostic).toContainText("signer_missing")
+		await expect(diagnostic).not.toContainText(SIGNED_TX)
+		await expect(diagnostic).not.toContainText(DEPLOY_HASH)
+		await expect(page.getByTestId("passkey-bind")).toBeEnabled()
+		expect(warnings.some((line) => /\[passkey-bind\]/.test(line))).toBe(true)
 	})
 })

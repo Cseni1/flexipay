@@ -1,14 +1,17 @@
 // Passkey claim UI state for the M2 milestone (CCR-21).
 //
 // The reducer is pure UI state: it holds no auth entries, signed entries, XDR, claim secret or
-// claim token. Those live only in the controller's in-memory refs, never in React state, logs or
-// browser storage. The full chain is:
+// claim token. Those live only in the controller's in-memory refs, never in React state or logs.
+// After a confirmed deploy, passkeyWallet may keep ONLY public wallet facts in a tab-scoped
+// browser store (contractId, keyIdBase64, publicKey, deployTxHash) so reload can resume Bind —
+// never signedTx, auth entries, claim secret or the raw claim token. The full chain is:
 //
 //   wallet create (register → Confirm with passkey) → deploy → Bind wallet → prepare → sign → submit
+//   (or reload → wallet_resumed → Bind wallet → …)
 //
 // Create-time Confirm and post-deploy Bind are separate user gestures. Binding never auto-starts
-// after create/deploy. The post-registration startAuthentication is gated behind Confirm so it
-// runs from that click, continuing the same createWallet (no second registration).
+// after create/deploy/resume. The post-registration startAuthentication is gated behind Confirm so
+// it runs from that click, continuing the same createWallet (no second registration).
 // Submit semantics: 200 + releaseTxRef is a confirmed release (paid only when the API says so);
 // 202 is pending and never paid. A network retry reuses the same submit body and idempotency key;
 // a new prepare gets a new key.
@@ -54,6 +57,15 @@ export interface PasskeyVerifiedClaim {
 	paymentStatus: string
 }
 
+/** Non-sensitive Bind failure facts (mirrors passkeyWallet.PasskeyBindDiagnostic). */
+export interface PasskeyBindDiagnosticState {
+	step: "confirmWalletCreation" | "connectWallet"
+	errorName: string
+	errorCode: string | number | null
+	reason: string | null
+	contractId: string
+}
+
 export interface PasskeyClaimFlowState {
 	phase: PasskeyClaimPhase
 	contractId: string | null
@@ -73,6 +85,8 @@ export interface PasskeyClaimFlowState {
 	apiPaymentStatus: string | null
 	retry: PasskeyRetryTarget | null
 	message: string | null
+	/** Short Bind kit diagnostic; never XDR/keys/tokens. */
+	bindDiagnostic: PasskeyBindDiagnosticState | null
 	verified: PasskeyVerifiedClaim | null
 }
 
@@ -90,9 +104,19 @@ export type PasskeyClaimEvent =
 	| { type: "wallet_creation_failed"; message: string }
 	| { type: "deploy_succeeded"; deployTxHash: string }
 	| { type: "deploy_failed"; message: string; retryable?: boolean }
+	/** Reload restored public deploy facts; Bind stays an explicit click. */
+	| {
+			type: "wallet_resumed"
+			contractId: string
+			deployTxHash: string
+	  }
 	| { type: "bind_started" }
 	| { type: "bind_succeeded" }
-	| { type: "bind_failed"; message: string }
+	| {
+			type: "bind_failed"
+			message: string
+			diagnostic?: PasskeyBindDiagnosticState | null
+	  }
 	| { type: "bind_cancelled"; message: string }
 	| { type: "prepare_started" }
 	| {
@@ -172,6 +196,7 @@ export const initialPasskeyFlow = ({
 	apiPaymentStatus: null,
 	retry: null,
 	message: null,
+	bindDiagnostic: null,
 	verified: null,
 })
 
@@ -324,6 +349,21 @@ export function passkeyClaimReducer(
 				message: event.message,
 			}
 
+		case "wallet_resumed": {
+			if (state.phase !== "idle") return unchanged(state)
+			if (!event.contractId.trim() || !event.deployTxHash.trim())
+				return unchanged(state)
+			return {
+				...state,
+				phase: "deployed",
+				contractId: event.contractId,
+				deployTxHash: event.deployTxHash,
+				deployIdempotencyKey: null,
+				retry: null,
+				message: null,
+			}
+		}
+
 		case "bind_started":
 			if (state.phase !== "deployed" && state.phase !== "binding_failed")
 				return unchanged(state)
@@ -333,6 +373,7 @@ export function passkeyClaimReducer(
 				phase: "binding",
 				retry: null,
 				message: null,
+				bindDiagnostic: null,
 			}
 
 		case "bind_succeeded":
@@ -342,6 +383,7 @@ export function passkeyClaimReducer(
 				phase: "bound",
 				retry: null,
 				message: null,
+				bindDiagnostic: null,
 			}
 
 		case "bind_failed":
@@ -351,6 +393,7 @@ export function passkeyClaimReducer(
 				phase: "binding_failed",
 				retry: "bind",
 				message: event.message,
+				bindDiagnostic: event.diagnostic ?? null,
 			}
 
 		case "bind_cancelled":
@@ -361,6 +404,7 @@ export function passkeyClaimReducer(
 				phase: "binding_failed",
 				retry: "bind",
 				message: event.message,
+				bindDiagnostic: null,
 			}
 
 		case "prepare_started":
@@ -597,6 +641,7 @@ export function passkeyClaimReducer(
 				pendingTxHash: null,
 				apiPaymentStatus: null,
 				message: null,
+				bindDiagnostic: null,
 			}
 
 		case "expired":

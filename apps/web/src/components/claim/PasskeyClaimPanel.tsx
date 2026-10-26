@@ -251,6 +251,21 @@ export function PasskeyClaimPanel({
 							{flow.message ??
 								"The passkey wallet could not be bound on this device."}
 						</Notice>
+						{flow.bindDiagnostic ? (
+							<p className="form-note" data-testid="passkey-bind-diagnostic">
+								Bind step {flow.bindDiagnostic.step}
+								{" · "}
+								{flow.bindDiagnostic.errorName}
+								{flow.bindDiagnostic.errorCode !== null
+									? ` (${flow.bindDiagnostic.errorCode})`
+									: ""}
+								{flow.bindDiagnostic.reason
+									? ` · ${flow.bindDiagnostic.reason}`
+									: ""}
+								{" · "}
+								contract {truncated(flow.bindDiagnostic.contractId)}
+							</p>
+						) : null}
 						<p className="form-note">
 							Retrying Bind wallet reuses the same passkey. It never creates a
 							new credential.
@@ -305,26 +320,40 @@ export function PasskeyClaimPanel({
 					</>
 				)
 
-			case "deploy_failed":
+			case "deploy_failed": {
+				const contractMismatch = Boolean(
+					flow.message?.includes("already has a passkey wallet"),
+				)
 				return (
 					<>
-						<Notice tone="warning" data-testid="passkey-deploy-error">
+						<Notice
+							tone="warning"
+							data-testid={
+								contractMismatch
+									? "passkey-contract-mismatch"
+									: "passkey-deploy-error"
+							}
+						>
 							{flow.message ?? "The wallet could not be deployed on testnet."}
 						</Notice>
 						<p className="form-note">
-							{flow.retry === "create"
-								? "Retrying asks your device for a passkey again; the earlier attempt created no wallet."
-								: flow.retry === "deploy"
-									? "Retrying sends the same deploy request with the same idempotency key, so no second wallet is created."
-									: "This attempt cannot be repeated with the same request. Use a crypto wallet address instead."}
+							{contractMismatch
+								? "No second passkey is offered here. Reload to resume Bind if this browser still holds the earlier wallet, or use a crypto wallet address."
+								: flow.retry === "create"
+									? "Retrying asks your device for a passkey again; the earlier attempt created no wallet."
+									: flow.retry === "deploy"
+										? "Retrying sends the same deploy request with the same idempotency key, so no second wallet is created."
+										: "This attempt cannot be repeated with the same request. Use a crypto wallet address instead."}
 						</p>
 						<div className="claim-demo">
-							{retry}
+							{/* contract_mismatch: never offer Create / Retry→create */}
+							{contractMismatch ? null : retry}
 							{cancel}
 							{fallback}
 						</div>
 					</>
 				)
+			}
 
 			case "preparing":
 				return (
