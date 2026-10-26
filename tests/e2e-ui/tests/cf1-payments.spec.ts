@@ -272,7 +272,10 @@ test.describe("CF1 payments", () => {
 		await page.getByRole("button", { name: "Get quote" }).click()
 
 		await expect(page.getByText(/Quote request failed/)).toBeVisible()
-		await expect(page.getByText(/Crypto is not allowed/)).toBeVisible()
+		// A readable reason passes through unchanged (also listed under technical details).
+		await expect(page.getByTestId("quote-error")).toContainText(
+			"Crypto is not allowed for this corridor.",
+		)
 		await expect(
 			page.getByRole("button", { name: "Create payment" }),
 		).toHaveCount(0)
