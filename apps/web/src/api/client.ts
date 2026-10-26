@@ -1,5 +1,7 @@
 import {
 	PaymentDetailSchema,
+	PaymentListResponseSchema,
+	type PaymentListResponse,
 	PaymentSchema,
 	QuoteSchema,
 	type CreatePaymentRequest,
@@ -219,6 +221,11 @@ export const createPayment = (
 		idempotencyKey,
 		signal,
 	})
+
+export const listPayments = (
+	signal?: AbortSignal,
+): Promise<PaymentListResponse> =>
+	request("/v1/payments", { schema: PaymentListResponseSchema, signal })
 
 export const getPayment = (
 	paymentId: string,

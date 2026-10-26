@@ -11,9 +11,21 @@ export function AppShell() {
 				<p className="app-brand__note">Testnet build</p>
 
 				<nav className="app-nav" aria-label="Primary">
-					<NavLink to="/" className="nav-link">
+					<NavLink to="/dashboard" className="nav-link">
+						<span className="nav-link__dot" aria-hidden="true" />
+						Dashboard
+					</NavLink>
+					<NavLink to="/payments" end className="nav-link">
 						<span className="nav-link__dot" aria-hidden="true" />
 						Payments
+					</NavLink>
+					<NavLink to="/" end className="nav-link">
+						<span className="nav-link__dot" aria-hidden="true" />
+						New payment
+					</NavLink>
+					<NavLink to="/developers" className="nav-link">
+						<span className="nav-link__dot" aria-hidden="true" />
+						Developers
 					</NavLink>
 				</nav>
 
