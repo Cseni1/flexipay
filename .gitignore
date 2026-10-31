@@ -62,3 +62,7 @@ apps/api/.pgdata-h1-drift-freebuff/
 
 # E1 event vault secrets overlay (never commit)
 scripts/testnet/.env.secrets-anchor-vault
+
+# Local Solana TASK 02 payer (never commit)
+scripts/demo/.solana-payer.pubkey
+

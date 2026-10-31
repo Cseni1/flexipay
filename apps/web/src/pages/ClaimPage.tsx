@@ -15,6 +15,7 @@ import {
 } from "../api/claimClient"
 import { AnchorClaimSection } from "../components/claim/AnchorClaimSection"
 import { PasskeyClaimSection } from "../components/claim/PasskeyClaimSection"
+import { SolanaWalletPanel } from "../components/solana/SolanaWalletPanel"
 import {
 	Button,
 	InfoPopover,
@@ -22,6 +23,7 @@ import {
 	SimulatedLabel,
 	TextField,
 } from "../components/ui"
+import { type ConnectedSolanaWallet } from "../solana/walletStandard"
 
 type DestinationType = ClaimView["allowedDestinationTypes"][number]
 
@@ -172,12 +174,18 @@ const closedClaimMessage = (claim: ClaimView): string => {
 		return "This claim link has expired. No release was made by this page."
 	}
 	if (claim.paymentStatus === "paid") {
+		if (claim.releaseEvidence?.network === "solana") {
+			return "Paid: backend verified the Solana USDC transfer on-chain before marking paid."
+		}
 		return "Paid: confirmed by the claim API after the release."
+	}
+	if (claim.paymentStatus === "failed") {
+		return "Failed: the payment did not complete. No funds were marked paid."
 	}
 	if (CLOSED_PAYMENT_STATUSES.has(claim.paymentStatus)) {
 		return `The claim API reports ${paymentStatusLabel(claim.paymentStatus)}. This page does not treat that as paid.`
 	}
-	return "Accepted. The payment is moving through the API; this page polls until it reaches a final state."
+	return "Accepted. Waiting for the sender's verified Solana transfer (or vault release). This page polls until paid or closed."
 }
 
 const notReadyMessage = (claim: ClaimView): string => {
@@ -218,7 +226,7 @@ export default function ClaimPage() {
 	const [anchorSelected, setAnchorSelected] = useState(false)
 	const [detail, setDetail] = useState("")
 	const [cryptoNetwork, setCryptoNetwork] = useState<"stellar" | "solana">(
-		"stellar",
+		"solana",
 	)
 	const [accepting, setAccepting] = useState(false)
 	const [acceptError, setAcceptError] = useState<string | null>(null)
@@ -695,10 +703,22 @@ export default function ClaimPage() {
 												</fieldset>
 											) : null}
 											{isCrypto(selectedType) && cryptoNetwork === "solana" ? (
-												<p className="form-note">
-													Bank and e-wallet methods stay in the architecture but
-													are not labelled LIVE without a verified provider.
-												</p>
+												<>
+													<p className="form-note">
+														Bank and e-wallet methods stay in the architecture
+														but are not labelled LIVE without a verified
+														provider.
+													</p>
+													<SolanaWalletPanel
+														title="Confirm Solana destination wallet"
+														onConnected={(
+															session: ConnectedSolanaWallet | null,
+														) => {
+															if (!session) return
+															updateDetail(session.address)
+														}}
+													/>
+												</>
 											) : null}
 											<TextField
 												id="claim-detail"
@@ -714,7 +734,7 @@ export default function ClaimPage() {
 												hint={
 													isCrypto(selectedType)
 														? cryptoNetwork === "solana"
-															? "Devnet only. Paste a public Solana address; never a secret key."
+															? "Devnet only. Connect a wallet or paste a public Solana address; never a secret key."
 															: "Testnet only. Paste a public wallet address; never a secret key."
 														: "Only the claimed endpoint type is sent. Simulated fiat is not LIVE."
 												}
@@ -746,8 +766,9 @@ export default function ClaimPage() {
 												{accepting ? "Accepting…" : "Accept payment"}
 											</Button>
 											<p className="form-note">
-												Accepting sends one idempotent request. The payment is
-												marked paid only when the claim API returns that state.
+												Accepting sends one idempotent request. For Solana,
+												accept only locks your destination — PAID happens after
+												the sender&apos;s transfer is verified on-chain.
 											</p>
 										</>
 									) : (
@@ -759,9 +780,33 @@ export default function ClaimPage() {
 								</>
 							) : (
 								<>
-									<Notice tone={closedClaimTone(claim)}>
+									<Notice
+										tone={closedClaimTone(claim)}
+										data-testid="claim-closed-status"
+									>
 										{closedClaimMessage(claim)}
 									</Notice>
+									{claim.paymentStatus === "paid" && claim.releaseEvidence ? (
+										<Notice data-testid="claim-release-evidence">
+											Verified on {claim.releaseEvidence.network}. Signature:{" "}
+											<code className="code-text">
+												{claim.releaseEvidence.signature}
+											</code>
+											{claim.releaseEvidence.explorerUrl ? (
+												<>
+													{" "}
+													<a
+														href={claim.releaseEvidence.explorerUrl}
+														target="_blank"
+														rel="noreferrer"
+														data-testid="claim-explorer-link"
+													>
+														View on Explorer
+													</a>
+												</>
+											) : null}
+										</Notice>
+									) : null}
 									{/* M1 anchor cash-out needs the vault release first, so it is reachable only
 									    after the claim is accepted to a classic G… account. Same panel, no
 									    new screen; the release and anchor statuses stay separate inside. */}

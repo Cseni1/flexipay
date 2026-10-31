@@ -64,6 +64,7 @@ export {
   ClaimAcceptRequestSchema,
   ClaimAcceptResponseSchema,
   ClaimLinkStatusSchema,
+  ClaimReleaseEvidenceSchema,
   ClaimViewSchema,
   PasskeyDeployRequestSchema,
   PasskeyDeployResponseSchema,

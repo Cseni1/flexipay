@@ -18,6 +18,10 @@ import {
 import { acceptSolanaClaimDestination } from "../orchestrator/solana-claim.ts";
 import { defineRoute, type RouteDef } from "../routes.ts";
 import type { ApiRuntime } from "../runtime.ts";
+import {
+	explorerUrlForSignature,
+	getSolanaRuntimeConfig,
+} from "../solana/runtime-config.ts";
 
 export async function loadClaimByToken(db: import("../db.ts").Db, token: string) {
 	const tokenHash = sha256Hex(token);
@@ -53,6 +57,32 @@ export function toClaimView(link: LoadedClaim, now: Date): ClaimView {
 		dest.type === "crypto_wallet" || dest.type === "crypto_custodial"
 			? (["crypto_wallet"] as const)
 			: (["bank_account", "ewallet"] as const);
+	const settle = link.payment.legs.find((leg) => leg.kind === "settle");
+	const releaseTxRef = settle?.releaseTxRef ?? null;
+	let releaseEvidence: ClaimView["releaseEvidence"] = null;
+	if (releaseTxRef && link.payment.status === "paid") {
+		const fundNetwork = settle?.fundNetwork ?? null;
+		const network =
+			fundNetwork === "solana" ||
+			fundNetwork === "stellar" ||
+			fundNetwork === "mock"
+				? fundNetwork
+				: releaseTxRef.length >= 64
+					? "solana"
+					: "stellar";
+		releaseEvidence = {
+			network,
+			signature: releaseTxRef,
+			...(network === "solana"
+				? {
+						explorerUrl: explorerUrlForSignature(
+							getSolanaRuntimeConfig().explorerTxUrlTemplate,
+							releaseTxRef,
+						),
+					}
+				: {}),
+		};
+	}
 	return ClaimViewSchema.parse({
 		paymentId: link.paymentId,
 		status,
@@ -68,6 +98,7 @@ export function toClaimView(link: LoadedClaim, now: Date): ClaimView {
 		},
 		allowedDestinationTypes: [...allowed],
 		simulated: true,
+		releaseEvidence,
 	});
 }
 

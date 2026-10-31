@@ -238,7 +238,7 @@ export function QuotePanel({
 								</span>
 							</span>
 						</label>
-						<label className="option-card">
+						<label className="option-card" data-testid="delivery-claim-link">
 							<input
 								type="radio"
 								name="delivery"
@@ -261,6 +261,7 @@ export function QuotePanel({
 						<Button
 							disabled={expired || creating || authBlocked}
 							onClick={onCreate}
+							data-testid="create-payment"
 						>
 							{creating
 								? "Creating…"
