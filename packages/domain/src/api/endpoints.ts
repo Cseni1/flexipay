@@ -39,8 +39,8 @@ export const CreateEndpointRequestSchema = z
 		type: EndpointTypeSchema,
 		country: CountryOrEmpty,
 		currency: CurrencyCode,
-		/** `stellar` for crypto; null for fiat. */
-		network: z.enum(["stellar"]).nullable(),
+		/** `stellar` | `solana` for crypto (CCR-24); null for fiat. */
+		network: z.enum(["stellar", "solana"]).nullable(),
 		details: z.record(z.string(), z.string()),
 		simulated: z.literal(true),
 	})
@@ -54,10 +54,10 @@ export const CreateEndpointRequestSchema = z
 				path: ["country"],
 			});
 		}
-		if (crypto && ep.network !== "stellar") {
+		if (crypto && ep.network !== "stellar" && ep.network !== "solana") {
 			ctx.addIssue({
 				code: "custom",
-				message: "crypto endpoints set network to stellar (§6.3)",
+				message: "crypto endpoints set network to stellar or solana (CCR-24)",
 				path: ["network"],
 			});
 		}
@@ -98,7 +98,7 @@ export const EndpointSchema = z
 		type: EndpointTypeSchema,
 		country: CountryOrEmpty,
 		currency: CurrencyCode,
-		network: z.enum(["stellar"]).nullable(),
+		network: z.enum(["stellar", "solana"]).nullable(),
 		details: z.record(z.string(), z.string()),
 		simulated: z.literal(true),
 		createdAt: IsoTimestamp,

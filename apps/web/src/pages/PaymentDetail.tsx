@@ -10,6 +10,7 @@ import {
 } from "../api/client"
 import { EventLog } from "../components/payments/EventLog"
 import { LegTimeline } from "../components/payments/LegTimeline"
+import { SolanaPayPanel } from "../components/solana/SolanaPayPanel"
 import {
 	Button,
 	Grid,
@@ -282,6 +283,16 @@ export default function PaymentDetail() {
 									The claim link was shown once when the payment was created and
 									can&apos;t be shown again.
 								</Notice>
+							) : null}
+
+							{payment.status === "processing" &&
+							settleLeg &&
+							settleLeg.status === "processing" &&
+							!settleLeg.releaseTxRef ? (
+								<SolanaPayPanel
+									paymentId={payment.id}
+									onPaid={() => refresh()}
+								/>
 							) : null}
 
 							{payment.legs.some((leg) => leg.simulated) ? (

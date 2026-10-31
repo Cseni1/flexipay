@@ -551,3 +551,75 @@ See **`docs/DEPOSIT_RECOVERY_MIGRATION.md`** (amended with CCR-23). Nullable set
 3. `fundOpIndex` from decode only; multi-deposit match → reject.
 4. Historical stranded balances: CLI bind only; withdraw policy remains out of product scope here.
 
+## CCR-24: Solana USDC network + verified wallet transfer (ELFOGADVA — owner TASK 02 authorisation, 31 Oct 2026)
+
+- **Status:** Accepted for implementation on branch `agent/task-02-solana-usdc` under owner authorisation that the November 12 architecture supersedes the EVENT_PLAN “no other-chain adapters” restriction for this task. Stellar and mock settlement remain supported. Integrator review of shared interfaces is not waived.
+- **What:** Additive Solana support for wallet-to-wallet USDC on **devnet** (mainnet requires separate approval). Extends crypto `network`, settlement network labels used in fund identity / explorer, claim accept endpoints, and adds verify-before-PAID API routes. Does **not** replace the payment engine, ClaimLink security/expiry/recovery, or Stellar vault adapter.
+- **Why:** Demo Day (12 Nov) target is real, verified Solana USDC between supported wallets with receiver-chosen destination via ClaimLink.
+
+### 1. Closed value sets (additive)
+
+| Set | Before | After |
+|---|---|---|
+| Crypto endpoint `network` | `stellar` only | `stellar` \| `solana` |
+| Fiat endpoint `network` | `null` | unchanged |
+| `SettlementNetwork` (adapter.network / fundNetwork) | `stellar` \| `mock` | `stellar` \| `mock` \| `solana` |
+| Settlement rail config `network` | `stellar` literal | `stellar` \| `solana` |
+| Rail id | `stellar_usdc` | add optional `solana_usdc` (config); Solana claim path may still fund via existing mock/stellar settle lock, then complete with verified Solana transfer evidence |
+
+### 2. Claim accept endpoint (§6.3 / CCR-17)
+
+- Crypto endpoints: `network` is `stellar` or `solana`; `country` remains `""`; `details.address` is the destination address string.
+- `solana`: address is a base58 Solana pubkey (32-byte ed25519). Validation is length/charset + decode; no private keys.
+- `stellar`: existing G… / C… rules unchanged.
+- **Accept behaviour when `network=solana`:** persist destination (Endpoint row + durable claim binding), mark ClaimLink `accepted`, **do not** call Stellar vault `release`. Payment stays `processing` until a verified Solana transfer is confirmed. Accepted ≠ paid.
+- Fiat / stellar crypto accept paths unchanged.
+- Simulated bank/e-wallet options remain in product architecture; UI must not label them LIVE unless a verified provider path exists.
+
+### 3. Solana transfer confirmation API (new)
+
+Auth: `api_key` (sender/platform). Idempotency-Key required on confirm.
+
+| Method | Path | Role |
+|---|---|---|
+| `GET` | `/v1/solana/config` | Public-safe config: cluster label (`devnet`), USDC mint, decimals, explorer tx URL template, RPC **not** required in browser (web uses Vite proxy or public read RPC configured without secrets). |
+| `GET` | `/v1/payments/{id}/solana/intent` | Expected transfer: mint, decimals, amount (minor units string), recipient address, paymentId, cluster. 409 unless claim accepted with solana destination and settle awaiting release evidence. |
+| `POST` | `/v1/payments/{id}/solana/confirm` | Body `{ signature: string }` (base58 tx sig). Backend fetches transaction from RPC, verifies **successful** execution, **mint**, **recipient token account owner**, **amount ≥ expected**, and cluster. Only then writes `Leg.releaseTxRef = signature`, marks settle succeeded, payment `paid`. Never marks PAID on submit alone. |
+
+Idempotency: same signature replay returns current paid state; a **different** signature after success → 409. Uncertain confirmation (RPC timeout / missing tx) → 202 pending or 502 without mutating to paid; **no** automatic rebroadcast that could double-spend.
+
+### 4. Persistence (no Prisma migration in this CCR)
+
+- Destination: `Endpoint` with `network="solana"` and `details.address` (existing `String?` / Json columns).
+- Evidence: settle `Leg.releaseTxRef` = Solana signature; `fundNetwork` / event payloads may say `solana`.
+- A future migration may add `ClaimLink.solanaDestinationAddress` — **out of scope** until separately approved.
+
+### 5. Environment (devnet)
+
+| Name | Role |
+|---|---|
+| `FP_SOLANA_CLUSTER` | `devnet` (default for TASK 02). `mainnet-beta` forbidden without separate approval. |
+| `FP_SOLANA_RPC_URL` | Server-side RPC (e.g. Helius free / public devnet). Never expose API keys to the browser bundle. |
+| `FP_SOLANA_USDC_MINT` | SPL mint address. Devnet test mint — UI labels **Devnet USDC (test)**, never mainnet USDC. |
+| `FP_SOLANA_EXPLORER_TX_URL` | Optional template with `{signature}` placeholder. |
+
+### 6. Frontend
+
+- Solana Wallet Standard connect/disconnect; show address, SOL balance, USDC (configured mint) balance.
+- No private keys or seeds stored by FlexiPay.
+- Claim page: Solana destination selection/confirm before sender can pay.
+- Payment detail: after solana claim accept, sender signs real transfer; show result + Explorer link after **backend-verified** PAID.
+- Crossmint / Phantom Portal / embedded wallets: **not** in this task.
+
+### 7. Tests
+
+- Domain schema: stellar still required where applicable; solana accept parses; invalid address rejected.
+- Adapter: verify rejects wrong mint/recipient/amount/failed tx; accepts fixture success.
+- API: confirm does not PAID without verify; idempotent confirm; duplicate different sig rejected.
+- Web: wallet module unit tests; TASK 01 proxy/client/corridors + CF4 claim regression.
+- Demo proof script on devnet when RPC available; otherwise unit/integration with injectable RPC.
+
+### Who implements
+
+- Domain + API + adapter-solana + web: TASK 02 branch owner (this change set).
+- No Production deploy; no DB migrate without separate approval.

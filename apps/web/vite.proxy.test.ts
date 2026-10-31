@@ -60,10 +60,19 @@ describe("CCR-19 proxy route policy", () => {
 			classifyProxyRequest("POST", "/v1/payments/pay_1/fund"),
 			"protected",
 		)
+		assert.equal(
+			classifyProxyRequest("GET", "/v1/payments/pay_1/solana/intent"),
+			"protected",
+		)
+		assert.equal(
+			classifyProxyRequest("POST", "/v1/payments/pay_1/solana/confirm"),
+			"protected",
+		)
 		assert.equal(classifyProxyRequest("POST", "/v1/endpoints"), "protected")
 		assert.equal(classifyProxyRequest("POST", "/v1/batches"), "protected")
 		assert.equal(classifyProxyRequest("POST", "/v1/sandbox/reset"), "protected")
 
+		assert.equal(classifyProxyRequest("GET", "/v1/solana/config"), "claim")
 		assert.equal(classifyProxyRequest("GET", "/v1/claims/token_1"), "claim")
 		assert.equal(
 			classifyProxyRequest("POST", "/v1/claims/token_1/accept"),
