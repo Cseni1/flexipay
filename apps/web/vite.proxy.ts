@@ -36,6 +36,8 @@ const claimRule = (method: string, path: RegExp): RouteRule => ({
 // Only routes the web app or the accepted contract actually needs. A new API route must be
 // added deliberately; this is not a catch-all proxy.
 const ROUTES: readonly RouteRule[] = [
+	// Public liveness — keyless, so the shell can show API reachability without a Bearer.
+	claimRule("GET", /^\/healthz\/?$/),
 	claimRule("GET", /^\/v1\/claims\/[^/]+\/?$/),
 	claimRule("POST", /^\/v1\/claims\/[^/]+\/accept\/?$/),
 	// CCR-21: exactly the three public passkey claim routes, keyless upstream.
@@ -205,7 +207,8 @@ export function createApiProxyMiddleware({
 	return (req, res, next) => {
 		const rawUrl = req.url ?? "/"
 		const pathname = rawUrl.split("?", 1)[0] ?? "/"
-		if (!pathname.startsWith("/v1/")) {
+		// Only the allowlisted API surface (v1 + public /healthz) is owned by this proxy.
+		if (!(pathname.startsWith("/v1/") || pathname === "/healthz")) {
 			next()
 			return
 		}

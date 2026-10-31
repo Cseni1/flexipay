@@ -45,6 +45,41 @@
 	font-size: 0.78rem;
 }
 
+.api-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	margin: 0;
+	color: var(--fp-muted);
+	font-size: 0.75rem;
+	font-weight: 600;
+}
+
+.api-status__dot {
+	width: 0.45rem;
+	height: 0.45rem;
+	border-radius: 50%;
+	background: var(--fp-muted);
+}
+
+.api-status--ok {
+	color: var(--color-accent-strong);
+}
+
+.api-status--ok .api-status__dot {
+	background: var(--color-accent);
+}
+
+.api-status--auth,
+.api-status--down {
+	color: #9a3412;
+}
+
+.api-status--auth .api-status__dot,
+.api-status--down .api-status__dot {
+	background: #ea580c;
+}
+
 .app-nav {
 	display: flex;
 	flex-direction: column;

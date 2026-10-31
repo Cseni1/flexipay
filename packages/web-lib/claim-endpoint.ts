@@ -1,8 +1,7 @@
 import type { ClaimAcceptRequest, ClaimView } from "./claim-contract.ts"
 
 // CCR-17: claim-accept endpoint details use the same type-specific keys as CCR-16.
-// The fiat route is still blocked on the API, but the payload shape is prepared here so the
-// claim page never invents accountNumber/phoneNumber keys at the call site.
+// Crypto uses `address`; bank uses `accountNumber`; e-wallet uses `phoneNumber`.
 
 type ClaimEndpoint = ClaimAcceptRequest["endpoint"]
 type ClaimDestinationType = ClaimView["allowedDestinationTypes"][number]
