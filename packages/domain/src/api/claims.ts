@@ -19,6 +19,18 @@ export const ClaimLinkStatusSchema = z.enum(CLAIM_LINK_STATUSES);
  * Public view of what is waiting for the recipient (SCENARIOS DF3 / ARCHITECTURE §10).
  * Amount is the expected receive side from the quote.
  */
+/**
+ * Optional on-chain evidence once the payment is paid (CCR-24 receiver UX).
+ * Omitted while open/processing; never includes secrets.
+ */
+export const ClaimReleaseEvidenceSchema = z
+  .object({
+    network: z.enum(["solana", "stellar", "mock"]),
+    signature: z.string().min(1),
+    explorerUrl: z.string().min(1).optional(),
+  })
+  .strict();
+
 export const ClaimViewSchema = z
   .object({
     paymentId: z.string().min(1),
@@ -34,6 +46,8 @@ export const ClaimViewSchema = z
       .strict(),
     allowedDestinationTypes: z.array(EndpointTypeSchema).min(1),
     simulated: z.literal(true),
+    /** Present after backend-verified settle evidence (e.g. Solana signature). */
+    releaseEvidence: ClaimReleaseEvidenceSchema.nullable().optional(),
   })
   .strict();
 

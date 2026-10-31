@@ -20,6 +20,8 @@ import { resetSolanaRuntimeConfigCache } from "../../apps/api/src/solana/runtime
 import { auth, startTestServer } from "../../apps/api/test/helpers.ts"
 import {
 	createMint,
+	getAccount,
+	getAssociatedTokenAddressSync,
 	getOrCreateAssociatedTokenAccount,
 	mintTo,
 	TOKEN_PROGRAM_ID,
@@ -53,12 +55,15 @@ const main = async (): Promise<void> => {
 	const connection = new Connection(preliminary.rpcUrl, "confirmed")
 
 	const balance = await connection.getBalance(payer.publicKey, "confirmed")
-	if (balance < 0.5 * LAMPORTS_PER_SOL) {
+	// Mint + ATA rents + transfer fees need ~0.05 SOL; faucet commonly funds 0.5 SOL.
+	const minLamports = Math.floor(0.05 * LAMPORTS_PER_SOL)
+	if (balance < minLamports) {
 		console.log(
 			JSON.stringify({
 				step: "airdrop",
 				payer: payer.publicKey.toBase58(),
 				rpc: preliminary.rpcUrl,
+				lamports: balance,
 			}),
 		)
 		try {
@@ -75,6 +80,15 @@ const main = async (): Promise<void> => {
 					`FP_SOLANA_PAYER_SECRET set to the keypair JSON byte array.`,
 			)
 		}
+	} else {
+		console.log(
+			JSON.stringify({
+				step: "payer_balance",
+				payer: payer.publicKey.toBase58(),
+				lamports: balance,
+				sol: balance / LAMPORTS_PER_SOL,
+			}),
+		)
 	}
 
 	const mint = await createMint(
@@ -98,14 +112,17 @@ const main = async (): Promise<void> => {
 		mint,
 		payer.publicKey,
 	)
-	const flexipayMinor = 10_000_000n // 1.0000000 USDC (7 decimals)
+	// Quote receive amount (FlexiPay USDC = 7 decimals). Mint a buffer so vault/fee
+	// sizing on the quote cannot leave the sender short for the Solana transfer.
+	const flexipayMinor = 10_000_000n // 1.0000000 USDC
+	const mintBuffer = 20_000_000n
 	await mintTo(
 		connection,
 		payer,
 		mint,
 		senderAta.address,
 		payer,
-		flexipayMinor,
+		mintBuffer,
 	)
 
 	const api = await startTestServer()
@@ -143,8 +160,9 @@ const main = async (): Promise<void> => {
 				feeMode: "PayerPays",
 			}),
 		})
-		assert.equal(quoteRes.status, 201, await quoteRes.text())
-		const quote = (await quoteRes.json()) as { id: string }
+		const quoteText = await quoteRes.text()
+		assert.equal(quoteRes.status, 201, quoteText)
+		const quote = JSON.parse(quoteText) as { id: string }
 
 		const paymentRes = await fetch(`${api.base}/v1/payments`, {
 			method: "POST",
@@ -156,8 +174,9 @@ const main = async (): Promise<void> => {
 				profile: "one_off",
 			}),
 		})
-		assert.equal(paymentRes.status, 201, await paymentRes.text())
-		const payment = (await paymentRes.json()) as {
+		const paymentText = await paymentRes.text()
+		assert.equal(paymentRes.status, 201, paymentText)
+		const payment = JSON.parse(paymentText) as {
 			id: string
 			claimLink: { url: string } | null
 		}
@@ -168,7 +187,8 @@ const main = async (): Promise<void> => {
 			headers: auth(key, { "idempotency-key": "t02-fund" }),
 			body: "{}",
 		})
-		assert.equal(fundRes.status, 200, await fundRes.text())
+		const fundText = await fundRes.text()
+		assert.equal(fundRes.status, 200, fundText)
 
 		const token = payment.claimLink!.url.split("/").pop()!
 		const accept = await fetch(`${api.base}/v1/claims/${token}/accept`, {
@@ -188,8 +208,9 @@ const main = async (): Promise<void> => {
 				},
 			}),
 		})
-		assert.equal(accept.status, 200, await accept.text())
-		const accepted = (await accept.json()) as {
+		const acceptText = await accept.text()
+		assert.equal(accept.status, 200, acceptText)
+		const accepted = JSON.parse(acceptText) as {
 			paymentStatus: string
 			claim: { status: string }
 		}
@@ -200,8 +221,9 @@ const main = async (): Promise<void> => {
 			`${api.base}/v1/payments/${payment.id}/solana/intent`,
 			{ headers: auth(key) },
 		)
-		assert.equal(intentRes.status, 200, await intentRes.text())
-		const intent = (await intentRes.json()) as {
+		const intentText = await intentRes.text()
+		assert.equal(intentRes.status, 200, intentText)
+		const intent = JSON.parse(intentText) as {
 			amount: string
 			usdcMint: string
 			recipient: string
@@ -210,7 +232,13 @@ const main = async (): Promise<void> => {
 		assert.equal(intent.usdcMint, mint.toBase58())
 
 		const amountMinor = BigInt(intent.amount)
-		assert.equal(amountMinor, flexipayUsdcToSolanaMinor(flexipayMinor, 7))
+		assert.ok(amountMinor > 0n)
+		assert.ok(
+			amountMinor <= mintBuffer,
+			`intent amount ${amountMinor} exceeds minted buffer ${mintBuffer}`,
+		)
+		// Intent amount is already Solana mint minor units (7 decimals in this proof).
+		assert.equal(amountMinor, flexipayUsdcToSolanaMinor(amountMinor, 7))
 
 		const built = await buildUsdcTransferTransaction({
 			connection,
@@ -235,7 +263,21 @@ const main = async (): Promise<void> => {
 			amountMinor,
 			usdcDecimals: 7,
 		})
-		assert.equal(verifiedLocal.ok, true, JSON.stringify(verifiedLocal))
+		assert.equal(
+			verifiedLocal.ok,
+			true,
+			JSON.stringify(verifiedLocal, (_k, v) =>
+				typeof v === "bigint" ? v.toString() : v,
+			),
+		)
+
+		const recipientAta = getAssociatedTokenAddressSync(
+			mint,
+			recipient.publicKey,
+		)
+		const recipientAccount = await getAccount(connection, recipientAta)
+		const recipientBalanceAfter = recipientAccount.amount
+		assert.equal(recipientBalanceAfter, amountMinor)
 
 		let confirmBody: {
 			paymentStatus: string
@@ -251,23 +293,47 @@ const main = async (): Promise<void> => {
 					body: JSON.stringify({ signature }),
 				},
 			)
+			const confirmText = await confirm.text()
 			if (confirm.status === 202) {
 				await sleep(1500)
 				continue
 			}
-			assert.equal(confirm.status, 200, await confirm.text())
-			confirmBody = (await confirm.json()) as typeof confirmBody
+			assert.equal(confirm.status, 200, confirmText)
+			confirmBody = JSON.parse(confirmText) as typeof confirmBody
 			break
 		}
 		assert.ok(confirmBody)
 		assert.equal(confirmBody!.paymentStatus, "paid")
 		assert.equal(confirmBody!.signature, signature)
 
+		const replay = await fetch(
+			`${api.base}/v1/payments/${payment.id}/solana/confirm`,
+			{
+				method: "POST",
+				headers: auth(key, { "idempotency-key": "t02-confirm-replay" }),
+				body: JSON.stringify({ signature }),
+			},
+		)
+		assert.equal(replay.status, 200, await replay.text())
+
+		const conflict = await fetch(
+			`${api.base}/v1/payments/${payment.id}/solana/confirm`,
+			{
+				method: "POST",
+				headers: auth(key, { "idempotency-key": "t02-confirm-conflict" }),
+				body: JSON.stringify({
+					signature: "ConflictSig" + "x".repeat(56),
+				}),
+			},
+		)
+		assert.equal(conflict.status, 409, await conflict.text())
+
 		const detail = await fetch(`${api.base}/v1/payments/${payment.id}`, {
 			headers: auth(key),
 		})
-		assert.equal(detail.status, 200)
-		const detailBody = (await detail.json()) as {
+		const detailText = await detail.text()
+		assert.equal(detail.status, 200, detailText)
+		const detailBody = JSON.parse(detailText) as {
 			status: string
 			legs: { kind: string; releaseTxRef: string | null }[]
 		}
@@ -281,8 +347,12 @@ const main = async (): Promise<void> => {
 					ok: true,
 					evidence: {
 						cluster: "devnet",
+						payer: payer.publicKey.toBase58(),
 						mint: mint.toBase58(),
 						recipient: recipient.publicKey.toBase58(),
+						recipientBalanceBefore: "0",
+						recipientBalanceAfter: recipientBalanceAfter.toString(),
+						amountMinor: amountMinor.toString(),
 						paymentId: payment.id,
 						signature,
 						explorerUrl:
@@ -292,6 +362,10 @@ const main = async (): Promise<void> => {
 								signature,
 							),
 						paymentStatus: detailBody.status,
+						duplicateProtection: {
+							sameSignatureReplay: 200,
+							differentSignatureConflict: 409,
+						},
 						note: "Devnet test mint — not mainnet USDC",
 					},
 				},

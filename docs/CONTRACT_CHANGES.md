@@ -623,3 +623,9 @@ Idempotency: same signature replay returns current paid state; a **different** s
 
 - Domain + API + adapter-solana + web: TASK 02 branch owner (this change set).
 - No Production deploy; no DB migrate without separate approval.
+
+### CCR-24a (TASK 03): optional `ClaimView.releaseEvidence` — **proposed additive**
+
+- **Status:** Implemented on `agent/task-03-live-ui-payment` under CCR-24 §6 (“receiver sees the verified payment result”). Integrator may ACK or rename.
+- **What:** `ClaimView` gains optional nullable `releaseEvidence: { network, signature, explorerUrl? }` once settle evidence exists. Public claim GET only; no secrets; no Prisma migration.
+- **Why:** Claim page can show Explorer after Solana verify-before-PAID without a second authenticated API.

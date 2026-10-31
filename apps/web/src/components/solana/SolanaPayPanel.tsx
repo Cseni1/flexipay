@@ -23,6 +23,7 @@ type Props = {
 
 export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 	const [intent, setIntent] = useState<SolanaIntent | null>(null)
+	const [notSolanaSettle, setNotSolanaSettle] = useState(false)
 	const [connected, setConnected] = useState<ConnectedSolanaWallet | null>(null)
 	const [error, setError] = useState<string | null>(null)
 	const [busy, setBusy] = useState(false)
@@ -32,20 +33,29 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 	useEffect(() => {
 		const controller = new AbortController()
 		getSolanaIntent(paymentId, controller.signal)
-			.then(setIntent)
+			.then((next) => {
+				setNotSolanaSettle(false)
+				setIntent(next)
+			})
 			.catch((cause) => {
-				if (!controller.signal.aborted) {
-					setError(
-						cause instanceof ApiError
-							? describeApiError(cause)
-							: cause instanceof Error
-								? cause.message
-								: "Solana intent unavailable",
-					)
+				if (controller.signal.aborted) return
+				// 409 = claim not accepted to Solana / settle not waiting — hide panel.
+				if (cause instanceof ApiError && cause.status === 409) {
+					setNotSolanaSettle(true)
+					return
 				}
+				setError(
+					cause instanceof ApiError
+						? describeApiError(cause)
+						: cause instanceof Error
+							? cause.message
+							: "Solana intent unavailable",
+				)
 			})
 		return () => controller.abort()
 	}, [paymentId])
+
+	if (notSolanaSettle) return null
 
 	const pay = async () => {
 		if (!intent || !connected) return
@@ -94,13 +104,28 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 			setResult(confirmed)
 			onPaid?.(confirmed)
 		} catch (cause) {
-			setError(
+			const raw =
 				cause instanceof ApiError
 					? describeApiError(cause)
 					: cause instanceof Error
 						? cause.message
-						: "Solana payment failed",
-			)
+						: "Solana payment failed"
+			const lower = raw.toLowerCase()
+			if (
+				lower.includes("reject") ||
+				lower.includes("denied") ||
+				lower.includes("user cancel")
+			) {
+				setError(
+					"Wallet rejected the transaction. The payment stays processing — you can try again.",
+				)
+			} else if (cause instanceof ApiError && cause.status >= 500) {
+				setError(
+					`Verification failed (${raw}). Do not send again until status is clear — retry confirm or refresh.`,
+				)
+			} else {
+				setError(raw)
+			}
 		} finally {
 			setBusy(false)
 		}
