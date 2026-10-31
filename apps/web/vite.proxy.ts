@@ -38,6 +38,8 @@ const claimRule = (method: string, path: RegExp): RouteRule => ({
 const ROUTES: readonly RouteRule[] = [
 	// Public liveness — keyless, so the shell can show API reachability without a Bearer.
 	claimRule("GET", /^\/healthz\/?$/),
+	// CCR-24: public Solana cluster/mint labels (no secrets).
+	claimRule("GET", /^\/v1\/solana\/config\/?$/),
 	claimRule("GET", /^\/v1\/claims\/[^/]+\/?$/),
 	claimRule("POST", /^\/v1\/claims\/[^/]+\/accept\/?$/),
 	// CCR-21: exactly the three public passkey claim routes, keyless upstream.
@@ -57,6 +59,8 @@ const ROUTES: readonly RouteRule[] = [
 	protectedRule("POST", /^\/v1\/payments\/?$/),
 	protectedRule("GET", /^\/v1\/payments\/[^/]+\/?$/),
 	protectedRule("POST", /^\/v1\/payments\/[^/]+\/fund\/?$/),
+	protectedRule("GET", /^\/v1\/payments\/[^/]+\/solana\/intent\/?$/),
+	protectedRule("POST", /^\/v1\/payments\/[^/]+\/solana\/confirm\/?$/),
 	protectedRule("POST", /^\/v1\/payments\/[^/]+\/cancel\/?$/),
 	protectedRule("GET", /^\/v1\/events\/?$/),
 	protectedRule("GET", /^\/v1\/endpoints\/?$/),

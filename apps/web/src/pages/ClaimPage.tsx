@@ -85,7 +85,10 @@ const optionCopy = (
 		case "ewallet":
 			return { title: "E-wallet", detail: "Mobile wallet payout" }
 		case "crypto_wallet":
-			return { title: "Crypto wallet", detail: "Stellar testnet address" }
+			return {
+				title: "Crypto wallet",
+				detail: "Stellar or Solana USDC destination",
+			}
 		case "crypto_custodial":
 			return {
 				title: "Custodial wallet",
@@ -94,14 +97,28 @@ const optionCopy = (
 	}
 }
 
-const detailLabel = (type: DestinationType): string => {
-	if (isCrypto(type)) return "Stellar testnet wallet address"
+const detailLabel = (
+	type: DestinationType,
+	network: "stellar" | "solana",
+): string => {
+	if (isCrypto(type)) {
+		return network === "solana"
+			? "Solana wallet address (devnet USDC)"
+			: "Stellar testnet wallet address"
+	}
 	if (type === "ewallet") return "E-wallet number"
 	return "Bank account number"
 }
 
-const detailPlaceholder = (type: DestinationType): string =>
-	isCrypto(type) ? "G…" : "Account details"
+const detailPlaceholder = (
+	type: DestinationType,
+	network: "stellar" | "solana",
+): string =>
+	isCrypto(type)
+		? network === "solana"
+			? "Base58 address…"
+			: "G…"
+		: "Account details"
 
 const formatAmount = (
 	amount: string,
@@ -200,6 +217,9 @@ export default function ClaimPage() {
 	const [passkeySelected, setPasskeySelected] = useState(false)
 	const [anchorSelected, setAnchorSelected] = useState(false)
 	const [detail, setDetail] = useState("")
+	const [cryptoNetwork, setCryptoNetwork] = useState<"stellar" | "solana">(
+		"stellar",
+	)
 	const [accepting, setAccepting] = useState(false)
 	const [acceptError, setAcceptError] = useState<string | null>(null)
 	const [expired, setExpired] = useState(false)
@@ -382,6 +402,7 @@ export default function ClaimPage() {
 			detail: detail.trim(),
 			currency: claim.amount.currency,
 			country: claim.corridor.to.country,
+			network: isCrypto(selectedType) ? cryptoNetwork : undefined,
 		})
 
 		acceptLock.current = true
@@ -620,18 +641,82 @@ export default function ClaimPage() {
 									) : null}
 									{!passkeySelected && !anchorSelected && selectedType ? (
 										<div className="claim-detail">
+											{isCrypto(selectedType) ? (
+												<fieldset
+													className="stack"
+													data-testid="claim-crypto-network"
+												>
+													<legend className="field-label">
+														Crypto network
+													</legend>
+													<label className="option-card">
+														<input
+															type="radio"
+															name="crypto-network"
+															checked={cryptoNetwork === "solana"}
+															disabled={accepting || expired}
+															onChange={() => {
+																setCryptoNetwork("solana")
+																setDetail("")
+																idempotencyKey.current = null
+															}}
+														/>
+														<span>
+															<span className="option-card__title">
+																Solana USDC (devnet test)
+															</span>
+															<span className="option-card__detail">
+																Confirm this address before the sender pays. Not
+																mainnet USDC.
+															</span>
+														</span>
+													</label>
+													<label className="option-card">
+														<input
+															type="radio"
+															name="crypto-network"
+															checked={cryptoNetwork === "stellar"}
+															disabled={accepting || expired}
+															onChange={() => {
+																setCryptoNetwork("stellar")
+																setDetail("")
+																idempotencyKey.current = null
+															}}
+														/>
+														<span>
+															<span className="option-card__title">
+																Stellar testnet
+															</span>
+															<span className="option-card__detail">
+																Existing vault release path
+															</span>
+														</span>
+													</label>
+												</fieldset>
+											) : null}
+											{isCrypto(selectedType) && cryptoNetwork === "solana" ? (
+												<p className="form-note">
+													Bank and e-wallet methods stay in the architecture but
+													are not labelled LIVE without a verified provider.
+												</p>
+											) : null}
 											<TextField
 												id="claim-detail"
-												label={detailLabel(selectedType)}
-												placeholder={detailPlaceholder(selectedType)}
+												label={detailLabel(selectedType, cryptoNetwork)}
+												placeholder={detailPlaceholder(
+													selectedType,
+													cryptoNetwork,
+												)}
 												autoComplete="off"
 												value={detail}
 												disabled={accepting || expired}
 												onChange={(event) => updateDetail(event.target.value)}
 												hint={
 													isCrypto(selectedType)
-														? "Testnet only. Paste a public wallet address; never a secret key."
-														: "Only the claimed endpoint type is sent."
+														? cryptoNetwork === "solana"
+															? "Devnet only. Paste a public Solana address; never a secret key."
+															: "Testnet only. Paste a public wallet address; never a secret key."
+														: "Only the claimed endpoint type is sent. Simulated fiat is not LIVE."
 												}
 											/>
 										</div>

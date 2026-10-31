@@ -51,5 +51,9 @@ export type RoutingPolicy = (typeof ROUTING_POLICIES)[number];
 export const FEE_MODES = ["PayerPays", "RecipientPays"] as const;
 export type FeeMode = (typeof FEE_MODES)[number];
 
-export const SETTLEMENT_NETWORKS = ["stellar", "mock"] as const;
+export const SETTLEMENT_NETWORKS = ["stellar", "mock", "solana"] as const;
 export type SettlementNetwork = (typeof SETTLEMENT_NETWORKS)[number];
+
+/** Crypto rails on an Endpoint / claim accept body (CCR-24). Fiat keeps network null. */
+export const CRYPTO_NETWORKS = ["stellar", "solana"] as const;
+export type CryptoNetwork = (typeof CRYPTO_NETWORKS)[number];

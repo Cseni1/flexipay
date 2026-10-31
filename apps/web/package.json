@@ -13,9 +13,16 @@
     "typecheck": "tsc"
   },
   "dependencies": {
+    "@flexipay/adapter-solana": "*",
     "@flexipay/web-lib": "*",
+    "@solana/spl-token": "^0.4.13",
+    "@solana/web3.js": "^1.98.4",
     "@tanstack/react-query": "^5.90.17",
     "@theahaco/ts-config": "^1.3.0",
+    "@wallet-standard/app": "^1.0.1",
+    "@wallet-standard/base": "^1.0.1",
+    "@solana/wallet-standard-features": "^1.3.0",
+    "bs58": "^6.0.0",
     "lossless-json": "^4.3.0",
     "passkey-kit": "0.19.1",
     "react": "^19.2.6",

@@ -16,6 +16,7 @@ import { eventRoutes } from "./routes/events.ts";
 import { paymentRoutes } from "./routes/payments.ts";
 import { quoteRoutes } from "./routes/quotes.ts";
 import { sandboxRoutes } from "./routes/sandbox.ts";
+import { solanaRoutes } from "./routes/solana.ts";
 import type { ApiRuntime } from "./runtime.ts";
 
 export const ROUTES: RouteDef<any, any>[] = [
@@ -28,6 +29,7 @@ export const ROUTES: RouteDef<any, any>[] = [
 	...claimRoutes,
 	...passkeyClaimRoutes,
 	...anchorClaimRoutes,
+	...solanaRoutes,
 	...sandboxRoutes,
 ];
 
