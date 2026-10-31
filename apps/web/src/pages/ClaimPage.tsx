@@ -67,14 +67,14 @@ const CLOSED_PAYMENT_STATUSES = new Set([
 const isCrypto = (type: DestinationType): boolean =>
 	type === "crypto_wallet" || type === "crypto_custodial"
 
-// The merged claim accept route only implements the crypto endpoint (details.address).
-// CCR-17 fiat keys are contracted and buildClaimEndpoint prepares them, but the API still
-// returns 422 until its route persists accountNumber/phoneNumber. Keep fiat visible but
-// disabled rather than turning that backend gap into a browser error.
+// CCR-17: crypto (address) and fiat (accountNumber / phoneNumber) accept paths are mounted.
 const supportsClaimAccept = (
 	type: DestinationType | "",
-): type is "crypto_wallet" | "crypto_custodial" =>
-	type === "crypto_wallet" || type === "crypto_custodial"
+): type is DestinationType =>
+	type === "crypto_wallet" ||
+	type === "crypto_custodial" ||
+	type === "bank_account" ||
+	type === "ewallet"
 
 const optionCopy = (
 	type: DestinationType,
@@ -528,7 +528,7 @@ export default function ClaimPage() {
 														<span className="option-card__detail">
 															{supported
 																? copy.detail
-																: "Not available: claim accept does not support fiat yet."}
+																: "Not available for this claim."}
 														</span>
 													</span>
 												</label>
@@ -591,10 +591,11 @@ export default function ClaimPage() {
 										</label>
 									</fieldset>
 									<p className="form-note">
-										A crypto wallet address works today. The passkey wallet is
-										created on testnet and signs the release with your
-										fingerprint or face. The reference anchor cash-out is a
-										testnet demo for 1 to 10 USDC, after the vault release.
+										Bank, e-wallet and crypto destinations use the claim accept
+										API. The passkey wallet is created on testnet and signs the
+										release with your fingerprint or face. The reference anchor
+										cash-out is a testnet demo for 1 to 10 USDC, after the vault
+										release. Bank and e-wallet payouts remain simulated.
 									</p>
 									{passkeySelected ? (
 										<PasskeyClaimSection
@@ -616,17 +617,6 @@ export default function ClaimPage() {
 											claimExpired={expired}
 											onUseCryptoWallet={useCryptoWallet}
 										/>
-									) : null}
-									{!passkeySelected &&
-									!anchorSelected &&
-									claim.allowedDestinationTypes.some(
-										(type) => !supportsClaimAccept(type),
-									) ? (
-										<Notice tone="warning">
-											The claim API currently accepts crypto wallet endpoints
-											only. Fiat options are shown from the claim response but
-											are not selectable.
-										</Notice>
 									) : null}
 									{!passkeySelected && !anchorSelected && selectedType ? (
 										<div className="claim-detail">

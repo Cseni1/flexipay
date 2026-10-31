@@ -51,7 +51,10 @@ const startProxy = async (
 
 describe("CCR-19 proxy route policy", () => {
 	test("allows only intended protected and claim routes", () => {
+		assert.equal(classifyProxyRequest("GET", "/healthz"), "claim")
 		assert.equal(classifyProxyRequest("POST", "/v1/quotes"), "protected")
+		assert.equal(classifyProxyRequest("GET", "/v1/corridors"), "protected")
+		assert.equal(classifyProxyRequest("GET", "/v1/recipients"), "protected")
 		assert.equal(classifyProxyRequest("GET", "/v1/payments/pay_1"), "protected")
 		assert.equal(
 			classifyProxyRequest("POST", "/v1/payments/pay_1/fund"),
@@ -66,22 +69,27 @@ describe("CCR-19 proxy route policy", () => {
 			classifyProxyRequest("POST", "/v1/claims/token_1/accept"),
 			"claim",
 		)
-		// CCR-20: the mounted deploy route is forwarded as a public claim route.
+		// CCR-20/21: mounted passkey routes are forwarded as public claim routes.
 		assert.equal(
 			classifyProxyRequest("POST", "/v1/claims/token_1/passkey/deploy"),
+			"claim",
+		)
+		assert.equal(
+			classifyProxyRequest("POST", "/v1/claims/token_1/passkey/prepare"),
+			"claim",
+		)
+		assert.equal(
+			classifyProxyRequest("POST", "/v1/claims/token_1/passkey/submit"),
 			"claim",
 		)
 	})
 
 	test("rejects everything else", () => {
 		for (const [method, path] of [
-			["GET", "/healthz"],
+			["POST", "/healthz"],
 			["GET", "/v1/admin"],
 			["GET", "/v1/claims/token_1/accept"],
 			["POST", "/v1/claims/token_1"],
-			// Not mounted on the API branch: the browser must not reach them through the proxy.
-			["POST", "/v1/claims/token_1/passkey/prepare"],
-			["POST", "/v1/claims/token_1/passkey/submit"],
 			["GET", "/v1/claims/token_1/passkey/deploy"],
 			["GET", "/v1/payments/pay_1/fund"],
 			["POST", "/v1/payments/pay_1/fund/extra"],

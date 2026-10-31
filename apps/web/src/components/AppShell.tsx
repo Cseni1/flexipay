@@ -1,4 +1,5 @@
 import { Link, NavLink, Outlet } from "react-router-dom"
+import { ApiStatus } from "./ApiStatus"
 import { InfoPopover, SimulatedLabel } from "./ui"
 
 export function AppShell() {
@@ -9,6 +10,7 @@ export function AppShell() {
 					<h1 className="app-brand__name">FlexiPay</h1>
 				</Link>
 				<p className="app-brand__note">Testnet build</p>
+				<ApiStatus />
 
 				<nav className="app-nav" aria-label="Primary">
 					<NavLink to="/dashboard" className="nav-link">

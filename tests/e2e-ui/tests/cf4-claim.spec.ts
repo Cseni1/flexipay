@@ -196,35 +196,47 @@ test.describe("CF4 claim page", () => {
 		).toBe(true)
 	})
 
-	test("fiat options stay visible but cannot be accepted until the API route supports them", async ({
+	test("fiat options are selectable and accept through the claim API", async ({
 		page,
 	}) => {
-		await mockClaimApi(page, {
+		const counts = await mockClaimApi(page, {
 			claim: claimFixture({
 				amount: { amount: "1200000", currency: "PHP" },
 				allowedDestinationTypes: ["bank_account", "ewallet"],
+				paymentStatus: "processing",
 			}),
 		})
 		await openClaim(page)
 
-		await expect(
-			page.getByRole("radio", { name: /Bank account/ }),
-		).toBeDisabled()
-		await expect(page.getByRole("radio", { name: /E-wallet/ })).toBeDisabled()
-		await expect(
-			page.getByText(
-				/claim API currently accepts crypto wallet endpoints only/,
-			),
-		).toBeVisible()
-		await expect(
-			page.getByText(/has no endpoint that the current claim API can accept/),
-		).toBeVisible()
-		await expect(
-			page.getByRole("button", { name: "Accept payment" }),
-		).toHaveCount(0)
+		await expect(page.getByText("12,000.00")).toBeVisible()
+		const bank = page.getByRole("radio", { name: /Bank account/ })
+		const ewallet = page.getByRole("radio", { name: /E-wallet/ })
+		await expect(bank).toBeEnabled()
+		await expect(ewallet).toBeEnabled()
 		await expect(
 			page.getByRole("radio", { name: /Crypto wallet/ }),
 		).toHaveCount(0)
+		await ewallet.check()
+		await page.getByLabel("E-wallet number").fill("synthetic-ewallet-a-1234")
+		await expect(
+			page.getByRole("button", { name: "Accept payment" }),
+		).toBeEnabled()
+		await page.getByRole("button", { name: "Accept payment" }).click()
+		await expect(page.getByText("Claim Accepted")).toBeVisible()
+		expect(counts.acceptCount()).toBe(1)
+		expect(counts.acceptBody()).toEqual({
+			endpoint: {
+				type: "ewallet",
+				country: "PH",
+				currency: "PHP",
+				network: null,
+				details: { phoneNumber: "synthetic-ewallet-a-1234" },
+				simulated: true,
+			},
+		})
+		await expect(
+			page.getByText(/Paid: confirmed by the claim API/),
+		).toBeVisible({ timeout: 5_000 })
 	})
 
 	test("an already accepted claim resumes polling after reload", async ({

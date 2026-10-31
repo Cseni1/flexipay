@@ -1,6 +1,6 @@
 // Real Postgres for local work and tests, from the embedded-postgres npm package (no system
 // install, no Docker). Production uses a managed Postgres; this is the same engine.
-import { execFile } from "node:child_process";
+import { execFile, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -9,6 +9,30 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import EmbeddedPostgres from "embedded-postgres";
 import { fixEmbeddedPostgresDylibs } from "./fix-embedded-pg-dylibs.ts";
+
+/** embedded-postgres keeps the ChildProcess on a private field while the cluster runs. */
+type EmbeddedPostgresWithProcess = EmbeddedPostgres & {
+	process?: ChildProcess | null;
+};
+
+/**
+ * On Windows, embedded-postgres stops Postgres via `taskkill` and then drops its
+ * ChildProcess reference without destroying stdio. Those PIPEWRAP handles keep the
+ * Node event loop alive after `pg.stop()` resolves — noticeable in standalone scripts
+ * (Vitest forces exit). Close residual streams so callers can exit cleanly.
+ */
+const releaseEmbeddedPostgresStdio = (child: ChildProcess | null | undefined) => {
+	if (!child) return;
+	for (const stream of [child.stdin, child.stdout, child.stderr]) {
+		try {
+			stream?.destroy();
+		} catch {
+			// Already closed.
+		}
+	}
+	child.removeAllListeners();
+	child.unref();
+};
 
 const run = promisify(execFile);
 const apiDir = fileURLToPath(new URL("../..", import.meta.url));
@@ -55,7 +79,9 @@ export async function startEmbeddedDb(opts: { dir?: string; port?: number; name?
   return {
     url: `postgresql://fp:fp@127.0.0.1:${port}/${name}`,
     async stop() {
+      const child = (pg as EmbeddedPostgresWithProcess).process;
       await pg.stop();
+      releaseEmbeddedPostgresStdio(child);
       if (temporary) await rmTempDirWithRetry(databaseDir);
     },
   };
