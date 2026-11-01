@@ -28,6 +28,7 @@ model Organization {
   webhooks      WebhookSubscription[]
   events        Event[]
   idempotency   IdempotencyRecord[]
+  memberships   Membership[]
 }
 
 model ApiKey {
@@ -363,4 +364,82 @@ model IdempotencyRecord {
   createdAt      DateTime     @default(now())
 
   @@unique([organizationId, key])
+}
+
+// TASK 06: customer authentication (Better Auth). Customer sessions are separate from server
+// API keys: a session identifies a person, an API key identifies an organization's server.
+// Passwords are stored only as scrypt hashes in AuthAccount.password.
+
+model AuthUser {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions    AuthSession[]
+  accounts    AuthAccount[]
+  memberships Membership[]
+}
+
+model AuthSession {
+  id        String   @id
+  expiresAt DateTime
+  /// Opaque random token; the cookie carries it signed. Deleting the row revokes the session.
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AuthAccount {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  AuthUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model AuthVerification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+/// Which organization a user acts for. One organization per user for the MVP (userId unique),
+/// which also makes organization bootstrap race-safe: the unique key lets exactly one
+/// concurrent bootstrap win and the others re-read.
+model Membership {
+  id             String       @id
+  userId         String       @unique
+  user           AuthUser     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  role           String       @default("owner") // owner | member
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
 }

@@ -8,7 +8,7 @@ export const eventRoutes: RouteDef<any, any>[] = [
 		method: "get",
 		path: "/v1/events",
 		summary: "Event log",
-		auth: "api_key",
+		auth: "customer",
 		success: { status: 200, schema: EventListResponseSchema },
 		handler: async (ctx) => {
 			if (!ctx.org) throw new ApiError(401, "unauthorized", "missing organization");

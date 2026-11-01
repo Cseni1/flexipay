@@ -62,7 +62,7 @@ export const batchRoutes: RouteDef<any, any>[] = [
 		method: "post",
 		path: "/v1/batches",
 		summary: "Create a JSON batch: one quote and one payment per row",
-		auth: "api_key",
+		auth: "customer",
 		body: CreateBatchRequestSchema,
 		success: { status: 201, schema: BatchSchema },
 		handler: async (ctx, { body }) => {
@@ -162,7 +162,7 @@ export const batchRoutes: RouteDef<any, any>[] = [
 		method: "get",
 		path: "/v1/batches/{id}",
 		summary: "Batch with derived status and payment ids",
-		auth: "api_key",
+		auth: "customer",
 		success: { status: 200, schema: BatchSchema },
 		handler: async (ctx, { params }) => loadBatch(ctx.db, params.id!, orgOf(ctx).id),
 	}),

@@ -13,7 +13,7 @@ import { type Connect, type Plugin } from "vite"
 // deploy/prepare/submit and the CCR-22 anchor price/withdraw/status/pay) are forwarded with
 // no Bearer at all, including the upstream hop.
 
-export type ProxyRouteKind = "protected" | "claim"
+export type ProxyRouteKind = "protected" | "claim" | "auth"
 
 interface RouteRule {
 	kind: ProxyRouteKind
@@ -23,6 +23,14 @@ interface RouteRule {
 
 const protectedRule = (method: string, path: RegExp): RouteRule => ({
 	kind: "protected",
+	method,
+	path,
+})
+
+// TASK 06: customer sign-in routes (Better Auth). They carry the browser's own cookie and Origin
+// and may set the session cookie; they never receive the server-side API key.
+const authRule = (method: string, path: RegExp): RouteRule => ({
+	kind: "auth",
 	method,
 	path,
 })
@@ -51,6 +59,12 @@ const ROUTES: readonly RouteRule[] = [
 	claimRule("POST", /^\/v1\/claims\/[^/]+\/anchor\/withdraw\/?$/),
 	claimRule("GET", /^\/v1\/claims\/[^/]+\/anchor\/withdraw\/[^/]+\/?$/),
 	claimRule("POST", /^\/v1\/claims\/[^/]+\/anchor\/withdraw\/[^/]+\/pay\/?$/),
+	authRule("GET", /^\/api\/auth\/[A-Za-z0-9_\-/]+\/?$/),
+	authRule("POST", /^\/api\/auth\/[A-Za-z0-9_\-/]+\/?$/),
+	protectedRule("GET", /^\/v1\/me\/?$/),
+	protectedRule("GET", /^\/v1\/api-keys\/?$/),
+	protectedRule("POST", /^\/v1\/api-keys\/?$/),
+	protectedRule("POST", /^\/v1\/api-keys\/[^/]+\/revoke\/?$/),
 	protectedRule("GET", /^\/v1\/corridors\/?$/),
 	protectedRule("GET", /^\/v1\/recipients\/?$/),
 	protectedRule("POST", /^\/v1\/recipients\/?$/),
@@ -151,6 +165,9 @@ export function parseProxyTarget(raw: string | undefined | null): TargetResult {
 	}
 }
 
+// A signed-in customer carries the Better Auth session cookie (prefix "fp").
+const SESSION_COOKIE = /(?:^|;\s*)(?:__Secure-)?fp\.session_token=/
+
 const REQUEST_HEADERS = [
 	"accept",
 	"content-type",
@@ -163,7 +180,7 @@ const RESPONSE_SKIPPED_HEADERS = new Set([
 	"connection",
 	"keep-alive",
 	"proxy-authenticate",
-	"set-cookie",
+	"set-cookie", // re-added below for the auth kind only
 	"transfer-encoding",
 	"upgrade",
 ])
@@ -181,10 +198,20 @@ function json(
 	res.end(JSON.stringify({ code, message }))
 }
 
-function forwardResponse(upstream: IncomingMessage, res: ServerResponse): void {
+function forwardResponse(
+	upstream: IncomingMessage,
+	res: ServerResponse,
+	allowSetCookie: boolean,
+): void {
 	res.statusCode = upstream.statusCode ?? 502
 	for (const [name, value] of Object.entries(upstream.headers)) {
-		if (value === undefined || RESPONSE_SKIPPED_HEADERS.has(name)) continue
+		if (value === undefined) continue
+		if (
+			name === "set-cookie"
+				? !allowSetCookie
+				: RESPONSE_SKIPPED_HEADERS.has(name)
+		)
+			continue
 		res.setHeader(name, value)
 	}
 	upstream.pipe(res)
@@ -212,7 +239,11 @@ export function createApiProxyMiddleware({
 		const rawUrl = req.url ?? "/"
 		const pathname = rawUrl.split("?", 1)[0] ?? "/"
 		// Only the allowlisted API surface (v1 + public /healthz) is owned by this proxy.
-		if (!(pathname.startsWith("/v1/") || pathname === "/healthz")) {
+		if (!(
+			pathname.startsWith("/v1/") ||
+			pathname.startsWith("/api/auth/") ||
+			pathname === "/healthz"
+		)) {
 			next()
 			return
 		}
@@ -231,7 +262,9 @@ export function createApiProxyMiddleware({
 			json(res, 503, "frontend_api_not_configured", parsedTarget.problem)
 			return
 		}
-		if (kind === "protected" && !apiKey) {
+		const cookie = req.headers.cookie ?? ""
+		const hasSession = kind === "protected" && SESSION_COOKIE.test(cookie)
+		if (kind === "protected" && !apiKey && !hasSession) {
 			json(
 				res,
 				503,
@@ -248,7 +281,14 @@ export function createApiProxyMiddleware({
 
 		headers.host = parsedTarget.target.host
 		// Never trust a browser-supplied credential. Claims stay keyless upstream.
-		if (kind === "protected") headers.authorization = `Bearer ${apiKey}`
+		// A signed-in customer is forwarded with their own cookie and Origin (so the API can
+		// check them) and WITHOUT the server-side key, which would otherwise override the session.
+		if (kind === "auth" || hasSession) {
+			if (cookie) headers.cookie = cookie
+			if (req.headers.origin) headers.origin = req.headers.origin
+		} else if (kind === "protected") {
+			headers.authorization = `Bearer ${apiKey}`
+		}
 
 		const send =
 			parsedTarget.target.protocol === "https:" ? httpsRequest : httpRequest
@@ -261,7 +301,7 @@ export function createApiProxyMiddleware({
 				path: rawUrl,
 				headers: headers as OutgoingHttpHeaders,
 			},
-			(upstreamRes) => forwardResponse(upstreamRes, res),
+			(upstreamRes) => forwardResponse(upstreamRes, res, kind === "auth"),
 		)
 
 		upstream.on("error", () => {

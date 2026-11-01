@@ -4,11 +4,14 @@ import { BrowserRouter } from "react-router-dom"
 import "@flexipay/web-lib/styles.css"
 import "./styles/app.css"
 import App from "./App.tsx"
+import { SessionProvider } from "./providers/SessionProvider"
 
 createRoot(document.getElementById("root") as HTMLElement).render(
 	<StrictMode>
 		<BrowserRouter>
-			<App />
+			<SessionProvider>
+				<App />
+			</SessionProvider>
 		</BrowserRouter>
 	</StrictMode>,
 )

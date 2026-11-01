@@ -35,7 +35,7 @@ export const paymentRoutes: RouteDef<any, any>[] = [
 		method: "post",
 		path: "/v1/payments",
 		summary: "Create a payment from a valid quote (direct or claim link)",
-		auth: "api_key",
+		auth: "customer",
 		body: CreatePaymentRequestSchema,
 		success: { status: 201, schema: PaymentSchema },
 		handler: async (ctx, { body }) => {
@@ -65,7 +65,7 @@ export const paymentRoutes: RouteDef<any, any>[] = [
 		method: "get",
 		path: "/v1/payments",
 		summary: "List payments",
-		auth: "api_key",
+		auth: "customer",
 		success: { status: 200, schema: PaymentListResponseSchema },
 		handler: async (ctx) => {
 			const org = orgOf(ctx);
@@ -85,7 +85,7 @@ export const paymentRoutes: RouteDef<any, any>[] = [
 		method: "get",
 		path: "/v1/payments/{id}",
 		summary: "Payment with legs and events",
-		auth: "api_key",
+		auth: "customer",
 		success: { status: 200, schema: PaymentDetailSchema },
 		handler: async (ctx, { params }) => {
 			const org = orgOf(ctx);
@@ -100,7 +100,7 @@ export const paymentRoutes: RouteDef<any, any>[] = [
 		method: "post",
 		path: "/v1/payments/{id}/fund",
 		summary: "Mark funded (simulated collection); runs the legs",
-		auth: "api_key",
+		auth: "customer",
 		success: { status: 200, schema: PaymentSchema },
 		handler: async (ctx, { params }) => {
 			const org = orgOf(ctx);
@@ -143,7 +143,7 @@ export const paymentRoutes: RouteDef<any, any>[] = [
 		method: "post",
 		path: "/v1/payments/{id}/cancel",
 		summary: "Cancel before processing",
-		auth: "api_key",
+		auth: "customer",
 		success: { status: 200, schema: PaymentSchema },
 		handler: async (ctx, { params }) => {
 			const org = orgOf(ctx);

@@ -10,10 +10,16 @@ export interface AuthedOrg {
 	name: string;
 }
 
+/** Who is calling: a server API key, or a signed-in customer (cookie session). */
+export type Actor =
+	| { kind: "api_key" }
+	| { kind: "session"; userId: string; email: string; name: string };
+
 export interface Ctx {
 	db: Db;
 	config: FlexiPayConfig;
 	org?: AuthedOrg;
+	actor?: Actor;
 	runtime?: ApiRuntime;
 }
 
@@ -22,7 +28,13 @@ export interface RouteDef<B = unknown, Q = unknown> {
 	/** OpenAPI style, e.g. /v1/payments/{id}. */
 	path: string;
 	summary: string;
-	auth: "api_key" | "none";
+	/**
+	 * - "api_key": server API key only (sandbox/admin operations; a customer session is refused)
+	 * - "customer": API key or customer session
+	 * - "session": customer session only (API key management)
+	 * - "none": public
+	 */
+	auth: "api_key" | "customer" | "session" | "none";
 	/**
 	 * HTTP Idempotency-Key:
 	 * - omitted + api_key POST → org-scoped (optional key)
