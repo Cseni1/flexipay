@@ -89,7 +89,7 @@ const optionCopy = (
 		case "crypto_wallet":
 			return {
 				title: "Crypto wallet",
-				detail: "Stellar or Solana USDC destination",
+				detail: "Stellar or Solana destination",
 			}
 		case "crypto_custodial":
 			return {
@@ -175,7 +175,7 @@ const closedClaimMessage = (claim: ClaimView): string => {
 	}
 	if (claim.paymentStatus === "paid") {
 		if (claim.releaseEvidence?.network === "solana") {
-			return "Paid: backend verified the Solana USDC transfer on-chain before marking paid."
+			return "Paid: backend verified the Solana transfer on-chain before marking paid."
 		}
 		return "Paid: confirmed by the claim API after the release."
 	}
@@ -671,11 +671,11 @@ export default function ClaimPage() {
 														/>
 														<span>
 															<span className="option-card__title">
-																Solana USDC (devnet test)
+																Solana (devnet test token)
 															</span>
 															<span className="option-card__detail">
-																Confirm this address before the sender pays. Not
-																mainnet USDC.
+																Confirm this address before the sender pays.
+																Configured mint — not official USDC.
 															</span>
 														</span>
 													</label>

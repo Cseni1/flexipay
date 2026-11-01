@@ -17,8 +17,9 @@ import {
 } from "@wallet-standard/base"
 import { registerWallet } from "@wallet-standard/wallet"
 import bs58 from "bs58"
+import { FP_DEVNET_TEST_WALLET_NAME } from "./walletStandard.ts"
 
-export const FP_DEVNET_TEST_WALLET_NAME = "FlexiPay Devnet Test Wallet"
+export { FP_DEVNET_TEST_WALLET_NAME }
 
 type TestWalletBootstrap = {
 	/** Secret key as JSON number array (ed25519). */

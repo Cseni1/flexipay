@@ -10,8 +10,12 @@ import { promisify } from "node:util";
 import EmbeddedPostgres from "embedded-postgres";
 import { fixEmbeddedPostgresDylibs } from "./fix-embedded-pg-dylibs.ts";
 
-/** embedded-postgres keeps the ChildProcess on a private field while the cluster runs. */
-type EmbeddedPostgresWithProcess = EmbeddedPostgres & {
+/**
+ * embedded-postgres keeps ChildProcess on a private `process` field. Access via
+ * `unknown` — intersecting with the class type collapses to `never` under TS
+ * (private field in declaration vs optional public property).
+ */
+type EmbeddedPostgresProcessHolder = {
 	process?: ChildProcess | null;
 };
 
@@ -79,7 +83,7 @@ export async function startEmbeddedDb(opts: { dir?: string; port?: number; name?
   return {
     url: `postgresql://fp:fp@127.0.0.1:${port}/${name}`,
     async stop() {
-      const child = (pg as EmbeddedPostgresWithProcess).process;
+      const child = (pg as unknown as EmbeddedPostgresProcessHolder).process;
       await pg.stop();
       releaseEmbeddedPostgresStdio(child);
       if (temporary) await rmTempDirWithRetry(databaseDir);

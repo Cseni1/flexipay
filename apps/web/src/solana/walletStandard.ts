@@ -20,6 +20,14 @@ const SOLANA_CHAINS = [
 	"solana:mainnet",
 ] as const
 
+export type SolanaChainId = (typeof SOLANA_CHAINS)[number]
+
+/** Preferred real-user wallets (Wallet Standard names). */
+export const PREFERRED_USER_WALLETS = ["Phantom", "Solflare"] as const
+
+/** Playwright-only harness — never offer this in the human connect UI. */
+export const FP_DEVNET_TEST_WALLET_NAME = "FlexiPay Devnet Test Wallet"
+
 type SolanaFeatureWallet = Wallet & {
 	features: Record<string, unknown> &
 		Partial<SolanaSignAndSendTransactionFeature> &
@@ -32,36 +40,117 @@ export type ConnectedSolanaWallet = {
 	address: string
 }
 
-export function listSolanaWallets(): SolanaFeatureWallet[] {
+export type ListSolanaWalletsOptions = {
+	/** Include the Playwright harness wallet. Default false for human UI. */
+	includeTestHarness?: boolean
+}
+
+export type ClusterLabel = "devnet" | "testnet" | "mainnet-beta"
+
+export const clusterToChainId = (cluster: ClusterLabel): SolanaChainId => {
+	if (cluster === "mainnet-beta") return "solana:mainnet"
+	if (cluster === "testnet") return "solana:testnet"
+	return "solana:devnet"
+}
+
+export const isTestHarnessWallet = (wallet: Wallet): boolean =>
+	wallet.name === FP_DEVNET_TEST_WALLET_NAME
+
+const hasSolanaFeatures = (wallet: Wallet): wallet is SolanaFeatureWallet => {
+	const chains = wallet.chains ?? []
+	const hasSolana = chains.some((c) =>
+		SOLANA_CHAINS.includes(c as SolanaChainId),
+	)
+	const features = wallet.features as Record<string, unknown>
+	return (
+		hasSolana &&
+		(SolanaSignAndSendTransaction in features ||
+			SolanaSignTransaction in features)
+	)
+}
+
+const walletRank = (name: string): number => {
+	const preferred = PREFERRED_USER_WALLETS.indexOf(
+		name as (typeof PREFERRED_USER_WALLETS)[number],
+	)
+	if (preferred >= 0) return preferred
+	if (name === FP_DEVNET_TEST_WALLET_NAME) return 1000
+	return 100
+}
+
+export function listSolanaWallets(
+	opts: ListSolanaWalletsOptions = {},
+): SolanaFeatureWallet[] {
 	const { get } = getWallets()
-	return get().filter((wallet): wallet is SolanaFeatureWallet => {
-		const chains = wallet.chains ?? []
-		const hasSolana = chains.some((c) =>
-			SOLANA_CHAINS.includes(c as (typeof SOLANA_CHAINS)[number]),
+	return get()
+		.filter(hasSolanaFeatures)
+		.filter((wallet) =>
+			opts.includeTestHarness ? true : !isTestHarnessWallet(wallet),
 		)
-		const features = wallet.features as Record<string, unknown>
-		return (
-			hasSolana &&
-			(SolanaSignAndSendTransaction in features ||
-				SolanaSignTransaction in features)
-		)
-	})
+		.slice()
+		.sort((a, b) => walletRank(a.name) - walletRank(b.name))
+}
+
+/** Subscribe to Wallet Standard registry changes (extension load / unload). */
+export function subscribeSolanaWallets(
+	listener: () => void,
+	opts: ListSolanaWalletsOptions = {},
+): () => void {
+	const api = getWallets()
+	const refresh = () => listener()
+	const offRegister = api.on("register", refresh)
+	const offUnregister = api.on("unregister", refresh)
+	void opts
+	return () => {
+		offRegister()
+		offUnregister()
+	}
+}
+
+export function walletSupportsCluster(
+	wallet: SolanaFeatureWallet,
+	cluster: ClusterLabel,
+): boolean {
+	const needed = clusterToChainId(cluster)
+	const chains = wallet.chains ?? []
+	return chains.includes(needed)
+}
+
+export function accountSupportsCluster(
+	account: WalletAccount,
+	cluster: ClusterLabel,
+): boolean {
+	const needed = clusterToChainId(cluster)
+	const chains = account.chains ?? []
+	if (chains.length === 0) return true
+	return chains.includes(needed)
 }
 
 export async function connectSolanaWallet(
 	walletName?: string,
+	opts: ListSolanaWalletsOptions = {},
 ): Promise<ConnectedSolanaWallet> {
-	const wallets = listSolanaWallets()
+	const wallets = listSolanaWallets(opts)
 	const wallet =
 		(walletName ? wallets.find((w) => w.name === walletName) : undefined) ??
 		wallets[0]
 	if (!wallet) {
 		throw new Error(
-			"No Solana Wallet Standard wallet found. Install a compatible extension (for example Phantom).",
+			"No Solana wallet found. Install Phantom or Solflare (Wallet Standard) and set the extension to Devnet.",
+		)
+	}
+	if (!opts.includeTestHarness && isTestHarnessWallet(wallet) && !walletName) {
+		throw new Error(
+			"Only the automated test wallet is available. Install Phantom or Solflare for a real user payment.",
 		)
 	}
 	const standardConnect = wallet.features["standard:connect"] as
-		{ connect: () => Promise<{ accounts: WalletAccount[] }> } | undefined
+		| {
+				connect: (input?: {
+					silent?: boolean
+				}) => Promise<{ accounts: readonly WalletAccount[] }>
+		  }
+		| undefined
 	if (standardConnect) {
 		await standardConnect.connect()
 	}
@@ -84,13 +173,56 @@ export async function disconnectSolanaWallet(
 	if (standardDisconnect) await standardDisconnect.disconnect()
 }
 
+/**
+ * Listen for account / chain changes on a connected wallet.
+ * Returns an unsubscribe function.
+ */
+export function subscribeWalletAccountChanges(
+	wallet: SolanaFeatureWallet,
+	onChange: (accounts: readonly WalletAccount[]) => void,
+): () => void {
+	const events = wallet.features["standard:events"] as
+		| {
+				on: (
+					event: string,
+					listener: (...args: unknown[]) => void,
+				) => () => void
+		  }
+		| undefined
+	if (!events?.on) return () => undefined
+	return events.on("change", (...args: unknown[]) => {
+		const payload = args[0] as
+			{ accounts?: readonly WalletAccount[] } | undefined
+		if (payload?.accounts) {
+			onChange(payload.accounts)
+			return
+		}
+		onChange(wallet.accounts)
+	})
+}
+
 export async function signAndSendSolanaTransaction(opts: {
 	connected: ConnectedSolanaWallet
 	transaction: Transaction
 	connection: Connection
+	/** Required cluster for the transfer — do not use the wallet's mainnet default. */
+	cluster: ClusterLabel
 	options?: SendOptions
 }): Promise<string> {
-	const { connected, transaction, connection } = opts
+	const { connected, transaction, connection, cluster } = opts
+	const chain = clusterToChainId(cluster)
+
+	if (!walletSupportsCluster(connected.wallet, cluster)) {
+		throw new Error(
+			`Wallet does not advertise ${chain}. Open Phantom/Solflare settings and switch the active network to Devnet.`,
+		)
+	}
+	if (!accountSupportsCluster(connected.account, cluster)) {
+		throw new Error(
+			`Connected account is not enabled for ${chain}. Switch the wallet network to Devnet and reconnect.`,
+		)
+	}
+
 	const feature = connected.wallet.features[SolanaSignAndSendTransaction] as
 		| SolanaSignAndSendTransactionFeature[typeof SolanaSignAndSendTransaction]
 		| undefined
@@ -99,10 +231,6 @@ export async function signAndSendSolanaTransaction(opts: {
 			requireAllSignatures: false,
 			verifySignatures: false,
 		})
-		const chain =
-			(connected.wallet.chains.find((c) => c.startsWith("solana:")) as
-				"solana:devnet" | "solana:testnet" | "solana:mainnet" | undefined) ??
-			"solana:devnet"
 		const [outcome] = await feature.signAndSendTransaction({
 			account: connected.account,
 			chain,
@@ -122,6 +250,7 @@ export async function signAndSendSolanaTransaction(opts: {
 	}
 	const [signed] = await signFeature.signTransaction({
 		account: connected.account,
+		chain,
 		transaction: transaction.serialize({
 			requireAllSignatures: false,
 			verifySignatures: false,

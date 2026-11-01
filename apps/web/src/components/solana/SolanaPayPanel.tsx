@@ -11,6 +11,7 @@ import {
 import {
 	Connection,
 	signAndSendSolanaTransaction,
+	type ClusterLabel,
 	type ConnectedSolanaWallet,
 } from "../../solana/walletStandard"
 import { Button, Notice, Panel, StaticField } from "../ui"
@@ -21,6 +22,10 @@ type Props = {
 	onPaid?: (result: SolanaConfirmOk) => void
 }
 
+const harnessAllowed = (): boolean =>
+	typeof window !== "undefined" &&
+	window.__FP_SOLANA_TEST_WALLET_READY__ === true
+
 export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 	const [intent, setIntent] = useState<SolanaIntent | null>(null)
 	const [notSolanaSettle, setNotSolanaSettle] = useState(false)
@@ -29,6 +34,7 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 	const [busy, setBusy] = useState(false)
 	const [result, setResult] = useState<SolanaConfirmOk | null>(null)
 	const [idemKey] = useState(() => newIdempotencyKey("solana-confirm"))
+	const allowTestHarness = harnessAllowed()
 
 	useEffect(() => {
 		const controller = new AbortController()
@@ -79,6 +85,7 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 				connected,
 				transaction: built.transaction,
 				connection,
+				cluster: config.cluster as ClusterLabel,
 			})
 			let confirmed: SolanaConfirmOk | null = null
 			for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -133,7 +140,7 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 
 	return (
 		<div data-testid="solana-pay-panel">
-			<Panel title="Pay with Solana USDC (devnet)">
+			<Panel title="Pay with Solana (devnet test token)">
 				{error ? (
 					<Notice tone="warning" data-testid="solana-pay-error">
 						{error}
@@ -142,16 +149,28 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 				{intent ? (
 					<>
 						<Notice>
-							{intent.label}. Amount is verified on-chain before PAID.
+							{intent.label}. Review the recipient and amount, then approve in
+							your wallet. PAID only after backend on-chain verification.
 						</Notice>
 						<StaticField label="Recipient" value={intent.recipient} />
-						<StaticField label="Amount (minor units)" value={intent.amount} />
-						<StaticField label="Mint" value={intent.usdcMint} />
+						<StaticField
+							label="Amount (mint minor units)"
+							value={intent.amount}
+						/>
+						<StaticField
+							label="Configured mint (not official USDC)"
+							value={intent.usdcMint}
+						/>
+						<StaticField label="Cluster" value={intent.cluster} />
 					</>
 				) : (
 					<p className="form-note">Loading Solana transfer intent…</p>
 				)}
-				<SolanaWalletPanel onConnected={setConnected} title="Sender wallet" />
+				<SolanaWalletPanel
+					onConnected={setConnected}
+					title="Sender wallet"
+					allowTestHarness={allowTestHarness}
+				/>
 				{result ? (
 					<Notice data-testid="solana-pay-success">
 						Paid (backend-verified).{" "}
@@ -167,7 +186,9 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 						onClick={() => void pay()}
 						data-testid="solana-pay-send"
 					>
-						{busy ? "Signing / confirming…" : "Sign and send USDC"}
+						{busy
+							? "Approve in wallet / confirming…"
+							: "Review and sign in wallet"}
 					</Button>
 				)}
 			</Panel>

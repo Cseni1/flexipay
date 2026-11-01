@@ -63,7 +63,7 @@ export function loadSolanaRuntimeConfig(
 	const label =
 		cluster === "mainnet-beta"
 			? "Solana USDC"
-			: `Solana ${cluster} USDC (test — not mainnet)`;
+			: `Solana ${cluster} test token (configured mint — not official USDC)`;
 	const publicRpcUrl = env.FP_SOLANA_PUBLIC_RPC_URL?.trim() || undefined;
 	return {
 		cluster,

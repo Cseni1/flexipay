@@ -2,10 +2,16 @@ import { getSolAndUsdcBalances } from "@flexipay/adapter-solana"
 import { useCallback, useEffect, useState } from "react"
 import { getSolanaConfig, type SolanaConfig } from "../../api/solanaClient"
 import {
+	accountSupportsCluster,
 	connectSolanaWallet,
 	disconnectSolanaWallet,
 	listSolanaWallets,
+	PREFERRED_USER_WALLETS,
 	shortAddress,
+	subscribeSolanaWallets,
+	subscribeWalletAccountChanges,
+	walletSupportsCluster,
+	type ClusterLabel,
 	type ConnectedSolanaWallet,
 	Connection,
 } from "../../solana/walletStandard"
@@ -14,6 +20,11 @@ import { Button, Notice, Panel, StaticField } from "../ui"
 type Props = {
 	onConnected?: (connected: ConnectedSolanaWallet | null) => void
 	title?: string
+	/**
+	 * When true, include the Playwright harness wallet (automated proofs only).
+	 * Human UI must leave this false so Phantom/Solflare are required.
+	 */
+	allowTestHarness?: boolean
 }
 
 const lamportsToSol = (lamports: bigint): string => {
@@ -25,7 +36,7 @@ const lamportsToSol = (lamports: bigint): string => {
 	return frac ? `${whole}.${frac}` : whole.toString()
 }
 
-const minorToUsdc = (minor: bigint, decimals: number): string => {
+const minorToToken = (minor: bigint, decimals: number): string => {
 	const scale = 10n ** BigInt(decimals)
 	const whole = minor / scale
 	const frac = (minor % scale)
@@ -38,13 +49,27 @@ const minorToUsdc = (minor: bigint, decimals: number): string => {
 export function SolanaWalletPanel({
 	onConnected,
 	title = "Solana wallet",
+	allowTestHarness = false,
 }: Props) {
 	const [config, setConfig] = useState<SolanaConfig | null>(null)
 	const [connected, setConnected] = useState<ConnectedSolanaWallet | null>(null)
+	const [walletNames, setWalletNames] = useState<string[]>([])
 	const [sol, setSol] = useState<string>("—")
-	const [usdc, setUsdc] = useState<string>("—")
+	const [tokenBalance, setTokenBalance] = useState<string>("—")
+	const [networkWarning, setNetworkWarning] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
 	const [busy, setBusy] = useState(false)
+
+	const listOpts = { includeTestHarness: allowTestHarness }
+
+	const refreshWalletList = useCallback(() => {
+		setWalletNames(listSolanaWallets(listOpts).map((w) => w.name))
+	}, [allowTestHarness])
+
+	useEffect(() => {
+		refreshWalletList()
+		return subscribeSolanaWallets(refreshWalletList, listOpts)
+	}, [refreshWalletList])
 
 	useEffect(() => {
 		const controller = new AbortController()
@@ -67,7 +92,7 @@ export function SolanaWalletPanel({
 			const rpc = cfg.publicRpcUrl
 			if (!rpc) {
 				setSol("—")
-				setUsdc("—")
+				setTokenBalance("—")
 				return
 			}
 			const connection = new Connection(rpc, "confirmed")
@@ -77,18 +102,78 @@ export function SolanaWalletPanel({
 				cfg.usdcMint,
 			)
 			setSol(lamportsToSol(bal.solLamports))
-			setUsdc(minorToUsdc(bal.usdcMinor, cfg.usdcDecimals))
+			setTokenBalance(minorToToken(bal.usdcMinor, cfg.usdcDecimals))
 		},
 		[],
 	)
 
-	const connect = async () => {
+	const applyNetworkCheck = useCallback(
+		(session: ConnectedSolanaWallet, cfg: SolanaConfig | null) => {
+			if (!cfg) {
+				setNetworkWarning(null)
+				return
+			}
+			const cluster = cfg.cluster as ClusterLabel
+			if (!walletSupportsCluster(session.wallet, cluster)) {
+				setNetworkWarning(
+					`${session.wallet.name} does not advertise ${cluster}. Open the extension, switch to Devnet, then reconnect.`,
+				)
+				return
+			}
+			if (!accountSupportsCluster(session.account, cluster)) {
+				setNetworkWarning(
+					`Connected account is not enabled for ${cluster}. Switch the wallet network to Devnet.`,
+				)
+				return
+			}
+			setNetworkWarning(null)
+		},
+		[],
+	)
+
+	useEffect(() => {
+		if (!connected) return
+		const unsub = subscribeWalletAccountChanges(
+			connected.wallet,
+			(accounts) => {
+				const next = accounts[0]
+				if (!next) {
+					setConnected(null)
+					onConnected?.(null)
+					setSol("—")
+					setTokenBalance("—")
+					setNetworkWarning(null)
+					return
+				}
+				const session: ConnectedSolanaWallet = {
+					wallet: connected.wallet,
+					account: next,
+					address: next.address,
+				}
+				setConnected(session)
+				onConnected?.(session)
+				applyNetworkCheck(session, config)
+				if (config) void refreshBalances(session, config)
+			},
+		)
+		return unsub
+	}, [
+		connected?.wallet,
+		connected?.address,
+		config,
+		onConnected,
+		applyNetworkCheck,
+		refreshBalances,
+	])
+
+	const connect = async (walletName?: string) => {
 		setBusy(true)
 		setError(null)
 		try {
-			const session = await connectSolanaWallet()
+			const session = await connectSolanaWallet(walletName, listOpts)
 			setConnected(session)
 			onConnected?.(session)
+			applyNetworkCheck(session, config)
 			if (config) await refreshBalances(session, config)
 		} catch (cause) {
 			setError(cause instanceof Error ? cause.message : "Connect failed")
@@ -105,40 +190,55 @@ export function SolanaWalletPanel({
 			setConnected(null)
 			onConnected?.(null)
 			setSol("—")
-			setUsdc("—")
+			setTokenBalance("—")
+			setNetworkWarning(null)
 		} finally {
 			setBusy(false)
 		}
 	}
 
-	const available = listSolanaWallets().map((w) => w.name)
+	const preferredDetected = PREFERRED_USER_WALLETS.filter((name) =>
+		walletNames.includes(name),
+	)
+	const otherDetected = walletNames.filter(
+		(name) => !(PREFERRED_USER_WALLETS as readonly string[]).includes(name),
+	)
 
 	return (
 		<div data-testid="solana-wallet-panel">
 			<Panel title={title}>
 				<Notice>
-					{config?.label ?? "Solana"} — Wallet Standard only. FlexiPay never
-					stores private keys or seed phrases. Devnet balances are test assets,
-					not mainnet USDC.
+					{config?.label ?? "Solana"} — Wallet Standard (Phantom / Solflare).
+					FlexiPay never stores private keys or seed phrases. Balances below are
+					for the configured Devnet test mint, not official mainnet USDC.
 				</Notice>
 				{error ? (
 					<Notice tone="warning" data-testid="solana-wallet-error">
 						{error}
 					</Notice>
 				) : null}
+				{networkWarning ? (
+					<Notice tone="warning" data-testid="solana-network-mismatch">
+						{networkWarning}
+					</Notice>
+				) : null}
 				{connected ? (
 					<>
+						<StaticField label="Wallet" value={connected.wallet.name} />
 						<StaticField
-							label="Connected wallet"
+							label="Connected address"
 							value={shortAddress(connected.address)}
 						/>
 						<p className="form-note" data-testid="solana-wallet-address">
 							{connected.address}
 						</p>
 						<StaticField label="SOL balance" value={sol} />
-						<StaticField label="USDC balance (configured mint)" value={usdc} />
+						<StaticField
+							label="Devnet test-token balance (configured mint)"
+							value={tokenBalance}
+						/>
 						<p className="form-note" data-testid="solana-usdc-balance">
-							{usdc}
+							{tokenBalance}
 						</p>
 						<div className="form-actions">
 							<Button
@@ -146,6 +246,7 @@ export function SolanaWalletPanel({
 								variant="secondary"
 								disabled={busy}
 								onClick={() => void disconnect()}
+								data-testid="solana-wallet-disconnect"
 							>
 								Disconnect
 							</Button>
@@ -163,18 +264,61 @@ export function SolanaWalletPanel({
 					</>
 				) : (
 					<>
-						<p className="form-note">
+						<p className="form-note" data-testid="solana-wallets-detected">
 							Detected wallets:{" "}
-							{available.length ? available.join(", ") : "none yet"}
+							{walletNames.length ? walletNames.join(", ") : "none yet"}
 						</p>
-						<Button
-							type="button"
-							disabled={busy}
-							onClick={() => void connect()}
-							data-testid="solana-wallet-connect"
-						>
-							{busy ? "Connecting…" : "Connect Solana wallet"}
-						</Button>
+						{preferredDetected.length === 0 && otherDetected.length === 0 ? (
+							<p className="form-note">
+								Install Phantom or Solflare, unlock the extension, and set the
+								network to <strong>Devnet</strong>.
+							</p>
+						) : null}
+						<div className="form-actions">
+							{preferredDetected.map((name, index) => (
+								<Button
+									key={name}
+									type="button"
+									disabled={busy}
+									onClick={() => void connect(name)}
+									data-testid={
+										index === 0
+											? "solana-wallet-connect"
+											: `solana-wallet-connect-${name.toLowerCase()}`
+									}
+								>
+									{busy ? "Connecting…" : `Connect ${name}`}
+								</Button>
+							))}
+							{otherDetected.map((name, index) => (
+								<Button
+									key={name}
+									type="button"
+									variant="secondary"
+									disabled={busy}
+									onClick={() => void connect(name)}
+									data-testid={
+										preferredDetected.length === 0 && index === 0
+											? "solana-wallet-connect"
+											: `solana-wallet-connect-${name
+													.toLowerCase()
+													.replace(/\s+/g, "-")}`
+									}
+								>
+									{busy ? "Connecting…" : `Connect ${name}`}
+								</Button>
+							))}
+							{preferredDetected.length === 0 && otherDetected.length === 0 ? (
+								<Button
+									type="button"
+									disabled={busy}
+									onClick={() => void connect()}
+									data-testid="solana-wallet-connect"
+								>
+									{busy ? "Connecting…" : "Connect Solana wallet"}
+								</Button>
+							) : null}
+						</div>
 					</>
 				)}
 			</Panel>

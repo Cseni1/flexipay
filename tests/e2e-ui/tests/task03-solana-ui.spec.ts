@@ -31,7 +31,7 @@ test.describe("TASK 03 Solana UI wiring", () => {
 		await page.getByRole("radio", { name: /Crypto wallet/i }).check()
 		await expect(page.getByTestId("claim-crypto-network")).toBeVisible()
 		await expect(
-			page.getByRole("radio", { name: /Solana USDC \(devnet test\)/i }),
+			page.getByRole("radio", { name: /Solana \(devnet test token\)/i }),
 		).toBeChecked()
 		await expect(
 			page.getByText(/not labelled LIVE without a verified provider/i),
