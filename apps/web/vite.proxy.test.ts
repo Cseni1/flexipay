@@ -78,19 +78,6 @@ describe("CCR-19 proxy route policy", () => {
 			classifyProxyRequest("POST", "/v1/claims/token_1/accept"),
 			"claim",
 		)
-		// CCR-20/21: mounted passkey routes are forwarded as public claim routes.
-		assert.equal(
-			classifyProxyRequest("POST", "/v1/claims/token_1/passkey/deploy"),
-			"claim",
-		)
-		assert.equal(
-			classifyProxyRequest("POST", "/v1/claims/token_1/passkey/prepare"),
-			"claim",
-		)
-		assert.equal(
-			classifyProxyRequest("POST", "/v1/claims/token_1/passkey/submit"),
-			"claim",
-		)
 	})
 
 	test("rejects everything else", () => {
@@ -99,7 +86,13 @@ describe("CCR-19 proxy route policy", () => {
 			["GET", "/v1/admin"],
 			["GET", "/v1/claims/token_1/accept"],
 			["POST", "/v1/claims/token_1"],
-			["GET", "/v1/claims/token_1/passkey/deploy"],
+			["POST", "/v1/claims/token_1/passkey/deploy"],
+			["POST", "/v1/claims/token_1/passkey/prepare"],
+			["POST", "/v1/claims/token_1/passkey/submit"],
+			["POST", "/v1/claims/token_1/anchor/indicative-price"],
+			["POST", "/v1/claims/token_1/anchor/withdraw"],
+			["GET", "/v1/claims/token_1/anchor/withdraw/tx_1"],
+			["POST", "/v1/claims/token_1/anchor/withdraw/tx_1/pay"],
 			["GET", "/v1/payments/pay_1/fund"],
 			["POST", "/v1/payments/pay_1/fund/extra"],
 			["GET", "/v1/payments/../claims/token_1"],

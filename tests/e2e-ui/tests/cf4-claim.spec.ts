@@ -152,7 +152,7 @@ test.describe("CF4 claim page", () => {
 		await page.getByRole("button", { name: "Accept payment" }).click()
 
 		await expect(page.getByText("Claim Accepted")).toBeVisible()
-		// Scoped: the accepted page also shows the anchor cash-out panel's payment status.
+		// Scoped: the accepted page also shows payment status elsewhere on the screen.
 		await expect(
 			page
 				.locator(".claim-status-row")
