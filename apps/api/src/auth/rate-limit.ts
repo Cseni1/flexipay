@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 
 // TASK 06: rate limiting for /api/auth/*. Fixed window per client address and bucket, in
-// memory (single API instance). Behind a proxy set FP_TRUST_PROXY (hop count) so req.ip is the
+// memory (single API instance). Behind a proxy set TRUST_PROXY_HOPS (hop count) so req.ip is the
 // real client; otherwise the socket address is used. For several instances, replace the store
 // with a shared one (Redis/Postgres); the interface is the `Map` below.
 
