@@ -10,6 +10,26 @@ the receiver choosing how to be paid. Embedded wallets and bank legs only where
 production access, regulatory eligibility and an end-to-end test are complete.
 Demo Day 12 Nov, feature freeze 8 Nov.
 
+## Decisions (Csenge, 1 Nov)
+
+These are final unless Csenge changes them. Builders: do not substitute others.
+
+| Area           | Choice                                                                     |
+| -------------- | -------------------------------------------------------------------------- |
+| Front end      | Vercel                                                                     |
+| API            | Render (free web service to start; paid Starter on Demo Day if needed)     |
+| Database       | Neon Postgres (free), connected by `DATABASE_URL`                          |
+| Email          | Brevo (verification and password reset). Not Resend.                       |
+| Sign-in        | Better Auth, **unconfirmed**: check it works with Express 5 and Prisma 7   |
+
+Not Railway, not Resend, not Vercel for the API (long-running server). No Render,
+Neon or Brevo account, key or production config exists yet: Csenge creates the
+accounts and pastes secrets into the hosts herself. Until then build and test
+locally only; configuration through env variables (database URL, Brevo key, web
+origin for CORS), never committed. Render's free web service sleeps after 15
+minutes idle; wake the API before any demo. Do not use Render's free Postgres
+(expires after 30 days).
+
 ## Working rules
 
 - Every change is a pull request to `main`; Csenge's Claude reviews and merges.
@@ -143,8 +163,8 @@ New files first, to avoid colliding with Lane A, which owns `SendPayment.tsx`,
    plan current.
 2. Hosting proposal for the API: a host with managed Postgres, the seal key and
    Helius key as server secrets, CORS for the web origin, and a sign-in for the
-   dashboard (S2). Csenge chooses the provider and creates the accounts; nothing
-   is created without her go.
+   dashboard (S2). Provider chosen: see Decisions. Csenge creates the accounts;
+   nothing is created without her go.
 3. Remove `@creit.tech/stellar-wallets-kit` from the web app once Lane C no
    longer needs it (F12).
 4. Decide S3 (separation check) with Csenge.
