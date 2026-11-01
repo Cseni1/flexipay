@@ -48,7 +48,7 @@ export const quoteRoutes: RouteDef<any, any>[] = [
 		method: "post",
 		path: "/v1/quotes",
 		summary: "Quote with route, fees, FX, validity, alternatives, reasons",
-		auth: "api_key",
+		auth: "customer",
 		body: CreateQuoteRequestSchema,
 		success: { status: 201, schema: QuoteSchema },
 		handler: async (ctx, { body }) => createQuoteForOrg(ctx, orgOf(ctx).id, body),

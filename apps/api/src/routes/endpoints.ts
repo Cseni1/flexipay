@@ -48,7 +48,7 @@ export const endpointRoutes: RouteDef<any, any>[] = [
 		method: "post",
 		path: "/v1/endpoints",
 		summary: "Create a destination endpoint for a recipient",
-		auth: "api_key",
+		auth: "customer",
 		body: CreateEndpointRequestSchema,
 		success: { status: 201, schema: EndpointSchema },
 		handler: async (ctx, { body }) => {
@@ -77,7 +77,7 @@ export const endpointRoutes: RouteDef<any, any>[] = [
 		method: "get",
 		path: "/v1/endpoints",
 		summary: "List endpoints, optionally for one recipient",
-		auth: "api_key",
+		auth: "customer",
 		query: ListQuery,
 		success: { status: 200, schema: EndpointListResponseSchema },
 		handler: async (ctx, { query }) => {

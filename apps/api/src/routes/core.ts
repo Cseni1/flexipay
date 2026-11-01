@@ -44,7 +44,7 @@ export const coreRoutes: RouteDef<any, any>[] = [
     method: "get",
     path: "/v1/corridors",
     summary: "Corridors, allowed endpoint types, limits and notes",
-    auth: "api_key",
+    auth: "customer",
     success: { status: 200, schema: z.object({ corridors: z.array(CorridorSchema) }).strict() },
     handler: async (ctx) => ({ corridors: ctx.config.corridors }),
   }),
@@ -52,7 +52,7 @@ export const coreRoutes: RouteDef<any, any>[] = [
     method: "post",
     path: "/v1/recipients",
     summary: "Create a recipient",
-    auth: "api_key",
+    auth: "customer",
     body: RecipientBody,
     success: { status: 201, schema: Recipient },
     handler: async (ctx, { body }) => {
@@ -67,7 +67,7 @@ export const coreRoutes: RouteDef<any, any>[] = [
     method: "get",
     path: "/v1/recipients",
     summary: "List recipients",
-    auth: "api_key",
+    auth: "customer",
     success: { status: 200, schema: z.object({ recipients: z.array(Recipient) }).strict() },
     handler: async (ctx) => {
       const org = orgOf(ctx);

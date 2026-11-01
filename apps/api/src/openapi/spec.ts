@@ -21,7 +21,7 @@ type PathOp = {
   method: "get" | "post";
   path: string;
   summary: string;
-  auth: "api_key" | "none";
+  auth: "api_key" | "customer" | "session" | "none";
   body?: z.ZodType;
   query?: z.ZodType;
   success: { status: 200 | 201 | 202; schema?: z.ZodType };
@@ -59,7 +59,7 @@ function addPath(
     },
     "400": { description: "Invalid request", content: { "application/json": { schema: ERROR_SCHEMA } } },
   };
-  if (r.auth === "api_key") {
+  if (r.auth !== "none") {
     responses["401"] = {
       description: "Missing or invalid API key",
       content: { "application/json": { schema: ERROR_SCHEMA } },
@@ -97,7 +97,14 @@ function addPath(
   ];
   const pathItem = {
     summary: r.summary,
-    security: r.auth === "api_key" ? [{ bearerAuth: [] }] : [],
+    security:
+      r.auth === "api_key"
+        ? [{ bearerAuth: [] }]
+        : r.auth === "customer"
+          ? [{ bearerAuth: [] }, { cookieAuth: [] }]
+          : r.auth === "session"
+            ? [{ cookieAuth: [] }]
+            : [],
     ...(parameters.length > 0 ? { parameters } : {}),
     ...(r.body ? { requestBody: { required: true, content: json(r.body) } } : {}),
     responses,

@@ -3,6 +3,8 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "@flexipay/domain";
 import { createApp } from "../src/app.ts";
+import { createAuthRuntime } from "../src/auth/auth.ts";
+import { createMemoryMailer } from "../src/auth/mailer.ts";
 import { createDb, type Db } from "../src/db.ts";
 import {
 	migrateDeploy,
@@ -17,11 +19,14 @@ export interface TestServer {
 	db: Db;
 	pg: EmbeddedDb;
 	runtime: ApiRuntime;
+	/** Present when started with `{ auth: true }`. */
+	mail: ReturnType<typeof createMemoryMailer>;
+	origin: string;
 	newOrg(name?: string): Promise<{ orgId: string; key: string }>;
 	stop(): Promise<void>;
 }
 
-export async function startTestServer(): Promise<TestServer> {
+export async function startTestServer(opts: { auth?: boolean } = {}): Promise<TestServer> {
 	process.env.FP_SETTLEMENT = process.env.FP_SETTLEMENT ?? "mock";
 	process.env.FP_CLAIM_SEAL_KEY =
 		process.env.FP_CLAIM_SEAL_KEY ?? "a".repeat(64);
@@ -38,10 +43,25 @@ export async function startTestServer(): Promise<TestServer> {
 		throw new Error(`config invalid: ${JSON.stringify(loaded.issues)}`);
 	}
 	const runtime = await createApiRuntime(loaded.config, process.env);
+	const mail = createMemoryMailer();
+	const origin = "http://localhost:5173";
+	const auth = opts.auth
+		? createAuthRuntime(db, {
+				secret: "t".repeat(48),
+				baseUrl: origin,
+				trustedOrigins: [origin],
+				secureCookies: false,
+				mailer: mail,
+				sessionTtl: 3600,
+			})
+		: undefined;
 	const server = createApp({
 		db,
 		config: loaded.config,
 		runtime,
+		auth,
+		// Tests set x-forwarded-for to get an independent rate-limit identity per case.
+		trustProxy: 1,
 	}).listen(0, "127.0.0.1");
 	await new Promise((r) => server.once("listening", r));
 	const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -50,6 +70,8 @@ export async function startTestServer(): Promise<TestServer> {
 		db,
 		pg,
 		runtime,
+		mail,
+		origin,
 		async newOrg(name = "Demo Platform") {
 			const org = await db.organization.create({
 				data: { id: newId("org"), name, kind: "business" },

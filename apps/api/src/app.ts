@@ -1,11 +1,12 @@
 import express, { type NextFunction, type Request, type Response, type Router } from "express";
 import { ZodError } from "zod";
+import { toNodeHandler } from "better-auth/node";
 import type { FlexiPayConfig } from "@flexipay/domain";
 import type { Db } from "./db.ts";
 import { ApiError } from "./errors.ts";
 import { sha256Hex } from "./ids.ts";
 import { withIdempotency } from "./idempotency.ts";
-import { isHttpRouteResult, type Ctx, type RouteDef } from "./routes.ts";
+import { isHttpRouteResult, type Actor, type Ctx, type RouteDef } from "./routes.ts";
 import { batchRoutes } from "./routes/batches.ts";
 import { claimRoutes } from "./routes/claims.ts";
 import { anchorClaimRoutes } from "./routes/anchor-claims.ts";
@@ -18,9 +19,13 @@ import { quoteRoutes } from "./routes/quotes.ts";
 import { sandboxRoutes } from "./routes/sandbox.ts";
 import { solanaRoutes } from "./routes/solana.ts";
 import type { ApiRuntime } from "./runtime.ts";
+import type { AuthRuntime } from "./auth/auth.ts";
+import { createAuthRateLimiter } from "./auth/rate-limit.ts";
+import { sessionRoutes } from "./routes/session.ts";
 
 export const ROUTES: RouteDef<any, any>[] = [
 	...coreRoutes,
+	...sessionRoutes,
 	...endpointRoutes,
 	...batchRoutes,
 	...quoteRoutes,
@@ -35,8 +40,9 @@ export const ROUTES: RouteDef<any, any>[] = [
 
 const toExpressPath = (p: string) => p.replace(/\{(\w+)\}/g, ":$1");
 
-async function authenticate(db: Db, req: Request): Promise<Ctx["org"]> {
-	const header = req.header("authorization") ?? "";
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+async function authenticateKey(db: Db, header: string): Promise<Ctx["org"]> {
 	const match = /^Bearer (\S+)$/.exec(header);
 	if (!match) {
 		throw new ApiError(
@@ -55,13 +61,90 @@ async function authenticate(db: Db, req: Request): Promise<Ctx["org"]> {
 	return { id: key.organization.id, name: key.organization.name };
 }
 
+/**
+ * CSRF defence for cookie-authenticated mutations: the browser must send an Origin we trust.
+ * API-key calls (Authorization header) are not cookie-borne and skip this.
+ */
+function assertTrustedOrigin(req: Request, trusted: readonly string[]) {
+	if (SAFE_METHODS.has(req.method)) return;
+	const origin = req.header("origin");
+	if (!origin || !trusted.includes(origin)) {
+		throw new ApiError(403, "forbidden_origin", "Request origin is not allowed");
+	}
+}
+
+async function authenticate(
+	deps: { db: Db; auth?: AuthRuntime },
+	req: Request,
+	mode: "api_key" | "customer" | "session",
+): Promise<{ org: NonNullable<Ctx["org"]>; actor: Actor }> {
+	const header = req.header("authorization");
+	if (header !== undefined) {
+		// An Authorization header always means API-key auth; a bad key never falls back to
+		// the cookie, and a session-only route refuses keys.
+		if (mode === "session") {
+			throw new ApiError(401, "unauthorized", "This operation needs a signed-in customer session");
+		}
+		return { org: (await authenticateKey(deps.db, header))!, actor: { kind: "api_key" } };
+	}
+	if (mode === "api_key" || !deps.auth) {
+		throw new ApiError(
+			401,
+			"unauthorized",
+			mode === "api_key"
+				? "Send an API key as: Authorization: Bearer <key>"
+				: "Sign in or send an API key as: Authorization: Bearer <key>",
+		);
+	}
+	assertTrustedOrigin(req, deps.auth.config.trustedOrigins);
+	const id = await deps.auth.sessionIdentity(req);
+	if (!id) throw new ApiError(401, "unauthorized", "Not signed in");
+	return {
+		org: id.org,
+		actor: { kind: "session", userId: id.userId, email: id.email, name: id.name },
+	};
+}
+
 export function createApp(deps: {
 	db: Db;
 	config: FlexiPayConfig;
 	runtime: ApiRuntime;
+	/** TASK 06: customer auth. Omitted/undefined = disabled (fail closed, API keys still work). */
+	auth?: AuthRuntime;
+	/** Hops of trusted reverse proxy, so req.ip is the real client (rate limiting). */
+	trustProxy?: number;
 }) {
 	const app = express();
 	app.disable("x-powered-by");
+	if (deps.trustProxy) app.set("trust proxy", deps.trustProxy);
+
+	// Better Auth reads the raw body itself: mount it before express.json.
+	app.use("/api/auth", (_req, res, next) => {
+		res.setHeader("Cache-Control", "no-store");
+		next();
+	});
+	if (deps.auth) {
+		// Our own Origin gate: every state-changing auth call must come from a trusted web origin,
+		// independent of Better Auth's internal check (which is skipped in some environments).
+		const trusted = deps.auth.config.trustedOrigins;
+		app.use("/api/auth", (req, res, next) => {
+			try {
+				assertTrustedOrigin(req, trusted);
+				next();
+			} catch (err) {
+				next(err);
+			}
+		});
+		app.use("/api/auth", createAuthRateLimiter());
+		app.all("/api/auth/*splat", toNodeHandler(deps.auth.auth));
+	} else {
+		app.all("/api/auth/*splat", (_req, res) => {
+			res.status(503).json({
+				code: "auth_unavailable",
+				message: "Customer sign-in is not configured on this server",
+			});
+		});
+	}
 	app.use(express.json({ limit: "1mb" }));
 
 	const router: Router = express.Router();
@@ -75,7 +158,11 @@ export function createApp(deps: {
 						config: deps.config,
 						runtime: deps.runtime,
 					};
-					if (route.auth === "api_key") ctx.org = await authenticate(deps.db, req);
+					if (route.auth !== "none") {
+						const a = await authenticate(deps, req, route.auth);
+						ctx.org = a.org;
+						ctx.actor = a.actor;
+					}
 					if (route.idempotency === "claim") ctx.req = req;
 					const run = async () => {
 						const body = route.body ? route.body.parse(req.body ?? {}) : undefined;
