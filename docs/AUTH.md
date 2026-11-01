@@ -32,14 +32,70 @@ Missing or invalid auth configuration **fails closed**: the API still starts, lo
 `customer auth DISABLED: <reason>`, answers 503 on `/api/auth/*` and never accepts a cookie.
 API-key access is unaffected.
 
-## Hosting shape (Vercel + Render + Neon)
+## Approved hosting stack
+
+| Part                | Provider | What it does for auth                                                        |
+| ------------------- | -------- | ---------------------------------------------------------------------------- |
+| Frontend (`apps/web`) | Vercel   | Serves the app on the **web origin**; rewrites API paths to Render (below). |
+| API (`apps/api`)    | Render   | Runs Express + Better Auth; holds every secret below as server-side env.     |
+| PostgreSQL          | Neon     | `DATABASE_URL`; stores users, sessions, memberships and all payment data.    |
+| Transactional email | Brevo    | Verification and password-reset mail via `https://api.brevo.com/v3/smtp/email` (the endpoint is fixed in `src/auth/mailer.ts`). |
+
+No provider account, key, URL or domain is configured by this repository. Everything in angle
+brackets below is a placeholder to fill in at deployment.
+
+## Vercel rewrites (required)
 
 Cookies are `HttpOnly`, `SameSite=Lax`, `Secure` (production), prefix `fp`. For `Lax` to work
-the browser must see the API under the **web origin**: the Vercel project must rewrite
-`/api/auth/*` and `/v1/*` to the Render service (same-origin proxying), exactly as the local Vite
-proxy does. The destination URL is a deployment decision and is intentionally **not** in
-`vercel.json` yet (UNKNOWN until the Render service exists). Do not switch the cookie to
-`SameSite=None`.
+the browser must see the API under the **web origin**, so the Vercel project must forward
+**both** `/api/auth/*` and `/v1/*` to the Render service. This is what the local Vite proxy does
+in development. The browser then only ever talks to the web origin; the Render URL is never
+used by browser code, and CORS is not needed.
+
+Shape of the rewrite (placeholder host; **not** in `vercel.json`, because the Render URL does not
+exist yet and the existing catch-all `/(.*)` -> `/index.html` rewrite must stay last):
+
+```json
+{
+  "rewrites": [
+    { "source": "/api/auth/:path*", "destination": "https://<render-api-host>/api/auth/:path*" },
+    { "source": "/v1/:path*", "destination": "https://<render-api-host>/v1/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
+```
+
+Consequences to check when wiring it up:
+
+- `WEB_ORIGIN` on Render must equal the Vercel origin the browser uses (scheme + host, no path,
+  `https` in production). Email links and the Origin allow-list are built from it; a mismatch makes
+  every cookie-authenticated write return 403 `forbidden_origin`.
+- Behind Vercel and Render the API sees a proxy chain. Set `TRUST_PROXY_HOPS` to the verified
+  number of proxies in front of the API (UNKNOWN until deployed). Too few: all users share one
+  rate-limit bucket. Too many: client addresses can be spoofed.
+- Do not switch the session cookie to `SameSite=None` to avoid the rewrite.
+- Preview deployments use a different origin: add it to `WEB_ORIGIN_EXTRA` only if you need
+  sign-in there.
+
+## Exact environment variable names
+
+Names the code reads today (`apps/api/src/main.ts`, `apps/api/src/auth/config.ts`). Set them on the
+Render service; none may appear in the Vercel project or the browser bundle.
+
+| Variable              | Where it is read | Notes                                                              |
+| --------------------- | ---------------- | ------------------------------------------------------------------ |
+| `DATABASE_URL`        | `main.ts`        | Neon connection string. Required; the API refuses to start without it. Pooled vs direct connection for migrations: UNKNOWN, decide at deployment. |
+| `BETTER_AUTH_SECRET`  | `auth/config.ts` | Required in production, >= 32 characters. Generate it yourself; never commit it. |
+| `WEB_ORIGIN`          | `auth/config.ts` | Required in production (the Vercel origin).                        |
+| `WEB_ORIGIN_EXTRA`    | `auth/config.ts` | Optional, comma-separated extra trusted origins.                   |
+| `BREVO_API_KEY`       | `auth/config.ts` | Required in production. Server-side only.                          |
+| `BREVO_SENDER_EMAIL`  | `auth/config.ts` | Required together with the key; must be a sender verified in Brevo. |
+| `TRUST_PROXY_HOPS`    | `main.ts`        | Number of trusted proxies; unset = socket address is used.         |
+| `FP_MAIL_DEV_CONSOLE` | `auth/config.ts` | `1` prints mail to the console. Local only; refused in production. |
+| `NODE_ENV`            | `auth/config.ts` | `production` enforces `https` for `WEB_ORIGIN` and secure cookies. Whether Render sets it is UNKNOWN: set it explicitly. |
+
+If any required auth variable is missing the API still starts but logs
+`customer auth DISABLED: <reason>` and serves 503 on `/api/auth/*`.
 
 ## Database
 
