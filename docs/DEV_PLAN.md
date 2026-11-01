@@ -84,7 +84,7 @@ Carried over from the Stellar work:
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | S1  | Unresolved: the Stellar passkey wallet Create fails in the browser with "could not be used on this device" before any API call; no console line was captured. | Not on the 12 Nov path (the FlexiPay wallet is Solana). Remove the Stellar passkey and anchor options from the web claim page; keep the API code for now. |
 | S2  | No hosted API and no user login: the dashboard only works through the local Vite proxy that injects a demo API key.                                           | Needed before the Vercel front end can use real data (task D).                                                                                            |
-| S3  | `scripts/check-separation.sh`, the husky hook and the required `separation` CI check still block the word FlexiWork, although the rule is gone.               | Csenge to decide; the check needs a branch-protection change in GitHub settings.                                                                          |
+| S3  | Separation check (script, husky step, required CI check). | Resolved 1 Nov: removed at Csenge's request (FlexiPay is a FlexiWork product). No required CI check remains; the integrator runs the full checks before merge. |
 | S4  | About 100 stale remote branches; PR #85 (hackathon evidence) is open.                                                                                         | Clean up after Demo Day; close #85.                                                                                                                       |
 
 ## Architecture decision for the front end
@@ -167,7 +167,6 @@ New files first, to avoid colliding with Lane A, which owns `SendPayment.tsx`,
    nothing is created without her go.
 3. Remove `@creit.tech/stellar-wallets-kit` from the web app once Lane C no
    longer needs it (F12).
-4. Decide S3 (separation check) with Csenge.
 
 ### Freebuff (if needed)
 

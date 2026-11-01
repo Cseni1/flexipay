@@ -13,6 +13,8 @@ Proposed changes to shared interfaces. Only the integrator applies them.
 
 ## CCR-2: separation guards (demo-data folder, hooks, CI)
 
+> Superseded 1 Nov 2026: the separation script, hook step and CI job were removed at Csenge's request. Kept for history.
+
 - **From:** Csenge, Claude, 22 Oct 2026
 - **What:**
   1. **Demo-data location:** `scripts/seed/demo-data/` is the one folder for labelled sample data. Agents write only neutral names ("Demo Platform", "Worker A", "Worker B"). Only a human may add other product or story names there, for the pitch. `scripts/check-separation.sh` excludes any folder named `demo-data/`.
