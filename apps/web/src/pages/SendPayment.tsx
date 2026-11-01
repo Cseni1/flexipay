@@ -49,6 +49,34 @@ type DestinationType = Extract<
 	"bank_account" | "ewallet" | "crypto_wallet"
 >
 
+type FallbackCountry = "US" | "PH" | "BR" | "ZA"
+
+/** Static MVP choices used when GET /v1/corridors is unavailable (fixture / offline UX). */
+const FALLBACK_COUNTRIES: { value: FallbackCountry | ""; label: string }[] = [
+	{ value: "", label: "Select destination country" },
+	{ value: "US", label: "United States" },
+	{ value: "PH", label: "Philippines" },
+	{ value: "BR", label: "Brazil" },
+	{ value: "ZA", label: "South Africa" },
+]
+
+const FALLBACK_DESTINATIONS: Record<FallbackCountry, DestinationOption[]> = {
+	US: [{ value: "bank_account", label: "Bank account", currency: "USD" }],
+	PH: [
+		{ value: "bank_account", label: "Bank account", currency: "PHP" },
+		{ value: "ewallet", label: "E-wallet", currency: "PHP" },
+		{ value: "crypto_wallet", label: "Crypto wallet", currency: "USDC" },
+	],
+	BR: [
+		{ value: "bank_account", label: "Bank account", currency: "BRL" },
+		{ value: "crypto_wallet", label: "Crypto wallet", currency: "USDC" },
+	],
+	ZA: [{ value: "bank_account", label: "Bank account", currency: "ZAR" }],
+}
+
+const isFallbackCountry = (country: string): country is FallbackCountry =>
+	Object.prototype.hasOwnProperty.call(FALLBACK_DESTINATIONS, country)
+
 const RECIPIENT_KINDS: { value: RecipientKind; label: string }[] = [
 	{ value: "individual", label: "Individual" },
 	{ value: "company", label: "Company" },
@@ -82,6 +110,16 @@ const INITIAL_FORM: FormState = {
 	amount: "",
 	recipientName: "",
 	existingRecipientId: "",
+}
+
+const destinationsForForm = (
+	corridors: CorridorSummary[] | null,
+	country: string,
+): DestinationOption[] => {
+	if (!country) return []
+	if (corridors) return destinationsForCountry(corridors, country)
+	if (isFallbackCountry(country)) return FALLBACK_DESTINATIONS[country]
+	return []
 }
 
 const toCorridorSummaries = (
@@ -139,7 +177,8 @@ export default function SendPayment() {
 			})
 			.catch((cause: unknown) => {
 				if (!active || controller.signal.aborted) return
-				if (isAuthRequired(cause)) setAuthBlocked(true)
+				// Do not flip authBlocked here: CF5 and quote UX need the form usable so a
+				// later quote call can surface the proxy / FP_API_KEY configuration error.
 				setCorridors(null)
 				setCorridorsError(
 					cause instanceof ApiError
@@ -156,7 +195,6 @@ export default function SendPayment() {
 			})
 			.catch((cause: unknown) => {
 				if (!active || controller.signal.aborted) return
-				if (isAuthRequired(cause)) setAuthBlocked(true)
 				setRecipients([])
 				setRecipientsError(
 					cause instanceof ApiError
@@ -180,14 +218,15 @@ export default function SendPayment() {
 	)
 
 	const countryOptions = useMemo(() => {
-		const fromApi = corridors ? countriesFromCorridors(corridors) : []
+		if (!corridors) return FALLBACK_COUNTRIES
+		const fromApi = countriesFromCorridors(corridors)
 		return [{ value: "", label: "Select destination country" }, ...fromApi]
 	}, [corridors])
 
-	const destinationOptions: DestinationOption[] = useMemo(() => {
-		if (!corridors || !form.country) return []
-		return destinationsForCountry(corridors, form.country)
-	}, [corridors, form.country])
+	const destinationOptions: DestinationOption[] = useMemo(
+		() => destinationsForForm(corridors, form.country),
+		[corridors, form.country],
+	)
 
 	const corridorNote = useMemo(() => {
 		if (!corridors || !form.country) return null
@@ -207,7 +246,7 @@ export default function SendPayment() {
 			update({ country, destinationType: "", existingRecipientId: "" })
 			return
 		}
-		const options = corridors ? destinationsForCountry(corridors, country) : []
+		const options = destinationsForForm(corridors, country)
 		update({
 			country,
 			destinationType: options[0]?.value ?? "",
@@ -225,9 +264,7 @@ export default function SendPayment() {
 			update({ existingRecipientId: "" })
 			return
 		}
-		const options = corridors
-			? destinationsForCountry(corridors, saved.country)
-			: []
+		const options = destinationsForForm(corridors, saved.country)
 		update({
 			existingRecipientId: saved.id,
 			recipientName: saved.name,
@@ -264,10 +301,6 @@ export default function SendPayment() {
 		}
 		if (!form.feeMode) {
 			setFormError("Choose who pays the vault fee.")
-			return
-		}
-		if (!corridors) {
-			setFormError("Corridors are not available from the API yet.")
 			return
 		}
 
@@ -404,8 +437,8 @@ export default function SendPayment() {
 
 			{corridorsUnavailable ? (
 				<Notice tone="warning" data-testid="corridors-unavailable">
-					Corridors unavailable: {corridorsError}. Destination choices stay
-					disabled until GET /v1/corridors responds.
+					Corridors unavailable: {corridorsError}. Using the built-in
+					destination list until GET /v1/corridors responds.
 				</Notice>
 			) : null}
 
@@ -418,7 +451,7 @@ export default function SendPayment() {
 			<Grid>
 				<Panel
 					title="Payment details"
-					description="The source is fixed for the MVP; countries and destinations come from GET /v1/corridors."
+					description="The source is fixed for the MVP; countries and destinations prefer GET /v1/corridors when available."
 				>
 					<form onSubmit={handleQuote}>
 						<div className="form-grid">
@@ -452,19 +485,15 @@ export default function SendPayment() {
 								id="destination-country"
 								label="Destination country"
 								value={form.country}
-								disabled={!corridors || authBlocked}
-								options={
-									corridors
-										? countryOptions
-										: [{ value: "", label: "Waiting for corridors…" }]
-								}
+								disabled={authBlocked}
+								options={countryOptions}
 								onChange={(event) => changeCountry(event.target.value)}
 							/>
 							<SelectField
 								id="destination-type"
 								label="Destination"
 								value={form.destinationType}
-								disabled={!form.country || !corridors}
+								disabled={!form.country}
 								options={
 									destinationOptions.length > 0
 										? destinationOptions.map(({ value, label }) => ({
@@ -555,17 +584,12 @@ export default function SendPayment() {
 						) : null}
 
 						<div className="form-actions">
-							<Button
-								type="submit"
-								disabled={quotePending || authBlocked || corridorsUnavailable}
-							>
+							<Button type="submit" disabled={quotePending || authBlocked}>
 								{quotePending
 									? "Getting quote…"
 									: authBlocked
 										? "Authentication required"
-										: corridorsUnavailable
-											? "Corridors unavailable"
-											: "Get quote"}
+										: "Get quote"}
 							</Button>
 							<span className="form-note">
 								The quote is simulated and expires; no payment is created yet.

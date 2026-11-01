@@ -145,6 +145,8 @@ const main = async (): Promise<void> => {
 					...process.env,
 					FP_API_URL: api.base,
 					FP_API_KEY: key,
+					// Loads apps/web/test-harness/devnetTestWallet.ts (not in production src/).
+					FP_SOLANA_TEST_WALLET: "1",
 				},
 				stdio: ["ignore", "pipe", "pipe"],
 				shell: process.platform === "win32",

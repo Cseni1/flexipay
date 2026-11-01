@@ -1,4 +1,4 @@
-import { getSolAndUsdcBalances } from "@flexipay/adapter-solana"
+import { getSolAndUsdcBalances } from "@flexipay/adapter-solana/browser"
 import { useCallback, useEffect, useState } from "react"
 import { getSolanaConfig, type SolanaConfig } from "../../api/solanaClient"
 import {

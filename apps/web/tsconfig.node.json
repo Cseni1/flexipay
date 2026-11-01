@@ -5,6 +5,7 @@
 		"lib": ["ES2023"],
 		"module": "ESNext",
 		"skipLibCheck": true,
+		"types": ["node"],
 
 		"moduleResolution": "bundler",
 		"allowImportingTsExtensions": true,
@@ -18,5 +19,10 @@
 		"noFallthroughCasesInSwitch": true,
 		"noUncheckedSideEffectImports": true
 	},
-	"include": ["vite.config.ts", "vite.proxy.ts", "vite.proxy.test.ts"]
+	"include": [
+		"vite.config.ts",
+		"vite.proxy.ts",
+		"vite.proxy.test.ts",
+		"test/**/*.ts"
+	]
 }

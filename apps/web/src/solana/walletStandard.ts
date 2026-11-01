@@ -103,11 +103,25 @@ export async function signAndSendSolanaTransaction(opts: {
 			(connected.wallet.chains.find((c) => c.startsWith("solana:")) as
 				"solana:devnet" | "solana:testnet" | "solana:mainnet" | undefined) ??
 			"solana:devnet"
+		// Wallet Standard rejects Solana web3.js Commitment values like "max"/"recent".
+		const walletOptions = (() => {
+			if (!opts.options) return undefined
+			const { preflightCommitment, ...rest } = opts.options
+			if (
+				preflightCommitment === undefined ||
+				preflightCommitment === "processed" ||
+				preflightCommitment === "confirmed" ||
+				preflightCommitment === "finalized"
+			) {
+				return { ...rest, preflightCommitment }
+			}
+			return { ...rest, preflightCommitment: "confirmed" as const }
+		})()
 		const [outcome] = await feature.signAndSendTransaction({
 			account: connected.account,
 			chain,
 			transaction: serialized,
-			options: opts.options,
+			options: walletOptions,
 		})
 		if (!outcome?.signature) {
 			throw new Error("Wallet did not return a transaction signature")

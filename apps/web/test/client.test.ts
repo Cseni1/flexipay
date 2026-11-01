@@ -13,7 +13,7 @@ import {
 	getHealth,
 	listCorridors,
 	listRecipients,
-} from "./client.ts"
+} from "../src/api/client.ts"
 
 interface Seen {
 	method: string | undefined

@@ -1,5 +1,8 @@
 /**
- * Wallet Standard harness for local/DEVNET browser proofs.
+ * Wallet Standard harness for Playwright / local DEVNET browser proofs.
+ *
+ * Lives outside apps/web/src so production source guards never see test hooks.
+ * Loaded only when Vite is started with FP_SOLANA_TEST_WALLET=1 (e2e / demo).
  * Registers only when `window.__FP_SOLANA_TEST_WALLET__` is set (Playwright inject).
  * Never logs or persists the secret key.
  */
@@ -73,7 +76,7 @@ class FlexiPayDevnetTestWallet implements Wallet {
 				connect: async () => {
 					this.#accounts = [this.#account()]
 					this.#emit()
-					return { accounts: this.accounts }
+					return { accounts: this.#accounts.slice() }
 				},
 			},
 			"standard:disconnect": {
@@ -155,7 +158,7 @@ class FlexiPayDevnetTestWallet implements Wallet {
 
 let registered = false
 
-/** Call once from app bootstrap. No-op unless the Playwright bootstrap object is present. */
+/** Call once from test harness bootstrap. No-op unless the Playwright bootstrap object is present. */
 export function maybeRegisterDevnetTestWallet(): void {
 	if (registered || typeof window === "undefined") return
 	const bootstrap = window.__FP_SOLANA_TEST_WALLET__
@@ -172,3 +175,5 @@ export function maybeRegisterDevnetTestWallet(): void {
 		window.__FP_SOLANA_TEST_WALLET__ = undefined
 	}
 }
+
+maybeRegisterDevnetTestWallet()

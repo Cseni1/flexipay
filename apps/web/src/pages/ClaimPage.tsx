@@ -225,8 +225,10 @@ export default function ClaimPage() {
 	const [passkeySelected, setPasskeySelected] = useState(false)
 	const [anchorSelected, setAnchorSelected] = useState(false)
 	const [detail, setDetail] = useState("")
+	// Default Stellar so existing claim flows keep the Stellar address field;
+	// Solana is an explicit opt-in on the claim form.
 	const [cryptoNetwork, setCryptoNetwork] = useState<"stellar" | "solana">(
-		"solana",
+		"stellar",
 	)
 	const [accepting, setAccepting] = useState(false)
 	const [acceptError, setAcceptError] = useState<string | null>(null)

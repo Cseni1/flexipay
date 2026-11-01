@@ -5,7 +5,9 @@
 	"type": "module",
 	"description": "Solana USDC transfer build/verify (CCR-24). Devnet first; not a second payment engine.",
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./browser": "./src/browser.ts",
+		"./server": "./src/server.ts"
 	},
 	"scripts": {
 		"typecheck": "tsc --noEmit",

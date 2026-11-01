@@ -5,7 +5,7 @@ import {
 	destinationsForCountry,
 	regulationNoteFor,
 	type CorridorSummary,
-} from "./corridors.ts"
+} from "../src/api/corridors.ts"
 
 const SAMPLE: CorridorSummary[] = [
 	{

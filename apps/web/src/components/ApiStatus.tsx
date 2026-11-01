@@ -52,7 +52,7 @@ export function ApiStatus() {
 	return (
 		<p
 			className={`api-status api-status--${status}`}
-			role="status"
+			aria-live="polite"
 			data-testid="api-status"
 			data-api-status={status}
 		>

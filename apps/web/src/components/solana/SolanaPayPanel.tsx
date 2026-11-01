@@ -1,4 +1,4 @@
-import { buildUsdcTransferTransaction } from "@flexipay/adapter-solana"
+import { buildUsdcTransferTransaction } from "@flexipay/adapter-solana/browser"
 import { useEffect, useState } from "react"
 import { ApiError, describeApiError, newIdempotencyKey } from "../../api/client"
 import {
