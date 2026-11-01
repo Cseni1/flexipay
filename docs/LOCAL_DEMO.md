@@ -48,13 +48,23 @@ Stellar extras (public ids in `scripts/testnet/testnet-ids.env`; secrets only in
 git-ignored `scripts/testnet/.env.secrets`): `FP_STELLAR_RPC_URL`,
 `FP_STELLAR_NETWORK_PASSPHRASE`, `FP_PAYOUT_VAULT_ID`, `FP_RECIPIENT_A_ADDRESS`.
 
-No HTTP org/key bootstrap. Provision a local Demo Platform key (see
-`apps/api/test/helpers.ts` `newOrg`), then export `FP_API_KEY` in the shell.
-Without a key, `demo:offline` still starts API+web but skips seed.
+**Org / API-key bootstrap (local CLI, not customer login):** with the API
+Postgres up (`DATABASE_URL` set), mint a Demo Platform key once:
 
-**CCR-19:** `apps/web/vite.proxy.ts` injects Bearer on protected `/v1/*` from
-server-side `FP_API_KEY`; `/v1/claims/*` stay public. Local Vite / `vite preview`
-only — not static-deploy auth. Clients call relative `/v1/...`.
+```bash
+npx tsx apps/api/scripts/bootstrap-demo-org.ts
+# → prints FP_API_KEY=...  (export for the Vite process; never commit)
+npx tsx apps/api/scripts/revoke-api-key.ts --key "$FP_API_KEY"   # optional rotate
+```
+
+There is still **no** browser customer login/session. The Vite proxy injects one
+shared server-side `FP_API_KEY` for local demo only. Without a key,
+`demo:offline` still starts API+web but skips seed.
+
+**CCR-19 + TASK 05:** `apps/web/vite.proxy.ts` injects Bearer on protected
+product `/v1/*` from server-side `FP_API_KEY`; `/v1/claims/*` stay public.
+Sandbox mutators are **not** proxied (call the API with Bearer from scripts).
+Vite binds `127.0.0.1` only. Not static-deploy auth. Clients call relative `/v1/...`.
 
 ## Real Stellar vs simulated banking / FX
 

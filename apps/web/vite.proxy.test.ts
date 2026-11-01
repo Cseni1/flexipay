@@ -70,7 +70,9 @@ describe("CCR-19 proxy route policy", () => {
 		)
 		assert.equal(classifyProxyRequest("POST", "/v1/endpoints"), "protected")
 		assert.equal(classifyProxyRequest("POST", "/v1/batches"), "protected")
-		assert.equal(classifyProxyRequest("POST", "/v1/sandbox/reset"), "protected")
+		// Sandbox is Bearer-only on the API — not through the browser proxy.
+		assert.equal(classifyProxyRequest("POST", "/v1/sandbox/reset"), null)
+		assert.equal(classifyProxyRequest("POST", "/v1/sandbox/fail-next"), null)
 
 		assert.equal(classifyProxyRequest("GET", "/v1/solana/config"), "claim")
 		assert.equal(classifyProxyRequest("GET", "/v1/claims/token_1"), "claim")
@@ -221,6 +223,27 @@ describe("CCR-19 proxy upstream behaviour", () => {
 			assert.equal(response.status, 404)
 			const payload = (await response.json()) as { code?: string }
 			assert.equal(payload.code, "proxy_route_not_allowed")
+			assert.equal(seen.length, 0)
+		} finally {
+			await close(proxy.server)
+		}
+	})
+
+	test("does not forward sandbox mutators through the browser proxy", async () => {
+		seen = []
+		const proxy = await startProxy(upstreamUrl, "server-side-test-key")
+		try {
+			for (const path of [
+				"/v1/sandbox/reset",
+				"/v1/sandbox/fail-next",
+				"/v1/sandbox/provider-health",
+				"/v1/sandbox/advance-time",
+			]) {
+				const response = await fetch(`${proxy.url}${path}`, { method: "POST" })
+				assert.equal(response.status, 404, path)
+				const payload = (await response.json()) as { code?: string }
+				assert.equal(payload.code, "proxy_route_not_allowed", path)
+			}
 			assert.equal(seen.length, 0)
 		} finally {
 			await close(proxy.server)

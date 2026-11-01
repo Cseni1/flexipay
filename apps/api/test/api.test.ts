@@ -93,4 +93,34 @@ describe("API skeleton", () => {
       expect(JSON.stringify(k)).not.toContain(key);
     }
   });
+
+  it("rejects a revoked API key and keeps org isolation after bootstrap", async () => {
+    const { revokeApiKey, createOrganizationWithApiKey } = await import(
+      "../src/orgs/bootstrap.ts"
+    );
+    const boot = await createOrganizationWithApiKey(t.db, {
+      name: "Revoke Platform",
+      reuseExistingName: false,
+      label: "revoke-test",
+    });
+    const ok = await fetch(`${t.base}/v1/corridors`, {
+      headers: auth(boot.apiKey),
+    });
+    expect(ok.status).toBe(200);
+
+    const revoked = await revokeApiKey(t.db, boot.apiKey);
+    expect(revoked.revoked).toBe(true);
+    expect(revoked.orgId).toBe(boot.orgId);
+
+    const denied = await fetch(`${t.base}/v1/corridors`, {
+      headers: auth(boot.apiKey),
+    });
+    expect(denied.status).toBe(401);
+    expect((await denied.json()).code).toBe("unauthorized");
+
+    // Original key still works (different org).
+    expect(
+      (await fetch(`${t.base}/v1/corridors`, { headers: auth(key) })).status,
+    ).toBe(200);
+  });
 });

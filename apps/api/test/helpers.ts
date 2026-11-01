@@ -9,7 +9,7 @@ import {
 	startEmbeddedDb,
 	type EmbeddedDb,
 } from "../src/dev/embedded-db.ts";
-import { newApiKey, newId } from "../src/ids.ts";
+import { createOrganizationWithApiKey } from "../src/orgs/bootstrap.ts";
 import { createApiRuntime, type ApiRuntime } from "../src/runtime.ts";
 
 export interface TestServer {
@@ -51,19 +51,13 @@ export async function startTestServer(): Promise<TestServer> {
 		pg,
 		runtime,
 		async newOrg(name = "Demo Platform") {
-			const org = await db.organization.create({
-				data: { id: newId("org"), name, kind: "business" },
+			// Always a new Organization row (isolation tests); name is not unique.
+			const boot = await createOrganizationWithApiKey(db, {
+				name,
+				reuseExistingName: false,
+				label: "test-helper",
 			});
-			const k = newApiKey();
-			await db.apiKey.create({
-				data: {
-					id: newId("key"),
-					organizationId: org.id,
-					prefix: k.prefix,
-					keyHash: k.keyHash,
-				},
-			});
-			return { orgId: org.id, key: k.key };
+			return { orgId: boot.orgId, key: boot.apiKey };
 		},
 		async stop() {
 			await new Promise((r) => server.close(r));

@@ -64,9 +64,15 @@ export default function Developers() {
 				description="This console is an API client. Everything you do here is a v1 call you can make yourself."
 			/>
 			<Notice>
-				The API key stays on the server: the local web proxy adds it, and the
-				browser never sees or stores it. Use your own sandbox key from your
-				environment.
+				The API key stays on the Vite server process: the local loopback proxy
+				adds Bearer for product routes, and the browser never sees or stores it.
+				Mint a key with{" "}
+				<code className="code-text">
+					npm run bootstrap:org --workspace @flexipay/api
+				</code>{" "}
+				(requires DATABASE_URL). Sandbox reset is not available through this
+				proxy — call the API with Bearer from scripts only. This is not a
+				customer login.
 			</Notice>
 			<Panel
 				title="Quickstart"

@@ -25,6 +25,14 @@ export default defineConfig(({ mode }) => {
 				apiKey: env.FP_API_KEY,
 			}),
 		],
+		// Loopback only: the local proxy injects a shared org key; do not expose it
+		// on LAN interfaces (TASK 05).
+		server: {
+			host: "127.0.0.1",
+		},
+		preview: {
+			host: "127.0.0.1",
+		},
 		build: {
 			target: "esnext",
 		},

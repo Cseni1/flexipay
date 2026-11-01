@@ -68,10 +68,9 @@ const ROUTES: readonly RouteRule[] = [
 	protectedRule("GET", /^\/v1\/batches\/?$/),
 	protectedRule("POST", /^\/v1\/batches\/?$/),
 	protectedRule("GET", /^\/v1\/batches\/[^/]+\/?$/),
-	protectedRule(
-		"POST",
-		/^\/v1\/sandbox\/(?:fail-next|provider-health|reset|advance-time)\/?$/,
-	),
+	// Sandbox mutators (reset / fail-next / …) stay on the API with Bearer only.
+	// They are intentionally NOT proxied so a browser visitor cannot wipe org data
+	// via the shared local FP_API_KEY (TASK 05).
 ]
 
 const SAFE_PATH = /^(?!.*(?:%2f|%5c|%2e|\/\/|\/\.)).+$/i

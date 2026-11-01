@@ -10,6 +10,8 @@
     "db:migrate:dev": "node scripts/dev-db.ts migrate",
     "dev": "node scripts/dev-db.ts serve",
     "start": "node src/main.ts",
+    "bootstrap:org": "npx tsx scripts/bootstrap-demo-org.ts",
+    "revoke:key": "npx tsx scripts/revoke-api-key.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "openapi": "node src/openapi/write.ts"
