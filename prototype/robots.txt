@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://flexipay-console-prototype.vercel.app/sitemap.xml
