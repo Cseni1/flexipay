@@ -13,10 +13,8 @@ five flows pass on the mock API and against Stellar testnet, the offline stack
 runs under a network-denied sandbox, seed/replay pass, the DF2/DF3/DF5 browser
 flows pass against the real loopback stack, and a funded claim survives an API
 restart and releases its existing lock through the UI. The exact commands,
-results, transaction hashes and screenshots are in
-`scripts/demo/evidence/2026-10-23-d1-d2-final-acceptance.md` and
-`scripts/demo/evidence/2026-10-23-ccr11-restart-stellar.md`. Per-run JSON
-evidence is written to the same folder and git-ignored.
+results, transaction hashes and screenshots are kept in git history (tag
+`arrival`). Per-run JSON is written to `scripts/demo/evidence/` and git-ignored.
 
 DF1 takes the domestic explanation from `Quote.reasons` (no batch-row reason
 field is invented). DF4 proves the single retry from the published `Leg.attempt`
@@ -168,8 +166,7 @@ passed.
   including CCR-13 accounting.
 - `scripts/seed/fixtures/` — neutral workers, endpoints and per-flow
   amounts/expectations.
-- `scripts/demo/evidence/` — committed blocker/review records, plus one
-  generated JSON per run: commit, command, exit code, steps, blockers. No key,
+- `scripts/demo/evidence/` — git-ignored output: one generated JSON per run: commit, command, exit code, steps, blockers. No key,
   token, account number or address.
 
 ## CCR-11 restart acceptance (Stellar testnet PASS)
@@ -246,65 +243,3 @@ vault. CCR-11's Stellar path does not.
 5. CCR-11 passes on Stellar testnet. Mock-mode restart remains unsupported by
    the in-memory mock vault; that is a mock limitation, not a Stellar gap.
 
-## DF7 anchor lifecycle (scaffold, not run)
-
-`df7-anchor-lifecycle.ts` is the Stellar reference-anchor scaffold. It consumes
-Cursor's `scripts/testnet/testnet-ids-anchor-vault.env` (CCR-20 names) and the
-git-ignored `.env.secrets-anchor-vault` overlay; it never writes a competing ids
-file. Default mode is local and transactional-side-effect free:
-
-```bash
-node scripts/demo/df7-anchor-lifecycle.ts            # plan + public-id checks
-node scripts/demo/df7-anchor-lifecycle.ts --preflight # also match recipient secret
-```
-
-Network steps are explicitly gated:
-
-```bash
-FP_DF7_ALLOW_NETWORK=1 node scripts/demo/df7-anchor-lifecycle.ts --readiness
-FP_DF7_ALLOW_NETWORK=1 FP_DF7_START_WITHDRAW=1 \
-  node scripts/demo/df7-anchor-lifecycle.ts --start-withdraw
-FP_DF7_ALLOW_NETWORK=1 FP_DF7_SUBMIT_PAYMENT=1 \
-  FP_DF7_RECIPIENT_LOCK="LOCK recipient A <agent> DF7 <UTC>" \
-  node scripts/demo/df7-anchor-lifecycle.ts --pay --id <sep24-id>
-FP_DF7_ALLOW_NETWORK=1 node scripts/demo/df7-anchor-lifecycle.ts --reconcile
-FP_DF7_ALLOW_NETWORK=1 FP_DF7_SUBMIT_PAYMENT=1 \
-  FP_DF7_RECIPIENT_LOCK="LOCK recipient A <agent> DF7 <UTC>" \
-  FP_DF7_REBROADCAST_CONFIRM=<retained-hash> \
-  node scripts/demo/df7-anchor-lifecycle.ts --rebroadcast
-FP_DF7_ALLOW_NETWORK=1 node scripts/demo/df7-anchor-lifecycle.ts \
-  --poll --id <sep24-id> --anchor-tx-id <sep24-id> --vault-release-hash <64-hex>
-```
-
-`--start-withdraw` writes the functional hosted URL to a `0600` private file and
-prints only the sanitised URL. The human completes the hosted withdrawal in a
-browser. `--pay` is the classic-payment stage: it reuses the adapter's
-`buildAndSignClassicPaymentWithMemo` and `submitSignedClassicPayment`, validates
-the anchor's pending record (status, asset, amount, destination, memo), and
-requires all three live gates. It first acquires an exclusive operation lock,
-then re-reads state and signs. Before submission it serialises the signed
-envelope, proves it restores to the same hash, and publishes a new `0600` state
-(create-if-absent) with the hash, XDR, network, finite bounds of at least 60s
-and payment expectation. A persistence failure aborts without submitting. It
-refuses when retained state or another process's lock exists; a stale lock is
-never broken automatically.
-
-`--reconcile` looks up only the retained hash on Horizon and verifies the
-successful payment operation's source, destination, asset, amount and memo. A
-found-but-failed transaction is `FAILED`. `NOT_FOUND` never resends. Local time
-is not expiry evidence: `EXPIRED` requires the latest ledger close to be more
-than 60s past `maxTime`, the hash to be `NOT_FOUND`, and the source sequence to
-be below the envelope sequence; otherwise the result is `UNRESOLVED`.
-`--rebroadcast` requires the operator to echo the retained hash and submits the
-identical stored envelope only while it is inside its original time bounds.
-
-Offline classification is available with `--classify`. `SUCCESS` requires
-`completed`, an anchor `stellar_transaction_id` matching the retained payment
-hash, a passed amount/destination/memo assertion, and all three refs (anchor
-transaction id, anchor payment hash, vault release hash) verified at the sources
-that produced them; the ids are not required to have different string values. A
-completed run with missing or unverified evidence is `NOT_VERIFIED`. A payment
-confirmed while the anchor is still pending is `PENDING`. A confirmed payment
-mismatch is `FAILURE`. `PENDING` covers non-terminal statuses and bounded
-timeouts. `--poll` recomputes completion against the retained payment
-expectation and the anchor's published `stellar_transaction_id`.
