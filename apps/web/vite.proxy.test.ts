@@ -298,3 +298,120 @@ describe("CCR-19 runtime key stays out of the browser bundle", () => {
 		}
 	}, 120_000)
 })
+
+describe("TASK 06 proxy: customer sessions", () => {
+	let upstream: Server
+	let upstreamUrl: string
+	let seen: Seen[] = []
+
+	beforeAll(async () => {
+		upstream = createHttpServer((req, res) => {
+			req.resume()
+			req.on("end", () => {
+				seen.push({
+					method: req.method,
+					url: req.url,
+					headers: req.headers,
+					body: "",
+				})
+				res.setHeader("content-type", "application/json")
+				res.setHeader("set-cookie", "fp.session_token=abc; HttpOnly")
+				res.end("{}")
+			})
+		})
+		upstreamUrl = `http://127.0.0.1:${await listen(upstream)}`
+	})
+	afterAll(async () => {
+		await close(upstream)
+	})
+
+	test("classifies the auth and session routes", () => {
+		assert.equal(
+			classifyProxyRequest("POST", "/api/auth/sign-in/email"),
+			"auth",
+		)
+		assert.equal(classifyProxyRequest("GET", "/api/auth/verify-email"), "auth")
+		assert.equal(classifyProxyRequest("GET", "/v1/me"), "protected")
+		assert.equal(classifyProxyRequest("POST", "/v1/api-keys"), "protected")
+		assert.equal(
+			classifyProxyRequest("DELETE", "/api/auth/sign-in/email"),
+			null,
+		)
+		assert.equal(classifyProxyRequest("GET", "/api/auth/../v1/me"), null)
+		assert.equal(classifyProxyRequest("GET", "/api/other"), null)
+	})
+
+	test("a signed-in customer is forwarded with their cookie and WITHOUT the server key", async () => {
+		seen = []
+		const proxy = await startProxy(upstreamUrl, "server-side-test-key")
+		try {
+			const res = await fetch(`${proxy.url}/v1/recipients`, {
+				method: "POST",
+				headers: {
+					cookie: "fp.session_token=user-cookie",
+					origin: "http://localhost:5173",
+					"content-type": "application/json",
+				},
+				body: "{}",
+			})
+			assert.equal(res.status, 200)
+			assert.equal(seen[0]?.headers.authorization, undefined)
+			assert.equal(seen[0]?.headers.cookie, "fp.session_token=user-cookie")
+			assert.equal(seen[0]?.headers.origin, "http://localhost:5173")
+			// Cookies are only ever set through the auth routes.
+			assert.equal(res.headers.get("set-cookie"), null)
+		} finally {
+			await close(proxy.server)
+		}
+	})
+
+	test("auth routes pass cookies both ways and never receive the server key", async () => {
+		seen = []
+		const proxy = await startProxy(upstreamUrl, "server-side-test-key")
+		try {
+			const res = await fetch(`${proxy.url}/api/auth/sign-in/email`, {
+				method: "POST",
+				headers: {
+					origin: "http://localhost:5173",
+					authorization: "Bearer browser-attempt",
+					"content-type": "application/json",
+				},
+				body: "{}",
+			})
+			assert.match(res.headers.get("set-cookie") ?? "", /fp\.session_token=abc/)
+			assert.equal(seen[0]?.headers.authorization, undefined)
+			assert.equal(seen[0]?.headers.origin, "http://localhost:5173")
+		} finally {
+			await close(proxy.server)
+		}
+	})
+
+	test("public claims never receive a cookie", async () => {
+		seen = []
+		const proxy = await startProxy(upstreamUrl, "server-side-test-key")
+		try {
+			await fetch(`${proxy.url}/v1/claims/token_1`, {
+				headers: { cookie: "fp.session_token=user-cookie" },
+			})
+			assert.equal(seen[0]?.headers.cookie, undefined)
+			assert.equal(seen[0]?.headers.authorization, undefined)
+		} finally {
+			await close(proxy.server)
+		}
+	})
+
+	test("with no key configured, a session cookie still reaches protected routes", async () => {
+		seen = []
+		const proxy = await startProxy(upstreamUrl, "")
+		try {
+			const res = await fetch(`${proxy.url}/v1/me`, {
+				headers: { cookie: "__Secure-fp.session_token=x" },
+			})
+			assert.equal(res.status, 200)
+			const none = await fetch(`${proxy.url}/v1/me`)
+			assert.equal(none.status, 503)
+		} finally {
+			await close(proxy.server)
+		}
+	})
+})

@@ -1,8 +1,11 @@
 import { Link, NavLink, Outlet } from "react-router-dom"
+import { useSession } from "../providers/SessionProvider"
 import { ApiStatus } from "./ApiStatus"
 import { InfoPopover, SimulatedLabel } from "./ui"
 
 export function AppShell() {
+	const { state, logout } = useSession()
+	const user = state.status === "signed_in" ? state.session.user : null
 	return (
 		<div className="app-shell">
 			<aside className="app-sidebar">
@@ -30,6 +33,21 @@ export function AppShell() {
 						Developers
 					</NavLink>
 				</nav>
+
+				{state.status === "unconfigured" ? (
+					<div className="app-sidebar__footer">
+						<Link to="/login">Sign in</Link>
+					</div>
+				) : null}
+
+				{user ? (
+					<div className="app-sidebar__footer" data-testid="session-box">
+						<p className="app-sidebar__caption">{user.email}</p>
+						<button type="button" onClick={() => void logout()}>
+							Sign out
+						</button>
+					</div>
+				) : null}
 
 				<div className="app-sidebar__footer">
 					<div className="env-row">
