@@ -81,7 +81,8 @@ export type Provider = z.infer<typeof ProviderSchema>;
 export const SettlementRailSchema = z
   .object({
     id: Id,
-    network: z.literal("stellar"),
+    /** CCR-24: stellar vault rail or solana USDC rail. */
+    network: z.enum(["stellar", "solana"]),
     asset: CurrencyCode,
     simulated: z.boolean(),
   })

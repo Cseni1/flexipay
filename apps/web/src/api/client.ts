@@ -209,6 +209,115 @@ export const createRecipient = (
 		signal,
 	})
 
+export interface RecipientSummary {
+	id: string
+	name: string
+	kind: RecipientKind
+	country: string
+	createdAt: string
+}
+
+const recipientListSchema: Parser<{ recipients: RecipientSummary[] }> = {
+	parse: (value) => {
+		if (!isRecord(value) || !Array.isArray(value.recipients)) {
+			throw new Error("recipients missing")
+		}
+		const recipients = value.recipients.map((item) => {
+			if (
+				!isRecord(item) ||
+				typeof item.id !== "string" ||
+				typeof item.name !== "string" ||
+				typeof item.kind !== "string" ||
+				typeof item.country !== "string" ||
+				typeof item.createdAt !== "string"
+			) {
+				throw new Error("recipient row invalid")
+			}
+			return {
+				id: item.id,
+				name: item.name,
+				kind: item.kind as RecipientKind,
+				country: item.country,
+				createdAt: item.createdAt,
+			}
+		})
+		return { recipients }
+	},
+}
+
+export const listRecipients = (
+	signal?: AbortSignal,
+): Promise<{ recipients: RecipientSummary[] }> =>
+	request("/v1/recipients", { schema: recipientListSchema, signal })
+
+export interface CorridorRow {
+	from: { country: string; currency: string }
+	to: { country: string; currency: string }
+	allowedDestinationTypes: string[]
+	recipientKinds: string[]
+	regulationNote: string
+	simulated: boolean
+}
+
+const corridorListSchema: Parser<{ corridors: CorridorRow[] }> = {
+	parse: (value) => {
+		if (!isRecord(value) || !Array.isArray(value.corridors)) {
+			throw new Error("corridors missing")
+		}
+		const corridors = value.corridors.map((item) => {
+			if (
+				!isRecord(item) ||
+				!isRecord(item.from) ||
+				!isRecord(item.to) ||
+				typeof item.from.country !== "string" ||
+				typeof item.from.currency !== "string" ||
+				typeof item.to.country !== "string" ||
+				typeof item.to.currency !== "string" ||
+				!Array.isArray(item.allowedDestinationTypes) ||
+				!Array.isArray(item.recipientKinds) ||
+				typeof item.regulationNote !== "string" ||
+				typeof item.simulated !== "boolean"
+			) {
+				throw new Error("corridor row invalid")
+			}
+			return {
+				from: {
+					country: item.from.country,
+					currency: item.from.currency,
+				},
+				to: { country: item.to.country, currency: item.to.currency },
+				allowedDestinationTypes: item.allowedDestinationTypes.filter(
+					(entry): entry is string => typeof entry === "string",
+				),
+				recipientKinds: item.recipientKinds.filter(
+					(entry): entry is string => typeof entry === "string",
+				),
+				regulationNote: item.regulationNote,
+				simulated: item.simulated,
+			}
+		})
+		return { corridors }
+	},
+}
+
+export const listCorridors = (
+	signal?: AbortSignal,
+): Promise<{ corridors: CorridorRow[] }> =>
+	request("/v1/corridors", { schema: corridorListSchema, signal })
+
+const healthSchema: Parser<{ status: "ok" }> = {
+	parse: (value) => {
+		if (!isRecord(value) || value.status !== "ok") {
+			throw new Error("health status missing")
+		}
+		return { status: "ok" }
+	},
+}
+
+/** Liveness probe via the same-origin proxy (no API key required upstream). */
+export const getHealth = (signal?: AbortSignal): Promise<{ status: "ok" }> =>
+	request("/healthz", { schema: healthSchema, signal })
+
 export const createPayment = (
 	input: CreatePaymentRequest,
 	idempotencyKey: string,

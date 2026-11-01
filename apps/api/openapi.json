@@ -742,7 +742,8 @@
                       {
                         "type": "string",
                         "enum": [
-                          "stellar"
+                          "stellar",
+                          "solana"
                         ]
                       },
                       {
@@ -829,7 +830,8 @@
                         {
                           "type": "string",
                           "enum": [
-                            "stellar"
+                            "stellar",
+                            "solana"
                           ]
                         },
                         {
@@ -1018,7 +1020,8 @@
                               {
                                 "type": "string",
                                 "enum": [
-                                  "stellar"
+                                  "stellar",
+                                  "solana"
                                 ]
                               },
                               {
@@ -4666,6 +4669,39 @@
                     "simulated": {
                       "type": "boolean",
                       "const": true
+                    },
+                    "releaseEvidence": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "network": {
+                              "type": "string",
+                              "enum": [
+                                "solana",
+                                "stellar",
+                                "mock"
+                              ]
+                            },
+                            "signature": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "explorerUrl": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "network",
+                            "signature"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -4772,7 +4808,8 @@
                           {
                             "type": "string",
                             "enum": [
-                              "stellar"
+                              "stellar",
+                              "solana"
                             ]
                           },
                           {
@@ -4935,6 +4972,39 @@
                         "simulated": {
                           "type": "boolean",
                           "const": true
+                        },
+                        "releaseEvidence": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "network": {
+                                  "type": "string",
+                                  "enum": [
+                                    "solana",
+                                    "stellar",
+                                    "mock"
+                                  ]
+                                },
+                                "signature": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "explorerUrl": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "network",
+                                "signature"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -5489,6 +5559,39 @@
                         "simulated": {
                           "type": "boolean",
                           "const": true
+                        },
+                        "releaseEvidence": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "network": {
+                                  "type": "string",
+                                  "enum": [
+                                    "solana",
+                                    "stellar",
+                                    "mock"
+                                  ]
+                                },
+                                "signature": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "explorerUrl": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "network",
+                                "signature"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -6125,6 +6228,429 @@
           },
           "400": {
             "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency or state conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/solana/config": {
+      "get": {
+        "summary": "Public Solana cluster/mint labels (devnet test USDC)",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "cluster": {
+                      "type": "string",
+                      "enum": [
+                        "devnet",
+                        "testnet",
+                        "mainnet-beta"
+                      ]
+                    },
+                    "usdcMint": {
+                      "type": "string",
+                      "minLength": 32,
+                      "maxLength": 88
+                    },
+                    "usdcDecimals": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "explorerTxUrlTemplate": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "publicRpcUrl": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "cluster",
+                    "usdcMint",
+                    "usdcDecimals",
+                    "explorerTxUrlTemplate",
+                    "label"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/payments/{id}/solana/intent": {
+      "get": {
+        "summary": "Expected Solana USDC transfer for a claim-accepted payment",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "paymentId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "cluster": {
+                      "type": "string",
+                      "enum": [
+                        "devnet",
+                        "testnet",
+                        "mainnet-beta"
+                      ]
+                    },
+                    "usdcMint": {
+                      "type": "string",
+                      "minLength": 32,
+                      "maxLength": 88
+                    },
+                    "usdcDecimals": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "amount": {
+                      "type": "string",
+                      "pattern": "^\\d+$"
+                    },
+                    "recipient": {
+                      "type": "string",
+                      "minLength": 32,
+                      "maxLength": 88
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "explorerTxUrlTemplate": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "paymentId",
+                    "cluster",
+                    "usdcMint",
+                    "usdcDecimals",
+                    "amount",
+                    "recipient",
+                    "label",
+                    "explorerTxUrlTemplate"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/payments/{id}/solana/confirm": {
+      "post": {
+        "summary": "Verify on-chain Solana USDC transfer then mark payment paid",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "signature": {
+                    "type": "string",
+                    "minLength": 32,
+                    "maxLength": 88
+                  }
+                },
+                "required": [
+                  "signature"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "paymentId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "paymentStatus": {
+                      "type": "string",
+                      "const": "paid"
+                    },
+                    "signature": {
+                      "type": "string",
+                      "minLength": 32,
+                      "maxLength": 88
+                    },
+                    "explorerUrl": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "verifiedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                    },
+                    "cluster": {
+                      "type": "string",
+                      "enum": [
+                        "devnet",
+                        "testnet",
+                        "mainnet-beta"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "paymentId",
+                    "paymentStatus",
+                    "signature",
+                    "explorerUrl",
+                    "verifiedAt",
+                    "cluster"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Transaction not yet confirmed; retry without a new transfer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "pending"
+                    },
+                    "paymentId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "signature": {
+                      "type": "string",
+                      "minLength": 32,
+                      "maxLength": 88
+                    },
+                    "message": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "paymentId",
+                    "signature",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key",
             "content": {
               "application/json": {
                 "schema": {

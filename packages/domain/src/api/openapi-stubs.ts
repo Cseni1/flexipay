@@ -6,7 +6,6 @@ import {
 import {
 	AnchorIndicativePriceRequestSchema,
 	AnchorIndicativePriceResponseSchema,
-	AnchorPayPendingResponseSchema,
 	AnchorPayRequestSchema,
 	AnchorPayResponseSchema,
 	AnchorWithdrawRequestSchema,

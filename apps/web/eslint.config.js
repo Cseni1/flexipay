@@ -4,7 +4,8 @@ import globals from "globals"
 
 /** @type {import("eslint").Linter.Config[]} */
 export default [
-	globalIgnores(["dist"]),
+	// test-harness is opt-in via FP_SOLANA_TEST_WALLET=1 and is not part of the app tsconfig.
+	globalIgnores(["dist", "test-harness/**"]),
 	...config,
 	{
 		files: ["**/*.{ts,tsx}"],

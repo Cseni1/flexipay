@@ -15,6 +15,7 @@ import {
 } from "../api/claimClient"
 import { AnchorClaimSection } from "../components/claim/AnchorClaimSection"
 import { PasskeyClaimSection } from "../components/claim/PasskeyClaimSection"
+import { SolanaWalletPanel } from "../components/solana/SolanaWalletPanel"
 import {
 	Button,
 	InfoPopover,
@@ -22,6 +23,7 @@ import {
 	SimulatedLabel,
 	TextField,
 } from "../components/ui"
+import { type ConnectedSolanaWallet } from "../solana/walletStandard"
 
 type DestinationType = ClaimView["allowedDestinationTypes"][number]
 
@@ -67,14 +69,14 @@ const CLOSED_PAYMENT_STATUSES = new Set([
 const isCrypto = (type: DestinationType): boolean =>
 	type === "crypto_wallet" || type === "crypto_custodial"
 
-// The merged claim accept route only implements the crypto endpoint (details.address).
-// CCR-17 fiat keys are contracted and buildClaimEndpoint prepares them, but the API still
-// returns 422 until its route persists accountNumber/phoneNumber. Keep fiat visible but
-// disabled rather than turning that backend gap into a browser error.
+// CCR-17: crypto (address) and fiat (accountNumber / phoneNumber) accept paths are mounted.
 const supportsClaimAccept = (
 	type: DestinationType | "",
-): type is "crypto_wallet" | "crypto_custodial" =>
-	type === "crypto_wallet" || type === "crypto_custodial"
+): type is DestinationType =>
+	type === "crypto_wallet" ||
+	type === "crypto_custodial" ||
+	type === "bank_account" ||
+	type === "ewallet"
 
 const optionCopy = (
 	type: DestinationType,
@@ -85,7 +87,10 @@ const optionCopy = (
 		case "ewallet":
 			return { title: "E-wallet", detail: "Mobile wallet payout" }
 		case "crypto_wallet":
-			return { title: "Crypto wallet", detail: "Stellar testnet address" }
+			return {
+				title: "Crypto wallet",
+				detail: "Stellar or Solana USDC destination",
+			}
 		case "crypto_custodial":
 			return {
 				title: "Custodial wallet",
@@ -94,14 +99,28 @@ const optionCopy = (
 	}
 }
 
-const detailLabel = (type: DestinationType): string => {
-	if (isCrypto(type)) return "Stellar testnet wallet address"
+const detailLabel = (
+	type: DestinationType,
+	network: "stellar" | "solana",
+): string => {
+	if (isCrypto(type)) {
+		return network === "solana"
+			? "Solana wallet address (devnet USDC)"
+			: "Stellar testnet wallet address"
+	}
 	if (type === "ewallet") return "E-wallet number"
 	return "Bank account number"
 }
 
-const detailPlaceholder = (type: DestinationType): string =>
-	isCrypto(type) ? "G…" : "Account details"
+const detailPlaceholder = (
+	type: DestinationType,
+	network: "stellar" | "solana",
+): string =>
+	isCrypto(type)
+		? network === "solana"
+			? "Base58 address…"
+			: "G…"
+		: "Account details"
 
 const formatAmount = (
 	amount: string,
@@ -155,12 +174,18 @@ const closedClaimMessage = (claim: ClaimView): string => {
 		return "This claim link has expired. No release was made by this page."
 	}
 	if (claim.paymentStatus === "paid") {
+		if (claim.releaseEvidence?.network === "solana") {
+			return "Paid: backend verified the Solana USDC transfer on-chain before marking paid."
+		}
 		return "Paid: confirmed by the claim API after the release."
+	}
+	if (claim.paymentStatus === "failed") {
+		return "Failed: the payment did not complete. No funds were marked paid."
 	}
 	if (CLOSED_PAYMENT_STATUSES.has(claim.paymentStatus)) {
 		return `The claim API reports ${paymentStatusLabel(claim.paymentStatus)}. This page does not treat that as paid.`
 	}
-	return "Accepted. The payment is moving through the API; this page polls until it reaches a final state."
+	return "Accepted. Waiting for the sender's verified Solana transfer (or vault release). This page polls until paid or closed."
 }
 
 const notReadyMessage = (claim: ClaimView): string => {
@@ -200,6 +225,11 @@ export default function ClaimPage() {
 	const [passkeySelected, setPasskeySelected] = useState(false)
 	const [anchorSelected, setAnchorSelected] = useState(false)
 	const [detail, setDetail] = useState("")
+	// Default Stellar so existing claim flows keep the Stellar address field;
+	// Solana is an explicit opt-in on the claim form.
+	const [cryptoNetwork, setCryptoNetwork] = useState<"stellar" | "solana">(
+		"stellar",
+	)
 	const [accepting, setAccepting] = useState(false)
 	const [acceptError, setAcceptError] = useState<string | null>(null)
 	const [expired, setExpired] = useState(false)
@@ -382,6 +412,7 @@ export default function ClaimPage() {
 			detail: detail.trim(),
 			currency: claim.amount.currency,
 			country: claim.corridor.to.country,
+			network: isCrypto(selectedType) ? cryptoNetwork : undefined,
 		})
 
 		acceptLock.current = true
@@ -528,7 +559,7 @@ export default function ClaimPage() {
 														<span className="option-card__detail">
 															{supported
 																? copy.detail
-																: "Not available: claim accept does not support fiat yet."}
+																: "Not available for this claim."}
 														</span>
 													</span>
 												</label>
@@ -591,10 +622,11 @@ export default function ClaimPage() {
 										</label>
 									</fieldset>
 									<p className="form-note">
-										A crypto wallet address works today. The passkey wallet is
-										created on testnet and signs the release with your
-										fingerprint or face. The reference anchor cash-out is a
-										testnet demo for 1 to 10 USDC, after the vault release.
+										Bank, e-wallet and crypto destinations use the claim accept
+										API. The passkey wallet is created on testnet and signs the
+										release with your fingerprint or face. The reference anchor
+										cash-out is a testnet demo for 1 to 10 USDC, after the vault
+										release. Bank and e-wallet payouts remain simulated.
 									</p>
 									{passkeySelected ? (
 										<PasskeyClaimSection
@@ -617,31 +649,96 @@ export default function ClaimPage() {
 											onUseCryptoWallet={useCryptoWallet}
 										/>
 									) : null}
-									{!passkeySelected &&
-									!anchorSelected &&
-									claim.allowedDestinationTypes.some(
-										(type) => !supportsClaimAccept(type),
-									) ? (
-										<Notice tone="warning">
-											The claim API currently accepts crypto wallet endpoints
-											only. Fiat options are shown from the claim response but
-											are not selectable.
-										</Notice>
-									) : null}
 									{!passkeySelected && !anchorSelected && selectedType ? (
 										<div className="claim-detail">
+											{isCrypto(selectedType) ? (
+												<fieldset
+													className="stack"
+													data-testid="claim-crypto-network"
+												>
+													<legend className="field-label">
+														Crypto network
+													</legend>
+													<label className="option-card">
+														<input
+															type="radio"
+															name="crypto-network"
+															checked={cryptoNetwork === "solana"}
+															disabled={accepting || expired}
+															onChange={() => {
+																setCryptoNetwork("solana")
+																setDetail("")
+																idempotencyKey.current = null
+															}}
+														/>
+														<span>
+															<span className="option-card__title">
+																Solana USDC (devnet test)
+															</span>
+															<span className="option-card__detail">
+																Confirm this address before the sender pays. Not
+																mainnet USDC.
+															</span>
+														</span>
+													</label>
+													<label className="option-card">
+														<input
+															type="radio"
+															name="crypto-network"
+															checked={cryptoNetwork === "stellar"}
+															disabled={accepting || expired}
+															onChange={() => {
+																setCryptoNetwork("stellar")
+																setDetail("")
+																idempotencyKey.current = null
+															}}
+														/>
+														<span>
+															<span className="option-card__title">
+																Stellar testnet
+															</span>
+															<span className="option-card__detail">
+																Existing vault release path
+															</span>
+														</span>
+													</label>
+												</fieldset>
+											) : null}
+											{isCrypto(selectedType) && cryptoNetwork === "solana" ? (
+												<>
+													<p className="form-note">
+														Bank and e-wallet methods stay in the architecture
+														but are not labelled LIVE without a verified
+														provider.
+													</p>
+													<SolanaWalletPanel
+														title="Confirm Solana destination wallet"
+														onConnected={(
+															session: ConnectedSolanaWallet | null,
+														) => {
+															if (!session) return
+															updateDetail(session.address)
+														}}
+													/>
+												</>
+											) : null}
 											<TextField
 												id="claim-detail"
-												label={detailLabel(selectedType)}
-												placeholder={detailPlaceholder(selectedType)}
+												label={detailLabel(selectedType, cryptoNetwork)}
+												placeholder={detailPlaceholder(
+													selectedType,
+													cryptoNetwork,
+												)}
 												autoComplete="off"
 												value={detail}
 												disabled={accepting || expired}
 												onChange={(event) => updateDetail(event.target.value)}
 												hint={
 													isCrypto(selectedType)
-														? "Testnet only. Paste a public wallet address; never a secret key."
-														: "Only the claimed endpoint type is sent."
+														? cryptoNetwork === "solana"
+															? "Devnet only. Connect a wallet or paste a public Solana address; never a secret key."
+															: "Testnet only. Paste a public wallet address; never a secret key."
+														: "Only the claimed endpoint type is sent. Simulated fiat is not LIVE."
 												}
 											/>
 										</div>
@@ -671,8 +768,9 @@ export default function ClaimPage() {
 												{accepting ? "Accepting…" : "Accept payment"}
 											</Button>
 											<p className="form-note">
-												Accepting sends one idempotent request. The payment is
-												marked paid only when the claim API returns that state.
+												Accepting sends one idempotent request. For Solana,
+												accept only locks your destination — PAID happens after
+												the sender&apos;s transfer is verified on-chain.
 											</p>
 										</>
 									) : (
@@ -684,9 +782,33 @@ export default function ClaimPage() {
 								</>
 							) : (
 								<>
-									<Notice tone={closedClaimTone(claim)}>
+									<Notice
+										tone={closedClaimTone(claim)}
+										data-testid="claim-closed-status"
+									>
 										{closedClaimMessage(claim)}
 									</Notice>
+									{claim.paymentStatus === "paid" && claim.releaseEvidence ? (
+										<Notice data-testid="claim-release-evidence">
+											Verified on {claim.releaseEvidence.network}. Signature:{" "}
+											<code className="code-text">
+												{claim.releaseEvidence.signature}
+											</code>
+											{claim.releaseEvidence.explorerUrl ? (
+												<>
+													{" "}
+													<a
+														href={claim.releaseEvidence.explorerUrl}
+														target="_blank"
+														rel="noreferrer"
+														data-testid="claim-explorer-link"
+													>
+														View on Explorer
+													</a>
+												</>
+											) : null}
+										</Notice>
+									) : null}
 									{/* M1 anchor cash-out needs the vault release first, so it is reachable only
 									    after the claim is accepted to a classic G… account. Same panel, no
 									    new screen; the release and anchor statuses stay separate inside. */}

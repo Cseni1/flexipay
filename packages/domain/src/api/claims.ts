@@ -19,6 +19,18 @@ export const ClaimLinkStatusSchema = z.enum(CLAIM_LINK_STATUSES);
  * Public view of what is waiting for the recipient (SCENARIOS DF3 / ARCHITECTURE §10).
  * Amount is the expected receive side from the quote.
  */
+/**
+ * Optional on-chain evidence once the payment is paid (CCR-24 receiver UX).
+ * Omitted while open/processing; never includes secrets.
+ */
+export const ClaimReleaseEvidenceSchema = z
+  .object({
+    network: z.enum(["solana", "stellar", "mock"]),
+    signature: z.string().min(1),
+    explorerUrl: z.string().min(1).optional(),
+  })
+  .strict();
+
 export const ClaimViewSchema = z
   .object({
     paymentId: z.string().min(1),
@@ -34,6 +46,8 @@ export const ClaimViewSchema = z
       .strict(),
     allowedDestinationTypes: z.array(EndpointTypeSchema).min(1),
     simulated: z.literal(true),
+    /** Present after backend-verified settle evidence (e.g. Solana signature). */
+    releaseEvidence: ClaimReleaseEvidenceSchema.nullable().optional(),
   })
   .strict();
 
@@ -48,7 +62,7 @@ export const ClaimAcceptEndpointSchema = z
     type: EndpointTypeSchema,
     country: CountryOrEmpty,
     currency: CurrencyCode,
-    network: z.enum(["stellar"]).nullable(),
+    network: z.enum(["stellar", "solana"]).nullable(),
     details: z.record(z.string(), z.string()),
     simulated: z.literal(true),
   })
@@ -62,10 +76,10 @@ export const ClaimAcceptEndpointSchema = z
         path: ["country"],
       });
     }
-    if (crypto && ep.network !== "stellar") {
+    if (crypto && ep.network !== "stellar" && ep.network !== "solana") {
       ctx.addIssue({
         code: "custom",
-        message: "crypto endpoints set network to stellar (§6.3)",
+        message: "crypto endpoints set network to stellar or solana (CCR-24)",
         path: ["network"],
       });
     }

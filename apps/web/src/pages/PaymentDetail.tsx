@@ -8,8 +8,10 @@ import {
 	fundPayment,
 	isAuthRequired,
 } from "../api/client"
+import { getSolanaConfig } from "../api/solanaClient"
 import { EventLog } from "../components/payments/EventLog"
 import { LegTimeline } from "../components/payments/LegTimeline"
+import { SolanaPayPanel } from "../components/solana/SolanaPayPanel"
 import {
 	Button,
 	Grid,
@@ -23,6 +25,16 @@ import {
 	StatusBadge,
 } from "../components/ui"
 import { usePaymentDetail } from "../hooks/usePaymentDetail"
+
+const solanaExplorerUrl = (
+	template: string | undefined,
+	signature: string,
+): string => {
+	if (template?.includes("{signature}")) {
+		return template.replaceAll("{signature}", signature)
+	}
+	return `https://explorer.solana.com/tx/${signature}?cluster=devnet`
+}
 
 const POLLING_STATUSES = new Set(["funded", "processing", "refunding"])
 
@@ -113,10 +125,23 @@ export default function PaymentDetail() {
 	const [funding, setFunding] = useState(false)
 	const [fundError, setFundError] = useState<string | null>(null)
 	const [fundAuthBlocked, setFundAuthBlocked] = useState(false)
+	const [solanaExplorerTemplate, setSolanaExplorerTemplate] = useState<
+		string | null
+	>(null)
 	const fundLock = useRef(false)
 	const fundAbort = useRef<AbortController | null>(null)
 
 	useEffect(() => () => fundAbort.current?.abort(), [])
+
+	useEffect(() => {
+		const controller = new AbortController()
+		getSolanaConfig(controller.signal)
+			.then((cfg) => setSolanaExplorerTemplate(cfg.explorerTxUrlTemplate))
+			.catch(() => {
+				/* optional — detail still shows raw releaseTxRef */
+			})
+		return () => controller.abort()
+	}, [])
 
 	const authBlocked = fundAuthBlocked || isAuthRequired(error)
 
@@ -214,6 +239,7 @@ export default function PaymentDetail() {
 										<Button
 											onClick={() => void handleFund()}
 											disabled={funding || authBlocked}
+											data-testid="fund-payment"
 										>
 											{funding ? "Funding…" : "Fund payment"}
 										</Button>
@@ -281,6 +307,37 @@ export default function PaymentDetail() {
 								<Notice data-testid="claim-link-gone">
 									The claim link was shown once when the payment was created and
 									can&apos;t be shown again.
+								</Notice>
+							) : null}
+
+							{payment.status === "processing" &&
+							settleLeg &&
+							settleLeg.status === "processing" &&
+							!settleLeg.releaseTxRef ? (
+								<SolanaPayPanel
+									paymentId={payment.id}
+									onPaid={() => refresh()}
+								/>
+							) : null}
+
+							{payment.status === "paid" && settleLeg?.releaseTxRef ? (
+								<Notice data-testid="solana-pay-success">
+									Paid (backend-verified).{" "}
+									<a
+										href={solanaExplorerUrl(
+											solanaExplorerTemplate ?? undefined,
+											settleLeg.releaseTxRef,
+										)}
+										target="_blank"
+										rel="noreferrer"
+										data-testid="payment-explorer-link"
+									>
+										View on Explorer
+									</a>
+									<span className="form-note">
+										{" "}
+										Signature: {settleLeg.releaseTxRef}
+									</span>
 								</Notice>
 							) : null}
 

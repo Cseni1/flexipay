@@ -64,6 +64,7 @@ export {
   ClaimAcceptRequestSchema,
   ClaimAcceptResponseSchema,
   ClaimLinkStatusSchema,
+  ClaimReleaseEvidenceSchema,
   ClaimViewSchema,
   PasskeyDeployRequestSchema,
   PasskeyDeployResponseSchema,
@@ -141,3 +142,16 @@ export {
 } from "./batches.ts";
 
 export { A0_OPENAPI_STUBS, type ApiOpenApiStub } from "./openapi-stubs.ts";
+
+export {
+	SolanaConfigResponseSchema,
+	SolanaConfirmPendingResponseSchema,
+	SolanaConfirmRequestSchema,
+	SolanaConfirmResponseSchema,
+	SolanaTransferIntentSchema,
+	type SolanaConfigResponse,
+	type SolanaConfirmPendingResponse,
+	type SolanaConfirmRequest,
+	type SolanaConfirmResponse,
+	type SolanaTransferIntent,
+} from "./solana.ts";

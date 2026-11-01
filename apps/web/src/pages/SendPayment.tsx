@@ -9,7 +9,7 @@ import {
 	type RecipientKind,
 } from "@flexipay/web-lib/contract"
 import { friendlyQuoteError } from "@flexipay/web-lib/quote-errors"
-import { useEffect, useRef, useState, type FormEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import {
 	ApiError,
@@ -18,7 +18,17 @@ import {
 	createRecipient,
 	describeApiError,
 	isAuthRequired,
+	listCorridors,
+	listRecipients,
+	type RecipientSummary,
 } from "../api/client"
+import {
+	countriesFromCorridors,
+	destinationsForCountry,
+	regulationNoteFor,
+	type CorridorSummary,
+	type DestinationOption,
+} from "../api/corridors"
 import { QuotePanel } from "../components/payments/QuotePanel"
 import {
 	Button,
@@ -34,19 +44,15 @@ import {
 } from "../components/ui"
 import { useCountdown } from "../hooks/useCountdown"
 
-type Country = "US" | "PH" | "BR" | "ZA"
 type DestinationType = Extract<
 	EndpointType,
 	"bank_account" | "ewallet" | "crypto_wallet"
 >
 
-interface DestinationOption {
-	value: DestinationType
-	label: string
-	currency: string
-}
+type FallbackCountry = "US" | "PH" | "BR" | "ZA"
 
-const COUNTRIES: { value: Country | ""; label: string }[] = [
+/** Static MVP choices used when GET /v1/corridors is unavailable (fixture / offline UX). */
+const FALLBACK_COUNTRIES: { value: FallbackCountry | ""; label: string }[] = [
 	{ value: "", label: "Select destination country" },
 	{ value: "US", label: "United States" },
 	{ value: "PH", label: "Philippines" },
@@ -54,7 +60,7 @@ const COUNTRIES: { value: Country | ""; label: string }[] = [
 	{ value: "ZA", label: "South Africa" },
 ]
 
-const DESTINATIONS: Record<Country, DestinationOption[]> = {
+const FALLBACK_DESTINATIONS: Record<FallbackCountry, DestinationOption[]> = {
 	US: [{ value: "bank_account", label: "Bank account", currency: "USD" }],
 	PH: [
 		{ value: "bank_account", label: "Bank account", currency: "PHP" },
@@ -67,6 +73,9 @@ const DESTINATIONS: Record<Country, DestinationOption[]> = {
 	],
 	ZA: [{ value: "bank_account", label: "Bank account", currency: "ZAR" }],
 }
+
+const isFallbackCountry = (country: string): country is FallbackCountry =>
+	Object.prototype.hasOwnProperty.call(FALLBACK_DESTINATIONS, country)
 
 const RECIPIENT_KINDS: { value: RecipientKind; label: string }[] = [
 	{ value: "individual", label: "Individual" },
@@ -84,12 +93,13 @@ const FEE_MODE_OPTIONS: { value: FeeMode; label: string }[] = FEE_MODES.map(
 )
 
 interface FormState {
-	country: Country | ""
+	country: string
 	destinationType: DestinationType | ""
 	recipientKind: RecipientKind
 	feeMode: FeeMode | ""
 	amount: string
 	recipientName: string
+	existingRecipientId: string
 }
 
 const INITIAL_FORM: FormState = {
@@ -99,11 +109,46 @@ const INITIAL_FORM: FormState = {
 	feeMode: "",
 	amount: "",
 	recipientName: "",
+	existingRecipientId: "",
 }
+
+const destinationsForForm = (
+	corridors: CorridorSummary[] | null,
+	country: string,
+): DestinationOption[] => {
+	if (!country) return []
+	if (corridors) return destinationsForCountry(corridors, country)
+	if (isFallbackCountry(country)) return FALLBACK_DESTINATIONS[country]
+	return []
+}
+
+const toCorridorSummaries = (
+	rows: Awaited<ReturnType<typeof listCorridors>>["corridors"],
+): CorridorSummary[] =>
+	rows.map((row) => ({
+		fromCountry: row.from.country,
+		fromCurrency: row.from.currency,
+		toCountry: row.to.country,
+		toCurrency: row.to.currency,
+		allowedDestinationTypes: row.allowedDestinationTypes.filter(
+			(type): type is EndpointType =>
+				type === "bank_account" ||
+				type === "ewallet" ||
+				type === "crypto_wallet" ||
+				type === "crypto_custodial",
+		),
+		recipientKinds: row.recipientKinds,
+		regulationNote: row.regulationNote,
+		simulated: row.simulated,
+	}))
 
 export default function SendPayment() {
 	const navigate = useNavigate()
 	const [form, setForm] = useState<FormState>(INITIAL_FORM)
+	const [corridors, setCorridors] = useState<CorridorSummary[] | null>(null)
+	const [corridorsError, setCorridorsError] = useState<string | null>(null)
+	const [recipients, setRecipients] = useState<RecipientSummary[]>([])
+	const [recipientsError, setRecipientsError] = useState<string | null>(null)
 	const [quote, setQuote] = useState<Quote | null>(null)
 	const [quotePending, setQuotePending] = useState(false)
 	const [quoteError, setQuoteError] = useState<ApiError | null>(null)
@@ -120,6 +165,50 @@ export default function SendPayment() {
 
 	const countdown = useCountdown(quote?.validUntil ?? null)
 
+	useEffect(() => {
+		const controller = new AbortController()
+		let active = true
+
+		listCorridors(controller.signal)
+			.then((response) => {
+				if (!active) return
+				setCorridors(toCorridorSummaries(response.corridors))
+				setCorridorsError(null)
+			})
+			.catch((cause: unknown) => {
+				if (!active || controller.signal.aborted) return
+				// Do not flip authBlocked here: CF5 and quote UX need the form usable so a
+				// later quote call can surface the proxy / FP_API_KEY configuration error.
+				setCorridors(null)
+				setCorridorsError(
+					cause instanceof ApiError
+						? describeApiError(cause)
+						: "Corridors could not be loaded from the API.",
+				)
+			})
+
+		listRecipients(controller.signal)
+			.then((response) => {
+				if (!active) return
+				setRecipients(response.recipients)
+				setRecipientsError(null)
+			})
+			.catch((cause: unknown) => {
+				if (!active || controller.signal.aborted) return
+				setRecipients([])
+				setRecipientsError(
+					cause instanceof ApiError
+						? describeApiError(cause)
+						: "Saved recipients could not be loaded.",
+				)
+			})
+
+		return () => {
+			active = false
+			controller.abort()
+		}
+	}, [])
+
 	useEffect(
 		() => () => {
 			quoteAbort.current?.abort()
@@ -127,6 +216,22 @@ export default function SendPayment() {
 		},
 		[],
 	)
+
+	const countryOptions = useMemo(() => {
+		if (!corridors) return FALLBACK_COUNTRIES
+		const fromApi = countriesFromCorridors(corridors)
+		return [{ value: "", label: "Select destination country" }, ...fromApi]
+	}, [corridors])
+
+	const destinationOptions: DestinationOption[] = useMemo(
+		() => destinationsForForm(corridors, form.country),
+		[corridors, form.country],
+	)
+
+	const corridorNote = useMemo(() => {
+		if (!corridors || !form.country) return null
+		return regulationNoteFor(corridors, form.country)
+	}, [corridors, form.country])
 
 	const update = (patch: Partial<FormState>) => {
 		setForm((current) => ({ ...current, ...patch }))
@@ -136,18 +241,39 @@ export default function SendPayment() {
 		setCreateError(null)
 	}
 
-	const changeCountry = (country: Country | "") => {
+	const changeCountry = (country: string) => {
 		if (country === "") {
-			update({ country, destinationType: "" })
+			update({ country, destinationType: "", existingRecipientId: "" })
 			return
 		}
+		const options = destinationsForForm(corridors, country)
 		update({
 			country,
-			destinationType: DESTINATIONS[country][0]?.value ?? "",
+			destinationType: options[0]?.value ?? "",
+			existingRecipientId: "",
 		})
 	}
 
-	const destinationOptions = form.country ? DESTINATIONS[form.country] : []
+	const applySavedRecipient = (recipientId: string) => {
+		if (recipientId === "") {
+			update({ existingRecipientId: "" })
+			return
+		}
+		const saved = recipients.find((entry) => entry.id === recipientId)
+		if (!saved) {
+			update({ existingRecipientId: "" })
+			return
+		}
+		const options = destinationsForForm(corridors, saved.country)
+		update({
+			existingRecipientId: saved.id,
+			recipientName: saved.name,
+			recipientKind: saved.kind,
+			country: saved.country,
+			destinationType: options[0]?.value ?? "",
+		})
+	}
+
 	const destination = destinationOptions.find(
 		(option) => option.value === form.destinationType,
 	)
@@ -235,19 +361,30 @@ export default function SendPayment() {
 		createAbort.current = controller
 
 		try {
-			const recipient = await createRecipient(
-				{
-					name: form.recipientName.trim(),
-					kind: form.recipientKind,
-					country: form.country,
-				},
-				`recipient-${quote.id}`,
-				controller.signal,
-			)
+			const saved =
+				form.existingRecipientId &&
+				recipients.find((entry) => entry.id === form.existingRecipientId)
+			const recipientId =
+				saved &&
+				saved.name === form.recipientName.trim() &&
+				saved.kind === form.recipientKind &&
+				saved.country === form.country
+					? saved.id
+					: (
+							await createRecipient(
+								{
+									name: form.recipientName.trim(),
+									kind: form.recipientKind,
+									country: form.country,
+								},
+								`recipient-${quote.id}`,
+								controller.signal,
+							)
+						).id
 			const payment = await createPayment(
 				{
 					quoteId: quote.id,
-					recipientId: recipient.id,
+					recipientId,
 					delivery,
 					profile: "one_off",
 				},
@@ -274,6 +411,8 @@ export default function SendPayment() {
 		}
 	}
 
+	const corridorsUnavailable = corridors === null && corridorsError !== null
+
 	return (
 		<Page>
 			<PageHeader
@@ -296,10 +435,23 @@ export default function SendPayment() {
 				</Notice>
 			) : null}
 
+			{corridorsUnavailable ? (
+				<Notice tone="warning" data-testid="corridors-unavailable">
+					Corridors unavailable: {corridorsError}. Using the built-in
+					destination list until GET /v1/corridors responds.
+				</Notice>
+			) : null}
+
+			{recipientsError ? (
+				<Notice tone="warning" data-testid="recipients-unavailable">
+					Saved recipients unavailable: {recipientsError}
+				</Notice>
+			) : null}
+
 			<Grid>
 				<Panel
 					title="Payment details"
-					description="The source is fixed for the MVP; the quote is requested from the API."
+					description="The source is fixed for the MVP; countries and destinations prefer GET /v1/corridors when available."
 				>
 					<form onSubmit={handleQuote}>
 						<div className="form-grid">
@@ -309,13 +461,33 @@ export default function SendPayment() {
 								hint="US bank account · USD."
 							/>
 							<SelectField
+								id="saved-recipient"
+								label="Saved recipient"
+								value={form.existingRecipientId}
+								disabled={recipients.length === 0 || authBlocked}
+								options={[
+									{
+										value: "",
+										label:
+											recipients.length === 0
+												? "No saved recipients yet"
+												: "Pay someone new",
+									},
+									...recipients.map((entry) => ({
+										value: entry.id,
+										label: `${entry.name} · ${entry.country}`,
+									})),
+								]}
+								hint="Loaded from GET /v1/recipients. Choosing one reuses that recipient id."
+								onChange={(event) => applySavedRecipient(event.target.value)}
+							/>
+							<SelectField
 								id="destination-country"
 								label="Destination country"
 								value={form.country}
-								options={COUNTRIES}
-								onChange={(event) =>
-									changeCountry(event.target.value as Country | "")
-								}
+								disabled={authBlocked}
+								options={countryOptions}
+								onChange={(event) => changeCountry(event.target.value)}
 							/>
 							<SelectField
 								id="destination-type"
@@ -330,6 +502,7 @@ export default function SendPayment() {
 											}))
 										: [{ value: "", label: "Select a country first" }]
 								}
+								hint={corridorNote ?? undefined}
 								onChange={(event) =>
 									update({
 										destinationType: event.target.value as DestinationType,
@@ -375,7 +548,10 @@ export default function SendPayment() {
 								autoComplete="off"
 								value={form.recipientName}
 								onChange={(event) =>
-									update({ recipientName: event.target.value })
+									update({
+										recipientName: event.target.value,
+										existingRecipientId: "",
+									})
 								}
 							/>
 						</div>
