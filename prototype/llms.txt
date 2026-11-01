@@ -1,0 +1,10 @@
+# FlexiPay
+
+> Pay anyone, anywhere. They choose how to get paid: bank account, e-wallet or crypto wallet, in USDC on Solana (devnet while in development).
+
+This page is a clickable UX prototype with simulated data. It is not connected to the API and no money moves.
+The working testnet product, tests and evidence are in the repository.
+
+- Repository: https://github.com/Cseni1/flexipay
+- Milestone status and evidence index: https://github.com/Cseni1/flexipay#hackathon-milestones
+- Prior work disclosure: https://github.com/Cseni1/flexipay/blob/main/docs/PRIOR_WORK.md
