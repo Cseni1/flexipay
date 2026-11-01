@@ -26,7 +26,9 @@ export interface TestServer {
 	stop(): Promise<void>;
 }
 
-export async function startTestServer(opts: { auth?: boolean } = {}): Promise<TestServer> {
+export async function startTestServer(
+	opts: { auth?: boolean; sandbox?: boolean } = {},
+): Promise<TestServer> {
 	process.env.FP_SETTLEMENT = process.env.FP_SETTLEMENT ?? "mock";
 	process.env.FP_CLAIM_SEAL_KEY =
 		process.env.FP_CLAIM_SEAL_KEY ?? "a".repeat(64);
@@ -62,6 +64,8 @@ export async function startTestServer(opts: { auth?: boolean } = {}): Promise<Te
 		auth,
 		// Tests set x-forwarded-for to get an independent rate-limit identity per case.
 		trustProxy: 1,
+		// Local tests exercise the sandbox controls unless a test opts out.
+		sandboxEnabled: opts.sandbox ?? true,
 	}).listen(0, "127.0.0.1");
 	await new Promise((r) => server.once("listening", r));
 	const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

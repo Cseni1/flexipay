@@ -35,6 +35,8 @@ export interface RouteDef<B = unknown, Q = unknown> {
 	 * - "none": public
 	 */
 	auth: "api_key" | "customer" | "session" | "none";
+	/** "sandbox": only mounted behind the FP_SANDBOX gate (404 otherwise, before any auth). */
+	gate?: "sandbox";
 	/**
 	 * HTTP Idempotency-Key:
 	 * - omitted + api_key POST → org-scoped (optional key)

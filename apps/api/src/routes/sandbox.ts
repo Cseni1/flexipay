@@ -23,6 +23,7 @@ export const sandboxRoutes: RouteDef<any, any>[] = [
 		path: "/v1/sandbox/fail-next",
 		summary: "Make the next count calls to a provider fail (also forced failure on or off)",
 		auth: "api_key",
+		gate: "sandbox",
 		body: SandboxFailNextRequestSchema,
 		success: { status: 200, schema: EmptyOk },
 		handler: async (ctx, { body }) => {
@@ -47,6 +48,7 @@ export const sandboxRoutes: RouteDef<any, any>[] = [
 		path: "/v1/sandbox/provider-health",
 		summary: "Mark a provider down or up",
 		auth: "api_key",
+		gate: "sandbox",
 		body: SandboxProviderHealthRequestSchema,
 		success: { status: 200, schema: EmptyOk },
 		handler: async (ctx, { body }) => {
@@ -68,6 +70,7 @@ export const sandboxRoutes: RouteDef<any, any>[] = [
 		path: "/v1/sandbox/advance-time",
 		summary: "Move the API clock (quote and claim expiry)",
 		auth: "api_key",
+		gate: "sandbox",
 		body: SandboxAdvanceTimeRequestSchema,
 		success: { status: 200, schema: SandboxAdvanceTimeResponseSchema },
 		handler: async (ctx, { body }) => {
@@ -83,6 +86,7 @@ export const sandboxRoutes: RouteDef<any, any>[] = [
 		path: "/v1/sandbox/reset",
 		summary: "Reset and reseed the demo",
 		auth: "api_key",
+		gate: "sandbox",
 		body: SandboxResetRequestSchema,
 		success: { status: 200, schema: EmptyOk },
 		handler: async (ctx) => {

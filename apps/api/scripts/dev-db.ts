@@ -26,7 +26,8 @@ if (command === "migrate") {
   const api = spawn("node", ["src/main.ts"], {
     cwd: apiDir,
     stdio: "inherit",
-    env: { ...process.env, DATABASE_URL: db.url },
+    // Local embedded database only: sandbox controls are on here (override with FP_SANDBOX=0).
+    env: { FP_SANDBOX: "1", ...process.env, DATABASE_URL: db.url },
   });
   api.on("exit", () => void stop());
 } else {

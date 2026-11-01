@@ -97,6 +97,12 @@ and the same seal key if you intend claim-restart checks.
 export FP_API_URL=http://127.0.0.1:8788
 # export FP_API_KEY in the shell (local only)
 node scripts/seed/seed.ts reset   # POST /v1/sandbox/reset
+
+Sandbox controls (`/v1/sandbox/*`: fail-next, provider-health, advance-time, reset) are **off by
+default** (404). `npm run dev` in `apps/api` (`scripts/dev-db.ts`) turns them on for the local
+embedded database. For any other local API start, set `FP_SANDBOX=1`. They are never enabled
+when `NODE_ENV=production`, and a customer session can never use them. Do not set `FP_SANDBOX`
+on a hosted API.
 node scripts/seed/seed.ts         # reset + recipients + endpoints
 ```
 
