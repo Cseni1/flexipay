@@ -413,6 +413,103 @@ describe("CCR-24 Solana claim + confirm", () => {
 			await stopApi(api);
 		}
 	}, 180_000);
+
+	test("F4 concurrent: racing confirms with the same signature pay at most one payment", async () => {
+		process.env.FP_SETTLEMENT = "mock";
+		process.env.FP_SOLANA_CLUSTER = "devnet";
+		process.env.FP_SOLANA_USDC_MINT = mint;
+		process.env.FP_SOLANA_USDC_DECIMALS = "7";
+		resetSolanaRuntimeConfigCache();
+
+		const raceSig = "race-sig-" + "r".repeat(52);
+		setSolanaVerifyForTests(async (_rpc, input) => ({
+			ok: true,
+			signature: input.signature,
+			amountMinor: input.amountMinor,
+			mint: input.mint,
+			recipientOwner: input.recipientOwner,
+			slot: 3,
+			blockTime: Math.floor(Date.now() / 1000),
+		}));
+
+		const api = await startTestServer();
+		const { key } = await api.newOrg("Solana F4 Race Org");
+		try {
+			const a = await bootstrapSolanaPayment(api, key);
+			const b = await bootstrapSolanaPayment(api, key);
+			const [ra, rb] = await Promise.all([
+				fetch(`${api.base}/v1/payments/${a.payment.id}/solana/confirm`, {
+					method: "POST",
+					headers: auth(key, { "idempotency-key": "f4-race-a" }),
+					body: JSON.stringify({ signature: raceSig }),
+				}),
+				fetch(`${api.base}/v1/payments/${b.payment.id}/solana/confirm`, {
+					method: "POST",
+					headers: auth(key, { "idempotency-key": "f4-race-b" }),
+					body: JSON.stringify({ signature: raceSig }),
+				}),
+			]);
+			const statuses = [ra.status, rb.status].sort();
+			assert.deepEqual(statuses, [200, 409]);
+			const paidCount = await api.db.leg.count({
+				where: { releaseTxRef: raceSig, status: "succeeded" },
+			});
+			assert.equal(paidCount, 1);
+		} finally {
+			await stopApi(api);
+		}
+	}, 180_000);
+
+	test("F6: config never echoes FP_SOLANA_RPC_URL when public RPC unset", async () => {
+		process.env.FP_SETTLEMENT = "mock";
+		process.env.FP_SOLANA_CLUSTER = "devnet";
+		process.env.FP_SOLANA_USDC_MINT = mint;
+		process.env.FP_SOLANA_USDC_DECIMALS = "7";
+		process.env.FP_SOLANA_RPC_URL =
+			"https://secret-helius.example/rpc?api-key=DO_NOT_LEAK";
+		delete process.env.FP_SOLANA_PUBLIC_RPC_URL;
+		resetSolanaRuntimeConfigCache();
+
+		const api = await startTestServer();
+		try {
+			const res = await fetch(`${api.base}/v1/solana/config`);
+			assert.equal(res.status, 200);
+			const body = (await res.json()) as { publicRpcUrl: string | null };
+			assert.equal(body.publicRpcUrl, null);
+			const raw = JSON.stringify(body);
+			assert.equal(raw.includes("DO_NOT_LEAK"), false);
+			assert.equal(raw.includes("secret-helius"), false);
+		} finally {
+			delete process.env.FP_SOLANA_RPC_URL;
+			resetSolanaRuntimeConfigCache();
+			await stopApi(api);
+		}
+	}, 60_000);
+
+	test("F9: Solana accept clears vault lock refs (independent of Stellar settle)", async () => {
+		process.env.FP_SETTLEMENT = "mock";
+		process.env.FP_SOLANA_CLUSTER = "devnet";
+		process.env.FP_SOLANA_USDC_MINT = mint;
+		process.env.FP_SOLANA_USDC_DECIMALS = "7";
+		resetSolanaRuntimeConfigCache();
+
+		const api = await startTestServer();
+		const { key } = await api.newOrg("Solana F9 Org");
+		try {
+			const { payment } = await bootstrapSolanaPayment(api, key);
+			const settle = await api.db.leg.findFirstOrThrow({
+				where: { paymentId: payment.id, kind: "settle" },
+			});
+			assert.equal(settle.rail, "solana_usdc");
+			assert.equal(settle.lockTxRef, null);
+			assert.equal(settle.externalRef, null);
+			assert.equal(settle.fundNetwork, "solana");
+			assert.equal(settle.status, "processing");
+			assert.equal(settle.releaseTxRef, null);
+		} finally {
+			await stopApi(api);
+		}
+	}, 120_000);
 });
 
 describe("Lane B adapter negative fixtures (wired through evaluateParsedTransfer)", () => {
