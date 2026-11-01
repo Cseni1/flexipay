@@ -1,5 +1,7 @@
 # FlexiPay: Product Definition
 
+> **Note (1 Nov 2026):** sections 1 to 11 still describe the product. Section 12 described the October Stellar hackathon MVP and is kept only as history; the 12 November Solana plan replaces it.
+
 Version 4, 23 Oct 2026. Purpose: one agreed definition of the product. Sections 1 to 11 describe the product and its vision and are unchanged in substance. **Section 12 is the reduced hackathon MVP** (what is built and what is not), decided on 23 Oct 2026 as CCR-5 so that the pitch stays whole and the build can be finished.
 
 ## 1. One line

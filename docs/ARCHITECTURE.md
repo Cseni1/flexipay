@@ -1,5 +1,7 @@
 # FlexiPay: Architecture
 
+> **Note (1 Nov 2026):** written for the October Stellar hackathon MVP. The product, API and orchestration sections still apply; the build plan, chain choice and event framing are superseded by the 12 November Solana plan.
+
 Version 5, 23 Oct 2026. Frozen for the build: changes only through `docs/CONTRACT_CHANGES.md`. Source of truth for all builders and agents. Read `docs/PRODUCT.md` first. Version 5 applies the reduced MVP scope (CCR-5) and the implementation simplifications in section 1a.
 
 **Rule for agents:** build only against the interfaces in this file. Do not change a shared interface yourself. Propose changes in `docs/CONTRACT_CHANGES.md`; only the integrator applies them.
