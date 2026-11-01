@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { IsoTimestamp } from "./common.ts";
 
+// Lane B amends CCR-24 (proposed): reference binding, publicRpcUrl null, intent age.
+
 // CCR-24: Solana USDC intent + confirm (devnet). Auth on confirm: api_key.
 
 /** Base58 Solana signature or address (opaque string; adapter validates). */
@@ -13,8 +15,11 @@ export const SolanaConfigResponseSchema = z
 		usdcMint: SolanaBase58Schema,
 		usdcDecimals: z.number().int().nonnegative(),
 		explorerTxUrlTemplate: z.string().min(1),
-		/** Public read RPC for browser balance fetches; never includes secret query keys. */
-		publicRpcUrl: z.string().url().optional(),
+		/**
+		 * Public read RPC for browser balance fetches only.
+		 * Null when unset — never fall back to the server RPC (Lane B / F6).
+		 */
+		publicRpcUrl: z.string().url().nullable(),
 		label: z.string().min(1),
 	})
 	.strict();
@@ -30,6 +35,10 @@ export const SolanaTransferIntentSchema = z
 		/** Minor units as integer string (USDC decimals). */
 		amount: z.string().regex(/^\d+$/),
 		recipient: SolanaBase58Schema,
+		/** Solana Pay reference pubkey the transfer must include (Lane B / F4). */
+		reference: SolanaBase58Schema,
+		/** ISO time when this intent was first issued (confirm rejects older txs). */
+		intentIssuedAt: IsoTimestamp,
 		label: z.string().min(1),
 		explorerTxUrlTemplate: z.string().min(1),
 	})

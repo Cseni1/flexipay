@@ -225,6 +225,12 @@
       "network": "stellar",
       "asset": "USDC",
       "simulated": false
+    },
+    {
+      "id": "solana_usdc",
+      "network": "solana",
+      "asset": "USDC",
+      "simulated": false
     }
   ],
   "fxRates": [

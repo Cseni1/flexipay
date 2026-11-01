@@ -629,3 +629,16 @@ Idempotency: same signature replay returns current paid state; a **different** s
 - **Status:** Implemented on `agent/task-03-live-ui-payment` under CCR-24 §6 (“receiver sees the verified payment result”). Integrator may ACK or rename.
 - **What:** `ClaimView` gains optional nullable `releaseEvidence: { network, signature, explorerUrl? }` once settle evidence exists. Public claim GET only; no secrets; no Prisma migration.
 - **Why:** Claim page can show Explorer after Solana verify-before-PAID without a second authenticated API.
+
+### CCR-24b (Lane B): Solana verify + settle rail security — **proposed**
+
+- **Status:** Proposed on `cseni1/solana-lane-b`. Awaits integrator acceptance (F11). Amends CCR-24 §§3–5.
+- **What:**
+  1. **F3:** `verifyUsdcTransfer` uses recipient owner **mint-scoped balance delta only**. Instruction fallback that treated mint-less SPL `transfer` as the expected mint is removed.
+  2. **F4:** Each Solana claim accept mints a Solana Pay `reference` pubkey (`ClaimLink.solanaPayReference`). Intent returns it; transfer must include it as a read-only account key; confirm verifies it. Confirm also refuses a `releaseTxRef` already stored on any payment (app check + unique index) and rejects transactions with `blockTime` before `ClaimLink.solanaIntentAt`.
+  3. **F5:** `ClaimLink.acceptedEndpointId` stores the Endpoint created at Solana accept; intent/confirm read **only** that row (not the recipient's latest Solana endpoint).
+  4. **F6:** `GET /v1/solana/config` returns `publicRpcUrl: string | null` — never falls back to the server `FP_SOLANA_RPC_URL`.
+  5. **F8:** Confirm applies the same claim-accepted / settle-waiting / not-refunded-or-expired checks as intent **before** calling RPC verify.
+  6. **F9:** Settlement rail id `solana_usdc` (config). `executeSettle` for that rail does not fund/lock a vault; settle stays `processing` until verified confirm. Solana claim accept refunds any prior vault lock and switches the settle leg to `solana_usdc`. Mock and Stellar (`stellar_usdc`) paths unchanged when the recipient accepts Stellar/fiat.
+- **Persistence (migration required):** `ClaimLink.acceptedEndpointId`, `ClaimLink.solanaPayReference`, `ClaimLink.solanaIntentAt`; unique partial index on `Leg.releaseTxRef`. Migration folder `20261101153000_lane_b_solana_security` — **do not apply to production without integrator approval**.
+- **Who implements:** Lane B (this branch). Mock/Stellar adapters untouched aside from refund-on-Solana-accept.

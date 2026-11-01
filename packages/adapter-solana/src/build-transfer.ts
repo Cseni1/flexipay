@@ -18,6 +18,8 @@ export type BuildUsdcTransferInput = {
 	mint: string;
 	amountMinor: bigint;
 	decimals: number;
+	/** Solana Pay reference pubkey (read-only non-signer key on the transfer). */
+	reference?: string;
 };
 
 export type BuiltUsdcTransfer = {
@@ -44,6 +46,23 @@ export async function buildUsdcTransferTransaction(
 	const sourceAta = getAssociatedTokenAddressSync(mint, payer);
 	const destinationAta = getAssociatedTokenAddressSync(mint, recipient);
 
+	const transferIx = createTransferCheckedInstruction(
+		sourceAta,
+		mint,
+		destinationAta,
+		payer,
+		input.amountMinor,
+		input.decimals,
+	);
+	if (input.reference) {
+		// Solana Pay: reference is a read-only, non-signer account key on the transfer.
+		transferIx.keys.push({
+			pubkey: parseSolanaAddress(input.reference),
+			isSigner: false,
+			isWritable: false,
+		});
+	}
+
 	const instructions: TransactionInstruction[] = [
 		createAssociatedTokenAccountIdempotentInstruction(
 			payer,
@@ -51,14 +70,7 @@ export async function buildUsdcTransferTransaction(
 			recipient,
 			mint,
 		),
-		createTransferCheckedInstruction(
-			sourceAta,
-			mint,
-			destinationAta,
-			payer,
-			input.amountMinor,
-			input.decimals,
-		),
+		transferIx,
 	];
 
 	const { blockhash, lastValidBlockHeight } =

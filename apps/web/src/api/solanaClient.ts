@@ -5,7 +5,8 @@ export type SolanaConfig = {
 	usdcMint: string
 	usdcDecimals: number
 	explorerTxUrlTemplate: string
-	publicRpcUrl?: string
+	/** Null when no public RPC is configured — never the server RPC. */
+	publicRpcUrl: string | null
 	label: string
 }
 
@@ -16,6 +17,8 @@ export type SolanaIntent = {
 	usdcDecimals: number
 	amount: string
 	recipient: string
+	reference: string
+	intentIssuedAt: string
 	label: string
 	explorerTxUrlTemplate: string
 }

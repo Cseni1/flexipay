@@ -74,6 +74,7 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 				mint: intent.usdcMint,
 				amountMinor: BigInt(intent.amount),
 				decimals: intent.usdcDecimals,
+				reference: intent.reference,
 			})
 			const signature = await signAndSendSolanaTransaction({
 				connected,
