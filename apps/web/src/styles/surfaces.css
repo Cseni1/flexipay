@@ -202,10 +202,11 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 1rem;
-	padding: 1rem;
-	border: 1px solid var(--fp-line);
-	border-radius: 12px;
-	background: var(--fp-teal-50);
+	padding: 1.1rem 1.15rem;
+	border: 1px solid var(--line);
+	border-radius: 14px;
+	background:
+		linear-gradient(135deg, var(--brand-soft), transparent 70%), var(--surface);
 }
 
 .claim-status-row {
@@ -254,7 +255,8 @@
 .amount-display__value {
 	display: inline-block;
 	margin-top: 0.1rem;
-	font-size: 2rem;
+	font-family: var(--display);
+	font-size: 2.15rem;
 	font-weight: 800;
 	letter-spacing: -0.05em;
 	line-height: 1;

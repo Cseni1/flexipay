@@ -417,8 +417,8 @@ export default function ClaimPage() {
 						<p className="eyebrow">Payment from Demo Platform</p>
 						<h1 className="phone-title">Claim your payment</h1>
 						<p className="muted">
-							Choose how you want to receive it. This is a testnet build and no
-							real money moves.
+							Choose how you want to be paid. Bank and e-wallet payouts are
+							simulated; Solana USDC is devnet only. No real money moves.
 						</p>
 					</div>
 

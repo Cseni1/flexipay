@@ -22,23 +22,23 @@
 }
 
 .button--primary {
-	background: var(--color-accent);
-	color: #ffffff;
+	background: var(--brand);
+	color: var(--brand-ink);
 }
 
 .button--primary:hover:not(:disabled) {
-	background: var(--color-accent-strong);
+	filter: brightness(1.05);
 }
 
 .button--secondary {
-	border-color: var(--fp-line);
-	background: #ffffff;
-	color: var(--fp-ink);
+	border-color: var(--line);
+	background: var(--surface);
+	color: var(--ink);
 }
 
 .button--secondary:hover:not(:disabled) {
-	border-color: var(--color-accent);
-	color: var(--color-accent-strong);
+	border-color: var(--brand);
+	color: var(--brand);
 }
 
 .button--ghost {
@@ -63,10 +63,10 @@
 	width: 100%;
 	min-height: 2.5rem;
 	padding: 0.55rem 0.7rem;
-	border: 1px solid var(--fp-line);
-	border-radius: 8px;
-	background: #ffffff;
-	color: var(--fp-ink);
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	background: var(--surface);
+	color: var(--ink);
 	font-size: 0.9rem;
 }
 
@@ -75,9 +75,9 @@
 }
 
 .field__control:focus {
-	border-color: var(--color-accent);
+	border-color: var(--brand);
 	outline: none;
-	box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.14);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 22%, transparent);
 }
 
 .field__static {
@@ -139,23 +139,23 @@
 	display: flex;
 	align-items: center;
 	gap: 0.7rem;
-	padding: 0.75rem;
-	border: 1px solid var(--fp-line);
-	border-radius: 10px;
-	background: #ffffff;
+	padding: 0.9rem 0.95rem;
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	background: var(--surface);
 	cursor: pointer;
 }
 
 .option-card:has(input:checked) {
-	border-color: var(--color-accent);
-	background: var(--fp-teal-50);
-	box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.12);
+	border-color: var(--brand);
+	background: var(--brand-soft);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 18%, transparent);
 }
 
 .option-card input {
 	width: 1rem;
 	height: 1rem;
-	accent-color: var(--color-accent);
+	accent-color: var(--brand);
 }
 
 .option-card__body {

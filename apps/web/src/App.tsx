@@ -9,6 +9,8 @@ import {
 import ClaimPage from "./pages/ClaimPage"
 import Dashboard from "./pages/Dashboard"
 import Developers from "./pages/Developers"
+import FlexiPayWallet from "./pages/FlexiPayWallet"
+import PayFrom from "./pages/PayFrom"
 import PaymentDetail from "./pages/PaymentDetail"
 import PaymentsHistory from "./pages/PaymentsHistory"
 import Recipients from "./pages/Recipients"
@@ -33,6 +35,8 @@ function App() {
 				<Route path="dashboard" element={<Dashboard />} />
 				<Route path="payments" element={<PaymentsHistory />} />
 				<Route path="recipients" element={<Recipients />} />
+				<Route path="pay-from" element={<PayFrom />} />
+				<Route path="wallet" element={<FlexiPayWallet />} />
 				<Route path="developers" element={<Developers />} />
 				<Route path="payments/:paymentId" element={<PaymentDetail />} />
 			</Route>

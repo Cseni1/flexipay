@@ -277,9 +277,10 @@
 	gap: 1.25rem;
 	width: min(100%, 27rem);
 	padding: 1.35rem;
-	border: 9px solid #1b2236;
+	border: 9px solid color-mix(in srgb, var(--ink) 88%, #1b2236);
 	border-radius: 38px;
-	background: var(--surface);
+	background:
+		linear-gradient(180deg, var(--brand-soft), transparent 28%), var(--surface);
 	box-shadow: var(--shadow);
 }
 

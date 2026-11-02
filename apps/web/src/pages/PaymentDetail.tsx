@@ -82,9 +82,9 @@ function ClaimLinkShare({ link }: { link: ClaimLinkHandle }) {
 	}
 	return (
 		<div className="claim-share" data-testid="claim-link-share">
-			<p className="field-label">Share this link with the recipient</p>
+			<p className="field__label">Share this link with the recipient</p>
 			<input
-				className="text-field__input"
+				className="field__control claim-share__input"
 				readOnly
 				value={url}
 				aria-label="Claim link"
@@ -187,7 +187,7 @@ export default function PaymentDetail() {
 			<PageHeader
 				eyebrow={`Payments / ${paymentId ?? "unknown"}`}
 				title="Payment detail"
-				description="Status, per-leg progress, settlement reference and the event log. The screen polls only while the payment is moving."
+				description="Journey, cost breakdown, settlement reference and the event log. The screen polls only while the payment is moving."
 				actions={
 					<Button variant="secondary" onClick={refresh} disabled={loading}>
 						Refresh
@@ -348,7 +348,7 @@ export default function PaymentDetail() {
 
 						<Panel
 							title="Timeline"
-							description="Legs run in order. Errors and retry evidence appear in the event log."
+							description="Journey of this payment: legs run in order. Errors and retry evidence appear in the event log."
 						>
 							<LegTimeline legs={payment.legs} />
 						</Panel>

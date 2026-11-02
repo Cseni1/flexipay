@@ -34,6 +34,14 @@ export function AppShell() {
 						<span className="nav-link__dot" aria-hidden="true" />
 						Recipients
 					</NavLink>
+					<NavLink to="/pay-from" className="nav-link">
+						<span className="nav-link__dot" aria-hidden="true" />
+						Pay from
+					</NavLink>
+					<NavLink to="/wallet" className="nav-link">
+						<span className="nav-link__dot" aria-hidden="true" />
+						FlexiPay wallet
+					</NavLink>
 					<NavLink to="/developers" className="nav-link">
 						<span className="nav-link__dot" aria-hidden="true" />
 						Developers
