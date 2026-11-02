@@ -189,7 +189,8 @@ legal entity; book the lawyer hour on UK crypto promotions.
 | Hosted web app | https://flexipay-web.vercel.app, rewrites to the Render API. |
 | Sign-in | Sign-up, email verification (Brevo), login, `/v1/me`, logout verified on the live site; signed-out and cookie-less requests get 401. |
 | Decimals bug (fixed) | Quote-time floor of USDC settle amounts to a multiple of 10 for `solana_usdc` and crypto_wallet quotes (`9851485` → `9851480`) so the Solana mint (6 dec) can represent FlexiPay’s 7-dec USDC. Intent/confirm map any remaining unrepresentable amount to HTTP **422** `amount_not_representable` (never 500). |
-| Open: `TRUST_PROXY_HOPS` | Unset on purpose (shared rate-limit bucket) until the real proxy count is verified. |
+| Hosted-app payment (signed in) | `pay_b83907fe8321c623c60c2735` paid; 0.995 USDC, Account 1 to Account 2, signature `2xf9zSsYM1EvHoRUDHA7hL7GFd1UHQS3mzN1u2Uj7E3g18fHDVjw7FZuDhzm4Ne7yf9Y9TaidnZizJA4kHDfqkEg` ([Explorer](https://explorer.solana.com/tx/2xf9zSsYM1EvHoRUDHA7hL7GFd1UHQS3mzN1u2Uj7E3g18fHDVjw7FZuDhzm4Ne7yf9Y9TaidnZizJA4kHDfqkEg?cluster=devnet)). Balances 19.005 to 18.01 and 20.995 to 21.99 read from the transaction. |
+| `TRUST_PROXY_HOPS` | Set to `1` on Render (2 Nov). Measured through the Vercel rewrite: 3 and 2 hops let a spoofed `X-Forwarded-For` evade the sign-in limiter; 1 does not (429 after the limit). Whether the one trusted address is each visitor's own (not a shared Vercel address) still needs a check from a second network. |
 
 ## Next days
 
