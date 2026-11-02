@@ -13,6 +13,7 @@ import { AuthBlockedNotice } from "../components/AuthBlockedNotice"
 import { EventLog } from "../components/payments/EventLog"
 import { LegTimeline } from "../components/payments/LegTimeline"
 import { SolanaPayPanel } from "../components/solana/SolanaPayPanel"
+import { SolanaTxSuccess } from "../components/solana/SolanaTxSuccess"
 import {
 	Button,
 	Grid,
@@ -317,24 +318,14 @@ export default function PaymentDetail() {
 							) : null}
 
 							{payment.status === "paid" && settleLeg?.releaseTxRef ? (
-								<Notice data-testid="solana-pay-success">
-									Paid (backend-verified).{" "}
-									<a
-										href={solanaExplorerUrl(
-											solanaExplorerTemplate ?? undefined,
-											settleLeg.releaseTxRef,
-										)}
-										target="_blank"
-										rel="noreferrer"
-										data-testid="payment-explorer-link"
-									>
-										View on Explorer
-									</a>
-									<span className="form-note">
-										{" "}
-										Signature: {settleLeg.releaseTxRef}
-									</span>
-								</Notice>
+								<SolanaTxSuccess
+									signature={settleLeg.releaseTxRef}
+									explorerUrl={solanaExplorerUrl(
+										solanaExplorerTemplate ?? undefined,
+										settleLeg.releaseTxRef,
+									)}
+									explorerTestId="payment-explorer-link"
+								/>
 							) : null}
 
 							{payment.legs.some((leg) => leg.simulated) ? (

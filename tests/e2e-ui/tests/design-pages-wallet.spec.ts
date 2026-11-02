@@ -18,19 +18,19 @@ async function mockSolanaConfig(page: Page) {
 }
 
 test.describe("Design pages: wallet and pay from", () => {
-	test("sidebar reaches FlexiPay wallet and Pay from", async ({ page }) => {
+	test("sidebar reaches Connected wallet and Pay from", async ({ page }) => {
 		await mockSolanaConfig(page)
 		await page.goto("/")
 		const nav = page.getByRole("navigation", { name: "Primary" })
 		await expect(nav.getByRole("link", { name: "Pay from" })).toBeVisible()
 		await expect(
-			nav.getByRole("link", { name: "FlexiPay wallet" }),
+			nav.getByRole("link", { name: "Connected wallet" }),
 		).toBeVisible()
 
-		await nav.getByRole("link", { name: "FlexiPay wallet" }).click()
+		await nav.getByRole("link", { name: "Connected wallet" }).click()
 		await expect(page).toHaveURL(/\/wallet$/)
 		await expect(
-			page.getByRole("heading", { name: "FlexiPay wallet", exact: true }),
+			page.getByRole("heading", { name: "Connected wallet", exact: true }),
 		).toBeVisible()
 		await expect(page.getByTestId("wallet-devnet-note")).toContainText("Devnet")
 		await expect(page.getByTestId("embedded-wallet-soon")).toContainText(

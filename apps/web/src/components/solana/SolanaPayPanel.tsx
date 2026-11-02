@@ -1,6 +1,9 @@
-import { buildUsdcTransferTransaction } from "@flexipay/adapter-solana/browser"
+import {
+	buildUsdcTransferTransaction,
+	getSolAndUsdcBalances,
+} from "@flexipay/adapter-solana/browser"
 import { useEffect, useState } from "react"
-import { ApiError, describeApiError, newIdempotencyKey } from "../../api/client"
+import { ApiError, newIdempotencyKey } from "../../api/client"
 import {
 	confirmSolanaTransfer,
 	getSolanaConfig,
@@ -9,17 +12,27 @@ import {
 	type SolanaIntent,
 } from "../../api/solanaClient"
 import {
+	friendlySolanaPayError,
+	SOLANA_PAY_ERROR_COPY,
+} from "../../solana/friendlySolanaPayError"
+import {
+	accountSupportsCluster,
 	Connection,
 	signAndSendSolanaTransaction,
+	walletSupportsCluster,
 	type ConnectedSolanaWallet,
 } from "../../solana/walletStandard"
 import { Button, Notice, Panel, StaticField } from "../ui"
+import { SolanaTxSuccess } from "./SolanaTxSuccess"
 import { SolanaWalletPanel } from "./SolanaWalletPanel"
 
 type Props = {
 	paymentId: string
 	onPaid?: (result: SolanaConfirmOk) => void
 }
+
+/** Rough lower bound so the wallet can pay a simple SPL transfer fee on devnet. */
+const MIN_SOL_LAMPORTS_FOR_FEES = 5_000n
 
 export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 	const [intent, setIntent] = useState<SolanaIntent | null>(null)
@@ -44,13 +57,7 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 					setNotSolanaSettle(true)
 					return
 				}
-				setError(
-					cause instanceof ApiError
-						? describeApiError(cause)
-						: cause instanceof Error
-							? cause.message
-							: "Solana intent unavailable",
-				)
+				setError(friendlySolanaPayError(cause))
 			})
 		return () => controller.abort()
 	}, [paymentId])
@@ -63,16 +70,38 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 		setError(null)
 		try {
 			const config = await getSolanaConfig()
+			const cluster = config.cluster
+			if (!walletSupportsCluster(connected.wallet, cluster)) {
+				throw new Error(SOLANA_PAY_ERROR_COPY.WRONG_CLUSTER)
+			}
+			if (!accountSupportsCluster(connected.account, cluster)) {
+				throw new Error(SOLANA_PAY_ERROR_COPY.WRONG_CLUSTER)
+			}
+
 			const connection = new Connection(
 				config.publicRpcUrl ?? "https://api.devnet.solana.com",
 				"confirmed",
 			)
+
+			const balances = await getSolAndUsdcBalances(
+				connection,
+				connected.address,
+				intent.usdcMint,
+			)
+			if (balances.solLamports < MIN_SOL_LAMPORTS_FOR_FEES) {
+				throw new Error("no devnet SOL for network fees")
+			}
+			const needed = BigInt(intent.amount)
+			if (balances.usdcMinor < needed) {
+				throw new Error("insufficient USDC")
+			}
+
 			const built = await buildUsdcTransferTransaction({
 				connection,
 				payer: connected.address,
 				recipientOwner: intent.recipient,
 				mint: intent.usdcMint,
-				amountMinor: BigInt(intent.amount),
+				amountMinor: needed,
 				decimals: intent.usdcDecimals,
 				reference: intent.reference,
 			})
@@ -80,6 +109,7 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 				connected,
 				transaction: built.transaction,
 				connection,
+				cluster,
 			})
 			let confirmed: SolanaConfirmOk | null = null
 			for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -105,28 +135,7 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 			setResult(confirmed)
 			onPaid?.(confirmed)
 		} catch (cause) {
-			const raw =
-				cause instanceof ApiError
-					? describeApiError(cause)
-					: cause instanceof Error
-						? cause.message
-						: "Solana payment failed"
-			const lower = raw.toLowerCase()
-			if (
-				lower.includes("reject") ||
-				lower.includes("denied") ||
-				lower.includes("user cancel")
-			) {
-				setError(
-					"Wallet rejected the transaction. The payment stays processing — you can try again.",
-				)
-			} else if (cause instanceof ApiError && cause.status >= 500) {
-				setError(
-					`Verification failed (${raw}). Do not send again until status is clear — retry confirm or refresh.`,
-				)
-			} else {
-				setError(raw)
-			}
+			setError(friendlySolanaPayError(cause))
 		} finally {
 			setBusy(false)
 		}
@@ -160,13 +169,10 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 				)}
 				<SolanaWalletPanel onConnected={setConnected} title="Sender wallet" />
 				{result ? (
-					<Notice data-testid="solana-pay-success">
-						Paid (backend-verified).{" "}
-						<a href={result.explorerUrl} target="_blank" rel="noreferrer">
-							View on Explorer
-						</a>
-						<span className="form-note"> Signature: {result.signature}</span>
-					</Notice>
+					<SolanaTxSuccess
+						signature={result.signature}
+						explorerUrl={result.explorerUrl}
+					/>
 				) : (
 					<Button
 						type="button"

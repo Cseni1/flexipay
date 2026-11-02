@@ -34,8 +34,8 @@ export default function FlexiPayWallet() {
 		<Page>
 			<PageHeader
 				eyebrow="Wallet"
-				title="FlexiPay wallet"
-				description="Connect a Solana wallet on devnet to see its receive address, QR and on-chain balances. The embedded FlexiPay wallet is not available yet."
+				title="Connected wallet"
+				description="Your connected Phantom or Solflare wallet on devnet — receive address, QR and on-chain balances. This is not a FlexiPay-held balance. An embedded FlexiPay wallet is coming soon."
 				actions={
 					<Link className="button button--primary" to="/">
 						Pay someone
