@@ -91,7 +91,7 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 		method: "get",
 		path: "/v1/payments/{id}/solana/intent",
 		summary: "Expected Solana USDC transfer for a claim-accepted payment",
-		auth: "api_key",
+		auth: "customer",
 		success: { status: 200, schema: SolanaTransferIntentSchema },
 		handler: async (ctx, { params }) => {
 			if (!ctx.org) throw new ApiError(401, "unauthorized", "API key required");
@@ -155,7 +155,7 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 		method: "post",
 		path: "/v1/payments/{id}/solana/confirm",
 		summary: "Verify on-chain Solana USDC transfer then mark payment paid",
-		auth: "api_key",
+		auth: "customer",
 		body: SolanaConfirmRequestSchema,
 		success: { status: 200, schema: SolanaConfirmResponseSchema },
 		extraResponses: [
