@@ -58,6 +58,29 @@ export const CURRENCY_DECIMALS: Readonly<Record<string, number>> = {
   USDC: 7,
 };
 
+/**
+ * Circle Solana USDC mint decimals (devnet + mainnet). FlexiPay domain USDC is 7;
+ * on-chain Solana transfers need amounts representable at 6 decimals.
+ */
+export const SOLANA_USDC_MINT_DECIMALS = 6;
+
+/**
+ * Floor FlexiPay USDC minor units (7 decimals) down to a multiple of
+ * `10^(7-6)=10` so the amount is exactly representable on the Solana USDC mint.
+ * Examples: 9851485 → 9851480; 9950000 → 9950000.
+ * Used at quote time for `solana_usdc` and for crypto_wallet USDC settles
+ * (which may pay on Solana after claim accept). Not applied to fiat bank settles.
+ */
+export function floorUsdcMinorForSolanaMint(flexipayMinor: bigint): bigint {
+  const domain = CURRENCY_DECIMALS.USDC;
+  if (domain === undefined) throw new Error("USDC decimals missing");
+  if (SOLANA_USDC_MINT_DECIMALS > domain) {
+    throw new Error("Solana USDC mint decimals exceed FlexiPay USDC decimals");
+  }
+  const step = 10n ** BigInt(domain - SOLANA_USDC_MINT_DECIMALS);
+  return flexipayMinor - (flexipayMinor % step);
+}
+
 const RATE_SCALE = 7;
 
 export const RateString = z.string().regex(/^[0-9]+(\.[0-9]{1,7})?$/, "decimal rate with up to 7 decimals");

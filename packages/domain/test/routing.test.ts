@@ -975,6 +975,65 @@ describe("buildQuote corridors", () => {
 	});
 });
 
+describe("solana_usdc quote-time mint floor (6 vs 7 decimals)", () => {
+	it("floors 9851485-class settle amounts down to a multiple of 10; 9950000 unchanged", async () => {
+		const { floorUsdcMinorForSolanaMint } = await import("../src/money.ts");
+		expect(floorUsdcMinorForSolanaMint(9851485n).toString()).toBe("9851480");
+		expect(floorUsdcMinorForSolanaMint(9950000n).toString()).toBe("9950000");
+
+		// Live reproduction uses send major $1.00 / $1.01 → USD minor "100" / "101".
+		const failCase = await buildQuote(
+			settleSendReq(
+				{
+					destination: {
+						type: "crypto_wallet",
+						currency: "USDC",
+						country: "PH",
+						recipientKind: "individual",
+					},
+					amount: { side: "send", value: money("100", "USD") },
+				},
+				"PayerPays",
+			),
+			deps(),
+		);
+		expect(failCase.ok).toBe(true);
+		if (!failCase.ok) return;
+		const settleFail = failCase.quote.route.find((l) => l.kind === "settle")!;
+		// Corridor still quotes stellar_usdc; crypto amounts are floored for Solana mint.
+		expect(settleFail.rail).toBe("stellar_usdc");
+		const recvFail = BigInt(failCase.quote.expectedReceive.amount);
+		expect(recvFail % 10n).toBe(0n);
+		expect(settleFail.amountOut.amount).toBe(failCase.quote.expectedReceive.amount);
+		// Unfloored principal was 9851485; quote must floor to 9851480.
+		expect(recvFail.toString()).toBe("9851480");
+
+		const passCase = await buildQuote(
+			settleSendReq(
+				{
+					destination: {
+						type: "crypto_wallet",
+						currency: "USDC",
+						country: "PH",
+						recipientKind: "individual",
+					},
+					amount: { side: "send", value: money("101", "USD") },
+				},
+				"PayerPays",
+			),
+			deps(),
+		);
+		expect(passCase.ok).toBe(true);
+		if (!passCase.ok) return;
+		const settlePass = passCase.quote.route.find((l) => l.kind === "settle")!;
+		expect(settlePass.rail).toBe("stellar_usdc");
+		const recvPass = BigInt(passCase.quote.expectedReceive.amount);
+		expect(recvPass % 10n).toBe(0n);
+		expect(recvPass.toString()).toBe("9950000");
+		expect(settlePass.amountOut.amount).toBe(passCase.quote.expectedReceive.amount);
+	});
+});
+
 describe("domain package boundaries", () => {
 	it("routing sources do not import adapters-sim or adapter-stellar", async () => {
 		const { readFileSync, readdirSync } = await import("node:fs");

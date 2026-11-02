@@ -512,6 +512,266 @@ describe("CCR-24 Solana claim + confirm", () => {
 	}, 120_000);
 });
 
+describe("Solana USDC decimals: intent uses quoted amount; unrepresentable → 422", () => {
+	test("send 100 floors to 9851480 and intent returns that Solana minor amount", async () => {
+		process.env.FP_SETTLEMENT = "mock";
+		process.env.FP_SOLANA_CLUSTER = "devnet";
+		process.env.FP_SOLANA_USDC_MINT = mint;
+		process.env.FP_SOLANA_USDC_DECIMALS = "6";
+		delete process.env.FP_SOLANA_PUBLIC_RPC_URL;
+		resetSolanaRuntimeConfigCache();
+
+		const api = await startTestServer();
+		const { key } = await api.newOrg("Solana Decimals Floor Org");
+		try {
+			const quoteRes = await fetch(`${api.base}/v1/quotes`, {
+				method: "POST",
+				headers: auth(key, { "idempotency-key": "dec-q-100" }),
+				body: JSON.stringify({
+					source: { type: "bank_account", currency: "USD", country: "US" },
+					destination: {
+						type: "crypto_wallet",
+						currency: "USDC",
+						country: "PH",
+						recipientKind: "individual",
+					},
+					amount: {
+						side: "send",
+						value: { amount: "100", currency: "USD" },
+					},
+					policy: "cheapest",
+					feeMode: "PayerPays",
+				}),
+			});
+			const quoteText = await quoteRes.text();
+			assert.equal(quoteRes.status, 201, quoteText);
+			const quote = JSON.parse(quoteText) as {
+				id: string;
+				expectedReceive: { amount: string; currency: string };
+				route: Array<{ kind: string; rail: string; amountOut: { amount: string } }>;
+			};
+			assert.equal(quote.expectedReceive.amount, "9851480");
+			const settle = quote.route.find((l) => l.kind === "settle");
+			assert.equal(settle?.rail, "stellar_usdc");
+			assert.equal(settle?.amountOut.amount, "9851480");
+
+			const created = await fetch(`${api.base}/v1/recipients`, {
+				method: "POST",
+				headers: auth(key, { "idempotency-key": "dec-rcp-100" }),
+				body: JSON.stringify({
+					name: "Recv",
+					kind: "individual",
+					country: "PH",
+				}),
+			});
+			assert.equal(created.status, 201);
+			const rcp = (await created.json()) as { id: string };
+
+			const paymentRes = await fetch(`${api.base}/v1/payments`, {
+				method: "POST",
+				headers: auth(key, { "idempotency-key": "dec-pay-100" }),
+				body: JSON.stringify({
+					quoteId: quote.id,
+					recipientId: rcp.id,
+					delivery: "claim_link",
+					profile: "one_off",
+				}),
+			});
+			assert.equal(paymentRes.status, 201);
+			const payment = (await paymentRes.json()) as {
+				id: string;
+				claimLink: { url: string };
+			};
+
+			const fundRes = await fetch(`${api.base}/v1/payments/${payment.id}/fund`, {
+				method: "POST",
+				headers: auth(key, { "idempotency-key": "dec-fund-100" }),
+				body: "{}",
+			});
+			assert.equal(fundRes.status, 200);
+
+			const token = payment.claimLink.url.split("/").pop()!;
+			const accept = await fetch(`${api.base}/v1/claims/${token}/accept`, {
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					"idempotency-key": "dec-accept-100",
+				},
+				body: JSON.stringify({
+					endpoint: {
+						type: "crypto_wallet",
+						country: "",
+						currency: "USDC",
+						network: "solana",
+						details: { address: recipient },
+						simulated: true,
+					},
+				}),
+			});
+			assert.equal(accept.status, 200);
+
+			const intentRes = await fetch(
+				`${api.base}/v1/payments/${payment.id}/solana/intent`,
+				{ headers: auth(key) },
+			);
+			const intentText = await intentRes.text();
+			assert.equal(intentRes.status, 200, intentText);
+			const intent = JSON.parse(intentText) as { amount: string; usdcDecimals: number };
+			assert.equal(intent.usdcDecimals, 6);
+			assert.equal(intent.amount, "985148"); // 9851480 / 10
+		} finally {
+			await stopApi(api);
+		}
+	}, 180_000);
+
+	test("send 101 keeps 9950000 and intent succeeds", async () => {
+		process.env.FP_SETTLEMENT = "mock";
+		process.env.FP_SOLANA_CLUSTER = "devnet";
+		process.env.FP_SOLANA_USDC_MINT = mint;
+		process.env.FP_SOLANA_USDC_DECIMALS = "6";
+		delete process.env.FP_SOLANA_PUBLIC_RPC_URL;
+		resetSolanaRuntimeConfigCache();
+
+		const api = await startTestServer();
+		const { key } = await api.newOrg("Solana Decimals Pass Org");
+		try {
+			const quoteRes = await fetch(`${api.base}/v1/quotes`, {
+				method: "POST",
+				headers: auth(key, { "idempotency-key": "dec-q-101" }),
+				body: JSON.stringify({
+					source: { type: "bank_account", currency: "USD", country: "US" },
+					destination: {
+						type: "crypto_wallet",
+						currency: "USDC",
+						country: "PH",
+						recipientKind: "individual",
+					},
+					amount: {
+						side: "send",
+						value: { amount: "101", currency: "USD" },
+					},
+					policy: "cheapest",
+					feeMode: "PayerPays",
+				}),
+			});
+			const quoteText = await quoteRes.text();
+			assert.equal(quoteRes.status, 201, quoteText);
+			const quote = JSON.parse(quoteText) as {
+				id: string;
+				expectedReceive: { amount: string };
+			};
+			assert.equal(quote.expectedReceive.amount, "9950000");
+
+			const created = await fetch(`${api.base}/v1/recipients`, {
+				method: "POST",
+				headers: auth(key, { "idempotency-key": "dec-rcp-101" }),
+				body: JSON.stringify({
+					name: "Recv",
+					kind: "individual",
+					country: "PH",
+				}),
+			});
+			assert.equal(created.status, 201);
+			const rcp = (await created.json()) as { id: string };
+
+			const paymentRes = await fetch(`${api.base}/v1/payments`, {
+				method: "POST",
+				headers: auth(key, { "idempotency-key": "dec-pay-101" }),
+				body: JSON.stringify({
+					quoteId: quote.id,
+					recipientId: rcp.id,
+					delivery: "claim_link",
+					profile: "one_off",
+				}),
+			});
+			assert.equal(paymentRes.status, 201);
+			const payment = (await paymentRes.json()) as {
+				id: string;
+				claimLink: { url: string };
+			};
+
+			assert.equal(
+				(
+					await fetch(`${api.base}/v1/payments/${payment.id}/fund`, {
+						method: "POST",
+						headers: auth(key, { "idempotency-key": "dec-fund-101" }),
+						body: "{}",
+					})
+				).status,
+				200,
+			);
+
+			const token = payment.claimLink.url.split("/").pop()!;
+			assert.equal(
+				(
+					await fetch(`${api.base}/v1/claims/${token}/accept`, {
+						method: "POST",
+						headers: {
+							"content-type": "application/json",
+							"idempotency-key": "dec-accept-101",
+						},
+						body: JSON.stringify({
+							endpoint: {
+								type: "crypto_wallet",
+								country: "",
+								currency: "USDC",
+								network: "solana",
+								details: { address: recipient },
+								simulated: true,
+							},
+						}),
+					})
+				).status,
+				200,
+			);
+
+			const intentRes = await fetch(
+				`${api.base}/v1/payments/${payment.id}/solana/intent`,
+				{ headers: auth(key) },
+			);
+			const intentText = await intentRes.text();
+			assert.equal(intentRes.status, 200, intentText);
+			const intent = JSON.parse(intentText) as { amount: string };
+			assert.equal(intent.amount, "995000"); // 9950000 / 10
+		} finally {
+			await stopApi(api);
+		}
+	}, 180_000);
+
+	test("unrepresentable expectedReceive on intent returns 422 amount_not_representable", async () => {
+		process.env.FP_SETTLEMENT = "mock";
+		process.env.FP_SOLANA_CLUSTER = "devnet";
+		process.env.FP_SOLANA_USDC_MINT = mint;
+		process.env.FP_SOLANA_USDC_DECIMALS = "6";
+		delete process.env.FP_SOLANA_PUBLIC_RPC_URL;
+		resetSolanaRuntimeConfigCache();
+
+		const api = await startTestServer();
+		const { key } = await api.newOrg("Solana Decimals 422 Org");
+		try {
+			const { payment } = await bootstrapSolanaPayment(api, key);
+			// Safety-net path: force a stale unrepresentable FlexiPay minor amount.
+			await api.db.quote.updateMany({
+				where: { payments: { some: { id: payment.id } } },
+				data: { expectedReceive: "9851485" },
+			});
+
+			const intentRes = await fetch(
+				`${api.base}/v1/payments/${payment.id}/solana/intent`,
+				{ headers: auth(key) },
+			);
+			const intentText = await intentRes.text();
+			assert.equal(intentRes.status, 422, intentText);
+			const body = JSON.parse(intentText) as { code: string; message: string };
+			assert.equal(body.code, "amount_not_representable");
+			assert.match(body.message, /not representable/i);
+			assert.notEqual(body.code, "internal_error");
+		} finally {
+			await stopApi(api);
+		}
+	}, 180_000);
+});
+
 describe("Lane B adapter negative fixtures (wired through evaluateParsedTransfer)", () => {
 	test("non-USDC balance delta is wrong_mint", () => {
 		const otherMint = Keypair.generate().publicKey.toBase58();

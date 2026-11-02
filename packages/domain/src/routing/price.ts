@@ -1,9 +1,11 @@
 import type { EndpointType, FeeMode, LegKind } from "../enums.ts";
+import { isCryptoEndpoint } from "../enums.ts";
 import {
 	CURRENCY_DECIMALS,
 	addMoney,
 	applyBps,
 	convertMoney,
+	floorUsdcMinorForSolanaMint,
 	money,
 	subtractMoney,
 	toMinor,
@@ -66,6 +68,18 @@ function settlementAsset(corridor: Corridor, config: FlexiPayConfig): string | u
 	const railId = corridor.legsAvailable.settle[0];
 	if (!railId) return undefined;
 	return config.settlementRails.find((r) => r.id === railId)?.asset;
+}
+
+/**
+ * Whether settle USDC amounts must be floored to the Solana mint step (6 decimals).
+ * Applies for `solana_usdc` and for crypto_wallet quotes that still price
+ * `stellar_usdc` first but may pay on Solana after claim accept (CCR-24 / Lane B).
+ */
+function shouldFloorSettleForSolanaMint(
+	railId: string,
+	destinationType: EndpointType,
+): boolean {
+	return railId === "solana_usdc" || isCryptoEndpoint(destinationType);
 }
 
 function rateLookup(
@@ -266,6 +280,7 @@ function priceSettle(
 	vaultFeeBps: number,
 	feeMode: FeeMode,
 	settlementSimulated: boolean,
+	floorForSolanaMint: boolean,
 ):
 	| {
 			ok: true;
@@ -275,6 +290,9 @@ function priceSettle(
 			remainderNote?: string;
 	  }
 	| { ok: false; error: string } {
+	const applySolanaFloor =
+		floorForSolanaMint && available.currency === "USDC";
+
 	if (feeMode === "RecipientPays") {
 		let fee: Money;
 		try {
@@ -291,9 +309,30 @@ function priceSettle(
 				error: `Vault fee ${fee.amount} ${fee.currency} exceeds or equals settle amount (RecipientPays)`,
 			};
 		}
+		let amountOut = subtractMoney(available, fee);
+		let unlockedRemainder: Money | null = null;
+		let remainderNote: string | undefined;
+		// Floor net out to Solana mint step; dust stays unlocked.
+		if (applySolanaFloor) {
+			const floored = floorUsdcMinorForSolanaMint(toMinor(amountOut));
+			if (floored !== toMinor(amountOut)) {
+				if (floored <= 0n) {
+					return {
+						ok: false,
+						error:
+							"Solana USDC settle net floors to zero at mint decimals",
+					};
+				}
+				const dust = toMinor(amountOut) - floored;
+				amountOut = money(floored, available.currency);
+				unlockedRemainder = money(dust, available.currency);
+				remainderNote = `RecipientPays Solana USDC mint floor discarded ${dust} minor units (unlocked; not a fee)`;
+			}
+		}
 		return {
 			ok: true,
-			unlockedRemainder: null,
+			unlockedRemainder,
+			remainderNote,
 			leg: {
 				kind: "settle",
 				rail: railId,
@@ -302,7 +341,7 @@ function priceSettle(
 				fee,
 				fxRate: null,
 				amountIn: available,
-				amountOut: subtractMoney(available, fee),
+				amountOut,
 				estimatedTimeSeconds: 0,
 			},
 		};
@@ -318,22 +357,53 @@ function priceSettle(
 			error: e instanceof Error ? e.message : "invalid PayerPays sizing",
 		};
 	}
-	const hasRemainder = toMinor(sized.remainder) > 0n;
+
+	let principal = sized.principal;
+	let fee = sized.fee;
+	let remainder = sized.remainder;
+
+	// Floor FlexiPay USDC (7 dec) down to Solana mint step (6 dec).
+	// Rule: P' = floor(P / 10) * 10; recompute f(P'); remainder absorbs the dust.
+	// Examples: 9851485 → 9851480; 9950000 unchanged.
+	if (applySolanaFloor) {
+		const floored = floorUsdcMinorForSolanaMint(toMinor(principal));
+		if (floored !== toMinor(principal)) {
+			if (floored <= 0n) {
+				return {
+					ok: false,
+					error:
+						"Solana USDC settle principal floors to zero at mint decimals",
+				};
+			}
+			principal = money(floored, available.currency);
+			fee = money((floored * BigInt(vaultFeeBps)) / 10_000n, available.currency);
+			const rem = toMinor(available) - floored - toMinor(fee);
+			if (rem < 0n) {
+				return {
+					ok: false,
+					error: "Solana USDC settle floor broke P+f(P) ≤ A",
+				};
+			}
+			remainder = money(rem, available.currency);
+		}
+	}
+
+	const hasRemainder = toMinor(remainder) > 0n;
 	const remainderNote = hasRemainder
-		? `PayerPays settle remainder ${sized.remainder.amount} ${sized.remainder.currency} stays unlocked (not a fee; CCR-8/CCR-13)`
+		? `PayerPays settle remainder ${remainder.amount} ${remainder.currency} stays unlocked (not a fee; CCR-8/CCR-13)`
 		: undefined;
 	return {
 		ok: true,
-		unlockedRemainder: hasRemainder ? sized.remainder : null,
+		unlockedRemainder: hasRemainder ? remainder : null,
 		leg: {
 			kind: "settle",
 			rail: railId,
 			providerId: railId,
 			simulated: settlementSimulated,
-			fee: sized.fee,
+			fee,
 			fxRate: null,
-			amountIn: sized.principal,
-			amountOut: sized.principal,
+			amountIn: principal,
+			amountOut: principal,
 			estimatedTimeSeconds: 0,
 		},
 		remainderNote,
@@ -391,6 +461,7 @@ export async function priceRoute(
 				deps.vaultFeeBps,
 				deps.vaultFeeMode,
 				deps.settlementSimulated,
+				shouldFloorSettleForSolanaMint(railId, destination.type),
 			);
 			if (!priced.ok) {
 				return { ok: false, reasons: [priced.error] };
