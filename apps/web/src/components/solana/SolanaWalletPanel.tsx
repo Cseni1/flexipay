@@ -114,7 +114,7 @@ export function SolanaWalletPanel({
 	const available = listSolanaWallets().map((w) => w.name)
 
 	return (
-		<div data-testid="solana-wallet-panel">
+		<div className="solana-panel" data-testid="solana-wallet-panel">
 			<Panel title={title}>
 				<Notice>
 					{config?.label ?? "Solana"} — Wallet Standard only. FlexiPay never

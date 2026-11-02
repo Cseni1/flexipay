@@ -418,7 +418,7 @@ export default function SendPayment() {
 			<PageHeader
 				eyebrow="Payments"
 				title="Send a payment"
-				description="Build a payout from the quote contract, review the chosen route and create it. Funding and progress are on the payment detail screen."
+				description="Pay anyone, anywhere. They choose how to get paid, or you decide. Quotes come from the API; funding and progress are on the payment detail screen."
 				actions={
 					<InfoPopover label="Route selection">
 						The router first removes ineligible corridors, then chooses the
@@ -451,7 +451,7 @@ export default function SendPayment() {
 			<Grid>
 				<Panel
 					title="Payment details"
-					description="The source is fixed for the MVP; countries and destinations prefer GET /v1/corridors when available."
+					description="Source is the USD operating account. Countries and destinations prefer GET /v1/corridors when available."
 				>
 					<form onSubmit={handleQuote}>
 						<div className="form-grid">

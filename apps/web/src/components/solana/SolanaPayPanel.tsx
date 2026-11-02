@@ -133,7 +133,10 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 	}
 
 	return (
-		<div data-testid="solana-pay-panel">
+		<div
+			className="solana-panel solana-panel--pay"
+			data-testid="solana-pay-panel"
+		>
 			<Panel title="Pay with Solana USDC (devnet)">
 				{error ? (
 					<Notice tone="warning" data-testid="solana-pay-error">
@@ -143,11 +146,14 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 				{intent ? (
 					<>
 						<Notice>
-							{intent.label}. Amount is verified on-chain before PAID.
+							{intent.label}. Amount is verified on-chain before PAID. Devnet
+							USDC only — not mainnet.
 						</Notice>
-						<StaticField label="Recipient" value={intent.recipient} />
-						<StaticField label="Amount (minor units)" value={intent.amount} />
-						<StaticField label="Mint" value={intent.usdcMint} />
+						<div className="solana-intent-grid">
+							<StaticField label="Recipient" value={intent.recipient} />
+							<StaticField label="Amount (minor units)" value={intent.amount} />
+							<StaticField label="Mint" value={intent.usdcMint} />
+						</div>
 					</>
 				) : (
 					<p className="form-note">Loading Solana transfer intent…</p>
