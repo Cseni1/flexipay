@@ -6,10 +6,37 @@ import {
 	SolanaTransferIntentSchema,
 } from "@flexipay/domain";
 import {
+	AmountNotRepresentableError,
+	AMOUNT_NOT_REPRESENTABLE_CODE,
 	flexipayUsdcToSolanaMinor,
 	isSolanaAddress,
 } from "@flexipay/adapter-solana";
 import { ApiError } from "../errors.ts";
+
+/** Map FlexiPay USDC → Solana mint minor units; unrepresentable amounts are 422, never 500. */
+function solanaTransferAmountMinor(
+	flexipayMinor: bigint,
+	usdcDecimals: number,
+): bigint {
+	try {
+		return flexipayUsdcToSolanaMinor(flexipayMinor, usdcDecimals);
+	} catch (cause) {
+		if (
+			cause instanceof AmountNotRepresentableError ||
+			(cause instanceof Error &&
+				/not representable at the Solana USDC mint/i.test(cause.message))
+		) {
+			throw new ApiError(
+				422,
+				AMOUNT_NOT_REPRESENTABLE_CODE,
+				cause instanceof Error
+					? cause.message
+					: "payment amount is not representable at the Solana USDC mint decimals",
+			);
+		}
+		throw cause;
+	}
+}
 import {
 	completeSolanaTransferSettle,
 	DuplicateSolanaEvidenceError,
@@ -133,7 +160,7 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 			}
 			const intentAt = await ensureSolanaIntentIssuedAt(ctx.db, payment.id);
 			const cfg = getSolanaRuntimeConfig();
-			const amount = flexipayUsdcToSolanaMinor(
+			const amount = solanaTransferAmountMinor(
 				BigInt(payment.quote.expectedReceive),
 				cfg.usdcDecimals,
 			).toString();
@@ -224,7 +251,7 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 			}
 
 			const cfg = getSolanaRuntimeConfig();
-			const amountMinor = flexipayUsdcToSolanaMinor(
+			const amountMinor = solanaTransferAmountMinor(
 				BigInt(payment.quote.expectedReceive),
 				cfg.usdcDecimals,
 			);
