@@ -188,12 +188,16 @@
 .app-main {
 	width: 100%;
 	min-width: 0;
-	padding: 26px max(20px, env(safe-area-inset-right, 0px)) 60px 28px;
+	overflow-x: clip;
+	padding: 26px max(16px, env(safe-area-inset-right, 0px)) 60px
+		max(16px, env(safe-area-inset-left, 0px));
 }
 
 .page {
 	display: grid;
 	gap: 1.5rem;
+	min-width: 0;
+	overflow-x: clip;
 }
 
 .page-header {
@@ -267,7 +271,8 @@
 	align-items: flex-start;
 	justify-content: center;
 	min-height: 100vh;
-	padding: clamp(1rem, 4vw, 3rem);
+	overflow-x: clip;
+	padding: clamp(16px, 4vw, 3rem);
 	background: var(--bg);
 }
 
@@ -413,9 +418,33 @@
 
 	.phone-frame {
 		min-height: 100vh;
-		padding: 1rem;
+		width: 100%;
+		max-width: 100%;
+		padding: 16px;
 		border: 0;
 		border-radius: 0;
 		box-shadow: none;
+	}
+
+	.form-grid,
+	.quote-summary,
+	.solana-intent-grid,
+	.wallet-hero {
+		grid-template-columns: 1fr;
+	}
+
+	.panel__body,
+	.claim-share,
+	.option-list,
+	.amount-display {
+		max-width: 100%;
+	}
+
+	.mono,
+	.code-text,
+	.claim-share__input,
+	.receive-panel__address {
+		overflow-wrap: anywhere;
+		word-break: break-word;
 	}
 }

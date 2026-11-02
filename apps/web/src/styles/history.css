@@ -277,6 +277,20 @@
 	display: grid;
 	gap: 0.65rem;
 }
+.solana-success {
+	display: grid;
+	gap: 0.55rem;
+}
+.solana-success__title {
+	margin: 0;
+	font-weight: 700;
+}
+.solana-success__actions {
+	flex-wrap: wrap;
+}
+.solana-success .button {
+	text-decoration: none;
+}
 @media (max-width: 900px) {
 	.wallet-hero {
 		grid-template-columns: 1fr;

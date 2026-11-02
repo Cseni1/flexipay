@@ -40,7 +40,7 @@ export function AppShell() {
 					</NavLink>
 					<NavLink to="/wallet" className="nav-link">
 						<span className="nav-link__dot" aria-hidden="true" />
-						FlexiPay wallet
+						Connected wallet
 					</NavLink>
 					<NavLink to="/developers" className="nav-link">
 						<span className="nav-link__dot" aria-hidden="true" />

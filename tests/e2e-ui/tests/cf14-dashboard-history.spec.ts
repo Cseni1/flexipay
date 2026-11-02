@@ -75,7 +75,7 @@ test.describe("CF14 dashboard and history", () => {
 			"New payment",
 			"Recipients",
 			"Pay from",
-			"FlexiPay wallet",
+			"Connected wallet",
 			"Developers",
 		]) {
 			await expect(nav.getByRole("link", { name })).toBeVisible()
