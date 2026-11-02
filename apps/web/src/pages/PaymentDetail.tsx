@@ -9,6 +9,7 @@ import {
 	isAuthRequired,
 } from "../api/client"
 import { getSolanaConfig } from "../api/solanaClient"
+import { AuthBlockedNotice } from "../components/AuthBlockedNotice"
 import { EventLog } from "../components/payments/EventLog"
 import { LegTimeline } from "../components/payments/LegTimeline"
 import { SolanaPayPanel } from "../components/solana/SolanaPayPanel"
@@ -195,12 +196,7 @@ export default function PaymentDetail() {
 				}
 			/>
 
-			{authBlocked ? (
-				<Notice tone="warning">
-					The local API proxy could not authenticate. Set the server-side
-					FP_API_KEY for Vite, then restart the dev server.
-				</Notice>
-			) : null}
+			{authBlocked ? <AuthBlockedNotice /> : null}
 
 			{error && !payment ? (
 				<Panel title="Payment">

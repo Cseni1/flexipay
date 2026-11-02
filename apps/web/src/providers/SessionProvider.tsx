@@ -9,6 +9,7 @@ import {
 } from "react"
 import { Navigate, useLocation } from "react-router-dom"
 import { fetchSession, signOut, type SessionInfo } from "../api/auth"
+import { setCustomerSessionActive, UNAUTHORIZED_EVENT } from "../api/client"
 
 // TASK 06: who is using the app. `signed_in` covers both a customer session and the local
 // proxy's server-side key (/v1/me reports which), so the local demo keeps working.
@@ -24,6 +25,8 @@ interface SessionApi {
 	state: SessionState
 	refresh: () => Promise<void>
 	logout: () => Promise<void>
+	/** True when the caller is a signed-in customer (cookie session), not the dev proxy key. */
+	viaSession: boolean
 }
 
 const Ctx = createContext<SessionApi | null>(null)
@@ -58,9 +61,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 		}
 	}, [])
 
+	const viaSession =
+		state.status === "signed_in" && state.session.via === "session"
+
+	// A 401 for a signed-in customer means the session ended (expired, revoked, signed out
+	// elsewhere): re-check, which moves the app to signed_out and RequireSession to /login.
+	// Dev-proxy key mode keeps its existing behaviour (no redirect).
+	useEffect(() => {
+		setCustomerSessionActive(viaSession)
+	}, [viaSession])
+
+	useEffect(() => {
+		if (!viaSession) return
+		const onUnauthorized = () => void refresh()
+		window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
+		return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
+	}, [viaSession, refresh])
+
 	const value = useMemo(
-		() => ({ state, refresh, logout }),
-		[state, refresh, logout],
+		() => ({ state, refresh, logout, viaSession }),
+		[state, refresh, logout, viaSession],
 	)
 	return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
