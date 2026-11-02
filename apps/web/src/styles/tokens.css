@@ -1,40 +1,114 @@
+/* Prototype design tokens (prototype/index.html): light + dark. */
 :root {
-	--fp-canvas: #f4f8f7;
-	--fp-ink: #10201d;
-	--fp-muted: #5b6b68;
-	--fp-line: #dbe5e2;
-	--fp-teal-50: #edfbf7;
-	--fp-teal-100: #c8f2e9;
-	--fp-teal-600: #0f766e;
-	--fp-teal-700: #115e59;
-	--fp-teal-900: #134e4a;
+	color-scheme: light;
 
-	--color-bg: #ffffff;
-	--color-surface: #f8fbfa;
-	--color-text: var(--fp-ink);
-	--color-text-muted: var(--fp-muted);
-	--color-border: var(--fp-line);
-	--color-accent: var(--fp-teal-600);
-	--color-accent-strong: var(--fp-teal-700);
-	--color-success: #157347;
-	--color-error: #b42318;
-	--color-warning: #b45309;
+	--bg: #f4f6f9;
+	--surface: #ffffff;
+	--surface2: #eceff5;
+	--ink: #111a2b;
+	--muted: #5a6579;
+	--line: #dde2ea;
+	--brand: #2850d9;
+	--brand-ink: #ffffff;
+	--brand-soft: #e5ebff;
+	--accent: #ff6a3d;
+	--ok: #0f7a58;
+	--ok-soft: #d9f4ea;
+	--warn: #9a5700;
+	--warn-soft: #ffefd2;
+	--bad: #bf2a39;
+	--bad-soft: #fde3e6;
+	--shadow:
+		0 1px 2px rgba(17, 26, 43, 0.06), 0 10px 28px rgba(17, 26, 43, 0.07);
+	--display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+	--body: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+	--mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+	--r: 14px;
 
-	--radius: 10px;
-	--radius-sm: 7px;
-	--shadow-sm: 0 1px 2px rgba(16, 32, 29, 0.05);
-	--shadow-md: 0 18px 40px -26px rgba(16, 32, 29, 0.4);
+	/* Back-compat aliases used by existing page styles (Send / Detail / Claim unchanged). */
+	--fp-canvas: var(--bg);
+	--fp-ink: var(--ink);
+	--fp-muted: var(--muted);
+	--fp-line: var(--line);
+	--fp-teal-50: var(--brand-soft);
+	--fp-teal-100: var(--brand-soft);
+	--fp-teal-600: var(--brand);
+	--fp-teal-700: var(--brand);
+	--fp-teal-900: var(--ink);
+
+	--color-bg: var(--surface);
+	--color-surface: var(--surface2);
+	--color-text: var(--ink);
+	--color-text-muted: var(--muted);
+	--color-border: var(--line);
+	--color-accent: var(--brand);
+	--color-accent-strong: var(--brand);
+	--color-success: var(--ok);
+	--color-error: var(--bad);
+	--color-warning: var(--warn);
+
+	--radius: var(--r);
+	--radius-sm: 10px;
+	--shadow-sm: var(--shadow);
+	--shadow-md: var(--shadow);
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		color-scheme: dark;
+		--bg: #0c1322;
+		--surface: #131c31;
+		--surface2: #1a2540;
+		--ink: #e9edf7;
+		--muted: #9aa7bf;
+		--line: #25314e;
+		--brand: #7b97ff;
+		--brand-ink: #0a1020;
+		--brand-soft: #1d2a57;
+		--accent: #ff8a63;
+		--ok: #53d8a8;
+		--ok-soft: #10312a;
+		--warn: #ffc064;
+		--warn-soft: #3a2b10;
+		--bad: #ff7d8c;
+		--bad-soft: #3a1520;
+		--shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px rgba(0, 0, 0, 0.35);
+	}
+}
+
+:root[data-theme="dark"] {
+	color-scheme: dark;
+	--bg: #0c1322;
+	--surface: #131c31;
+	--surface2: #1a2540;
+	--ink: #e9edf7;
+	--muted: #9aa7bf;
+	--line: #25314e;
+	--brand: #7b97ff;
+	--brand-ink: #0a1020;
+	--brand-soft: #1d2a57;
+	--accent: #ff8a63;
+	--ok: #53d8a8;
+	--ok-soft: #10312a;
+	--warn: #ffc064;
+	--warn-soft: #3a2b10;
+	--bad: #ff7d8c;
+	--bad-soft: #3a1520;
+	--shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px rgba(0, 0, 0, 0.35);
 }
 
 html {
-	background: var(--fp-canvas);
-	color-scheme: light;
+	background: var(--bg);
 }
 
 body {
 	min-width: 320px;
-	background: var(--fp-canvas);
-	color: var(--fp-ink);
+	margin: 0;
+	background: var(--bg);
+	color: var(--ink);
+	font-family: var(--body);
+	font-size: 15px;
+	line-height: 1.5;
 }
 
 #root {
@@ -45,14 +119,25 @@ button,
 input,
 select {
 	font: inherit;
+	color: inherit;
+}
+
+button {
+	cursor: pointer;
 }
 
 a {
-	color: var(--color-accent);
+	color: var(--brand);
 	text-underline-offset: 0.15em;
 }
 
 :focus-visible {
-	outline: 3px solid rgba(13, 148, 136, 0.35);
+	outline: 2px solid var(--brand);
 	outline-offset: 2px;
+}
+
+code,
+.mono,
+.code-text {
+	font-family: var(--mono);
 }

@@ -69,7 +69,13 @@ test.describe("CF14 dashboard and history", () => {
 		await mock(page)
 		await page.goto("/")
 		const nav = page.getByRole("navigation", { name: "Primary" })
-		for (const name of ["Dashboard", "Payments", "New payment", "Developers"]) {
+		for (const name of [
+			"Dashboard",
+			"Payments",
+			"New payment",
+			"Recipients",
+			"Developers",
+		]) {
 			await expect(nav.getByRole("link", { name })).toBeVisible()
 		}
 		await nav.getByRole("link", { name: "Developers" }).click()
