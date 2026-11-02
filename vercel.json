@@ -4,5 +4,15 @@
   "installCommand": "npm install",
   "buildCommand": "npm run build --workspace @flexipay/web",
   "outputDirectory": "apps/web/dist",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/api/auth/:path*",
+      "destination": "https://flexipay-api.onrender.com/api/auth/:path*"
+    },
+    {
+      "source": "/v1/:path*",
+      "destination": "https://flexipay-api.onrender.com/v1/:path*"
+    },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }
