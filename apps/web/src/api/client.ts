@@ -6,6 +6,7 @@ import {
 	QuoteSchema,
 	type CreatePaymentRequest,
 	type CreateQuoteRequest,
+	type EndpointType,
 	type Payment,
 	type PaymentDetail,
 	type Quote,
@@ -182,7 +183,7 @@ interface CreateRecipientInput {
 	country: string
 }
 
-/** The existing CC0 route is not part of A0; only its id is needed by CreatePaymentRequest. */
+/** The create response is id-only in existing browser fixtures; list returns the full row. */
 const recipientIdSchema: Parser<{ id: string }> = {
 	parse: (value) => {
 		if (
@@ -193,6 +194,43 @@ const recipientIdSchema: Parser<{ id: string }> = {
 			throw new Error("recipient id missing")
 		}
 		return { id: value.id }
+	},
+}
+
+export interface RecipientSummary {
+	id: string
+	name: string
+	kind: RecipientKind
+	country: string
+	createdAt: string
+}
+
+const parseRecipient = (item: unknown): RecipientSummary => {
+	if (
+		!isRecord(item) ||
+		typeof item.id !== "string" ||
+		typeof item.name !== "string" ||
+		typeof item.kind !== "string" ||
+		typeof item.country !== "string" ||
+		typeof item.createdAt !== "string"
+	) {
+		throw new Error("recipient row invalid")
+	}
+	return {
+		id: item.id,
+		name: item.name,
+		kind: item.kind as RecipientKind,
+		country: item.country,
+		createdAt: item.createdAt,
+	}
+}
+
+const recipientListSchema: Parser<{ recipients: RecipientSummary[] }> = {
+	parse: (value) => {
+		if (!isRecord(value) || !Array.isArray(value.recipients)) {
+			throw new Error("recipients missing")
+		}
+		return { recipients: value.recipients.map(parseRecipient) }
 	},
 }
 
@@ -209,47 +247,105 @@ export const createRecipient = (
 		signal,
 	})
 
-export interface RecipientSummary {
-	id: string
-	name: string
-	kind: RecipientKind
-	country: string
-	createdAt: string
-}
-
-const recipientListSchema: Parser<{ recipients: RecipientSummary[] }> = {
-	parse: (value) => {
-		if (!isRecord(value) || !Array.isArray(value.recipients)) {
-			throw new Error("recipients missing")
-		}
-		const recipients = value.recipients.map((item) => {
-			if (
-				!isRecord(item) ||
-				typeof item.id !== "string" ||
-				typeof item.name !== "string" ||
-				typeof item.kind !== "string" ||
-				typeof item.country !== "string" ||
-				typeof item.createdAt !== "string"
-			) {
-				throw new Error("recipient row invalid")
-			}
-			return {
-				id: item.id,
-				name: item.name,
-				kind: item.kind as RecipientKind,
-				country: item.country,
-				createdAt: item.createdAt,
-			}
-		})
-		return { recipients }
-	},
-}
-
 export const listRecipients = (
 	signal?: AbortSignal,
 ): Promise<{ recipients: RecipientSummary[] }> =>
 	request("/v1/recipients", { schema: recipientListSchema, signal })
+export interface EndpointSummary {
+	id: string
+	organizationId: string
+	recipientId: string
+	type: EndpointType
+	country: string
+	currency: string
+	network: "stellar" | "solana" | null
+	details: Record<string, string>
+	simulated: true
+	createdAt: string
+}
 
+const parseEndpoint = (item: unknown): EndpointSummary => {
+	if (
+		!isRecord(item) ||
+		typeof item.id !== "string" ||
+		typeof item.organizationId !== "string" ||
+		typeof item.recipientId !== "string" ||
+		typeof item.type !== "string" ||
+		typeof item.country !== "string" ||
+		typeof item.currency !== "string" ||
+		(item.network !== null &&
+			item.network !== "stellar" &&
+			item.network !== "solana") ||
+		!isRecord(item.details) ||
+		item.simulated !== true ||
+		typeof item.createdAt !== "string"
+	) {
+		throw new Error("endpoint row invalid")
+	}
+	const details: Record<string, string> = {}
+	for (const [key, value] of Object.entries(item.details)) {
+		if (typeof value !== "string") throw new Error("endpoint details invalid")
+		details[key] = value
+	}
+	return {
+		id: item.id,
+		organizationId: item.organizationId,
+		recipientId: item.recipientId,
+		type: item.type as EndpointType,
+		country: item.country,
+		currency: item.currency,
+		network: item.network,
+		details,
+		simulated: true,
+		createdAt: item.createdAt,
+	}
+}
+
+const endpointSchema: Parser<EndpointSummary> = { parse: parseEndpoint }
+
+const endpointListSchema: Parser<{ endpoints: EndpointSummary[] }> = {
+	parse: (value) => {
+		if (!isRecord(value) || !Array.isArray(value.endpoints)) {
+			throw new Error("endpoints missing")
+		}
+		return { endpoints: value.endpoints.map(parseEndpoint) }
+	},
+}
+
+export interface CreateEndpointInput {
+	recipientId: string
+	type: EndpointType
+	country: string
+	currency: string
+	network: "stellar" | "solana" | null
+	details: Record<string, string>
+	simulated: true
+}
+
+export const listEndpoints = (
+	opts: { recipientId?: string; signal?: AbortSignal } = {},
+): Promise<{ endpoints: EndpointSummary[] }> => {
+	const query = opts.recipientId
+		? `?recipientId=${encodeURIComponent(opts.recipientId)}`
+		: ""
+	return request(`/v1/endpoints${query}`, {
+		schema: endpointListSchema,
+		signal: opts.signal,
+	})
+}
+
+export const createEndpoint = (
+	input: CreateEndpointInput,
+	idempotencyKey: string,
+	signal?: AbortSignal,
+): Promise<EndpointSummary> =>
+	request("/v1/endpoints", {
+		method: "POST",
+		body: input,
+		schema: endpointSchema,
+		idempotencyKey,
+		signal,
+	})
 export interface CorridorRow {
 	from: { country: string; currency: string }
 	to: { country: string; currency: string }

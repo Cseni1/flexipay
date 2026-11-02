@@ -1,7 +1,7 @@
 .panel {
-	border: 1px solid var(--fp-line);
+	border: 1px solid var(--line);
 	border-radius: var(--radius);
-	background: #ffffff;
+	background: var(--surface);
 	box-shadow: var(--shadow-sm);
 }
 
@@ -141,14 +141,14 @@
 	display: inline-flex;
 	width: fit-content;
 	align-items: center;
-	padding: 0.18rem 0.45rem;
-	border: 1px dashed #d97706;
-	border-radius: 999px;
-	background: #fffbeb;
-	color: #92400e;
-	font-size: 0.65rem;
-	font-weight: 800;
-	letter-spacing: 0.06em;
+	padding: 2px 7px;
+	border-radius: 6px;
+	background: var(--warn-soft);
+	color: var(--warn);
+	font-family: var(--mono);
+	font-size: 11px;
+	font-weight: 500;
+	letter-spacing: 0.08em;
 	text-transform: uppercase;
 	white-space: nowrap;
 }
