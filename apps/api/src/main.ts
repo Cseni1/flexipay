@@ -6,6 +6,7 @@ import { createApp } from "./app.ts";
 import { createAuthRuntime } from "./auth/auth.ts";
 import { loadAuthConfig } from "./auth/config.ts";
 import { createDb } from "./db.ts";
+import { sandboxEnabledFromEnv } from "./sandbox-gate.ts";
 import { createApiRuntime } from "./runtime.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -31,12 +32,19 @@ const authConfig = loadAuthConfig(process.env, () => randomBytes(32).toString("h
 if (!authConfig.ok) console.error(`customer auth DISABLED: ${authConfig.reason}`);
 const trustProxy = Number(process.env.TRUST_PROXY_HOPS ?? 0) || undefined;
 
+const sandboxEnabled = sandboxEnabledFromEnv(process.env);
+if (process.env.FP_SANDBOX === "1" && !sandboxEnabled) {
+	console.error("FP_SANDBOX=1 ignored: sandbox controls are never enabled when NODE_ENV=production");
+}
+console.log(`sandbox controls: ${sandboxEnabled ? "ENABLED (local dev only)" : "disabled"}`);
+
 const app = createApp({
 	db,
 	config: loaded.config,
 	runtime,
 	auth: authConfig.ok ? createAuthRuntime(db, authConfig.config) : undefined,
 	trustProxy,
+	sandboxEnabled,
 });
 const port = Number(process.env.PORT ?? 8788);
 app.listen(port, () => console.log(`FlexiPay API listening on :${port}`));

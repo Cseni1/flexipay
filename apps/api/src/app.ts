@@ -111,6 +111,8 @@ export function createApp(deps: {
 	runtime: ApiRuntime;
 	/** TASK 06: customer auth. Omitted/undefined = disabled (fail closed, API keys still work). */
 	auth?: AuthRuntime;
+	/** Enables /v1/sandbox/* (local dev/tests). Default false: those routes answer 404. */
+	sandboxEnabled?: boolean;
 	/** Hops of trusted reverse proxy, so req.ip is the real client (rate limiting). */
 	trustProxy?: number;
 }) {
@@ -153,6 +155,11 @@ export function createApp(deps: {
 			toExpressPath(route.path),
 			async (req: Request, res: Response, next: NextFunction) => {
 				try {
+					// Fail-closed gate, before authentication: a disabled sandbox does not reveal
+					// itself to keys or sessions.
+					if (route.gate === "sandbox" && deps.sandboxEnabled !== true) {
+						throw new ApiError(404, "not_found", "No such route");
+					}
 					const ctx: CtxWithRequest = {
 						db: deps.db,
 						config: deps.config,
