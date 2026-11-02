@@ -626,15 +626,15 @@ Idempotency: same signature replay returns current paid state; a **different** s
 - Domain + API + adapter-solana + web: TASK 02 branch owner (this change set).
 - No Production deploy; no DB migrate without separate approval.
 
-### CCR-24a (TASK 03): optional `ClaimView.releaseEvidence` — **proposed additive**
+### CCR-24a (TASK 03): optional `ClaimView.releaseEvidence` — **ACCEPTED (integrator, 2 Nov 2026)**
 
 - **Status:** Implemented on `agent/task-03-live-ui-payment` under CCR-24 §6 (“receiver sees the verified payment result”). Integrator may ACK or rename.
 - **What:** `ClaimView` gains optional nullable `releaseEvidence: { network, signature, explorerUrl? }` once settle evidence exists. Public claim GET only; no secrets; no Prisma migration.
 - **Why:** Claim page can show Explorer after Solana verify-before-PAID without a second authenticated API.
 
-### CCR-24b (Lane B): Solana verify + settle rail security — **proposed**
+### CCR-24b (Lane B): Solana verify + settle rail security — **ACCEPTED (integrator, 2 Nov 2026; PR #92, main 4815797)**
 
-- **Status:** Proposed on `cseni1/solana-lane-b` (PR #92). Awaits integrator acceptance (F11). **Not approved.** Amends CCR-24 §§3–5.
+- **Status:** Accepted by the integrator after review and a full re-run on the merged result (typechecks, lint, web build, API 123, adapter-solana 9, e2e 78, web 21, browser 138). Not yet proven against live devnet. Amends CCR-24 §§3–5. CCR-24 itself is accepted as amended by 24a and 24b.
 - **What (exact contract deltas):**
   1. **F3 verify:** `verifyUsdcTransfer` / `evaluateParsedTransfer` succeed only when the recipient owner’s **configured-mint** token balance increases by ≥ expected minor units. No instruction-parsed fallback. New fail reasons used by API: `wrong_mint`, `missing_reference`, `stale_transaction` (plus existing).
   2. **F4 binding:** On Solana claim accept the API generates a Solana Pay `reference` ed25519 pubkey and stores it on `ClaimLink.solanaPayReference`. `GET …/solana/intent` returns `reference` + `intentIssuedAt` (stamps `ClaimLink.solanaIntentAt` on first call). Transfer builders MUST attach `reference` as a read-only non-signer account key. Confirm verifies reference ∈ tx account keys, refuses any `Leg.releaseTxRef` already used on another payment, and rejects `blockTime < solanaIntentAt` (unix seconds).
