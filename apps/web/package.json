@@ -24,8 +24,6 @@
     "@wallet-standard/wallet": "^1.1.0",
     "@solana/wallet-standard-features": "^1.3.0",
     "bs58": "^6.0.0",
-    "lossless-json": "^4.3.0",
-    "passkey-kit": "0.19.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.18.1"
@@ -45,8 +43,7 @@
     "prettier": "^3.8.3",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",
-    "vite-plugin-node-polyfills": "^0.28.0",
-    "vite-plugin-wasm": "^3.6.0"
+    "vite-plugin-node-polyfills": "^0.28.0"
   },
   "lint-staged": {
     "**/*": [

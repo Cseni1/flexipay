@@ -8,15 +8,10 @@
     "./contract": "./contract.ts",
     "./claim-contract": "./claim-contract.ts",
     "./claim-endpoint": "./claim-endpoint.ts",
-    "./anchor-amount": "./anchor-amount.ts",
     "./quote-errors": "./quote-errors.ts",
-    "./passkey-config": "./passkey-config.ts",
-    "./passkey-auth": "./passkey-auth.ts",
     "./styles.css": "./styles.css"
   },
   "dependencies": {
-    "@creit.tech/stellar-wallets-kit": "^2.5.0",
-    "@stellar/stellar-sdk": "^16.1.0",
     "zod": "^4.3.5"
   }
 }

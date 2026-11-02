@@ -1,7 +1,6 @@
 import react from "@vitejs/plugin-react"
 import { defineConfig, loadEnv, type Plugin } from "vite"
 import { nodePolyfills } from "vite-plugin-node-polyfills"
-import wasm from "vite-plugin-wasm"
 import { apiProxyPlugin } from "./vite.proxy.ts"
 
 /**
@@ -47,7 +46,6 @@ export default defineConfig(({ mode }) => {
 					Buffer: true,
 				},
 			}),
-			wasm(),
 			apiProxyPlugin({
 				target: env.FP_API_URL,
 				apiKey: env.FP_API_KEY,
@@ -57,24 +55,10 @@ export default defineConfig(({ mode }) => {
 		build: {
 			target: "esnext",
 		},
-		optimizeDeps: {
-			// Exclude passkey-kit so Vite does not pre-bundle the unpatched tarball; the
-			// postinstall patch-package fix must be what the browser loads (see docs/STELLAR.md).
-			exclude: ["@stellar/stellar-xdr-json", "passkey-kit"],
-		},
 		define: {
 			global: "window",
-			// The passkey wallet needs exactly two public values from the repo's FP_ config: an RPC
-			// origin and the network passphrase. They are named one by one on purpose: a generic
-			// FP_ envPrefix would also ship FP_API_KEY and every FP_*_SECRET to the browser.
-			"import.meta.env.FP_STELLAR_RPC_URL": JSON.stringify(
-				env.FP_STELLAR_RPC_URL?.trim() ?? "",
-			),
-			"import.meta.env.FP_STELLAR_NETWORK_PASSPHRASE": JSON.stringify(
-				env.FP_STELLAR_NETWORK_PASSPHRASE?.trim() ?? "",
-			),
 		},
-		// PUBLIC_* values belong to the inherited Stellar wallet-kit scaffold. FP_API_URL and
+		// PUBLIC_* stays available for any remaining public config. FP_API_URL and
 		// FP_API_KEY stay server-side; the clients call relative /v1 paths through the proxy.
 		envPrefix: ["PUBLIC_"],
 	}
