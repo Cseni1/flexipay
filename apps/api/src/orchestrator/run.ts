@@ -246,7 +246,10 @@ async function runPendingLegs(
 			if (
 				processing?.kind === "settle" &&
 				rt.claimWaitSettle &&
-				processing.externalRef
+				(processing.externalRef ||
+					// Lane B / F9: solana_usdc waits for verified transfer (no vault lock).
+					processing.rail === "solana_usdc" ||
+					processing.fundNetwork === "solana")
 			) {
 				return;
 			}
@@ -818,6 +821,32 @@ async function executeSettle(
 ): Promise<void> {
 	const payment = rt.payment;
 	const feeMode = rt.feeMode as FeeMode;
+
+	// Lane B / F9: solana_usdc never funds or locks a Stellar/mock vault.
+	// Settle stays processing until POST /v1/payments/{id}/solana/confirm.
+	if (leg.rail === "solana_usdc") {
+		if (leg.releaseTxRef) {
+			await transitionLeg(db, payment.id, leg.id, "processing", "succeeded", "replay");
+			await emitPaymentEvent(db, payment.organizationId, payment.id, "leg.succeeded", {
+				legId: leg.id,
+			});
+			return;
+		}
+		await db.leg.update({
+			where: { id: leg.id },
+			data: {
+				fundNetwork: "solana",
+				externalRef: null,
+				lockTxRef: null,
+			},
+		});
+		await emitPaymentEvent(db, payment.organizationId, payment.id, "payment.onchain", {
+			phase: "solana_settle_wait",
+			legId: leg.id,
+			detail: "awaiting_verified_solana_transfer",
+		});
+		return;
+	}
 
 	// Replay: externalRef is vault payoutId (CCR-12) — never re-lock / re-fund.
 	if (leg.externalRef) {

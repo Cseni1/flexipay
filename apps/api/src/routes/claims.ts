@@ -215,6 +215,7 @@ export const claimRoutes: RouteDef<any, any>[] = [
 						result = await acceptSolanaClaimDestination(ctx.db, link.paymentId, {
 							address,
 							currency: ep.currency,
+							adapters: adaptersOf(runtime),
 						});
 					} catch (e) {
 						const msg = e instanceof Error ? e.message : "solana accept failed";

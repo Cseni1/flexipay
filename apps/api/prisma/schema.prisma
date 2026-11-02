@@ -185,6 +185,8 @@ model Leg {
   @@unique([paymentId, position])
   /// Partial unique for deposit identity is in migration SQL (WHERE fundTxRef IS NOT NULL).
   @@index([fundTxRef])
+  /// Lane B / F4: Solana (and other) release evidence must be unique across payments.
+  /// Partial unique is in migration SQL (WHERE releaseTxRef IS NOT NULL).
 }
 
 model Batch {
@@ -211,6 +213,13 @@ model ClaimLink {
   expiresAt DateTime
   status    String   @default("open") // open | accepted | expired
   createdAt DateTime @default(now())
+
+  /// Lane B / F5: Endpoint.id accepted on this claim (Solana destination binding).
+  acceptedEndpointId String?
+  /// Lane B / F4: Solana Pay reference pubkey bound at accept; required in confirm tx.
+  solanaPayReference String?
+  /// Lane B / F4: first intent issuance time; confirm rejects older on-chain txs.
+  solanaIntentAt DateTime?
 
   /// CCR-21 (ELFOGADÁSRA VÁR): passkey wallet bound to this claim after deploy SUCCESS.
   passkeyContractId String?

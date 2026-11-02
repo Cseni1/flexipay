@@ -1,4 +1,3 @@
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import {
 	Connection,
 	type ParsedTransactionWithMeta,
@@ -12,6 +11,16 @@ export type TransferVerifyInput = {
 	/** Minimum accepted transferred amount in minor units. */
 	amountMinor: bigint;
 	usdcDecimals: number;
+	/**
+	 * Solana Pay reference pubkey that must appear as a read-only account key
+	 * in the confirmed transaction (Lane B / F4).
+	 */
+	reference?: string;
+	/**
+	 * Unix seconds: reject transactions whose blockTime is strictly before this
+	 * (intent issued-at). Missing blockTime is treated as not yet confirmable.
+	 */
+	notBeforeUnix?: number;
 };
 
 export type TransferVerifyOk = {
@@ -21,6 +30,7 @@ export type TransferVerifyOk = {
 	mint: string;
 	recipientOwner: string;
 	slot: number;
+	blockTime: number | null;
 };
 
 export type TransferVerifyFail = {
@@ -32,6 +42,8 @@ export type TransferVerifyFail = {
 		| "wrong_recipient"
 		| "amount_too_low"
 		| "no_token_transfer"
+		| "missing_reference"
+		| "stale_transaction"
 		| "rpc_error";
 	message: string;
 };
@@ -63,7 +75,8 @@ type TokenBalance = {
 
 /**
  * Independently verifies a confirmed SPL USDC transfer to `recipientOwner`.
- * Never treats “submitted” as success — requires successful meta + matching balance delta or parsed ix.
+ * Verification is mint-scoped balance delta only (Lane B / F3) — no instruction
+ * fallback that could treat a mint-less SPL `transfer` as the expected mint.
  */
 export async function verifyUsdcTransfer(
 	rpc: SolanaRpc,
@@ -95,6 +108,8 @@ export async function verifyUsdcTransfer(
 		recipientOwner,
 		amountMinor: input.amountMinor,
 		usdcDecimals: input.usdcDecimals,
+		reference: input.reference,
+		notBeforeUnix: input.notBeforeUnix,
 	});
 }
 
@@ -107,6 +122,8 @@ export function evaluateParsedTransfer(
 		recipientOwner: string;
 		amountMinor: bigint;
 		usdcDecimals: number;
+		reference?: string;
+		notBeforeUnix?: number;
 	},
 ): TransferVerifyResult {
 	const mint = parseSolanaAddress(input.mint).toBase58();
@@ -118,6 +135,38 @@ export function evaluateParsedTransfer(
 			reason: "failed_on_chain",
 			message: `Transaction failed on-chain: ${JSON.stringify(tx.meta.err)}`,
 		};
+	}
+
+	if (input.notBeforeUnix !== undefined) {
+		const blockTime = tx.blockTime ?? null;
+		if (blockTime === null) {
+			return {
+				ok: false,
+				reason: "not_found",
+				message: "Transaction has no blockTime yet; retry confirm",
+			};
+		}
+		if (blockTime < input.notBeforeUnix) {
+			return {
+				ok: false,
+				reason: "stale_transaction",
+				message: `Transaction blockTime ${blockTime} is older than intent ${input.notBeforeUnix}`,
+			};
+		}
+	}
+
+	if (input.reference) {
+		const reference = parseSolanaAddress(input.reference).toBase58();
+		const keys = tx.transaction.message.accountKeys.map((k) =>
+			typeof k === "string" ? k : k.pubkey.toBase58(),
+		);
+		if (!keys.includes(reference)) {
+			return {
+				ok: false,
+				reason: "missing_reference",
+				message: "Solana Pay reference account key is missing from the transaction",
+			};
+		}
 	}
 
 	const pre = (tx.meta?.preTokenBalances ?? []) as TokenBalance[];
@@ -139,30 +188,21 @@ export function evaluateParsedTransfer(
 			mint,
 			recipientOwner,
 			slot: tx.slot,
+			blockTime: tx.blockTime ?? null,
 		};
 	}
 
-	const fromIx = amountFromParsedInstructions(
-		tx,
-		mint,
-		recipientOwner,
-		input.usdcDecimals,
+	const otherMintToRecipient = post.some(
+		(row) =>
+			(row.owner ?? "") === recipientOwner &&
+			row.mint !== mint &&
+			recipientMintDelta(pre, post, row.mint, recipientOwner) !== null,
 	);
-	if (fromIx !== null) {
-		if (fromIx < input.amountMinor) {
-			return {
-				ok: false,
-				reason: "amount_too_low",
-				message: `Instruction amount ${fromIx.toString()} below expected ${input.amountMinor.toString()}`,
-			};
-		}
+	if (otherMintToRecipient) {
 		return {
-			ok: true,
-			signature: input.signature,
-			amountMinor: fromIx,
-			mint,
-			recipientOwner,
-			slot: tx.slot,
+			ok: false,
+			reason: "wrong_mint",
+			message: "Recipient gained a non-USDC token; expected configured mint only",
 		};
 	}
 
@@ -207,69 +247,4 @@ function sumOwnerMint(
 		total = (total ?? 0n) + amt;
 	}
 	return total;
-}
-
-function amountFromParsedInstructions(
-	tx: ParsedTransactionWithMeta,
-	mint: string,
-	recipientOwner: string,
-	decimals: number,
-): bigint | null {
-	let total = 0n;
-	let matched = false;
-
-	for (const ix of tx.transaction.message.instructions) {
-		if (!("programId" in ix)) continue;
-		const programId =
-			typeof ix.programId === "string" ? ix.programId : ix.programId.toBase58();
-		if (programId !== TOKEN_PROGRAM_ID.toBase58()) continue;
-		if (!("parsed" in ix) || !ix.parsed || typeof ix.parsed !== "object") continue;
-
-		const parsed = ix.parsed as {
-			type?: string;
-			info?: Record<string, unknown>;
-		};
-		if (parsed.type !== "transfer" && parsed.type !== "transferChecked") continue;
-		const info = parsed.info ?? {};
-		const ixMint = info.mint ? String(info.mint) : mint;
-		if (ixMint !== mint) continue;
-
-		const destination = String(info.destination ?? "");
-		const destOwner = ownerOfTokenAccount(tx, destination);
-		if (destOwner !== recipientOwner) continue;
-
-		const amountStr =
-			typeof info.tokenAmount === "object" &&
-			info.tokenAmount &&
-			"amount" in (info.tokenAmount as object)
-				? String((info.tokenAmount as { amount: string }).amount)
-				: String(info.amount ?? "0");
-		if (
-			parsed.type === "transferChecked" &&
-			typeof info.decimals === "number" &&
-			info.decimals !== decimals
-		) {
-			continue;
-		}
-		total += BigInt(amountStr);
-		matched = true;
-	}
-	return matched ? total : null;
-}
-
-function ownerOfTokenAccount(
-	tx: ParsedTransactionWithMeta,
-	tokenAccount: string,
-): string | undefined {
-	const post = (tx.meta?.postTokenBalances ?? []) as TokenBalance[];
-	const keys = tx.transaction.message.accountKeys.map((k) =>
-		typeof k === "string" ? k : k.pubkey.toBase58(),
-	);
-	for (const row of post) {
-		const idx = row.accountIndex;
-		if (typeof idx === "number" && keys[idx] === tokenAccount) {
-			return row.owner;
-		}
-	}
-	return undefined;
 }

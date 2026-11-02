@@ -13,7 +13,9 @@ import { ApiError } from "../errors.ts";
 import {
 	completeSolanaTransferSettle,
 	DuplicateSolanaEvidenceError,
+	ensureSolanaIntentIssuedAt,
 	loadSolanaClaimDestination,
+	ReusedSolanaSignatureError,
 } from "../orchestrator/solana-claim.ts";
 import { defineRoute, type RouteDef } from "../routes.ts";
 import {
@@ -21,6 +23,49 @@ import {
 	getSolanaRuntimeConfig,
 } from "../solana/runtime-config.ts";
 import { verifyPaymentTransfer } from "../solana/verify.ts";
+
+function assertSolanaConfirmReady(payment: {
+	status: string;
+	claimLink: { status: string } | null;
+	legs: Array<{
+		kind: string;
+		status: string;
+		releaseTxRef: string | null;
+	}>;
+}): {
+	settle: { kind: string; status: string; releaseTxRef: string | null };
+} {
+	if (!payment.claimLink || payment.claimLink.status !== "accepted") {
+		throw new ApiError(
+			409,
+			"invalid_state",
+			"Receiver must accept a Solana destination on the claim before the sender pays",
+		);
+	}
+	if (payment.status === "refunded" || payment.status === "expired") {
+		throw new ApiError(
+			409,
+			"invalid_state",
+			`Payment is ${payment.status}; Solana confirm is refused`,
+		);
+	}
+	if (payment.status !== "processing") {
+		throw new ApiError(
+			409,
+			"invalid_state",
+			`Payment must be processing to confirm Solana transfer (got ${payment.status})`,
+		);
+	}
+	const settle = payment.legs.find((l) => l.kind === "settle");
+	if (!settle || settle.status !== "processing" || settle.releaseTxRef) {
+		throw new ApiError(
+			409,
+			"invalid_state",
+			"Settle leg is not waiting for a verified Solana transfer",
+		);
+	}
+	return { settle };
+}
 
 export const solanaRoutes: RouteDef<any, any>[] = [
 	defineRoute({
@@ -36,7 +81,8 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 				usdcMint: cfg.usdcMint,
 				usdcDecimals: cfg.usdcDecimals,
 				explorerTxUrlTemplate: cfg.explorerTxUrlTemplate,
-				publicRpcUrl: cfg.publicRpcUrl ?? cfg.rpcUrl,
+				// F6: never fall back to the server RPC URL (may embed API keys).
+				publicRpcUrl: cfg.publicRpcUrl ?? null,
 				label: cfg.label,
 			};
 		},
@@ -66,7 +112,11 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 				);
 			}
 			const destination = await loadSolanaClaimDestination(ctx.db, payment.id);
-			if (!destination || !isSolanaAddress(destination)) {
+			if (
+				!destination ||
+				!isSolanaAddress(destination.address) ||
+				!isSolanaAddress(destination.reference)
+			) {
 				throw new ApiError(
 					409,
 					"invalid_state",
@@ -81,6 +131,7 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 					"Settle leg is not waiting for a verified Solana transfer",
 				);
 			}
+			const intentAt = await ensureSolanaIntentIssuedAt(ctx.db, payment.id);
 			const cfg = getSolanaRuntimeConfig();
 			const amount = flexipayUsdcToSolanaMinor(
 				BigInt(payment.quote.expectedReceive),
@@ -92,7 +143,9 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 				usdcMint: cfg.usdcMint,
 				usdcDecimals: cfg.usdcDecimals,
 				amount,
-				recipient: destination,
+				recipient: destination.address,
+				reference: destination.reference,
+				intentIssuedAt: intentAt.toISOString(),
 				label: cfg.label,
 				explorerTxUrlTemplate: cfg.explorerTxUrlTemplate,
 			};
@@ -120,15 +173,6 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 			});
 			if (!payment) throw new ApiError(404, "not_found", "Payment not found");
 
-			const destination = await loadSolanaClaimDestination(ctx.db, payment.id);
-			if (!destination) {
-				throw new ApiError(
-					409,
-					"invalid_state",
-					"No Solana destination is bound to this payment",
-				);
-			}
-
 			const settle = payment.legs.find((l) => l.kind === "settle");
 			if (settle?.releaseTxRef) {
 				if (settle.releaseTxRef !== body.signature) {
@@ -152,17 +196,49 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 				};
 			}
 
+			// F8: same readiness checks as intent — before any RPC verify.
+			assertSolanaConfirmReady(payment);
+
+			const destination = await loadSolanaClaimDestination(ctx.db, payment.id);
+			if (!destination) {
+				throw new ApiError(
+					409,
+					"invalid_state",
+					"No Solana destination is bound to this payment",
+				);
+			}
+
+			const reused = await ctx.db.leg.findFirst({
+				where: {
+					releaseTxRef: body.signature,
+					NOT: { paymentId: payment.id },
+				},
+				select: { paymentId: true },
+			});
+			if (reused) {
+				throw new ApiError(
+					409,
+					"signature_reused",
+					"This Solana signature was already used on another payment",
+				);
+			}
+
 			const cfg = getSolanaRuntimeConfig();
 			const amountMinor = flexipayUsdcToSolanaMinor(
 				BigInt(payment.quote.expectedReceive),
 				cfg.usdcDecimals,
 			);
+			const intentAt =
+				destination.intentAt ??
+				(await ensureSolanaIntentIssuedAt(ctx.db, payment.id));
 			const verified = await verifyPaymentTransfer({
 				signature: body.signature,
 				mint: cfg.usdcMint,
-				recipientOwner: destination,
+				recipientOwner: destination.address,
 				amountMinor,
 				usdcDecimals: cfg.usdcDecimals,
+				reference: destination.reference,
+				notBeforeUnix: Math.floor(intentAt.getTime() / 1000),
 			});
 
 			if (!verified.ok && verified.reason === "not_found") {
@@ -187,7 +263,7 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 			try {
 				const result = await completeSolanaTransferSettle(ctx.db, payment.id, {
 					signature: body.signature,
-					destination,
+					destination: destination.address,
 				});
 				if (result.status !== "paid") {
 					throw new ApiError(
@@ -202,6 +278,13 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 						409,
 						"state_conflict",
 						"Payment already verified with a different Solana signature",
+					);
+				}
+				if (cause instanceof ReusedSolanaSignatureError) {
+					throw new ApiError(
+						409,
+						"signature_reused",
+						"This Solana signature was already used on another payment",
 					);
 				}
 				throw cause;

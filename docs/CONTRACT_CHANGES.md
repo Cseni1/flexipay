@@ -631,3 +631,23 @@ Idempotency: same signature replay returns current paid state; a **different** s
 - **Status:** Implemented on `agent/task-03-live-ui-payment` under CCR-24 §6 (“receiver sees the verified payment result”). Integrator may ACK or rename.
 - **What:** `ClaimView` gains optional nullable `releaseEvidence: { network, signature, explorerUrl? }` once settle evidence exists. Public claim GET only; no secrets; no Prisma migration.
 - **Why:** Claim page can show Explorer after Solana verify-before-PAID without a second authenticated API.
+
+### CCR-24b (Lane B): Solana verify + settle rail security — **proposed**
+
+- **Status:** Proposed on `cseni1/solana-lane-b` (PR #92). Awaits integrator acceptance (F11). **Not approved.** Amends CCR-24 §§3–5.
+- **What (exact contract deltas):**
+  1. **F3 verify:** `verifyUsdcTransfer` / `evaluateParsedTransfer` succeed only when the recipient owner’s **configured-mint** token balance increases by ≥ expected minor units. No instruction-parsed fallback. New fail reasons used by API: `wrong_mint`, `missing_reference`, `stale_transaction` (plus existing).
+  2. **F4 binding:** On Solana claim accept the API generates a Solana Pay `reference` ed25519 pubkey and stores it on `ClaimLink.solanaPayReference`. `GET …/solana/intent` returns `reference` + `intentIssuedAt` (stamps `ClaimLink.solanaIntentAt` on first call). Transfer builders MUST attach `reference` as a read-only non-signer account key. Confirm verifies reference ∈ tx account keys, refuses any `Leg.releaseTxRef` already used on another payment, and rejects `blockTime < solanaIntentAt` (unix seconds).
+  3. **F5 destination:** Solana accept creates an `Endpoint` and stores its id on `ClaimLink.acceptedEndpointId`. Intent/confirm load **only** that endpoint id (never “latest Solana endpoint for recipient”).
+  4. **F6 public config:** `SolanaConfigResponse.publicRpcUrl` is `string | null`. Handler returns `cfg.publicRpcUrl ?? null` — never `cfg.rpcUrl`.
+  5. **F8 confirm gate:** Before RPC verify, confirm requires claim `accepted`, payment `processing` (not `refunded`/`expired`), settle `processing` with empty `releaseTxRef`. Idempotent replay of the stored signature remains allowed after paid.
+  6. **F9 settle rail:** Config adds settlement rail id `solana_usdc` (`network: solana`). `executeSettle` for `rail === solana_usdc` does not call `fundVault`/`lock`. Solana claim accept, if a vault lock exists on the settle leg, **refunds** the pending payout and rewrites the leg to `solana_usdc` with cleared lock/fund refs. Stellar accept / fiat claim paths unchanged.
+- **OpenAPI / domain:** Intent schema gains required `reference`, `intentIssuedAt`; config `publicRpcUrl` becomes nullable (breaking for clients that assumed a string fallback).
+- **Persistence (migration required):** `ClaimLink.acceptedEndpointId`, `ClaimLink.solanaPayReference`, `ClaimLink.solanaIntentAt` (all nullable); unique partial index `Leg_releaseTxRef_key` on `Leg.releaseTxRef` WHERE NOT NULL. Folder `20261101153000_lane_b_solana_security`. **No down migration.** Do not apply to Neon/production/shared DBs without written integrator approval.
+- **Unresolved architectural decisions (integrator must decide; builders must not silent-pick):**
+  1. Claim-link crypto quotes still price `stellar_usdc` first (corridor `settle[0]`); Solana path **refunds after fund** rather than quoting `solana_usdc` from the start. Acceptable interim vs first-class Solana corridor selection?
+  2. Unique `releaseTxRef` is **global** (Stellar hashes and Solana signatures share the index). Keep global, or scope to `fundNetwork = solana`?
+  3. After Solana accept refund, is any vault fee / collect state reconciliation required beyond clearing settle lock refs?
+  4. Should `feeMode` / vault fee still be mandatory on quotes that ultimately settle on `solana_usdc`?
+  5. Intent age uses first intent GET clock; should accept time be the bound instead?
+- **Who implements:** Lane B (this branch). Mock/Stellar adapters untouched aside from refund-on-Solana-accept.

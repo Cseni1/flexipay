@@ -16,37 +16,108 @@ afterEach(() => {
 	resetSolanaRuntimeConfigCache();
 });
 
+async function stopApi(api: Awaited<ReturnType<typeof startTestServer>>): Promise<void> {
+	try {
+		await api.stop();
+	} catch (cause) {
+		const msg = cause instanceof Error ? cause.message : String(cause);
+		// Windows often leaves the embedded Postgres data dir locked briefly.
+		if (!/EBUSY|resource busy|locked/i.test(msg)) throw cause;
+	}
+}
+
+async function bootstrapSolanaPayment(api: Awaited<ReturnType<typeof startTestServer>>, key: string) {
+	const created = await fetch(`${api.base}/v1/recipients`, {
+		method: "POST",
+		headers: auth(key, { "idempotency-key": "s-rcp-" + Math.random() }),
+		body: JSON.stringify({
+			name: "Recv",
+			kind: "individual",
+			country: "PH",
+		}),
+	});
+	assert.equal(created.status, 201);
+	const rcp = (await created.json()) as { id: string };
+
+	const quoteRes = await fetch(`${api.base}/v1/quotes`, {
+		method: "POST",
+		headers: auth(key, { "idempotency-key": "s-quote-" + Math.random() }),
+		body: JSON.stringify({
+			source: { type: "bank_account", currency: "USD", country: "US" },
+			destination: {
+				type: "crypto_wallet",
+				currency: "USDC",
+				country: "PH",
+				recipientKind: "individual",
+			},
+			amount: {
+				side: "receive",
+				value: { amount: flexipayMinor, currency: "USDC" },
+			},
+			policy: "cheapest",
+			feeMode: "PayerPays",
+		}),
+	});
+	const quoteText = await quoteRes.text();
+	assert.equal(quoteRes.status, 201, quoteText);
+	const quote = JSON.parse(quoteText) as { id: string };
+
+	const paymentRes = await fetch(`${api.base}/v1/payments`, {
+		method: "POST",
+		headers: auth(key, { "idempotency-key": "s-pay-" + Math.random() }),
+		body: JSON.stringify({
+			quoteId: quote.id,
+			recipientId: rcp.id,
+			delivery: "claim_link",
+			profile: "one_off",
+		}),
+	});
+	const paymentText = await paymentRes.text();
+	assert.equal(paymentRes.status, 201, paymentText);
+	const payment = JSON.parse(paymentText) as {
+		id: string;
+		claimLink: { url: string };
+	};
+
+	const fundRes = await fetch(`${api.base}/v1/payments/${payment.id}/fund`, {
+		method: "POST",
+		headers: auth(key, { "idempotency-key": "s-fund-" + Math.random() }),
+		body: "{}",
+	});
+	const fundText = await fundRes.text();
+	assert.equal(fundRes.status, 200, fundText);
+
+	const token = payment.claimLink.url.split("/").pop()!;
+	const accept = await fetch(`${api.base}/v1/claims/${token}/accept`, {
+		method: "POST",
+		headers: {
+			"content-type": "application/json",
+			"idempotency-key": "s-accept-" + Math.random(),
+		},
+		body: JSON.stringify({
+			endpoint: {
+				type: "crypto_wallet",
+				country: "",
+				currency: "USDC",
+				network: "solana",
+				details: { address: recipient },
+				simulated: true,
+			},
+		}),
+	});
+	const acceptText = await accept.text();
+	assert.equal(accept.status, 200, acceptText);
+	return { payment, rcp, token };
+}
+
 describe("CCR-24 Solana claim + confirm", () => {
 	test("accept leaves processing; confirm pays only after verify", async () => {
 		process.env.FP_SETTLEMENT = "mock";
 		process.env.FP_SOLANA_CLUSTER = "devnet";
 		process.env.FP_SOLANA_USDC_MINT = mint;
 		process.env.FP_SOLANA_USDC_DECIMALS = "7";
+		delete process.env.FP_SOLANA_PUBLIC_RPC_URL;
 		resetSolanaRuntimeConfigCache();
-
-		const fixtureTx = {
-			slot: 99,
-			transaction: { message: { accountKeys: [], instructions: [] } },
-			meta: {
-				err: null,
-				preTokenBalances: [
-					{
-						accountIndex: 0,
-						mint,
-						owner: recipient,
-						uiTokenAmount: { amount: "0", decimals: 7 },
-					},
-				],
-				postTokenBalances: [
-					{
-						accountIndex: 0,
-						mint,
-						owner: recipient,
-						uiTokenAmount: { amount: flexipayMinor, decimals: 7 },
-					},
-				],
-			},
-		} as unknown as ParsedTransactionWithMeta;
 
 		const pendingSig = "pending-sig-" + "p".repeat(48);
 		const badSig = "bad-sig-" + "b".repeat(52);
@@ -60,15 +131,9 @@ describe("CCR-24 Solana claim + confirm", () => {
 			if (input.signature === badSig) {
 				return { ok: false, reason: "amount_too_low", message: "too low" };
 			}
-			// Successful path: require mint/recipient match, then accept requested amount.
-			const parsed = evaluateParsedTransfer(fixtureTx, {
-				signature: input.signature,
-				mint: input.mint,
-				recipientOwner: input.recipientOwner,
-				amountMinor: 1n,
-				usdcDecimals: input.usdcDecimals,
-			});
-			if (!parsed.ok) return parsed;
+			if (!input.reference) {
+				return { ok: false, reason: "missing_reference", message: "no ref" };
+			}
 			return {
 				ok: true,
 				signature: input.signature,
@@ -76,98 +141,34 @@ describe("CCR-24 Solana claim + confirm", () => {
 				mint: input.mint,
 				recipientOwner: input.recipientOwner,
 				slot: 99,
+				blockTime: Math.floor(Date.now() / 1000),
 			};
 		});
 
 		const api = await startTestServer();
 		const { key } = await api.newOrg("Solana Confirm Org");
 		try {
-			const created = await fetch(`${api.base}/v1/recipients`, {
-				method: "POST",
-				headers: auth(key, { "idempotency-key": "s-rcp" }),
-				body: JSON.stringify({
-					name: "Recv",
-					kind: "individual",
-					country: "PH",
-				}),
-			});
-			assert.equal(created.status, 201);
-			const rcp = (await created.json()) as { id: string };
+			const { payment } = await bootstrapSolanaPayment(api, key);
 
-			const quoteRes = await fetch(`${api.base}/v1/quotes`, {
-				method: "POST",
-				headers: auth(key, { "idempotency-key": "s-quote" }),
-				body: JSON.stringify({
-					source: { type: "bank_account", currency: "USD", country: "US" },
-					destination: {
-						type: "crypto_wallet",
-						currency: "USDC",
-						country: "PH",
-						recipientKind: "individual",
-					},
-					amount: {
-						side: "receive",
-						value: { amount: flexipayMinor, currency: "USDC" },
-					},
-					policy: "cheapest",
-					feeMode: "PayerPays",
-				}),
-			});
-			const quoteText = await quoteRes.text();
-			assert.equal(quoteRes.status, 201, quoteText);
-			const quote = JSON.parse(quoteText) as { id: string };
+			const configRes = await fetch(`${api.base}/v1/solana/config`);
+			assert.equal(configRes.status, 200);
+			const config = (await configRes.json()) as { publicRpcUrl: string | null };
+			assert.equal(config.publicRpcUrl, null);
 
-			const paymentRes = await fetch(`${api.base}/v1/payments`, {
-				method: "POST",
-				headers: auth(key, { "idempotency-key": "s-pay" }),
-				body: JSON.stringify({
-					quoteId: quote.id,
-					recipientId: rcp.id,
-					delivery: "claim_link",
-					profile: "one_off",
-				}),
-			});
-			const paymentText = await paymentRes.text();
-			assert.equal(paymentRes.status, 201, paymentText);
-			const payment = JSON.parse(paymentText) as {
-				id: string;
-				claimLink: { url: string };
+			const intentRes = await fetch(
+				`${api.base}/v1/payments/${payment.id}/solana/intent`,
+				{ headers: auth(key) },
+			);
+			const intentText = await intentRes.text();
+			assert.equal(intentRes.status, 200, intentText);
+			const intent = JSON.parse(intentText) as {
+				recipient: string;
+				reference: string;
+				intentIssuedAt: string;
 			};
-
-			const fundRes = await fetch(`${api.base}/v1/payments/${payment.id}/fund`, {
-				method: "POST",
-				headers: auth(key, { "idempotency-key": "s-fund" }),
-				body: "{}",
-			});
-			const fundText = await fundRes.text();
-			assert.equal(fundRes.status, 200, fundText);
-
-			const token = payment.claimLink.url.split("/").pop()!;
-			const accept = await fetch(`${api.base}/v1/claims/${token}/accept`, {
-				method: "POST",
-				headers: {
-					"content-type": "application/json",
-					"idempotency-key": "s-accept",
-				},
-				body: JSON.stringify({
-					endpoint: {
-						type: "crypto_wallet",
-						country: "",
-						currency: "USDC",
-						network: "solana",
-						details: { address: recipient },
-						simulated: true,
-					},
-				}),
-			});
-			const acceptText = await accept.text();
-			assert.equal(accept.status, 200, acceptText);
-			const accepted = JSON.parse(acceptText) as {
-				paymentStatus: string;
-				claim: { status: string };
-			};
-			assert.equal(accepted.claim.status, "accepted");
-			assert.equal(accepted.paymentStatus, "processing");
+			assert.equal(intent.recipient, recipient);
+			assert.ok(intent.reference.length >= 32);
+			assert.ok(Date.parse(intent.intentIssuedAt) > 0);
 
 			const pending = await fetch(
 				`${api.base}/v1/payments/${payment.id}/solana/confirm`,
@@ -225,8 +226,322 @@ describe("CCR-24 Solana claim + confirm", () => {
 				},
 			);
 			assert.equal(conflict.status, 409);
+
+			const settle = await api.db.leg.findFirst({
+				where: { paymentId: payment.id, kind: "settle" },
+			});
+			assert.equal(settle?.rail, "solana_usdc");
+			assert.equal(settle?.lockTxRef, null);
+			assert.equal(settle?.externalRef, null);
 		} finally {
-			await api.stop();
+			await stopApi(api);
 		}
 	}, 120_000);
+
+	test("F5: intent/confirm use claim-bound endpoint, not a later endpoint", async () => {
+		process.env.FP_SETTLEMENT = "mock";
+		process.env.FP_SOLANA_CLUSTER = "devnet";
+		process.env.FP_SOLANA_USDC_MINT = mint;
+		process.env.FP_SOLANA_USDC_DECIMALS = "7";
+		resetSolanaRuntimeConfigCache();
+
+		setSolanaVerifyForTests(async (_rpc, input) => ({
+			ok: true,
+			signature: input.signature,
+			amountMinor: input.amountMinor,
+			mint: input.mint,
+			recipientOwner: input.recipientOwner,
+			slot: 1,
+			blockTime: Math.floor(Date.now() / 1000),
+		}));
+
+		const api = await startTestServer();
+		const { key } = await api.newOrg("Solana F5 Org");
+		try {
+			const { payment, rcp } = await bootstrapSolanaPayment(api, key);
+			const decoy = Keypair.generate().publicKey.toBase58();
+			const ep = await fetch(`${api.base}/v1/endpoints`, {
+				method: "POST",
+				headers: auth(key, { "idempotency-key": "s-ep-decoy" }),
+				body: JSON.stringify({
+					recipientId: rcp.id,
+					type: "crypto_wallet",
+					country: "",
+					currency: "USDC",
+					network: "solana",
+					details: { address: decoy },
+					simulated: true,
+				}),
+			});
+			assert.equal(ep.status, 201, await ep.text());
+
+			const intentRes = await fetch(
+				`${api.base}/v1/payments/${payment.id}/solana/intent`,
+				{ headers: auth(key) },
+			);
+			const intent = (await intentRes.json()) as { recipient: string };
+			assert.equal(intent.recipient, recipient);
+			assert.notEqual(intent.recipient, decoy);
+		} finally {
+			await stopApi(api);
+		}
+	}, 120_000);
+
+	test("F8: confirm refuses before RPC when claim not accepted", async () => {
+		process.env.FP_SETTLEMENT = "mock";
+		process.env.FP_SOLANA_CLUSTER = "devnet";
+		process.env.FP_SOLANA_USDC_MINT = mint;
+		process.env.FP_SOLANA_USDC_DECIMALS = "7";
+		resetSolanaRuntimeConfigCache();
+
+		let verifyCalls = 0;
+		setSolanaVerifyForTests(async () => {
+			verifyCalls += 1;
+			return { ok: false, reason: "not_found", message: "should not run" };
+		});
+
+		const api = await startTestServer();
+		const { key } = await api.newOrg("Solana F8 Org");
+		try {
+			const created = await fetch(`${api.base}/v1/recipients`, {
+				method: "POST",
+				headers: auth(key, { "idempotency-key": "f8-rcp" }),
+				body: JSON.stringify({
+					name: "Recv",
+					kind: "individual",
+					country: "PH",
+				}),
+			});
+			const rcp = (await created.json()) as { id: string };
+			const quoteRes = await fetch(`${api.base}/v1/quotes`, {
+				method: "POST",
+				headers: auth(key, { "idempotency-key": "f8-quote" }),
+				body: JSON.stringify({
+					source: { type: "bank_account", currency: "USD", country: "US" },
+					destination: {
+						type: "crypto_wallet",
+						currency: "USDC",
+						country: "PH",
+						recipientKind: "individual",
+					},
+					amount: {
+						side: "receive",
+						value: { amount: flexipayMinor, currency: "USDC" },
+					},
+					policy: "cheapest",
+					feeMode: "PayerPays",
+				}),
+			});
+			const quote = (await quoteRes.json()) as { id: string };
+			const paymentRes = await fetch(`${api.base}/v1/payments`, {
+				method: "POST",
+				headers: auth(key, { "idempotency-key": "f8-pay" }),
+				body: JSON.stringify({
+					quoteId: quote.id,
+					recipientId: rcp.id,
+					delivery: "claim_link",
+					profile: "one_off",
+				}),
+			});
+			const payment = (await paymentRes.json()) as { id: string };
+			await fetch(`${api.base}/v1/payments/${payment.id}/fund`, {
+				method: "POST",
+				headers: auth(key, { "idempotency-key": "f8-fund" }),
+				body: "{}",
+			});
+
+			const confirm = await fetch(
+				`${api.base}/v1/payments/${payment.id}/solana/confirm`,
+				{
+					method: "POST",
+					headers: auth(key, { "idempotency-key": "f8-conf" }),
+					body: JSON.stringify({ signature: "f8-sig-" + "x".repeat(52) }),
+				},
+			);
+			assert.equal(confirm.status, 409);
+			assert.equal(verifyCalls, 0);
+		} finally {
+			await stopApi(api);
+		}
+	}, 120_000);
+
+	test("F4: same signature cannot pay a second payment", async () => {
+		process.env.FP_SETTLEMENT = "mock";
+		process.env.FP_SOLANA_CLUSTER = "devnet";
+		process.env.FP_SOLANA_USDC_MINT = mint;
+		process.env.FP_SOLANA_USDC_DECIMALS = "7";
+		resetSolanaRuntimeConfigCache();
+
+		const sharedSig = "shared-sig-" + "s".repeat(48);
+		setSolanaVerifyForTests(async (_rpc, input) => ({
+			ok: true,
+			signature: input.signature,
+			amountMinor: input.amountMinor,
+			mint: input.mint,
+			recipientOwner: input.recipientOwner,
+			slot: 2,
+			blockTime: Math.floor(Date.now() / 1000),
+		}));
+
+		const api = await startTestServer();
+		const { key } = await api.newOrg("Solana F4 Org");
+		try {
+			const first = await bootstrapSolanaPayment(api, key);
+			const ok1 = await fetch(
+				`${api.base}/v1/payments/${first.payment.id}/solana/confirm`,
+				{
+					method: "POST",
+					headers: auth(key, { "idempotency-key": "f4-conf-1" }),
+					body: JSON.stringify({ signature: sharedSig }),
+				},
+			);
+			assert.equal(ok1.status, 200, await ok1.text());
+
+			const second = await bootstrapSolanaPayment(api, key);
+			const ok2 = await fetch(
+				`${api.base}/v1/payments/${second.payment.id}/solana/confirm`,
+				{
+					method: "POST",
+					headers: auth(key, { "idempotency-key": "f4-conf-2" }),
+					body: JSON.stringify({ signature: sharedSig }),
+				},
+			);
+			assert.equal(ok2.status, 409);
+			const body = (await ok2.json()) as { code: string };
+			assert.equal(body.code, "signature_reused");
+		} finally {
+			await stopApi(api);
+		}
+	}, 180_000);
+
+	test("F4 concurrent: racing confirms with the same signature pay at most one payment", async () => {
+		process.env.FP_SETTLEMENT = "mock";
+		process.env.FP_SOLANA_CLUSTER = "devnet";
+		process.env.FP_SOLANA_USDC_MINT = mint;
+		process.env.FP_SOLANA_USDC_DECIMALS = "7";
+		resetSolanaRuntimeConfigCache();
+
+		const raceSig = "race-sig-" + "r".repeat(52);
+		setSolanaVerifyForTests(async (_rpc, input) => ({
+			ok: true,
+			signature: input.signature,
+			amountMinor: input.amountMinor,
+			mint: input.mint,
+			recipientOwner: input.recipientOwner,
+			slot: 3,
+			blockTime: Math.floor(Date.now() / 1000),
+		}));
+
+		const api = await startTestServer();
+		const { key } = await api.newOrg("Solana F4 Race Org");
+		try {
+			const a = await bootstrapSolanaPayment(api, key);
+			const b = await bootstrapSolanaPayment(api, key);
+			const [ra, rb] = await Promise.all([
+				fetch(`${api.base}/v1/payments/${a.payment.id}/solana/confirm`, {
+					method: "POST",
+					headers: auth(key, { "idempotency-key": "f4-race-a" }),
+					body: JSON.stringify({ signature: raceSig }),
+				}),
+				fetch(`${api.base}/v1/payments/${b.payment.id}/solana/confirm`, {
+					method: "POST",
+					headers: auth(key, { "idempotency-key": "f4-race-b" }),
+					body: JSON.stringify({ signature: raceSig }),
+				}),
+			]);
+			const statuses = [ra.status, rb.status].sort();
+			assert.deepEqual(statuses, [200, 409]);
+			const paidCount = await api.db.leg.count({
+				where: { releaseTxRef: raceSig, status: "succeeded" },
+			});
+			assert.equal(paidCount, 1);
+		} finally {
+			await stopApi(api);
+		}
+	}, 180_000);
+
+	test("F6: config never echoes FP_SOLANA_RPC_URL when public RPC unset", async () => {
+		process.env.FP_SETTLEMENT = "mock";
+		process.env.FP_SOLANA_CLUSTER = "devnet";
+		process.env.FP_SOLANA_USDC_MINT = mint;
+		process.env.FP_SOLANA_USDC_DECIMALS = "7";
+		process.env.FP_SOLANA_RPC_URL =
+			"https://secret-helius.example/rpc?api-key=DO_NOT_LEAK";
+		delete process.env.FP_SOLANA_PUBLIC_RPC_URL;
+		resetSolanaRuntimeConfigCache();
+
+		const api = await startTestServer();
+		try {
+			const res = await fetch(`${api.base}/v1/solana/config`);
+			assert.equal(res.status, 200);
+			const body = (await res.json()) as { publicRpcUrl: string | null };
+			assert.equal(body.publicRpcUrl, null);
+			const raw = JSON.stringify(body);
+			assert.equal(raw.includes("DO_NOT_LEAK"), false);
+			assert.equal(raw.includes("secret-helius"), false);
+		} finally {
+			delete process.env.FP_SOLANA_RPC_URL;
+			resetSolanaRuntimeConfigCache();
+			await stopApi(api);
+		}
+	}, 60_000);
+
+	test("F9: Solana accept clears vault lock refs (independent of Stellar settle)", async () => {
+		process.env.FP_SETTLEMENT = "mock";
+		process.env.FP_SOLANA_CLUSTER = "devnet";
+		process.env.FP_SOLANA_USDC_MINT = mint;
+		process.env.FP_SOLANA_USDC_DECIMALS = "7";
+		resetSolanaRuntimeConfigCache();
+
+		const api = await startTestServer();
+		const { key } = await api.newOrg("Solana F9 Org");
+		try {
+			const { payment } = await bootstrapSolanaPayment(api, key);
+			const settle = await api.db.leg.findFirstOrThrow({
+				where: { paymentId: payment.id, kind: "settle" },
+			});
+			assert.equal(settle.rail, "solana_usdc");
+			assert.equal(settle.lockTxRef, null);
+			assert.equal(settle.externalRef, null);
+			assert.equal(settle.fundNetwork, "solana");
+			assert.equal(settle.status, "processing");
+			assert.equal(settle.releaseTxRef, null);
+		} finally {
+			await stopApi(api);
+		}
+	}, 120_000);
+});
+
+describe("Lane B adapter negative fixtures (wired through evaluateParsedTransfer)", () => {
+	test("non-USDC balance delta is wrong_mint", () => {
+		const otherMint = Keypair.generate().publicKey.toBase58();
+		const owner = Keypair.generate().publicKey.toBase58();
+		const usdc = Keypair.generate().publicKey.toBase58();
+		const tx = {
+			slot: 1,
+			blockTime: 100,
+			transaction: { message: { accountKeys: [owner], instructions: [] } },
+			meta: {
+				err: null,
+				preTokenBalances: [],
+				postTokenBalances: [
+					{
+						accountIndex: 0,
+						mint: otherMint,
+						owner,
+						uiTokenAmount: { amount: "5", decimals: 6 },
+					},
+				],
+			},
+		} as unknown as ParsedTransactionWithMeta;
+		const result = evaluateParsedTransfer(tx, {
+			signature: "x",
+			mint: usdc,
+			recipientOwner: owner,
+			amountMinor: 1n,
+			usdcDecimals: 6,
+		});
+		assert.equal(result.ok, false);
+		if (!result.ok) assert.equal(result.reason, "wrong_mint");
+	});
 });

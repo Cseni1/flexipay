@@ -1,3 +1,4 @@
+import { Keypair } from "@solana/web3.js";
 import {
 	isPaid,
 	type LegKind,
@@ -6,6 +7,7 @@ import {
 } from "@flexipay/domain";
 import type { Db } from "../db.ts";
 import { newId } from "../ids.ts";
+import type { OrchestratorAdapters } from "./types.ts";
 import {
 	emitPaymentEvent,
 	transitionLeg,
@@ -13,8 +15,10 @@ import {
 } from "./persist.ts";
 
 /**
- * CCR-24: accept a Solana USDC destination without vault release.
- * Claim becomes accepted; payment stays processing until confirmSolanaTransfer.
+ * CCR-24 + Lane B: accept a Solana USDC destination without vault release.
+ * Binds the accepted endpoint id and a Solana Pay reference on the claim (F4/F5).
+ * If the settle leg still holds a Stellar/mock vault lock, refund it and switch
+ * the settle rail to `solana_usdc` so funds are not double-locked (F9).
  */
 export async function acceptSolanaClaimDestination(
 	db: Db,
@@ -22,8 +26,9 @@ export async function acceptSolanaClaimDestination(
 	opts: {
 		address: string;
 		currency: string;
+		adapters?: OrchestratorAdapters;
 	},
-): Promise<{ status: PaymentStatus; endpointId: string }> {
+): Promise<{ status: PaymentStatus; endpointId: string; reference: string }> {
 	const payment = await db.payment.findUniqueOrThrow({
 		where: { id: paymentId },
 		include: { claimLink: true, legs: true },
@@ -44,7 +49,52 @@ export async function acceptSolanaClaimDestination(
 		throw new Error("settle already has release evidence");
 	}
 
+	// F9: leave no vault lock behind when settling on Solana instead.
+	if (settle.externalRef || settle.lockTxRef) {
+		if (!opts.adapters) {
+			throw new Error(
+				"vault lock present: adapters required to refund before Solana settle (F9)",
+			);
+		}
+		if (settle.externalRef) {
+			const st = await opts.adapters.settlement.status(settle.externalRef);
+			if (st.state === "pending") {
+				await opts.adapters.settlement.refund(settle.externalRef);
+			}
+		}
+		await db.leg.update({
+			where: { id: settle.id },
+			data: {
+				rail: "solana_usdc",
+				providerId: "solana_usdc",
+				externalRef: null,
+				lockTxRef: null,
+				fundTxRef: null,
+				fundOpIndex: null,
+				fundAmountValue: null,
+				fundAmountCurrency: null,
+				fundNetwork: "solana",
+				fundVaultId: null,
+			},
+		});
+		await emitPaymentEvent(db, payment.organizationId, paymentId, "payment.onchain", {
+			phase: "solana_settle_rail",
+			detail: "vault_lock_refunded_for_solana_usdc",
+			legId: settle.id,
+		});
+	} else if (settle.rail !== "solana_usdc") {
+		await db.leg.update({
+			where: { id: settle.id },
+			data: {
+				rail: "solana_usdc",
+				providerId: "solana_usdc",
+				fundNetwork: "solana",
+			},
+		});
+	}
+
 	const endpointId = newId("end");
+	const reference = Keypair.generate().publicKey.toBase58();
 	await db.endpoint.create({
 		data: {
 			id: endpointId,
@@ -61,42 +111,81 @@ export async function acceptSolanaClaimDestination(
 
 	await db.claimLink.update({
 		where: { paymentId },
-		data: { status: "accepted" },
+		data: {
+			status: "accepted",
+			acceptedEndpointId: endpointId,
+			solanaPayReference: reference,
+			solanaIntentAt: null,
+		},
 	});
 	await emitPaymentEvent(db, payment.organizationId, paymentId, "claim.accepted", {
 		network: "solana",
 		endpointId,
 		destination: opts.address,
+		reference,
 	});
 
 	const after = await db.payment.findUniqueOrThrow({ where: { id: paymentId } });
-	return { status: after.status as PaymentStatus, endpointId };
+	return { status: after.status as PaymentStatus, endpointId, reference };
 }
 
+export type SolanaClaimDestination = {
+	address: string;
+	endpointId: string;
+	reference: string;
+	intentAt: Date | null;
+};
+
+/**
+ * F5: read only the endpoint id stored on this claim — never the recipient's latest.
+ */
 export async function loadSolanaClaimDestination(
 	db: Db,
 	paymentId: string,
-): Promise<string | null> {
-	const payment = await db.payment.findUniqueOrThrow({
-		where: { id: paymentId },
+): Promise<SolanaClaimDestination | null> {
+	const link = await db.claimLink.findUnique({ where: { paymentId } });
+	if (!link?.acceptedEndpointId || !link.solanaPayReference) return null;
+	const endpoint = await db.endpoint.findUnique({
+		where: { id: link.acceptedEndpointId },
 	});
-	const endpoint = await db.endpoint.findFirst({
-		where: {
-			organizationId: payment.organizationId,
-			recipientId: payment.recipientId,
-			network: "solana",
-			type: "crypto_wallet",
-		},
-		orderBy: { createdAt: "desc" },
-	});
-	if (!endpoint) return null;
+	if (!endpoint || endpoint.network !== "solana") return null;
 	const details = endpoint.details as { address?: string };
-	return details.address ?? null;
+	if (!details.address) return null;
+	return {
+		address: details.address,
+		endpointId: endpoint.id,
+		reference: link.solanaPayReference,
+		intentAt: link.solanaIntentAt,
+	};
+}
+
+/** First intent issuance stamps solanaIntentAt (F4 age bound). */
+export async function ensureSolanaIntentIssuedAt(
+	db: Db,
+	paymentId: string,
+	now: Date = new Date(),
+): Promise<Date> {
+	const link = await db.claimLink.findUniqueOrThrow({ where: { paymentId } });
+	if (link.solanaIntentAt) return link.solanaIntentAt;
+	await db.claimLink.update({
+		where: { paymentId },
+		data: { solanaIntentAt: now },
+	});
+	return now;
+}
+
+export class ReusedSolanaSignatureError extends Error {
+	readonly existingPaymentId: string;
+	constructor(existingPaymentId: string) {
+		super(`Solana signature already used on payment ${existingPaymentId}`);
+		this.name = "ReusedSolanaSignatureError";
+		this.existingPaymentId = existingPaymentId;
+	}
 }
 
 /**
  * Persist verified Solana signature as settle release evidence and mark payment paid.
- * Mirrors recordPasskeyClaimRelease: evidence first, PAID only after settle succeeds.
+ * F4: refuse a signature already stored on any payment (unique releaseTxRef).
  */
 export async function completeSolanaTransferSettle(
 	db: Db,
@@ -125,13 +214,36 @@ export async function completeSolanaTransferSettle(
 		throw new Error("Solana destination must be accepted on the claim first");
 	}
 
-	await db.leg.update({
-		where: { id: settle.id },
-		data: {
+	const reused = await db.leg.findFirst({
+		where: {
 			releaseTxRef: opts.signature,
-			fundNetwork: "solana",
+			NOT: { paymentId },
 		},
+		select: { paymentId: true },
 	});
+	if (reused) {
+		throw new ReusedSolanaSignatureError(reused.paymentId);
+	}
+
+	try {
+		await db.leg.update({
+			where: { id: settle.id },
+			data: {
+				releaseTxRef: opts.signature,
+				fundNetwork: "solana",
+				rail: settle.rail === "solana_usdc" ? settle.rail : "solana_usdc",
+				providerId:
+					settle.providerId === "solana_usdc" ? settle.providerId : "solana_usdc",
+			},
+		});
+	} catch (cause) {
+		const message = cause instanceof Error ? cause.message : String(cause);
+		if (/Leg_releaseTxRef_key|Unique constraint/i.test(message)) {
+			throw new ReusedSolanaSignatureError("unknown");
+		}
+		throw cause;
+	}
+
 	await emitPaymentEvent(db, payment.organizationId, paymentId, "payment.onchain", {
 		phase: "solana_transfer",
 		releaseTxRef: opts.signature,
