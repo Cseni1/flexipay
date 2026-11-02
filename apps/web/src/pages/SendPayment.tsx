@@ -29,6 +29,7 @@ import {
 	type CorridorSummary,
 	type DestinationOption,
 } from "../api/corridors"
+import { AuthBlockedNotice } from "../components/AuthBlockedNotice"
 import { QuotePanel } from "../components/payments/QuotePanel"
 import {
 	Button,
@@ -428,12 +429,7 @@ export default function SendPayment() {
 				}
 			/>
 
-			{authBlocked ? (
-				<Notice tone="warning">
-					The local API proxy could not authenticate. Set the server-side
-					FP_API_KEY for Vite, then restart the dev server.
-				</Notice>
-			) : null}
+			{authBlocked ? <AuthBlockedNotice /> : null}
 
 			{corridorsUnavailable ? (
 				<Notice tone="warning" data-testid="corridors-unavailable">

@@ -18,6 +18,19 @@ import {
 // same-origin: the local Vite proxy adds the server-side Bearer credential. Browser code never
 // reads FP_API_KEY nor sends an Authorization header.
 
+export const SESSION_ENDED_MESSAGE =
+	"Your sign-in has ended. Sign in again to continue."
+
+// Set by SessionProvider: true while the caller is a signed-in customer (cookie session), so a
+// 401 is reported as an ended session instead of a server-key problem.
+let customerSessionActive = false
+export const setCustomerSessionActive = (active: boolean): void => {
+	customerSessionActive = active
+}
+
+/** Fired on any 401 from the API (see SessionProvider). */
+export const UNAUTHORIZED_EVENT = "flexipay:unauthorized"
+
 export const AUTH_NOT_CONFIGURED_MESSAGE =
 	"The local web proxy is not configured with a server-side API key. Set FP_API_KEY for the Vite server and restart it."
 
@@ -132,9 +145,16 @@ async function request<T>(
 		const record = isRecord(payload) ? payload : {}
 		const code =
 			typeof record.code === "string" ? record.code : `http_${response.status}`
+		// Tell the session layer so a customer whose session has ended is sent to /login.
+		if (response.status === 401)
+			(
+				globalThis as { dispatchEvent?: (event: Event) => boolean }
+			).dispatchEvent?.(new Event(UNAUTHORIZED_EVENT))
 		const message =
 			response.status === 401
-				? API_KEY_REJECTED_MESSAGE
+				? customerSessionActive
+					? SESSION_ENDED_MESSAGE
+					: API_KEY_REJECTED_MESSAGE
 				: code === "frontend_auth_not_configured"
 					? AUTH_NOT_CONFIGURED_MESSAGE
 					: typeof record.message === "string"
