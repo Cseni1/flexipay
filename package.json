@@ -8,7 +8,7 @@
     "lint": "npm run lint --workspaces --if-present",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
-    "prepare": "git config core.hooksPath .husky",
+    "prepare": "git config core.hooksPath .husky || true",
     "postinstall": "patch-package",
     "validate:config": "npm run validate:config --workspace @flexipay/domain",
     "test:domain": "npm test --workspace @flexipay/domain",
