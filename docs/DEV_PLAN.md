@@ -181,6 +181,16 @@ Apply for Demo Day; ask Crossmint whether production Wallets need an order form
 and KYB; submit the Transak KYB form and start the MoonPay review; decide the
 legal entity; book the lawyer hour on UK crypto promotions.
 
+## Evidence log (2 Nov)
+
+| What | Result |
+|---|---|
+| First real devnet USDC payment | Verified on-chain: 0.995 USDC, Account 1 to Account 2, payment `pay_d4368218d8e2cd30e05086ee` paid on the `solana_usdc` rail. Signature `zfqqBU9QV1XBu63k43GtnL8adAto7oGQKgXmbRTBGLJE94eMJHJ4x59iT6cwbHZiuVQjHPJfdNXXq2nFriA9dnN` ([Explorer](https://explorer.solana.com/tx/zfqqBU9QV1XBu63k43GtnL8adAto7oGQKgXmbRTBGLJE94eMJHJ4x59iT6cwbHZiuVQjHPJfdNXXq2nFriA9dnN?cluster=devnet)). Balance deltas checked from the transaction itself. |
+| Hosted web app | https://flexipay-web.vercel.app, rewrites to the Render API. |
+| Sign-in | Sign-up, email verification (Brevo), login, `/v1/me`, logout verified on the live site; signed-out and cookie-less requests get 401. |
+| Open: decimals bug | Simulated FX returns 7-decimal amounts, Solana USDC has 6. A settle amount not divisible by 10 gives a 500 `internal_error`. Needs rounding or a clear 422 (Lane B). |
+| Open: `TRUST_PROXY_HOPS` | Unset on purpose (shared rate-limit bucket) until the real proxy count is verified. |
+
 ## Next days
 
 | Days        | Goal                                                                       | Done when                                                                  |
