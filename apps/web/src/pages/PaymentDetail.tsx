@@ -127,7 +127,7 @@ export default function PaymentDetail() {
 		(location.state as { claimLink?: ClaimLinkHandle | null } | null)
 			?.claimLink ?? null
 	const { payment, error, loading, refresh } = usePaymentDetail(paymentId)
-	const { waking, attempt, retryNow } = useWakeUpRetry({
+	const { waking, exhausted, attempt, retryNow } = useWakeUpRetry({
 		error,
 		hasData: payment !== null,
 		onRetry: refresh,
@@ -213,6 +213,7 @@ export default function PaymentDetail() {
 						onRetry={retryNow}
 						attempt={attempt}
 						busy={loading}
+						exhausted={exhausted}
 					/>
 				</Panel>
 			) : null}

@@ -41,6 +41,10 @@ export const API_KEY_REJECTED_MESSAGE =
 export const API_WAKE_UP_MESSAGE =
 	"Waking up the server, this can take up to a minute"
 
+/** Shown after automatic wake-up retries are exhausted. */
+export const API_GAVE_UP_MESSAGE =
+	"Something went wrong on our side. Try again, or contact support."
+
 /** Per-request budget before we treat the API as asleep (cold host). */
 export const API_REQUEST_TIMEOUT_MS = 15_000
 

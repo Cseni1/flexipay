@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
+import { AddFundsPanel } from "../components/payFrom/AddFundsPanel"
 import { SolanaWalletPanel } from "../components/solana/SolanaWalletPanel"
 import {
 	Grid,
@@ -82,6 +83,8 @@ export default function PayFrom() {
 						onConnected={setConnected}
 					/>
 				</Panel>
+
+				<AddFundsPanel walletAddress={connected ? connected.address : null} />
 
 				<Panel
 					title="Other funding methods"

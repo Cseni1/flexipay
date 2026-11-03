@@ -52,6 +52,10 @@ test.describe("Design pages: wallet and pay from", () => {
 		await expect(soon).toContainText("Bank account")
 		await expect(soon.getByText("Coming soon").first()).toBeVisible()
 		await expect(page.getByTestId("solana-wallet-connect")).toBeVisible()
+		await expect(page.getByTestId("add-funds-panel")).toBeVisible()
+		await expect(page.getByTestId("add-funds-test-badge")).toContainText(
+			"TEST MODE",
+		)
 	})
 
 	test("wallet page keeps receive empty until a wallet is connected", async ({

@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react"
 import { isTransientApiError, type ApiError } from "../api/client"
 
 /** Backoff while the free-tier API is cold (≈ up to one minute). */
-const RETRY_DELAYS_MS = [3_000, 5_000, 8_000, 12_000, 15_000, 17_000]
+export const WAKE_UP_RETRY_DELAYS_MS = [
+	3_000, 5_000, 8_000, 12_000, 15_000, 17_000,
+]
 
 type Options = {
 	error: ApiError | null
@@ -23,6 +25,7 @@ export function useWakeUpRetry({
 	enabled = true,
 }: Options): {
 	waking: boolean
+	exhausted: boolean
 	attempt: number
 	retryNow: () => void
 } {
@@ -32,14 +35,15 @@ export function useWakeUpRetry({
 
 	const waking =
 		enabled && !hasData && error !== null && isTransientApiError(error)
+	const exhausted = waking && attempt >= WAKE_UP_RETRY_DELAYS_MS.length
 
 	useEffect(() => {
 		if (!waking) {
 			setAttempt(0)
 			return
 		}
-		if (attempt >= RETRY_DELAYS_MS.length) return
-		const delay = RETRY_DELAYS_MS[attempt] ?? 15_000
+		if (attempt >= WAKE_UP_RETRY_DELAYS_MS.length) return
+		const delay = WAKE_UP_RETRY_DELAYS_MS[attempt] ?? 15_000
 		const timer = window.setTimeout(() => {
 			setAttempt((current) => current + 1)
 			onRetryRef.current()
@@ -52,5 +56,5 @@ export function useWakeUpRetry({
 		onRetry()
 	}
 
-	return { waking, attempt, retryNow }
+	return { waking, exhausted, attempt, retryNow }
 }

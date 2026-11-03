@@ -58,8 +58,8 @@ export default defineConfig(({ mode }) => {
 		define: {
 			global: "window",
 		},
-		// PUBLIC_* stays available for any remaining public config. FP_API_URL and
-		// FP_API_KEY stay server-side; the clients call relative /v1 paths through the proxy.
-		envPrefix: ["PUBLIC_"],
+		// PUBLIC_* for legacy public config; VITE_* for browser-safe partner keys
+		// (e.g. Transak staging). FP_API_URL and FP_API_KEY stay server-side only.
+		envPrefix: ["PUBLIC_", "VITE_"],
 	}
 })
