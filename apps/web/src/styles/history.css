@@ -291,8 +291,102 @@
 .solana-success .button {
 	text-decoration: none;
 }
+
+.api-wakeup {
+	display: grid;
+	gap: 0.55rem;
+	padding: 0.2rem 0;
+}
+.api-wakeup__title {
+	margin: 0;
+	font-family: var(--display);
+	font-size: 1.15rem;
+	letter-spacing: -0.02em;
+	line-height: 1.3;
+}
+
+.payment-receipt {
+	display: grid;
+	gap: 1rem;
+	margin-top: 1rem;
+	padding: 1.1rem 1.15rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	background: var(--surface);
+}
+.payment-receipt__header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+}
+.payment-receipt__title {
+	margin: 0.15rem 0 0.25rem;
+	font-family: var(--display);
+	font-size: 1.35rem;
+	letter-spacing: -0.02em;
+}
+.payment-receipt__grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.85rem 1.25rem;
+	margin: 0;
+}
+.payment-receipt__grid > div {
+	display: grid;
+	gap: 0.2rem;
+}
+.payment-receipt__grid dt {
+	margin: 0;
+	color: var(--muted);
+	font-size: 0.72rem;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+.payment-receipt__grid dd {
+	margin: 0;
+	font-size: 0.95rem;
+	font-weight: 650;
+}
+.payment-receipt__print-only {
+	display: none;
+}
+
 @media (max-width: 900px) {
 	.wallet-hero {
 		grid-template-columns: 1fr;
+	}
+	.payment-receipt__grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+@media print {
+	.app-sidebar,
+	.no-print,
+	.page-header__actions,
+	.theme-toggle {
+		display: none !important;
+	}
+	.app-shell {
+		display: block;
+	}
+	.app-main {
+		padding: 0;
+	}
+	.payment-receipt {
+		border: 0;
+		box-shadow: none;
+		padding: 0;
+	}
+	.payment-receipt__print-only {
+		display: block;
+	}
+	.panel__header,
+	.panel__footer,
+	.stack > .panel:not(:has([data-testid="payment-receipt"])) {
+		display: none !important;
 	}
 }

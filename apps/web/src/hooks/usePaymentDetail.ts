@@ -37,6 +37,7 @@ export function usePaymentDetail(
 		const controller = new AbortController()
 
 		const load = async () => {
+			setLoading(true)
 			try {
 				const next = await getPayment(paymentId, controller.signal)
 				if (stopped) return
