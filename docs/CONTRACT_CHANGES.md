@@ -652,3 +652,10 @@ Idempotency: same signature replay returns current paid state; a **different** s
   4. Should `feeMode` / vault fee still be mandatory on quotes that ultimately settle on `solana_usdc`?
   5. Intent age uses first intent GET clock; should accept time be the bound instead?
 - **Who implements:** Lane B (this branch). Mock/Stellar adapters untouched aside from refund-on-Solana-accept.
+
+## CCR-25 (integrator, 3 Nov): claim links outlive their quote
+
+- **Problem:** `claimLink.expiresAt` was copied from `quote.validUntil` (about two minutes), so an invitation expired before the receiver could open it.
+- **Change:** `expiresAt = max(quote.validUntil, now + 7 days)` (`CLAIM_LINK_MIN_LIFETIME_MS` in `apps/api/src/orchestrator/create.ts`). The quote still has to be valid at payment creation; only the claim deadline changed. The vault lock expiry follows the claim deadline.
+- **Not changed:** quote validity, payment creation rules, API shapes.
+- **Status:** accepted (integrator). Tests: API suite 142/142, e2e 78/78; the two expiry tests now advance past 7 days and assert the claim is still open after an hour.

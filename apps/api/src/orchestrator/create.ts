@@ -17,6 +17,13 @@ const RouteSchema = z.array(PlannedLegSchema).min(1);
  * Production payment create (CCR-13): copy frozen PlannedLeg amounts from the Quote.
  * Does not re-price. Stale quote → throw (CC3 maps to 422).
  */
+/**
+ * A claim link is an invitation the receiver opens later, so it must outlive the short-lived
+ * quote it was created from (quotes last about two minutes). The link stays valid for at least
+ * this long; a quote that is valid for longer keeps its own deadline.
+ */
+export const CLAIM_LINK_MIN_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+
 export async function createPaymentFromQuote(
 	db: Db,
 	input: CreatePaymentFromQuoteInput,
@@ -115,7 +122,12 @@ export async function createPaymentFromQuote(
 			data: {
 				paymentId,
 				tokenHash: sha256Hex(claimToken),
-				expiresAt: quote.validUntil,
+				expiresAt: new Date(
+					Math.max(
+						quote.validUntil.getTime(),
+						(input.now ?? new Date()).getTime() + CLAIM_LINK_MIN_LIFETIME_MS,
+					),
+				),
 				status: "open",
 			},
 		});
