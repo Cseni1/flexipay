@@ -105,6 +105,13 @@ const publicPost = (path: string, body: unknown) =>
 		body: JSON.stringify(body),
 	});
 
+// Claim links live at least 7 days (CLAIM_LINK_MIN_LIFETIME_MS); advance-time accepts at most a day per call.
+async function advancePastClaimLifetime(key: string) {
+	for (let day = 0; day < 8; day++) {
+		await post(key, "/v1/sandbox/advance-time", { seconds: 86400 });
+	}
+}
+
 describe("CCR-6 sandbox advance-time (API clock only)", () => {
 	it("requires auth, validates the strict body, returns { now }, accumulates, and reset restores the clock", async () => {
 		const { key } = await t.newOrg("Demo Platform");
@@ -431,7 +438,11 @@ describe("claim links: fiat accept (CCR-17) and lazy expiry", () => {
 		await post(key, `/v1/payments/${paymentId}/fund`, {});
 		expect((await json<{ status: string }>(await fetch(`${t.base}/v1/claims/${token}`))).status).toBe("open");
 
+		// The quote lasts minutes, but the invitation must stay open far longer (an hour later: still open).
 		await post(key, "/v1/sandbox/advance-time", { seconds: 3600 });
+		expect((await json<{ status: string }>(await fetch(`${t.base}/v1/claims/${token}`))).status).toBe("open");
+
+		await advancePastClaimLifetime(key);
 		const view = await json<{ status: string; paymentStatus: string }>(await fetch(`${t.base}/v1/claims/${token}`));
 		expect(view.status).toBe("expired");
 		expect(view.paymentStatus).toBe("refunded");
@@ -459,7 +470,7 @@ describe("claim links: fiat accept (CCR-17) and lazy expiry", () => {
 		await post(key, `/v1/payments/${funded.paymentId}/fund`, {});
 		const unfunded = await claimPayment(key, r.id, phEwalletDest);
 
-		await post(key, "/v1/sandbox/advance-time", { seconds: 3600 });
+		await advancePastClaimLifetime(key);
 		const view = await json<{ status: string; paymentStatus: string }>(await fetch(`${t.base}/v1/claims/${funded.token}`));
 		expect(view.status).toBe("expired");
 		expect(view.paymentStatus).toBe("refunded");
