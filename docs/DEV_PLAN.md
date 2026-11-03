@@ -190,9 +190,46 @@ legal entity; book the lawyer hour on UK crypto promotions.
 | Sign-in | Sign-up, email verification (Brevo), login, `/v1/me`, logout verified on the live site; signed-out and cookie-less requests get 401. |
 | Decimals bug (fixed) | Quote-time floor of USDC settle amounts to a multiple of 10 for `solana_usdc` and crypto_wallet quotes (`9851485` → `9851480`) so the Solana mint (6 dec) can represent FlexiPay’s 7-dec USDC. Intent/confirm map any remaining unrepresentable amount to HTTP **422** `amount_not_representable` (never 500). |
 | Hosted-app payment (signed in) | `pay_b83907fe8321c623c60c2735` paid; 0.995 USDC, Account 1 to Account 2, signature `2xf9zSsYM1EvHoRUDHA7hL7GFd1UHQS3mzN1u2Uj7E3g18fHDVjw7FZuDhzm4Ne7yf9Y9TaidnZizJA4kHDfqkEg` ([Explorer](https://explorer.solana.com/tx/2xf9zSsYM1EvHoRUDHA7hL7GFd1UHQS3mzN1u2Uj7E3g18fHDVjw7FZuDhzm4Ne7yf9Y9TaidnZizJA4kHDfqkEg?cluster=devnet)). Balances 19.005 to 18.01 and 20.995 to 21.99 read from the transaction. |
+| Decimals fix verified live | `pay_58fa89196eabddacebf807ba` (send amount 100, the former failure) paid; 0.985148 USDC; signature `4YJo4qpBnhUV2YfEnoKozhNpbq5MPSwm118FnYg23Ph3z6n8hEVdjNvbQHBCJfvQYyw1H82DcqbWijopZF6Y2dnG` ([Explorer](https://explorer.solana.com/tx/4YJo4qpBnhUV2YfEnoKozhNpbq5MPSwm118FnYg23Ph3z6n8hEVdjNvbQHBCJfvQYyw1H82DcqbWijopZF6Y2dnG?cluster=devnet)). Balances 18.01 to 17.024852 and 21.99 to 22.975148. |
 | `TRUST_PROXY_HOPS` | Set to `1` on Render (2 Nov). Measured through the Vercel rewrite: 3 and 2 hops let a spoofed `X-Forwarded-For` evade the sign-in limiter; 1 does not (429 after the limit). Whether the one trusted address is each visitor's own (not a shared Vercel address) still needs a check from a second network. |
 
-## Next days
+## Plan from 3 Nov (Csaba out: Csenge's Cursor + integrator Claude)
+
+Rules: devnet only; anything simulated stays labelled; no mainnet and no real money without Csenge's written approval. Feature freeze **8 Nov**; 9 to 11 Nov are fixes and rehearsal only. Demo Day **12 Nov**.
+
+### Who does what
+
+| Lane | Owner | Scope |
+|---|---|---|
+| Front end | Csenge's Cursor | `apps/web` only. Opens PRs, never merges. |
+| Backend, integrations, hosting, review, merge | Integrator Claude | `apps/api`, `packages/`, `config/`, Vercel/Render/Neon/Brevo, provider accounts, docs. |
+| Business and providers | Csenge | Lawyer hour, KYB documents, provider emails, Demo Day application. |
+
+### Day by day
+
+| Day | Integrator Claude | Cursor | Csenge |
+|---|---|---|---|
+| Tue 3 Nov | Transak staging account; find out why claim links expire after about 2 minutes and fix; Render keep-alive | Task 1: API-asleep handling and receipt page | Send intro emails; change test password; phone rate-limit check |
+| Wed 4 Nov | Transak widget parameters and CSP; Dakota/BVNK sandbox probe behind the provider adapter | Task 2: hosted "Add funds" (Transak staging) on Pay-from, labelled TEST | Book the lawyer hour; gather bank account and KYB documents |
+| Thu 5 Nov | Sandbox integration for collect/convert if a provider replies; API keys backend check | Task 3: API keys page and password change in the UI | Pass provider answers to me |
+| Fri 6 Nov | Review and merge; security pass; dependency advisories decision | Task 4: receiver without a wallet; copy and "simulated" label audit | Submit the Transak KYB form |
+| Sat 7 Nov | Full end-to-end rehearsal on the hosted app; fix list | Fix list from the rehearsal | Rehearse the demo script yourself |
+| Sun 8 Nov | **Feature freeze.** Tag the release; docs and evidence log current | Only fixes | Demo Day application finalised |
+| Mon 9 to Wed 11 Nov | 3 to 5 real people on small devnet amounts; fixes only; Render paid-tier decision | Fixes only | Recruit testers; run the sessions |
+| Thu 12 Nov | Wake the API 10 minutes before; stand by | Stand by | Demo Day |
+
+### Cursor tasks (each one PR, `apps/web` only)
+
+1. **Resilience and receipt.** A friendly "waking up the server" state when the API is slow or returns 5xx, with retry; a receipt view for paid payments (amount, signature, Explorer link, copy button, print-friendly).
+2. **Hosted Add funds.** A Transak staging widget on Pay-from ("Add funds"; destination is the connected wallet, USDC on Solana; clear TEST badge). The staging key is public config in an env var, never in the repo.
+3. **API keys and account.** A page using `/v1/api-keys` (create, show once, revoke) and a working change-password flow.
+4. **Receiver experience.** Claim page for a receiver with no wallet yet (install Phantom guidance), clearer expiry messaging, and an audit that every simulated leg is labelled.
+
+### Done when (Demo Day path)
+
+Sign in on https://flexipay-web.vercel.app, add test funds with the widget, create a payment, the receiver claims, the sender pays in Phantom, and the receipt shows the signature and Explorer link: under 3 minutes, on a phone and a laptop.
+
+## Original schedule (superseded by the plan above)
 
 | Days        | Goal                                                                       | Done when                                                                  |
 | ----------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
