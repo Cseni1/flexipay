@@ -225,6 +225,18 @@ Rules: devnet only; anything simulated stays labelled; no mainnet and no real mo
 3. **API keys and account.** A page using `/v1/api-keys` (create, show once, revoke) and a working change-password flow.
 4. **Receiver experience.** Claim page for a receiver with no wallet yet (install Phantom guidance), clearer expiry messaging, and an audit that every simulated leg is labelled.
 
+### Domain move: getflexipay.app (bought 3 Nov; replaces the temporary flexiwork.site and *.vercel.app names)
+
+| Step | Owner | Detail |
+|---|---|---|
+| 1. DNS access | Csenge | Tell the integrator where the domain was bought; either point its nameservers at Vercel or add the records the integrator lists. |
+| 2. Vercel | Integrator | Add `getflexipay.app` and `www` to project `flexipay-web`; redirect www to apex. |
+| 3. Render | Integrator | `WEB_ORIGIN=https://getflexipay.app`; keep the vercel.app origin in `WEB_ORIGIN_EXTRA` until cutover is verified. |
+| 4. Brevo | Csenge + Integrator | Authenticate `getflexipay.app` (Brevo code, DKIM, DMARC with one record only), add sender `no-reply@getflexipay.app`; set `BREVO_SENDER_EMAIL`. |
+| 5. Transak | Csenge | Domain whitelist in the KYB form must list `https://getflexipay.app`, `https://www.getflexipay.app` and `http://localhost:5173`. |
+| 6. Code and docs | Integrator + Cursor | Replace flexiwork.site and vercel.app mentions in docs, `vercel.json` comments, demo script, e-mail templates and tests. |
+| 7. Verify | Integrator | Sign-up, verification e-mail, login, logout and one paid devnet payment on the new domain. |
+
 ### Done when (Demo Day path)
 
 Sign in on https://flexipay-web.vercel.app, add test funds with the widget, create a payment, the receiver claims, the sender pays in Phantom, and the receipt shows the signature and Explorer link: under 3 minutes, on a phone and a laptop.
