@@ -56,7 +56,7 @@ export const isAuthRequired = (error: unknown): error is ApiError =>
 	(error.status === 401 || AUTH_BLOCKED_CODES.has(error.code))
 
 /** Network / cold-start / 5xx — show the wake-up UI instead of raw errors. */
-export const isTransientApiError = (error: unknown): error is ApiError =>
+export const isTransientApiError = (error: unknown): boolean =>
 	error instanceof ApiError &&
 	!AUTH_BLOCKED_CODES.has(error.code) &&
 	(error.code === "network_error" ||
