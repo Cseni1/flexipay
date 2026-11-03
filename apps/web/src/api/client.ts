@@ -37,6 +37,13 @@ export const AUTH_NOT_CONFIGURED_MESSAGE =
 export const API_KEY_REJECTED_MESSAGE =
 	"The API rejected the server-side key. Check FP_API_KEY and restart the Vite server."
 
+/** Shown while Render's free tier is cold-starting (slow fetch or 5xx). */
+export const API_WAKE_UP_MESSAGE =
+	"Waking up the server, this can take up to a minute"
+
+/** Per-request budget before we treat the API as asleep (cold host). */
+export const API_REQUEST_TIMEOUT_MS = 15_000
+
 const AUTH_BLOCKED_CODES = new Set([
 	"auth_required",
 	"unauthorized",
@@ -47,6 +54,16 @@ const AUTH_BLOCKED_CODES = new Set([
 export const isAuthRequired = (error: unknown): error is ApiError =>
 	error instanceof ApiError &&
 	(error.status === 401 || AUTH_BLOCKED_CODES.has(error.code))
+
+/** Network / cold-start / 5xx — show the wake-up UI instead of raw errors. */
+export const isTransientApiError = (error: unknown): boolean =>
+	error instanceof ApiError &&
+	!AUTH_BLOCKED_CODES.has(error.code) &&
+	(error.code === "network_error" ||
+		error.code === "api_waking" ||
+		error.code === "internal_error" ||
+		error.code.startsWith("http_5") ||
+		error.status >= 500)
 
 interface Parser<T> {
 	parse: (value: unknown) => T
@@ -108,6 +125,16 @@ async function request<T>(
 	if (options.idempotencyKey)
 		headers.set("Idempotency-Key", options.idempotencyKey)
 
+	const timeout = new AbortController()
+	const timer = setTimeout(() => timeout.abort(), API_REQUEST_TIMEOUT_MS)
+	const signal =
+		typeof AbortSignal !== "undefined" &&
+		"any" in AbortSignal &&
+		typeof AbortSignal.any === "function" &&
+		options.signal
+			? AbortSignal.any([options.signal, timeout.signal])
+			: (options.signal ?? timeout.signal)
+
 	let response: Response
 	try {
 		response = await fetch(path, {
@@ -115,16 +142,16 @@ async function request<T>(
 			headers,
 			body:
 				options.body === undefined ? undefined : JSON.stringify(options.body),
-			signal: options.signal,
+			signal,
 		})
 	} catch (error) {
-		if (error instanceof DOMException && error.name === "AbortError")
-			throw error
-		throw new ApiError(
-			0,
-			"network_error",
-			error instanceof Error ? error.message : "The API could not be reached.",
-		)
+		if (error instanceof DOMException && error.name === "AbortError") {
+			if (options.signal?.aborted) throw error
+			throw new ApiError(0, "api_waking", API_WAKE_UP_MESSAGE)
+		}
+		throw new ApiError(0, "network_error", API_WAKE_UP_MESSAGE)
+	} finally {
+		clearTimeout(timer)
 	}
 
 	const text = await response.text()
@@ -157,9 +184,11 @@ async function request<T>(
 					: API_KEY_REJECTED_MESSAGE
 				: code === "frontend_auth_not_configured"
 					? AUTH_NOT_CONFIGURED_MESSAGE
-					: typeof record.message === "string"
-						? record.message
-						: `API request failed (HTTP ${response.status}).`
+					: response.status >= 500
+						? API_WAKE_UP_MESSAGE
+						: typeof record.message === "string"
+							? record.message
+							: `API request failed (HTTP ${response.status}).`
 		throw new ApiError(
 			response.status,
 			response.status === 401 ? "auth_required" : code,
@@ -180,7 +209,9 @@ async function request<T>(
 }
 
 export const describeApiError = (error: ApiError): string =>
-	[error.message, ...error.reasons].filter(Boolean).join(" ")
+	isTransientApiError(error)
+		? API_WAKE_UP_MESSAGE
+		: [error.message, ...error.reasons].filter(Boolean).join(" ")
 
 export const newIdempotencyKey = (prefix: string): string =>
 	`${prefix}-${crypto.randomUUID()}`

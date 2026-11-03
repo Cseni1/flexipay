@@ -201,6 +201,12 @@ test.describe("Design shell recipients", () => {
 		await mockDirectory(page, { listStatus: 500 })
 		await page.goto("/recipients")
 		await expect(page.getByTestId("recipients-error")).toBeVisible()
-		await expect(page.getByTestId("recipients-error")).toContainText("boom")
+		await expect(page.getByTestId("recipients-error")).toContainText(
+			"Waking up the server",
+		)
+		await expect(page.getByTestId("recipients-error")).not.toContainText("{")
+		await expect(page.getByTestId("recipients-error")).not.toContainText(
+			"boom",
+		)
 	})
 })

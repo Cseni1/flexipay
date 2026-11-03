@@ -7,13 +7,15 @@ import {
 	describeApiError,
 	fundPayment,
 	isAuthRequired,
+	isTransientApiError,
 } from "../api/client"
 import { getSolanaConfig } from "../api/solanaClient"
+import { ApiWakeUpNotice } from "../components/ApiWakeUpNotice"
 import { AuthBlockedNotice } from "../components/AuthBlockedNotice"
 import { EventLog } from "../components/payments/EventLog"
 import { LegTimeline } from "../components/payments/LegTimeline"
+import { PaymentReceipt } from "../components/payments/PaymentReceipt"
 import { SolanaPayPanel } from "../components/solana/SolanaPayPanel"
-import { SolanaTxSuccess } from "../components/solana/SolanaTxSuccess"
 import {
 	Button,
 	Grid,
@@ -27,6 +29,7 @@ import {
 	StatusBadge,
 } from "../components/ui"
 import { usePaymentDetail } from "../hooks/usePaymentDetail"
+import { useWakeUpRetry } from "../hooks/useWakeUpRetry"
 
 const solanaExplorerUrl = (
 	template: string | undefined,
@@ -124,6 +127,11 @@ export default function PaymentDetail() {
 		(location.state as { claimLink?: ClaimLinkHandle | null } | null)
 			?.claimLink ?? null
 	const { payment, error, loading, refresh } = usePaymentDetail(paymentId)
+	const { waking, attempt, retryNow } = useWakeUpRetry({
+		error,
+		hasData: payment !== null,
+		onRetry: refresh,
+	})
 	const [funding, setFunding] = useState(false)
 	const [fundError, setFundError] = useState<string | null>(null)
 	const [fundAuthBlocked, setFundAuthBlocked] = useState(false)
@@ -199,9 +207,23 @@ export default function PaymentDetail() {
 
 			{authBlocked ? <AuthBlockedNotice /> : null}
 
-			{error && !payment ? (
+			{error && !payment && waking ? (
 				<Panel title="Payment">
-					<Notice tone="warning">{describeApiError(error)}</Notice>
+					<ApiWakeUpNotice
+						onRetry={retryNow}
+						attempt={attempt}
+						busy={loading}
+					/>
+				</Panel>
+			) : null}
+
+			{error && !payment && !waking ? (
+				<Panel title="Payment">
+					<Notice tone="warning">
+						{isTransientApiError(error)
+							? error.message
+							: describeApiError(error)}
+					</Notice>
 					<div className="form-actions">
 						<Button variant="secondary" onClick={refresh}>
 							Retry
@@ -210,7 +232,7 @@ export default function PaymentDetail() {
 				</Panel>
 			) : null}
 
-			{loading && !payment ? (
+			{loading && !payment && !error ? (
 				<Panel title="Payment">
 					<p className="muted" role="status">
 						Loading payment…
@@ -318,13 +340,13 @@ export default function PaymentDetail() {
 							) : null}
 
 							{payment.status === "paid" && settleLeg?.releaseTxRef ? (
-								<SolanaTxSuccess
+								<PaymentReceipt
+									payment={payment}
 									signature={settleLeg.releaseTxRef}
 									explorerUrl={solanaExplorerUrl(
 										solanaExplorerTemplate ?? undefined,
 										settleLeg.releaseTxRef,
 									)}
-									explorerTestId="payment-explorer-link"
 								/>
 							) : null}
 
