@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { describe, test } from "vitest"
 import {
 	ApiError,
+	API_GAVE_UP_MESSAGE,
 	API_WAKE_UP_MESSAGE,
 	describeApiError,
 	isTransientApiError,
@@ -47,5 +48,12 @@ describe("API wake-up helpers", () => {
 		const raw = new ApiError(503, "internal_error", '{"stack":"boom"}')
 		assert.equal(describeApiError(raw), API_WAKE_UP_MESSAGE)
 		assert.equal(describeApiError(raw).includes("{"), false)
+	})
+
+	test("gave-up copy replaces waking after retries are exhausted", () => {
+		assert.equal(API_GAVE_UP_MESSAGE.includes("{"), false)
+		assert.match(API_GAVE_UP_MESSAGE, /Something went wrong on our side/i)
+		assert.match(API_GAVE_UP_MESSAGE, /contact support/i)
+		assert.notEqual(API_GAVE_UP_MESSAGE, API_WAKE_UP_MESSAGE)
 	})
 })

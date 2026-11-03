@@ -88,6 +88,35 @@ test.describe("Resilience: API wake-up", () => {
 			page.locator(".field__static").filter({ hasText: "1,250.00 USD" }),
 		).toBeVisible()
 	})
+
+	test("replaces waking copy after automatic retries are exhausted", async ({
+		page,
+	}) => {
+		await page.clock.install()
+		await page.route(/\/v1\/payments\/pay_exhausted$/, async (route) => {
+			await route.fulfill({
+				status: 503,
+				json: {
+					code: "internal_error",
+					message: '{"stack":"still down"}',
+				},
+			})
+		})
+		await page.goto("/payments/pay_exhausted")
+		const wake = page.getByTestId("api-wakeup")
+		await expect(wake).toBeVisible()
+		await expect(wake).toContainText("Waking up the server")
+		// Six scheduled delays: 3+5+8+12+15+17s.
+		for (let i = 0; i < 6; i += 1) {
+			await page.clock.runFor(20_000)
+		}
+		await expect(wake).toHaveAttribute("data-exhausted", "true")
+		await expect(wake).toContainText("Something went wrong on our side")
+		await expect(wake).toContainText("contact support")
+		await expect(wake).not.toContainText("Waking up the server")
+		await expect(wake).not.toContainText("{")
+		await expect(page.getByTestId("api-wakeup-retry")).toBeVisible()
+	})
 })
 
 test.describe("Receipt: paid Solana payment", () => {

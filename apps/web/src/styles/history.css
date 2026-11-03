@@ -258,6 +258,12 @@
 	background: var(--ok-soft);
 	color: var(--ok);
 }
+.pill--test {
+	background: var(--warn-soft);
+	color: var(--warn);
+	border: 1px solid var(--warn);
+	text-transform: uppercase;
+}
 .claim-share {
 	display: grid;
 	gap: 0.55rem;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import {
 	ApiError,
+	API_GAVE_UP_MESSAGE,
 	API_WAKE_UP_MESSAGE,
 	getHealth,
 	isAuthRequired,
@@ -71,7 +72,12 @@ export function ApiStatus() {
 		}
 	}, [attempt, probe])
 
-	const title = status === "waking" ? API_WAKE_UP_MESSAGE : LABEL[status]
+	const title =
+		status === "waking"
+			? API_WAKE_UP_MESSAGE
+			: status === "down"
+				? API_GAVE_UP_MESSAGE
+				: LABEL[status]
 
 	return (
 		<p
