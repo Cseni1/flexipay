@@ -110,9 +110,11 @@ test.describe("Send form polish", () => {
 		await page.getByRole("button", { name: "Get quote" }).click()
 
 		await expect(page.getByText("All fees")).toBeVisible()
-		// Line items £0.10 + £0.10; must not show the floored API total £0.09.
-		await expect(page.getByText("£0.20").first()).toBeVisible()
+		// The settle fee and FlexiPay fee are the same £0.10 listed twice: the total
+		// must count it once (£0.10), never double (£0.20) or the floored API £0.09.
+		await expect(page.getByText("£0.20")).toHaveCount(0)
 		await expect(page.getByText("£0.09")).toHaveCount(0)
+		await expect(page.getByText("£0.10").last()).toBeVisible()
 		await expect(
 			page.getByText(/remainder £1\.00 stays unlocked/),
 		).toBeVisible()
