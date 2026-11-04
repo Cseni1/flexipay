@@ -248,7 +248,8 @@
 }
 
 .grid--2 {
-	grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+	/* Equal columns so Pay-from "Add funds" (and similar) do not squeeze to one word per line. */
+	grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .grid--3 {

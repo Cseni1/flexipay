@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { lazy, Suspense, useState } from "react"
 import { Link } from "react-router-dom"
 import { AddFundsPanel } from "../components/payFrom/AddFundsPanel"
 import { SolanaWalletPanel } from "../components/solana/SolanaWalletPanel"
@@ -14,6 +14,11 @@ import {
 	shortAddress,
 	type ConnectedSolanaWallet,
 } from "../solana/walletStandard"
+
+const FlexiPayWalletCard = lazy(async () => {
+	const mod = await import("../components/payFrom/FlexiPayWalletCard")
+	return { default: mod.FlexiPayWalletCard }
+})
 
 const COMING_SOON = [
 	{
@@ -84,6 +89,16 @@ export default function PayFrom() {
 						allowTestHarness={import.meta.env.DEV}
 					/>
 				</Panel>
+
+				<Suspense
+					fallback={
+						<p className="form-note" role="status">
+							Loading FlexiPay wallet…
+						</p>
+					}
+				>
+					<FlexiPayWalletCard />
+				</Suspense>
 
 				<AddFundsPanel walletAddress={connected ? connected.address : null} />
 
