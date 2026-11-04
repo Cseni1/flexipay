@@ -11,5 +11,6 @@ Preconditions: Phantom installed and set to Devnet, two accounts with devnet USD
 | 7 | Open the claim link in a private window; choose Crypto wallet, Solana USDC (devnet test), enter the receiver's Solana address, accept. | The claim is accepted. | ☐ |
 | 8 | Back on the payment page, switch Phantom (Devnet) to the sender account, click Pay and approve. | The payment is approved in Phantom. | ☐ |
 | 9 | Check the payment result and open the Solana Explorer link. | The payment shows paid, a Solana signature, and a "View on Solana Explorer" link; the Explorer page shows success on devnet. | ☐ |
+| 10 | Pound flow: open Send; destination country United Kingdom, destination Crypto wallet (tGBP), fee mode PayerPays, a small amount; create the quote, pick or add the recipient, choose delivery Claim link, create and fund the payment; open the claim link in a private window, choose Crypto wallet, Solana tGBP (devnet test), enter the receiver's Solana address and accept; back on the payment page, switch Phantom (Devnet) to the sender account, click Pay and approve. | A claim link is shown, funding moves the payment to processing, the claim is accepted, and the payment shows paid with a Solana signature and a "View on Solana Explorer" link that shows success on devnet. | ☐ |
 
 ## Notes
