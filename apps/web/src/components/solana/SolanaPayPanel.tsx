@@ -11,6 +11,7 @@ import {
 	type SolanaConfirmOk,
 	type SolanaIntent,
 } from "../../api/solanaClient"
+import { assetLabel, formatAssetAmount } from "../../solana/assets"
 import {
 	friendlySolanaPayError,
 	SOLANA_PAY_ERROR_COPY,
@@ -64,8 +65,21 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 
 	if (notSolanaSettle) return null
 
+	const settlement = intent
+		? {
+				asset: intent.asset,
+				mint: intent.mint,
+				decimals: intent.decimals,
+			}
+		: null
+	const label = settlement ? assetLabel(settlement.asset) : "Solana"
+	const displayAmount =
+		intent && settlement
+			? formatAssetAmount(settlement.asset, intent.amount, settlement.decimals)
+			: null
+
 	const pay = async () => {
-		if (!intent || !connected) return
+		if (!intent || !connected || !settlement) return
 		setBusy(true)
 		setError(null)
 		try {
@@ -86,23 +100,23 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 			const balances = await getSolAndUsdcBalances(
 				connection,
 				connected.address,
-				intent.usdcMint,
+				settlement.mint,
 			)
 			if (balances.solLamports < MIN_SOL_LAMPORTS_FOR_FEES) {
 				throw new Error("no devnet SOL for network fees")
 			}
 			const needed = BigInt(intent.amount)
 			if (balances.usdcMinor < needed) {
-				throw new Error("insufficient USDC")
+				throw new Error(`insufficient ${settlement.asset}`)
 			}
 
 			const built = await buildUsdcTransferTransaction({
 				connection,
 				payer: connected.address,
 				recipientOwner: intent.recipient,
-				mint: intent.usdcMint,
+				mint: settlement.mint,
 				amountMinor: needed,
-				decimals: intent.usdcDecimals,
+				decimals: settlement.decimals,
 				reference: intent.reference,
 			})
 			const signature = await signAndSendSolanaTransaction({
@@ -146,28 +160,51 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 			className="solana-panel solana-panel--pay"
 			data-testid="solana-pay-panel"
 		>
-			<Panel title="Pay with Solana USDC (devnet)">
+			<Panel
+				title={`Pay with Solana ${label} (devnet)`}
+				actions={
+					settlement?.asset === "TGBP" ? (
+						<span className="pill pill--ok" data-testid="solana-pay-asset">
+							£ (tGBP)
+						</span>
+					) : (
+						<span className="pill" data-testid="solana-pay-asset">
+							USDC
+						</span>
+					)
+				}
+			>
 				{error ? (
 					<Notice tone="warning" data-testid="solana-pay-error">
 						{error}
 					</Notice>
 				) : null}
-				{intent ? (
+				{intent && settlement ? (
 					<>
 						<Notice>
-							{intent.label}. Amount is verified on-chain before PAID. Devnet
-							USDC only — not mainnet.
+							{intent.label}. Amount is verified on-chain before PAID. Devnet{" "}
+							{label} only — not mainnet.
 						</Notice>
 						<div className="solana-intent-grid">
 							<StaticField label="Recipient" value={intent.recipient} />
-							<StaticField label="Amount (minor units)" value={intent.amount} />
-							<StaticField label="Mint" value={intent.usdcMint} />
+							<StaticField
+								label={`Amount (${label})`}
+								value={
+									<span data-testid="solana-pay-amount">{displayAmount}</span>
+								}
+							/>
+							<StaticField label="Asset" value={label} />
+							<StaticField label="Mint" value={settlement.mint} />
 						</div>
 					</>
 				) : (
 					<p className="form-note">Loading Solana transfer intent…</p>
 				)}
-				<SolanaWalletPanel onConnected={setConnected} title="Sender wallet" />
+				<SolanaWalletPanel
+					onConnected={setConnected}
+					title="Sender wallet"
+					settlement={settlement ?? undefined}
+				/>
 				{result ? (
 					<SolanaTxSuccess
 						signature={result.signature}
@@ -180,7 +217,7 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 						onClick={() => void pay()}
 						data-testid="solana-pay-send"
 					>
-						{busy ? "Signing / confirming…" : "Sign and send USDC"}
+						{busy ? "Signing / confirming…" : `Sign and send ${label}`}
 					</Button>
 				)}
 			</Panel>
