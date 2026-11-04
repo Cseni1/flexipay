@@ -72,6 +72,22 @@ Could you tell us:
 Thank you,
 FLEXIWORK LTD
 
+### Coins.ph
+
+Hello,
+
+We are FLEXIWORK LTD, a UK company building FlexiPay, an early-stage payments API on Solana. We are building a UK to Philippines payment flow and would like to pay out PHP to bank accounts and GCash from tGBP.
+
+Could you tell us:
+
+- Do you accept tGBP on Solana, or only Ethereum and Base?
+- What are your PHP payout fees and spreads for tGBP-to-PHP?
+- Is there an API for business partners, and a sandbox?
+- How do you onboard a young UK company?
+
+Thank you,
+FLEXIWORK LTD
+
 ## Comparison table
 
 | Provider | Route (country, direction) | Fee % | Fixed fee | Min amount | Speed | Solana | Sandbox | Source/date |
@@ -82,6 +98,8 @@ FLEXIWORK LTD
 | Tokenised GBP | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
 | Kraken (manual GBP cash-out) | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
 | Coinbase (manual GBP cash-out) | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| Coins.ph | UK/GBP stablecoin to PH, PHP bank and GCash | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| Airwallex - PH bank (InstaPay / PESONet) | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
 
 ## Rules for filling this table
 
