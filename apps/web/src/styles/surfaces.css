@@ -7,11 +7,17 @@
 
 .panel__header {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: flex-start;
 	justify-content: space-between;
 	gap: 1rem;
 	padding: 1.1rem 1.2rem 0.85rem;
 	border-bottom: 1px solid var(--fp-line);
+}
+
+.panel__header > div:first-child {
+	min-width: 0;
+	flex: 1 1 12rem;
 }
 
 .panel__title {
@@ -25,13 +31,15 @@
 	color: var(--fp-muted);
 	font-size: 0.8rem;
 	line-height: 1.45;
+	overflow-wrap: break-word;
 }
 
 .panel__actions {
 	display: flex;
-	flex: 0 0 auto;
+	flex: 0 1 auto;
 	align-items: center;
 	gap: 0.4rem;
+	max-width: 100%;
 }
 
 .panel__body {
