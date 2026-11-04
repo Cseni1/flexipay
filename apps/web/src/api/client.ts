@@ -408,6 +408,8 @@ export interface CorridorRow {
 	recipientKinds: string[]
 	regulationNote: string
 	simulated: boolean
+	/** Present when the API returns the full corridor (`legsAvailable.settle`). */
+	settleRails?: string[]
 }
 
 const corridorListSchema: Parser<{ corridors: CorridorRow[] }> = {
@@ -431,6 +433,12 @@ const corridorListSchema: Parser<{ corridors: CorridorRow[] }> = {
 			) {
 				throw new Error("corridor row invalid")
 			}
+			const settleRails =
+				isRecord(item.legsAvailable) && Array.isArray(item.legsAvailable.settle)
+					? item.legsAvailable.settle.filter(
+							(entry): entry is string => typeof entry === "string",
+						)
+					: undefined
 			return {
 				from: {
 					country: item.from.country,
@@ -445,6 +453,7 @@ const corridorListSchema: Parser<{ corridors: CorridorRow[] }> = {
 				),
 				regulationNote: item.regulationNote,
 				simulated: item.simulated,
+				...(settleRails ? { settleRails } : {}),
 			}
 		})
 		return { corridors }

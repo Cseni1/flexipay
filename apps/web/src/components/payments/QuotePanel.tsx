@@ -1,5 +1,6 @@
 import { formatMoney } from "@flexipay/web-lib"
 import { type Delivery, type Quote } from "@flexipay/web-lib/contract"
+import { formatAssetAmount } from "../../solana/assets"
 import {
 	Button,
 	EmptyState,
@@ -8,6 +9,13 @@ import {
 	SimulatedLabel,
 	StaticField,
 } from "../ui"
+
+/** Fee/send preview: GBP and TGBP use the CCR-26 £ helper; other codes stay on formatMoney. */
+const displayMoney = (amount: string, currency: string): string => {
+	if (currency === "GBP") return formatAssetAmount("TGBP", amount, 2)
+	if (currency === "TGBP") return formatAssetAmount("TGBP", amount, 7)
+	return formatMoney(amount, currency)
+}
 
 interface QuotePanelProps {
 	quote: Quote | null
@@ -55,7 +63,7 @@ export function QuotePanel({
 					<div className="quote-summary">
 						<StaticField
 							label="Send"
-							value={formatMoney(
+							value={displayMoney(
 								quote.amount.value.amount,
 								quote.amount.value.currency,
 							)}
@@ -63,7 +71,7 @@ export function QuotePanel({
 						/>
 						<StaticField
 							label="Expected receive"
-							value={formatMoney(
+							value={displayMoney(
 								quote.expectedReceive.amount,
 								quote.expectedReceive.currency,
 							)}
@@ -135,13 +143,13 @@ export function QuotePanel({
 										{KIND_LABELS[fee.kind]}{" "}
 										<code className="code-text">{fee.rail}</code>
 									</span>
-									<span>{formatMoney(fee.fee.amount, fee.fee.currency)}</span>
+									<span>{displayMoney(fee.fee.amount, fee.fee.currency)}</span>
 								</li>
 							))}{" "}
 							<li>
 								<span>FlexiPay fee</span>
 								<span>
-									{formatMoney(
+									{displayMoney(
 										quote.fees.flexiPayFee.amount,
 										quote.fees.flexiPayFee.currency,
 									)}
@@ -151,7 +159,7 @@ export function QuotePanel({
 								<li>
 									<span>Unlocked remainder</span>
 									<span>
-										{formatMoney(
+										{displayMoney(
 											quote.fees.settleUnlockedRemainder.amount,
 											quote.fees.settleUnlockedRemainder.currency,
 										)}
@@ -161,7 +169,7 @@ export function QuotePanel({
 							<li className="reason-list__total">
 								<span>All fees</span>
 								<span>
-									{formatMoney(
+									{displayMoney(
 										quote.fees.total.amount,
 										quote.fees.total.currency,
 									)}
@@ -204,7 +212,7 @@ export function QuotePanel({
 											{alternative.route.map((leg) => leg.rail).join(" → ")}
 										</span>
 										<span>
-											{formatMoney(
+											{displayMoney(
 												alternative.totalCost.amount,
 												alternative.totalCost.currency,
 											)}{" "}
