@@ -1,6 +1,15 @@
 import { getSolAndUsdcBalances } from "@flexipay/adapter-solana/browser"
 import { useCallback, useEffect, useState } from "react"
-import { getSolanaConfig, type SolanaConfig } from "../../api/solanaClient"
+import {
+	getSolanaConfig,
+	preferredAssetFromConfig,
+	type SolanaConfig,
+} from "../../api/solanaClient"
+import {
+	assetLabel,
+	formatAssetAmount,
+	type SolanaAssetConfig,
+} from "../../solana/assets"
 import {
 	accountSupportsCluster,
 	connectSolanaWallet,
@@ -26,6 +35,11 @@ type Props = {
 	 * Human UI must leave this false so Phantom/Solflare are required.
 	 */
 	allowTestHarness?: boolean
+	/**
+	 * Settlement mint from a Solana pay intent. When omitted, prefer TGBP from
+	 * config.assets, else USDC (legacy usdcMint).
+	 */
+	settlement?: SolanaAssetConfig
 }
 
 const lamportsToSol = (lamports: bigint): string => {
@@ -37,20 +51,11 @@ const lamportsToSol = (lamports: bigint): string => {
 	return frac ? `${whole}.${frac}` : whole.toString()
 }
 
-const minorToToken = (minor: bigint, decimals: number): string => {
-	const scale = 10n ** BigInt(decimals)
-	const whole = minor / scale
-	const frac = (minor % scale)
-		.toString()
-		.padStart(decimals, "0")
-		.replace(/0+$/, "")
-	return frac ? `${whole}.${frac}` : whole.toString()
-}
-
 export function SolanaWalletPanel({
 	onConnected,
 	title = "Solana wallet",
 	allowTestHarness = false,
+	settlement,
 }: Props) {
 	const [config, setConfig] = useState<SolanaConfig | null>(null)
 	const [connected, setConnected] = useState<ConnectedSolanaWallet | null>(null)
@@ -60,6 +65,18 @@ export function SolanaWalletPanel({
 	const [networkWarning, setNetworkWarning] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
 	const [busy, setBusy] = useState(false)
+
+	const activeSettlement: SolanaAssetConfig | null = settlement
+		? settlement
+		: config
+			? preferredAssetFromConfig(config.assets, {
+					mint: config.usdcMint,
+					decimals: config.usdcDecimals,
+				})
+			: null
+	const tokenName = activeSettlement
+		? assetLabel(activeSettlement.asset)
+		: "token"
 
 	const refreshWalletList = useCallback(() => {
 		setWalletNames(
@@ -93,7 +110,11 @@ export function SolanaWalletPanel({
 	}, [])
 
 	const refreshBalances = useCallback(
-		async (session: ConnectedSolanaWallet, cfg: SolanaConfig) => {
+		async (
+			session: ConnectedSolanaWallet,
+			cfg: SolanaConfig,
+			asset: SolanaAssetConfig,
+		) => {
 			const rpc = cfg.publicRpcUrl
 			if (!rpc) {
 				setSol("—")
@@ -104,10 +125,16 @@ export function SolanaWalletPanel({
 			const bal = await getSolAndUsdcBalances(
 				connection,
 				session.address,
-				cfg.usdcMint,
+				asset.mint,
 			)
 			setSol(lamportsToSol(bal.solLamports))
-			setTokenBalance(minorToToken(bal.usdcMinor, cfg.usdcDecimals))
+			setTokenBalance(
+				formatAssetAmount(
+					asset.asset,
+					bal.usdcMinor.toString(),
+					asset.decimals,
+				),
+			)
 		},
 		[],
 	)
@@ -157,7 +184,9 @@ export function SolanaWalletPanel({
 			setConnected(session)
 			onConnected?.(session)
 			applyNetworkCheck(session, config)
-			if (config) void refreshBalances(session, config)
+			if (config && activeSettlement) {
+				void refreshBalances(session, config, activeSettlement)
+			}
 		})
 		return unsub
 		// Subscribe per wallet identity / address only — full `connected` would loop on session updates.
@@ -166,6 +195,9 @@ export function SolanaWalletPanel({
 		connected?.wallet,
 		connected?.address,
 		config,
+		activeSettlement?.mint,
+		activeSettlement?.decimals,
+		activeSettlement?.asset,
 		onConnected,
 		applyNetworkCheck,
 		refreshBalances,
@@ -181,7 +213,9 @@ export function SolanaWalletPanel({
 			setConnected(session)
 			onConnected?.(session)
 			applyNetworkCheck(session, config)
-			if (config) await refreshBalances(session, config)
+			if (config && activeSettlement) {
+				await refreshBalances(session, config, activeSettlement)
+			}
 		} catch (cause) {
 			setError(describeWalletUserError(cause))
 		} finally {
@@ -220,7 +254,7 @@ export function SolanaWalletPanel({
 				<Notice>
 					{config?.label ?? "Solana"} — Wallet Standard (Phantom / Solflare).
 					FlexiPay never stores private keys or seed phrases. Balances below are
-					for the configured Devnet test mint, not official mainnet USDC.
+					for the configured Devnet {tokenName} mint, not mainnet money.
 				</Notice>
 				{error ? (
 					<Notice tone="warning" data-testid="solana-wallet-error">
@@ -244,7 +278,7 @@ export function SolanaWalletPanel({
 						</p>
 						<StaticField label="SOL balance" value={sol} />
 						<StaticField
-							label="Devnet test-token balance (configured mint)"
+							label={`Devnet ${tokenName} balance`}
 							value={tokenBalance}
 						/>
 						<p className="form-note" data-testid="solana-usdc-balance">
@@ -263,9 +297,12 @@ export function SolanaWalletPanel({
 							<Button
 								type="button"
 								variant="secondary"
-								disabled={busy || !config}
+								disabled={busy || !config || !activeSettlement}
 								onClick={() =>
-									config && connected && void refreshBalances(connected, config)
+									config &&
+									connected &&
+									activeSettlement &&
+									void refreshBalances(connected, config, activeSettlement)
 								}
 							>
 								Refresh balances

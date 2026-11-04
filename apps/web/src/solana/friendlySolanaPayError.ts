@@ -10,7 +10,7 @@ const NO_SOL_FEES =
 	"This wallet has no devnet SOL for network fees. Request devnet SOL from a faucet, then try again."
 
 const INSUFFICIENT_USDC =
-	"This wallet does not have enough devnet USDC for this payment. Top up devnet USDC and try again."
+	"This wallet does not have enough of the required token for this payment. Top up the matching Solana test token (USDC or tGBP) and try again."
 
 const USER_REJECTED =
 	"You rejected the transaction in the wallet. Nothing was sent — you can try again."
@@ -101,7 +101,9 @@ export function friendlySolanaPayError(cause: unknown): string {
 
 	if (
 		lower.includes("insufficient usdc") ||
+		lower.includes("insufficient tgbp") ||
 		lower.includes("not enough usdc") ||
+		lower.includes("not enough tgbp") ||
 		lower.includes("insufficient token") ||
 		lower.includes("insufficient funds") ||
 		lower.includes("0x1") ||
