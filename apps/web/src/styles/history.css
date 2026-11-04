@@ -264,6 +264,16 @@
 	border: 1px solid var(--warn);
 	text-transform: uppercase;
 }
+.add-funds-option {
+	display: grid;
+	gap: 0.55rem;
+	padding-top: 0.75rem;
+	border-top: 1px solid var(--line);
+}
+.add-funds-option:first-child {
+	border-top: 0;
+	padding-top: 0;
+}
 .claim-share {
 	display: grid;
 	gap: 0.55rem;

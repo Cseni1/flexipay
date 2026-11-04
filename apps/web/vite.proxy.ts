@@ -55,6 +55,7 @@ const ROUTES: readonly RouteRule[] = [
 	protectedRule("GET", /^\/v1\/api-keys\/?$/),
 	protectedRule("POST", /^\/v1\/api-keys\/?$/),
 	protectedRule("POST", /^\/v1\/api-keys\/[^/]+\/revoke\/?$/),
+	protectedRule("POST", /^\/v1\/onramp\/orders\/?$/),
 	protectedRule("GET", /^\/v1\/corridors\/?$/),
 	protectedRule("GET", /^\/v1\/recipients\/?$/),
 	protectedRule("POST", /^\/v1\/recipients\/?$/),

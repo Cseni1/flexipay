@@ -81,6 +81,7 @@ export default function PayFrom() {
 					<SolanaWalletPanel
 						title="Connect Solana (devnet)"
 						onConnected={setConnected}
+						allowTestHarness={import.meta.env.DEV}
 					/>
 				</Panel>
 

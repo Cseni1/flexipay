@@ -326,6 +326,7 @@ describe("TASK 06 proxy: customer sessions", () => {
 		assert.equal(classifyProxyRequest("GET", "/api/auth/verify-email"), "auth")
 		assert.equal(classifyProxyRequest("GET", "/v1/me"), "protected")
 		assert.equal(classifyProxyRequest("POST", "/v1/api-keys"), "protected")
+		assert.equal(classifyProxyRequest("POST", "/v1/onramp/orders"), "protected")
 		assert.equal(
 			classifyProxyRequest("DELETE", "/api/auth/sign-in/email"),
 			null,

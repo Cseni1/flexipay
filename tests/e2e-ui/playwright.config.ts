@@ -29,6 +29,10 @@ export default defineConfig({
 			FP_API_KEY: "",
 			// Opt-in Solana Wallet Standard harness (apps/web/test-harness only; not in src/).
 			FP_SOLANA_TEST_WALLET: "1",
+			// Public staging-shaped Crossmint client key for Pay-from card UI (no real charges).
+			VITE_CROSSMINT_CLIENT_KEY: "ck_staging_e2e_dummy",
+			// Stub @crossmint/client-sdk-react-ui so e2e never hits Crossmint.
+			FP_CROSSMINT_SDK_STUB: "1",
 		},
 	},
 })
