@@ -21,11 +21,13 @@ import { solanaRoutes } from "./routes/solana.ts";
 import type { ApiRuntime } from "./runtime.ts";
 import type { AuthRuntime } from "./auth/auth.ts";
 import { createAuthRateLimiter } from "./auth/rate-limit.ts";
+import { onrampRoutes } from "./routes/onramp.ts";
 import { sessionRoutes } from "./routes/session.ts";
 
 export const ROUTES: RouteDef<any, any>[] = [
 	...coreRoutes,
 	...sessionRoutes,
+	...onrampRoutes,
 	...endpointRoutes,
 	...batchRoutes,
 	...quoteRoutes,
