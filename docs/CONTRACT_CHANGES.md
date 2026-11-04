@@ -659,3 +659,19 @@ Idempotency: same signature replay returns current paid state; a **different** s
 - **Change:** `expiresAt = max(quote.validUntil, now + 7 days)` (`CLAIM_LINK_MIN_LIFETIME_MS` in `apps/api/src/orchestrator/create.ts`). The quote still has to be valid at payment creation; only the claim deadline changed. The vault lock expiry follows the claim deadline.
 - **Not changed:** quote validity, payment creation rules, API shapes.
 - **Status:** accepted (integrator). Tests: API suite 142/142, e2e 78/78; the two expiry tests now advance past 7 days and assert the claim is still open after an hour.
+
+## CCR-26 (integrator, 4 Nov): second Solana settlement asset, tGBP (proposed)
+
+- **Problem:** Solana settlement is USDC only. `usdcMint`/`usdcDecimals` are read from one environment pair, the rail `solana_usdc` is hard-coded in `orchestrator/run.ts` and `orchestrator/solana-claim.ts`, and the domain knows no GBP asset. UK users want to pay and be paid in tGBP (Tokenised GBP, FCA-supervised, native on Solana).
+- **Change (proposed):**
+  1. A settlement-asset registry (`USDC`, `TGBP`) in `packages/adapter-solana/src/config.ts`: each asset has a mint and decimals from the environment (`FP_SOLANA_USDC_MINT`/`_DECIMALS` unchanged; new `FP_SOLANA_TGBP_MINT`/`_DECIMALS`). TGBP is absent from the registry until its mint is configured, so nothing changes by default.
+  2. A new settlement rail `solana_tgbp` in `config/providers.json`, a `GBP` to `TGBP` FX entry at 1:1 with no spread, and `TGBP` in `CURRENCY_DECIMALS`.
+  3. The orchestrator picks the Solana rail from the quote's `receiveCurrency` instead of the literal `solana_usdc`.
+  4. `GET /v1/solana/config` adds `assets: [{ asset, mint, decimals }]`. `GET /v1/payments/{id}/solana/intent` adds `asset`, `mint` and `decimals`. The existing `usdcMint` and `usdcDecimals` fields stay and, for a USDC payment, equal `mint` and `decimals`; for a TGBP payment they are omitted from use and documented as deprecated. Confirm verifies the balance delta for the payment's own mint only (already mint-scoped).
+- **Safety:** mainnet stays blocked unless `FP_SOLANA_MAINNET_APPROVED=1`, which needs Csenge's written approval. The tGBP mint address and decimals must come from the issuer before any mainnet use; on devnet we test with our own test mint that mimics it.
+- **Not changed:** USDC behaviour and amounts, claim lifetime (CCR-25), auth modes, error statuses.
+- **Direction (Csenge, 4 Nov):** pounds are the main focus from now on; USDC stays as a second asset.
+- **Facts from tokenisedgbp.com (4 Nov, issuer's own pages):** native on Solana, Ethereum, Base, Arbitrum, Polygon, BNB Chain, Gnosis Chain and Avalanche. Solana mint address listed there: `2zMqyX4AYCk6mgy5UZ2S7zUaLxwERhK5WjqDzkPPbSpW` (still verify against the issuer's contract register before any mainnet use). Decimals, fees, minimums and settlement times are not stated. The issuer is FCA-registered as a crypto asset firm; tGBP is not e-money and not FSCS-protected. Eligible businesses mint over Faster Payments or CHAPS after onboarding; institutions go through the Archax platform. Listed on Kraken, Coinbase and Bitpanda; Coins.ph and Wirex are named as remittance partners.
+- **Open questions for the issuer:** official Solana mint address, decimals, whether FLEXIWORK LTD can mint and redeem through Faster Payments, and fees.
+- **Who implements:** integrator (API, domain, adapter); Cursor follows with the web screens once the API lands.
+- **Status:** proposed.
