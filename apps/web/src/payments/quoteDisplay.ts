@@ -38,12 +38,13 @@ export const toPoundPence = (
 }
 
 /**
- * Display total for the Fees section: sum of the same line items shown above
- * (legs + FlexiPay fee), formatted like those lines when they are GBP/TGBP.
+ * Display total for the Fees section: sum of the leg fees shown above, formatted like
+ * those lines when they are GBP/TGBP. `flexiPayFee` is NOT added: it always equals the
+ * settle leg's fee (same money listed twice), and the API total counts it once.
  * Falls back to the API `fees.total` for other currencies.
  */
 export const displayFeesTotal = (fees: Quote["fees"]): string => {
-	const items = [...fees.legs.map((leg) => leg.fee), fees.flexiPayFee]
+	const items = fees.legs.map((leg) => leg.fee)
 	const pences = items.map((item) => toPoundPence(item.amount, item.currency))
 	if (pences.length > 0 && pences.every((pence) => pence !== null)) {
 		const sum = pences.reduce<bigint>((acc, pence) => acc + (pence ?? 0n), 0n)

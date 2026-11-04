@@ -14,7 +14,7 @@ describe("quote display money", () => {
 		assert.equal(displayMoney("10000000", "TGBP"), "£1.00")
 	})
 
-	test("All fees sums line items so £0.10 + £0.10 is £0.20, not a floored API total", () => {
+	test("All fees counts the settle fee once (flexiPayFee mirrors it), rounded like the line items", () => {
 		assert.equal(toPoundPence("1000000", "TGBP"), 10n)
 		assert.equal(toPoundPence("9", "GBP"), 9n)
 
@@ -32,7 +32,7 @@ describe("quote display money", () => {
 			settleUnlockedRemainder: null,
 		}
 		assert.equal(displayMoney(fees.total.amount, fees.total.currency), "£0.09")
-		assert.equal(displayFeesTotal(fees), "£0.20")
+		assert.equal(displayFeesTotal(fees), "£0.10")
 	})
 
 	test("formats unlocked remainder reasons with the asset formatter", () => {
