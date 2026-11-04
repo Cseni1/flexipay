@@ -10,6 +10,7 @@ import {
 	isTransientApiError,
 } from "../api/client"
 import { getSolanaConfig } from "../api/solanaClient"
+import { aboutDaysLeft, formatClaimValidUntil } from "../claim/expiry"
 import { ApiWakeUpNotice } from "../components/ApiWakeUpNotice"
 import { AuthBlockedNotice } from "../components/AuthBlockedNotice"
 import { EventLog } from "../components/payments/EventLog"
@@ -111,10 +112,18 @@ function ClaimLinkShare({ link }: { link: ClaimLinkHandle }) {
 							: ""}
 				</span>
 			</div>
-			<Notice>
-				This link is shown once. Copy it now: it can&apos;t be shown again once
-				you close this tab or open the payment elsewhere. It expires{" "}
-				{formatTimestamp(link.expiresAt)}.
+			<Notice data-testid="claim-link-expiry">
+				{(() => {
+					const remaining = aboutDaysLeft(link.expiresAt)
+					return (
+						<>
+							This link is shown once. Copy it now: it can&apos;t be shown again
+							once you close this tab or open the payment elsewhere. Valid until{" "}
+							{formatClaimValidUntil(link.expiresAt)}
+							{remaining ? ` · ${remaining}` : ""}.
+						</>
+					)
+				})()}
 			</Notice>
 		</div>
 	)

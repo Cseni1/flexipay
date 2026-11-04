@@ -266,10 +266,59 @@ test.describe("CF4 claim page", () => {
 		})
 		await openClaim(page)
 
-		await expect(page.getByText(/This claim link has expired/)).toBeVisible()
+		await expect(page.getByTestId("claim-expiry-expired")).toContainText(
+			/Ask the sender for a new link/i,
+		)
+		await expect(page.getByTestId("claim-closed-status")).toContainText(
+			/Ask the sender for a new link/i,
+		)
 		await expect(
 			page.getByRole("button", { name: "Accept payment" }),
 		).toHaveCount(0)
+	})
+
+	test("shows claim expiry as a date and about N days left", async ({
+		page,
+	}) => {
+		const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+		await mockClaimApi(page, {
+			claim: claimFixture({ expiresAt }),
+		})
+		await openClaim(page)
+
+		const expiry = page.getByTestId("claim-expiry-open")
+		await expect(expiry).toBeVisible()
+		await expect(expiry).toContainText(/Valid until /i)
+		await expect(expiry).toContainText(/about \d+ days? left/i)
+	})
+
+	test("No wallet yet help for Solana when nothing is connected", async ({
+		page,
+	}) => {
+		await mockClaimApi(page, {
+			claim: claimFixture({
+				allowedDestinationTypes: ["crypto_wallet", "bank_account"],
+			}),
+		})
+		await openClaim(page)
+
+		await page.getByRole("radio", { name: /Crypto wallet/ }).check()
+		await page
+			.getByTestId("claim-crypto-network")
+			.getByRole("radio", { name: /Solana USDC \(devnet test\)/ })
+			.check()
+		const help = page.getByTestId("claim-no-wallet-help")
+		await expect(help).toBeVisible()
+		await expect(help.locator("summary")).toHaveText("No wallet yet?")
+		await help.locator("summary").click()
+		await expect(
+			page.getByRole("link", { name: "Phantom" }),
+		).toHaveAttribute("href", "https://phantom.com/download")
+		await expect(
+			page.getByRole("link", { name: "Solflare" }),
+		).toHaveAttribute("href", "https://solflare.com")
+		await expect(help).toContainText(/switch the wallet to Devnet/i)
+		await expect(help).toContainText(/paste it above/i)
 	})
 
 	test("an invalid token shows the API error and no endpoint options", async ({

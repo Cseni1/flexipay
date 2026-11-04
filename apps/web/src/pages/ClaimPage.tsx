@@ -8,6 +8,12 @@ import {
 	describeClaimError,
 	getClaim,
 } from "../api/claimClient"
+import {
+	aboutDaysLeft,
+	CLAIM_EXPIRED_ASK_SENDER,
+	formatClaimValidUntil,
+} from "../claim/expiry"
+import { NoWalletYetHelp } from "../components/claim/NoWalletYetHelp"
 import { SolanaWalletPanel } from "../components/solana/SolanaWalletPanel"
 import {
 	Button,
@@ -133,12 +139,6 @@ const formatAmount = (
 	}
 }
 
-const formatTimestamp = (iso: string): string =>
-	new Intl.DateTimeFormat(undefined, {
-		dateStyle: "medium",
-		timeStyle: "short",
-	}).format(new Date(iso))
-
 const claimStatusTone = (status: ClaimView["status"]): string => {
 	if (status === "accepted") return "success"
 	if (status === "expired") return "danger"
@@ -164,7 +164,7 @@ const paymentStatusLabel = (status: string): string =>
 
 const closedClaimMessage = (claim: ClaimView): string => {
 	if (claim.status === "expired") {
-		return "This claim link has expired. No release was made by this page."
+		return CLAIM_EXPIRED_ASK_SENDER
 	}
 	if (claim.paymentStatus === "paid") {
 		if (claim.releaseEvidence?.network === "solana") {
@@ -224,6 +224,8 @@ export default function ClaimPage() {
 	const [accepting, setAccepting] = useState(false)
 	const [acceptError, setAcceptError] = useState<string | null>(null)
 	const [expired, setExpired] = useState(false)
+	const [solanaConnected, setSolanaConnected] =
+		useState<ConnectedSolanaWallet | null>(null)
 	const acceptLock = useRef(false)
 	const acceptAbort = useRef<AbortController | null>(null)
 	const idempotencyKey = useRef<string | null>(null)
@@ -478,15 +480,29 @@ export default function ClaimPage() {
 								</span>
 							</div>
 
-							<div className="claim-meta">
+							<div className="claim-meta" data-testid="claim-expiry">
 								<p>
 									{claim.corridor.from.country} → {claim.corridor.to.country} ·{" "}
 									{claim.corridor.to.currency}
 								</p>
-								<p>
-									The claim link is valid until{" "}
-									{formatTimestamp(claim.expiresAt)}.
-								</p>
+								{(() => {
+									const until = formatClaimValidUntil(claim.expiresAt)
+									const remaining = aboutDaysLeft(claim.expiresAt)
+									if (claim.status === "expired" || expired) {
+										return (
+											<p data-testid="claim-expiry-expired">
+												Expired (was valid until {until}). Ask the sender for a
+												new link.
+											</p>
+										)
+									}
+									return (
+										<p data-testid="claim-expiry-open">
+											Valid until {until}
+											{remaining ? ` · ${remaining}` : ""}.
+										</p>
+									)
+								})()}
 							</div>
 
 							{claim.status === "open" ? (
@@ -543,6 +559,7 @@ export default function ClaimPage() {
 															onChange={() => {
 																setCryptoNetwork("solana")
 																setDetail("")
+																setSolanaConnected(null)
 																idempotencyKey.current = null
 															}}
 														/>
@@ -565,6 +582,7 @@ export default function ClaimPage() {
 															onChange={() => {
 																setCryptoNetwork("stellar")
 																setDetail("")
+																setSolanaConnected(null)
 																idempotencyKey.current = null
 															}}
 														/>
@@ -591,6 +609,7 @@ export default function ClaimPage() {
 														onConnected={(
 															session: ConnectedSolanaWallet | null,
 														) => {
+															setSolanaConnected(session)
 															if (!session) return
 															updateDetail(session.address)
 														}}
@@ -616,12 +635,16 @@ export default function ClaimPage() {
 														: "Only the claimed endpoint type is sent. Simulated fiat is not LIVE."
 												}
 											/>
+											{selectedType === "crypto_wallet" &&
+											cryptoNetwork === "solana" &&
+											!solanaConnected ? (
+												<NoWalletYetHelp />
+											) : null}
 										</div>
 									) : null}
 									{expired ? (
-										<Notice tone="warning">
-											This claim link has expired. No release was made by this
-											page.
+										<Notice tone="warning" data-testid="claim-expired-notice">
+											{CLAIM_EXPIRED_ASK_SENDER}
 										</Notice>
 									) : null}
 									{!paymentAcceptable ? (

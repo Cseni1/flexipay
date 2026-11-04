@@ -337,15 +337,30 @@ test.describe("CF1 payments", () => {
 		const detail = paymentDetailFixture("processing")
 		const settle = detail.legs.find((leg) => leg.kind === "settle")
 		if (!settle) throw new Error("settle fixture missing")
+		// Live Solana settle: not simulated. Collect / convert / fiat payout stay simulated.
+		settle.rail = "solana_usdc"
+		settle.providerId = "solana_usdc"
 		settle.simulated = false
 		await mockApi(page, { detail })
 		await page.goto("/payments/pay_1")
 
-		await expect(page.getByText("Simulated").first()).toBeVisible()
-		const settleItem = page
-			.locator(".timeline__item")
-			.filter({ hasText: "Settle" })
-		await expect(settleItem.getByText("Simulated")).toHaveCount(0)
+		const collect = page.getByTestId("payment-leg-collect")
+		const convert = page.getByTestId("payment-leg-convert").first()
+		const payout = page.getByTestId("payment-leg-payout")
+		const settleItem = page.getByTestId("payment-leg-settle")
+
+		await expect(collect).toHaveAttribute("data-leg-simulated", "true")
+		await expect(collect.getByText("Simulated", { exact: true })).toBeVisible()
+		await expect(convert).toHaveAttribute("data-leg-simulated", "true")
+		await expect(convert.getByText("Simulated", { exact: true })).toBeVisible()
+		await expect(payout).toHaveAttribute("data-leg-simulated", "true")
+		await expect(payout.getByText("Simulated", { exact: true })).toBeVisible()
+
+		await expect(settleItem).toHaveAttribute("data-leg-simulated", "false")
+		await expect(settleItem.getByText("Simulated", { exact: true })).toHaveCount(
+			0,
+		)
+		await expect(settleItem.getByText("solana_usdc")).toBeVisible()
 	})
 
 	test("a failed leg shows its error and retry event", async ({ page }) => {
