@@ -48,6 +48,10 @@ const COUNTRY_LABELS: Record<string, string> = {
 	GB: "United Kingdom",
 }
 
+/** Display name for a destination country code (falls back to the code). */
+export const countryLabel = (country: string): string =>
+	COUNTRY_LABELS[country] ?? country
+
 const SETTLE_RAIL_ASSET: Readonly<Record<string, string>> = {
 	solana_tgbp: "TGBP",
 	solana_usdc: "USDC",
@@ -128,7 +132,7 @@ export const countriesFromCorridors = (
 		seen.add(corridor.toCountry)
 		countries.push({
 			value: corridor.toCountry,
-			label: COUNTRY_LABELS[corridor.toCountry] ?? corridor.toCountry,
+			label: countryLabel(corridor.toCountry),
 		})
 	}
 	return countries

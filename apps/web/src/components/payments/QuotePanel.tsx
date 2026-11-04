@@ -1,6 +1,9 @@
-import { formatMoney } from "@flexipay/web-lib"
 import { type Delivery, type Quote } from "@flexipay/web-lib/contract"
-import { formatAssetAmount } from "../../solana/assets"
+import {
+	displayFeesTotal,
+	displayMoney,
+	formatQuoteReason,
+} from "../../payments/quoteDisplay"
 import {
 	Button,
 	EmptyState,
@@ -9,13 +12,6 @@ import {
 	SimulatedLabel,
 	StaticField,
 } from "../ui"
-
-/** Fee/send preview: GBP and TGBP use the CCR-26 £ helper; other codes stay on formatMoney. */
-const displayMoney = (amount: string, currency: string): string => {
-	if (currency === "GBP") return formatAssetAmount("TGBP", amount, 2)
-	if (currency === "TGBP") return formatAssetAmount("TGBP", amount, 7)
-	return formatMoney(amount, currency)
-}
 
 interface QuotePanelProps {
 	quote: Quote | null
@@ -168,12 +164,7 @@ export function QuotePanel({
 							) : null}
 							<li className="reason-list__total">
 								<span>All fees</span>
-								<span>
-									{displayMoney(
-										quote.fees.total.amount,
-										quote.fees.total.currency,
-									)}
-								</span>
+								<span>{displayFeesTotal(quote.fees)}</span>
 							</li>
 						</ul>
 					</section>
@@ -187,7 +178,7 @@ export function QuotePanel({
 						) : (
 							<ul className="reason-list reason-list--text">
 								{quote.reasons.map((reason) => (
-									<li key={reason}>{reason}</li>
+									<li key={reason}>{formatQuoteReason(reason)}</li>
 								))}
 							</ul>
 						)}
@@ -220,7 +211,9 @@ export function QuotePanel({
 										</span>
 										{alternative.reasons.length > 0 ? (
 											<span className="reason-list__detail">
-												{alternative.reasons.join(" ")}
+												{alternative.reasons
+													.map((reason) => formatQuoteReason(reason))
+													.join(" ")}
 											</span>
 										) : null}
 									</li>
