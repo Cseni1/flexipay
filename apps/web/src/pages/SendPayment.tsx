@@ -26,8 +26,10 @@ import {
 	countriesFromCorridors,
 	destinationsForCountry,
 	regulationNoteFor,
+	sourceForCountry,
 	type CorridorSummary,
 	type DestinationOption,
+	type SourceEndpoint,
 } from "../api/corridors"
 import { AuthBlockedNotice } from "../components/AuthBlockedNotice"
 import { QuotePanel } from "../components/payments/QuotePanel"
@@ -44,13 +46,14 @@ import {
 	TextField,
 } from "../components/ui"
 import { useCountdown } from "../hooks/useCountdown"
+import { assetLabel } from "../solana/assets"
 
 type DestinationType = Extract<
 	EndpointType,
 	"bank_account" | "ewallet" | "crypto_wallet"
 >
 
-type FallbackCountry = "US" | "PH" | "BR" | "ZA"
+type FallbackCountry = "US" | "PH" | "BR" | "ZA" | "GB"
 
 /** Static MVP choices used when GET /v1/corridors is unavailable (fixture / offline UX). */
 const FALLBACK_COUNTRIES: { value: FallbackCountry | ""; label: string }[] = [
@@ -59,6 +62,7 @@ const FALLBACK_COUNTRIES: { value: FallbackCountry | ""; label: string }[] = [
 	{ value: "PH", label: "Philippines" },
 	{ value: "BR", label: "Brazil" },
 	{ value: "ZA", label: "South Africa" },
+	{ value: "GB", label: "United Kingdom" },
 ]
 
 const FALLBACK_DESTINATIONS: Record<FallbackCountry, DestinationOption[]> = {
@@ -73,10 +77,75 @@ const FALLBACK_DESTINATIONS: Record<FallbackCountry, DestinationOption[]> = {
 		{ value: "crypto_wallet", label: "Crypto wallet", currency: "USDC" },
 	],
 	ZA: [{ value: "bank_account", label: "Bank account", currency: "ZAR" }],
+	GB: [
+		{
+			value: "crypto_wallet",
+			label: `Crypto wallet (${assetLabel("TGBP")})`,
+			currency: "TGBP",
+		},
+	],
+}
+
+const FALLBACK_SOURCES: Record<FallbackCountry, SourceEndpoint> = {
+	US: { type: "bank_account", currency: "USD", country: "US" },
+	PH: { type: "bank_account", currency: "USD", country: "US" },
+	BR: { type: "bank_account", currency: "USD", country: "US" },
+	ZA: { type: "bank_account", currency: "USD", country: "US" },
+	GB: { type: "bank_account", currency: "GBP", country: "GB" },
+}
+
+const DEFAULT_SOURCE: SourceEndpoint = {
+	type: "bank_account",
+	currency: "USD",
+	country: "US",
 }
 
 const isFallbackCountry = (country: string): country is FallbackCountry =>
 	Object.prototype.hasOwnProperty.call(FALLBACK_DESTINATIONS, country)
+
+const sourceForForm = (
+	corridors: CorridorSummary[] | null,
+	country: string,
+): SourceEndpoint => {
+	if (corridors && country) {
+		const fromApi = sourceForCountry(corridors, country)
+		if (fromApi) return fromApi
+	}
+	if (isFallbackCountry(country)) return FALLBACK_SOURCES[country]
+	return DEFAULT_SOURCE
+}
+
+const sourceFieldCopy = (
+	source: SourceEndpoint,
+): { value: string; hint: string } => {
+	if (source.currency === "GBP" && source.country === "GB") {
+		return {
+			value: "GBP bank account",
+			hint: "United Kingdom · GBP.",
+		}
+	}
+	return {
+		value: "USD operating account",
+		hint: "US bank account · USD.",
+	}
+}
+
+const amountFieldCopy = (
+	sourceCurrency: string,
+): { label: string; placeholder: string; hint: string } => {
+	if (sourceCurrency === "GBP") {
+		return {
+			label: "Amount (£)",
+			placeholder: "10.00",
+			hint: "Pounds with at most two decimals; the API receives integer minor units.",
+		}
+	}
+	return {
+		label: "Amount (USD)",
+		placeholder: "1250.00",
+		hint: "Major units with at most two decimals; the API receives integer minor units.",
+	}
+}
 
 const RECIPIENT_KINDS: { value: RecipientKind; label: string }[] = [
 	{ value: "individual", label: "Individual" },
@@ -141,6 +210,7 @@ const toCorridorSummaries = (
 		recipientKinds: row.recipientKinds,
 		regulationNote: row.regulationNote,
 		simulated: row.simulated,
+		...(row.settleRails ? { settleRails: row.settleRails } : {}),
 	}))
 
 export default function SendPayment() {
@@ -234,6 +304,13 @@ export default function SendPayment() {
 		return regulationNoteFor(corridors, form.country)
 	}, [corridors, form.country])
 
+	const source = useMemo(
+		() => sourceForForm(corridors, form.country),
+		[corridors, form.country],
+	)
+	const sourceCopy = sourceFieldCopy(source)
+	const amountCopy = amountFieldCopy(source.currency)
+
 	const update = (patch: Partial<FormState>) => {
 		setForm((current) => ({ ...current, ...patch }))
 		setQuote(null)
@@ -285,7 +362,11 @@ export default function SendPayment() {
 
 		const amount = parseUsdInput(form.amount)
 		if (amount === null || BigInt(amount) <= 0n) {
-			setFormError("Enter a positive USD amount with at most two decimals.")
+			setFormError(
+				source.currency === "GBP"
+					? "Enter a positive £ amount with at most two decimals."
+					: "Enter a positive USD amount with at most two decimals.",
+			)
 			return
 		}
 		if (!form.recipientName.trim()) {
@@ -316,14 +397,17 @@ export default function SendPayment() {
 		setCreateError(null)
 
 		const request: CreateQuoteRequest = {
-			source: { type: "bank_account", currency: "USD", country: "US" },
+			source,
 			destination: {
 				type: destination.value,
 				currency: destination.currency,
 				country: form.country,
 				recipientKind: form.recipientKind,
 			},
-			amount: { side: "send", value: { amount, currency: "USD" } },
+			amount: {
+				side: "send",
+				value: { amount, currency: source.currency },
+			},
 			policy: "cheapest",
 			feeMode: form.feeMode,
 		}
@@ -447,14 +531,14 @@ export default function SendPayment() {
 			<Grid>
 				<Panel
 					title="Payment details"
-					description="Source is the USD operating account. Countries and destinations prefer GET /v1/corridors when available."
+					description="Source follows the selected corridor. Countries and destinations prefer GET /v1/corridors when available."
 				>
 					<form onSubmit={handleQuote}>
 						<div className="form-grid">
 							<StaticField
 								label="Source"
-								value="USD operating account"
-								hint="US bank account · USD."
+								value={sourceCopy.value}
+								hint={sourceCopy.hint}
 							/>
 							<SelectField
 								id="saved-recipient"
@@ -529,11 +613,11 @@ export default function SendPayment() {
 							/>
 							<TextField
 								id="amount"
-								label="Amount (USD)"
-								placeholder="1250.00"
+								label={amountCopy.label}
+								placeholder={amountCopy.placeholder}
 								inputMode="decimal"
 								value={form.amount}
-								hint="Major units with at most two decimals; the API receives integer minor units."
+								hint={amountCopy.hint}
 								onChange={(event) => update({ amount: event.target.value })}
 							/>
 							<TextField
