@@ -105,7 +105,8 @@ export const signOut = () => post("/api/auth/sign-out", {})
 export const requestPasswordReset = (email: string) =>
 	post("/api/auth/request-password-reset", {
 		email,
-		redirectTo: `${window.location.origin}/reset-password`,
+		// Same-origin relative path (matches other auth callbacks; avoids DOM `window` in tests).
+		redirectTo: "/reset-password",
 	})
 
 export const resetPassword = (input: { token: string; newPassword: string }) =>
@@ -116,3 +117,10 @@ export const resendVerification = (email: string) =>
 		email,
 		callbackURL: "/login?verified=1",
 	})
+
+/** Better Auth: change password for the signed-in customer (min 10 characters). */
+export const changePassword = (input: {
+	currentPassword: string
+	newPassword: string
+	revokeOtherSessions?: boolean
+}) => post("/api/auth/change-password", input)

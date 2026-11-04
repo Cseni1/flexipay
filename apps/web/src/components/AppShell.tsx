@@ -46,6 +46,10 @@ export function AppShell() {
 						<span className="nav-link__dot" aria-hidden="true" />
 						Developers
 					</NavLink>
+					<NavLink to="/account" className="nav-link">
+						<span className="nav-link__dot" aria-hidden="true" />
+						Account
+					</NavLink>
 				</nav>
 
 				{state.status === "unconfigured" ? (
