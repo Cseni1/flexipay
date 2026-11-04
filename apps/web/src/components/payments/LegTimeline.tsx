@@ -1,12 +1,6 @@
 import { formatMoney } from "@flexipay/web-lib"
 import { type Leg } from "@flexipay/web-lib/contract"
-import {
-	Notice,
-	SimulatedLabel,
-	StatusBadge,
-	Timeline,
-	TimelineItem,
-} from "../ui"
+import { Notice, SimulatedLabel, StatusBadge, Timeline } from "../ui"
 
 const KIND_LABELS: Record<Leg["kind"], string> = {
 	collect: "Collect",
@@ -15,6 +9,10 @@ const KIND_LABELS: Record<Leg["kind"], string> = {
 	payout: "Payout",
 }
 
+/**
+ * Payment-detail journey. Simulated collect / convert / fiat payout legs always
+ * carry SimulatedLabel; a live Solana settle leg (simulated=false) must not.
+ */
 export function LegTimeline({ legs }: { legs: Leg[] }) {
 	if (legs.length === 0) {
 		return (
@@ -30,12 +28,23 @@ export function LegTimeline({ legs }: { legs: Leg[] }) {
 	return (
 		<Timeline>
 			{legs.map((leg) => (
-				<TimelineItem
+				<li
 					key={leg.id}
-					title={KIND_LABELS[leg.kind]}
-					status={<StatusBadge status={leg.status} />}
-					meta={
-						<>
+					className="timeline__item"
+					data-testid={`payment-leg-${leg.kind}`}
+					data-leg-kind={leg.kind}
+					data-leg-simulated={leg.simulated ? "true" : "false"}
+				>
+					<span className="timeline__marker" aria-hidden="true" />
+					<div className="timeline__body">
+						<div className="timeline__heading">
+							<strong className="timeline__title">
+								{KIND_LABELS[leg.kind]}
+							</strong>
+							<StatusBadge status={leg.status} />
+							{leg.simulated ? <SimulatedLabel /> : null}
+						</div>
+						<p className="timeline__meta">
 							<code className="code-text">{leg.rail}</code>
 							{leg.rail !== leg.providerId ? (
 								<>
@@ -43,51 +52,49 @@ export function LegTimeline({ legs }: { legs: Leg[] }) {
 									{leg.providerId}
 								</>
 							) : null}
-						</>
-					}
-				>
-					<p className="timeline__amounts">
-						<span>
-							{formatMoney(leg.amountIn.amount, leg.amountIn.currency)}
-						</span>
-						<span className="timeline__arrow" aria-hidden="true">
-							→
-						</span>
-						<span>
-							{formatMoney(leg.amountOut.amount, leg.amountOut.currency)}
-						</span>
-					</p>
-					{leg.attempt > 1 ? (
-						<p className="timeline__note">Attempt {leg.attempt}</p>
-					) : null}
-					{leg.reversalOf ? (
-						<p className="timeline__note">
-							Reversal of <code className="code-text">{leg.reversalOf}</code>
 						</p>
-					) : null}
-					{leg.externalRef ? (
-						<p className="timeline__reference">
-							{leg.kind === "settle" ? "Payout id" : "Reference"}{" "}
-							<code className="code-text">{leg.externalRef}</code>
+						<p className="timeline__amounts">
+							<span>
+								{formatMoney(leg.amountIn.amount, leg.amountIn.currency)}
+							</span>
+							<span className="timeline__arrow" aria-hidden="true">
+								→
+							</span>
+							<span>
+								{formatMoney(leg.amountOut.amount, leg.amountOut.currency)}
+							</span>
 						</p>
-					) : null}
-					{leg.lockTxRef ? (
-						<p className="timeline__reference">
-							Lock tx <code className="code-text">{leg.lockTxRef}</code>
-						</p>
-					) : null}
-					{leg.releaseTxRef ? (
-						<p className="timeline__reference">
-							Release tx <code className="code-text">{leg.releaseTxRef}</code>
-						</p>
-					) : null}
-					{leg.error ? (
-						<Notice tone="warning">
-							{leg.error.code}: {leg.error.message}
-						</Notice>
-					) : null}
-					{leg.simulated ? <SimulatedLabel /> : null}
-				</TimelineItem>
+						{leg.attempt > 1 ? (
+							<p className="timeline__note">Attempt {leg.attempt}</p>
+						) : null}
+						{leg.reversalOf ? (
+							<p className="timeline__note">
+								Reversal of <code className="code-text">{leg.reversalOf}</code>
+							</p>
+						) : null}
+						{leg.externalRef ? (
+							<p className="timeline__reference">
+								{leg.kind === "settle" ? "Payout id" : "Reference"}{" "}
+								<code className="code-text">{leg.externalRef}</code>
+							</p>
+						) : null}
+						{leg.lockTxRef ? (
+							<p className="timeline__reference">
+								Lock tx <code className="code-text">{leg.lockTxRef}</code>
+							</p>
+						) : null}
+						{leg.releaseTxRef ? (
+							<p className="timeline__reference">
+								Release tx <code className="code-text">{leg.releaseTxRef}</code>
+							</p>
+						) : null}
+						{leg.error ? (
+							<Notice tone="warning">
+								{leg.error.code}: {leg.error.message}
+							</Notice>
+						) : null}
+					</div>
+				</li>
 			))}
 		</Timeline>
 	)

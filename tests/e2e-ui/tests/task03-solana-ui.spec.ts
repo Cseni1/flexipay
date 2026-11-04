@@ -29,12 +29,13 @@ test.describe("TASK 03 Solana UI wiring", () => {
 
 		await page.goto("/claim/demo_token_task03")
 		await page.getByRole("radio", { name: /Crypto wallet/i }).check()
-		await expect(page.getByTestId("claim-crypto-network")).toBeVisible()
-		await page
+		const network = page.getByTestId("claim-crypto-network")
+		await expect(network).toBeVisible()
+		await network
 			.getByRole("radio", { name: /Solana USDC \(devnet test\)/i })
 			.check()
 		await expect(
-			page.getByRole("radio", { name: /Solana USDC \(devnet test\)/i }),
+			network.getByRole("radio", { name: /Solana USDC \(devnet test\)/i }),
 		).toBeChecked()
 		await expect(
 			page.getByText(/not labelled LIVE without a verified provider/i),
