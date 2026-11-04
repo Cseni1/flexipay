@@ -3,6 +3,8 @@
 Ready-to-send messages for the payment and stablecoin partners we are evaluating.
 Record only the figures each provider confirms, with the source and date.
 
+Before sending any message, add your name, job title and a reply email address under the sign-off, so the provider knows who to answer.
+
 ## Message drafts
 
 ### Crossmint

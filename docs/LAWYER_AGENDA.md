@@ -14,3 +14,4 @@ Prepared for the legal consultation. Answers to be filled in by the lawyer.
 | 8 | Company details | Our registered business activities are software development and employment agency activities. Do we need to add or change a business activity code before applying to payment or crypto providers? | |
 | 9 | Terms and disclosures | What terms of use, risk warnings and disclosures should the app show before launching to real UK users? | |
 | 10 | Next steps and cost | What do you recommend we do first, and what would it cost? | |
+| 11 | GBP stablecoin (tGBP) | We settle UK payments in tGBP, issued by an FCA-registered crypto asset firm that is not e-money. Does our use of it, and a UK-to-Philippines payout through a local partner, raise any registration or promotion issues for us? | |
