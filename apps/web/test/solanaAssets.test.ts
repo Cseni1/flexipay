@@ -17,6 +17,8 @@ describe("formatAssetAmount", () => {
 	it("formats TGBP as GBP with 2 decimals", () => {
 		// 12.50 GBP at 6 mint decimals
 		expect(formatAssetAmount("TGBP", "12500000", 6)).toBe("£12.50")
+		// Half-up: 0.095 at 3dp → £0.10 (not floored to £0.09)
+		expect(formatAssetAmount("TGBP", "95", 3)).toBe("£0.10")
 	})
 
 	it("formats USDC as a plain major amount", () => {

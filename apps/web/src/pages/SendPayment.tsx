@@ -24,6 +24,7 @@ import {
 } from "../api/client"
 import {
 	countriesFromCorridors,
+	countryLabel,
 	destinationsForCountry,
 	regulationNoteFor,
 	sourceForCountry,
@@ -115,19 +116,11 @@ const sourceForForm = (
 	return DEFAULT_SOURCE
 }
 
-const sourceFieldCopy = (
-	source: SourceEndpoint,
-): { value: string; hint: string } => {
+const sourceFieldCopy = (source: SourceEndpoint): { value: string } => {
 	if (source.currency === "GBP" && source.country === "GB") {
-		return {
-			value: "GBP bank account",
-			hint: "United Kingdom · GBP.",
-		}
+		return { value: "GBP bank account" }
 	}
-	return {
-		value: "USD operating account",
-		hint: "US bank account · USD.",
-	}
+	return { value: "USD operating account" }
 }
 
 const amountFieldCopy = (
@@ -228,6 +221,9 @@ export default function SendPayment() {
 	const [createError, setCreateError] = useState<string | null>(null)
 	const [authBlocked, setAuthBlocked] = useState(false)
 	const [delivery, setDelivery] = useState<Delivery>("direct")
+	const [recipientCountryNote, setRecipientCountryNote] = useState<
+		string | null
+	>(null)
 	const quoteLock = useRef(false)
 	const createLock = useRef(false)
 	const quoteRequest = useRef(0)
@@ -320,6 +316,7 @@ export default function SendPayment() {
 	}
 
 	const changeCountry = (country: string) => {
+		setRecipientCountryNote(null)
 		if (country === "") {
 			update({ country, destinationType: "", existingRecipientId: "" })
 			return
@@ -334,14 +331,17 @@ export default function SendPayment() {
 
 	const applySavedRecipient = (recipientId: string) => {
 		if (recipientId === "") {
+			setRecipientCountryNote(null)
 			update({ existingRecipientId: "" })
 			return
 		}
 		const saved = recipients.find((entry) => entry.id === recipientId)
 		if (!saved) {
+			setRecipientCountryNote(null)
 			update({ existingRecipientId: "" })
 			return
 		}
+		const previousCountry = form.country
 		const options = destinationsForForm(corridors, saved.country)
 		update({
 			existingRecipientId: saved.id,
@@ -350,6 +350,11 @@ export default function SendPayment() {
 			country: saved.country,
 			destinationType: options[0]?.value ?? "",
 		})
+		setRecipientCountryNote(
+			previousCountry !== "" && previousCountry !== saved.country
+				? `Country changed to ${countryLabel(saved.country)} to match this recipient`
+				: null,
+		)
 	}
 
 	const destination = destinationOptions.find(
@@ -538,7 +543,7 @@ export default function SendPayment() {
 							<StaticField
 								label="Source"
 								value={sourceCopy.value}
-								hint={sourceCopy.hint}
+								hint="Set by destination country"
 							/>
 							<SelectField
 								id="saved-recipient"
@@ -627,13 +632,19 @@ export default function SendPayment() {
 								hint="Paying someone new? Type their name here: they are added when you create the payment."
 								autoComplete="off"
 								value={form.recipientName}
-								onChange={(event) =>
+								onChange={(event) => {
+									setRecipientCountryNote(null)
 									update({
 										recipientName: event.target.value,
 										existingRecipientId: "",
 									})
-								}
+								}}
 							/>
+							{recipientCountryNote ? (
+								<p className="form-note" data-testid="recipient-country-note">
+									{recipientCountryNote}
+								</p>
+							) : null}
 						</div>
 
 						{formError ? <Notice tone="warning">{formError}</Notice> : null}
