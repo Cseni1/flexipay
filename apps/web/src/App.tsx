@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom"
 import { AppShell } from "./components/AppShell"
+import Account from "./pages/Account"
 import {
 	ForgotPasswordPage,
 	LoginPage,
@@ -38,6 +39,7 @@ function App() {
 				<Route path="pay-from" element={<PayFrom />} />
 				<Route path="wallet" element={<FlexiPayWallet />} />
 				<Route path="developers" element={<Developers />} />
+				<Route path="account" element={<Account />} />
 				<Route path="payments/:paymentId" element={<PaymentDetail />} />
 			</Route>
 			<Route path="claim/:claimToken" element={<ClaimPage />} />

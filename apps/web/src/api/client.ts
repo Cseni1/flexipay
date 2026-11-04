@@ -508,3 +508,87 @@ export const fundPayment = (
 		idempotencyKey,
 		signal,
 	})
+
+/** Session-only API key row (secret never returned after create). */
+export interface ApiKeyRow {
+	id: string
+	prefix: string
+	label: string | null
+	createdAt: string
+	revokedAt: string | null
+}
+
+export type CreatedApiKey = ApiKeyRow & { key: string }
+
+const parseApiKeyRow = (item: unknown): ApiKeyRow => {
+	if (
+		!isRecord(item) ||
+		typeof item.id !== "string" ||
+		typeof item.prefix !== "string" ||
+		!(typeof item.label === "string" || item.label === null) ||
+		typeof item.createdAt !== "string" ||
+		!(typeof item.revokedAt === "string" || item.revokedAt === null)
+	) {
+		throw new Error("api key row invalid")
+	}
+	return {
+		id: item.id,
+		prefix: item.prefix,
+		label: item.label,
+		createdAt: item.createdAt,
+		revokedAt: item.revokedAt,
+	}
+}
+
+const apiKeyListSchema: Parser<{ keys: ApiKeyRow[] }> = {
+	parse: (value) => {
+		if (!isRecord(value) || !Array.isArray(value.keys)) {
+			throw new Error("api keys missing")
+		}
+		return { keys: value.keys.map(parseApiKeyRow) }
+	},
+}
+
+const createdApiKeySchema: Parser<CreatedApiKey> = {
+	parse: (value) => {
+		const row = parseApiKeyRow(value)
+		if (!isRecord(value) || typeof value.key !== "string" || !value.key) {
+			throw new Error("created api key missing secret")
+		}
+		return { ...row, key: value.key }
+	},
+}
+
+const apiKeyRowSchema: Parser<ApiKeyRow> = {
+	parse: parseApiKeyRow,
+}
+
+/** Session cookie required — Bearer keys cannot list or mint org keys. */
+export const listApiKeys = (
+	signal?: AbortSignal,
+): Promise<{ keys: ApiKeyRow[] }> =>
+	request("/v1/api-keys", { schema: apiKeyListSchema, signal })
+
+export const createApiKey = (
+	input: { label?: string } = {},
+	signal?: AbortSignal,
+): Promise<CreatedApiKey> =>
+	request("/v1/api-keys", {
+		method: "POST",
+		body: input.label?.trim() ? { label: input.label.trim() } : {},
+		schema: createdApiKeySchema,
+		idempotencyKey: newIdempotencyKey("api-key"),
+		signal,
+	})
+
+export const revokeApiKey = (
+	id: string,
+	signal?: AbortSignal,
+): Promise<ApiKeyRow> =>
+	request(`/v1/api-keys/${encodeURIComponent(id)}/revoke`, {
+		method: "POST",
+		body: {},
+		schema: apiKeyRowSchema,
+		idempotencyKey: newIdempotencyKey("api-key-revoke"),
+		signal,
+	})

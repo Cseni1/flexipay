@@ -77,6 +77,7 @@ test.describe("CF14 dashboard and history", () => {
 			"Pay from",
 			"Connected wallet",
 			"Developers",
+			"Account",
 		]) {
 			await expect(nav.getByRole("link", { name })).toBeVisible()
 		}
