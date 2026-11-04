@@ -217,6 +217,70 @@
       "limits": null,
       "simulated": true,
       "placeholder": true
+    },
+    {
+      "id": "sim_bank_gb_fps",
+      "kind": "bank",
+      "countries": [
+        "GB"
+      ],
+      "currencies": [
+        "GBP"
+      ],
+      "endpointTypes": [
+        "bank_account"
+      ],
+      "legKinds": [
+        "collect"
+      ],
+      "fee": {
+        "fixed": {
+          "amount": "0",
+          "currency": "GBP"
+        },
+        "bps": 0
+      },
+      "fxSpreadBps": 0,
+      "estimatedTimeSeconds": 60,
+      "limits": {
+        "min": {
+          "amount": "100",
+          "currency": "GBP"
+        },
+        "max": {
+          "amount": "100000000000",
+          "currency": "GBP"
+        }
+      },
+      "simulated": true,
+      "placeholder": true
+    },
+    {
+      "id": "sim_fx_gbp_tgbp",
+      "kind": "fx",
+      "countries": [
+        "GB"
+      ],
+      "currencies": [
+        "GBP",
+        "TGBP"
+      ],
+      "endpointTypes": [],
+      "legKinds": [
+        "convert"
+      ],
+      "fee": {
+        "fixed": {
+          "amount": "0",
+          "currency": "GBP"
+        },
+        "bps": 0
+      },
+      "fxSpreadBps": 0,
+      "estimatedTimeSeconds": 5,
+      "limits": null,
+      "simulated": true,
+      "placeholder": true
     }
   ],
   "settlementRails": [
@@ -230,6 +294,12 @@
       "id": "solana_usdc",
       "network": "solana",
       "asset": "USDC",
+      "simulated": false
+    },
+    {
+      "id": "solana_tgbp",
+      "network": "solana",
+      "asset": "TGBP",
       "simulated": false
     }
   ],
@@ -286,6 +356,18 @@
       "from": "ZAR",
       "to": "USD",
       "rate": "0.0555555",
+      "placeholder": true
+    },
+    {
+      "from": "GBP",
+      "to": "TGBP",
+      "rate": "1.0000000",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "GBP",
+      "rate": "1.0000000",
       "placeholder": true
     }
   ]

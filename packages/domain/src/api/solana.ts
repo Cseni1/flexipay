@@ -8,9 +8,24 @@ import { IsoTimestamp } from "./common.ts";
 /** Base58 Solana signature or address (opaque string; adapter validates). */
 const SolanaBase58Schema = z.string().min(32).max(88);
 
+/** CCR-26: settlement assets verifiable on Solana. TGBP appears only once its mint is configured. */
+export const SolanaAssetSchema = z.enum(["USDC", "TGBP"]);
+
+export const SolanaAssetConfigSchema = z
+	.object({
+		asset: SolanaAssetSchema,
+		mint: SolanaBase58Schema,
+		decimals: z.number().int().nonnegative(),
+	})
+	.strict();
+
+export type SolanaAssetConfigResponse = z.infer<typeof SolanaAssetConfigSchema>;
+
 export const SolanaConfigResponseSchema = z
 	.object({
 		cluster: z.enum(["devnet", "testnet", "mainnet-beta"]),
+		/** CCR-26: every configured settlement asset (USDC always; TGBP when configured). */
+		assets: z.array(SolanaAssetConfigSchema).min(1),
 		/** Always labelled as test mint on non-mainnet. */
 		usdcMint: SolanaBase58Schema,
 		usdcDecimals: z.number().int().nonnegative(),
@@ -30,9 +45,14 @@ export const SolanaTransferIntentSchema = z
 	.object({
 		paymentId: z.string().min(1),
 		cluster: z.enum(["devnet", "testnet", "mainnet-beta"]),
+		/** CCR-26: the settlement asset of this payment and its mint (equal to usdcMint/usdcDecimals below). */
+		asset: SolanaAssetSchema,
+		mint: SolanaBase58Schema,
+		decimals: z.number().int().nonnegative(),
+		/** Deprecated alias of mint/decimals, kept so existing clients keep working (also set for TGBP). */
 		usdcMint: SolanaBase58Schema,
 		usdcDecimals: z.number().int().nonnegative(),
-		/** Minor units as integer string (USDC decimals). */
+		/** Minor units as integer string (the asset's mint decimals). */
 		amount: z.string().regex(/^\d+$/),
 		recipient: SolanaBase58Schema,
 		/** Solana Pay reference pubkey the transfer must include (Lane B / F4). */

@@ -152,8 +152,13 @@ describe("CCR-24 Solana claim + confirm", () => {
 
 			const configRes = await fetch(`${api.base}/v1/solana/config`);
 			assert.equal(configRes.status, 200);
-			const config = (await configRes.json()) as { publicRpcUrl: string | null };
+			const config = (await configRes.json()) as {
+				publicRpcUrl: string | null;
+				assets: { asset: string; mint: string; decimals: number }[];
+			};
 			assert.equal(config.publicRpcUrl, null);
+			// CCR-26: USDC behaviour unchanged; TGBP absent unless FP_SOLANA_TGBP_MINT is set.
+			assert.deepEqual(config.assets, [{ asset: "USDC", mint, decimals: 7 }]);
 
 			const intentRes = await fetch(
 				`${api.base}/v1/payments/${payment.id}/solana/intent`,
@@ -162,11 +167,17 @@ describe("CCR-24 Solana claim + confirm", () => {
 			const intentText = await intentRes.text();
 			assert.equal(intentRes.status, 200, intentText);
 			const intent = JSON.parse(intentText) as {
+				asset: string;
+				mint: string;
+				usdcMint: string;
 				recipient: string;
 				reference: string;
 				intentIssuedAt: string;
 			};
 			assert.equal(intent.recipient, recipient);
+			assert.equal(intent.asset, "USDC");
+			assert.equal(intent.mint, mint);
+			assert.equal(intent.usdcMint, mint);
 			assert.ok(intent.reference.length >= 32);
 			assert.ok(Date.parse(intent.intentIssuedAt) > 0);
 

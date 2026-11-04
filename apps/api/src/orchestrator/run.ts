@@ -4,6 +4,7 @@ import {
 	FundDepositVerifyError,
 	decideOnFailure,
 	isPaid,
+	isSolanaSettleRail,
 	nextLegIndex,
 	type FeeMode,
 	type LegKind,
@@ -247,8 +248,8 @@ async function runPendingLegs(
 				processing?.kind === "settle" &&
 				rt.claimWaitSettle &&
 				(processing.externalRef ||
-					// Lane B / F9: solana_usdc waits for verified transfer (no vault lock).
-					processing.rail === "solana_usdc" ||
+					// Lane B / F9: solana_usdc / solana_tgbp wait for verified transfer (no vault lock).
+					isSolanaSettleRail(processing.rail) ||
 					processing.fundNetwork === "solana")
 			) {
 				return;
@@ -822,9 +823,9 @@ async function executeSettle(
 	const payment = rt.payment;
 	const feeMode = rt.feeMode as FeeMode;
 
-	// Lane B / F9: solana_usdc never funds or locks a Stellar/mock vault.
+	// Lane B / F9: solana_usdc / solana_tgbp never fund or locks a Stellar/mock vault.
 	// Settle stays processing until POST /v1/payments/{id}/solana/confirm.
-	if (leg.rail === "solana_usdc") {
+	if (isSolanaSettleRail(leg.rail)) {
 		if (leg.releaseTxRef) {
 			await transitionLeg(db, payment.id, leg.id, "processing", "succeeded", "replay");
 			await emitPaymentEvent(db, payment.organizationId, payment.id, "leg.succeeded", {

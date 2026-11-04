@@ -201,6 +201,15 @@ export const claimRoutes: RouteDef<any, any>[] = [
 					);
 				}
 
+				// CCR-26: a tGBP payment settles on Solana only, in tGBP.
+				const quotedAsset = link.payment.quote.receiveCurrency;
+				if (quotedAsset === "TGBP" && (ep.network !== "solana" || ep.currency !== "TGBP")) {
+					throw new ApiError(
+						422,
+						"endpoint_mismatch",
+						"this payment settles in TGBP on Solana; choose a Solana wallet with currency TGBP",
+					);
+				}
 				// CCR-24: Solana destination — accept claim only; sender pays on-chain next.
 				if (ep.network === "solana") {
 					if (!isSolanaAddress(address)) {

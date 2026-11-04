@@ -17,8 +17,12 @@ export function routeTemplate(
 	const hasSettle = corridor.legsAvailable.settle.length > 0;
 
 	if (domestic) {
-		// US→US: collect → payout on the domestic rail; no crypto route.
-		if (isCryptoEndpoint(destinationType)) return null;
+		if (isCryptoEndpoint(destinationType)) {
+			// CCR-26: a domestic corridor with a settle rail (GB → tGBP) is collect → convert → settle.
+			// US→US has no settle rail, so it still has no crypto route.
+			return hasSettle ? ["collect", "convert", "settle"] : null;
+		}
+		// US→US: collect → payout on the domestic rail.
 		return ["collect", "payout"];
 	}
 

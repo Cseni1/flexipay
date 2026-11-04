@@ -107,6 +107,33 @@
 			"regulationNote": "Bank rails only. Draft cross-border crypto rules of 3 Aug 2026 would stop companies sending or receiving crypto across the border; on 21 Oct 2026 the finance minister said they will be rewritten, with no timeline. Demo policy, not legal advice.",
 			"simulated": true,
 			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "GB", "currency": "GBP" },
+			"allowedDestinationTypes": ["crypto_wallet"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp"],
+				"settle": ["solana_tgbp"],
+				"payout": []
+			},
+			"domesticRail": null,
+			"regulationNote": "UK GBP to tGBP (Tokenised GBP) on Solana. Crypto-wallet destination only; no fiat payout. Simulated collect and 1:1 conversion; settlement is verified on-chain.",
+			"simulated": true,
+			"placeholder": true
 		}
 	]
 }

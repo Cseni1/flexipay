@@ -1,20 +1,23 @@
 import { describe, expect, it } from "vitest"
 import { adapterOf, config, fresh, row } from "./helpers.ts"
 
+// Six baseline providers plus the two CCR-26 GBP providers (collect + 1:1 GBP/tGBP convert).
 const SF1_PROVIDERS = [
 	"sim_bank_br_pix",
+	"sim_bank_gb_fps",
 	"sim_bank_ph_instapay",
 	"sim_bank_us_ach",
 	"sim_bank_za_eft",
 	"sim_ewallet_ph",
 	"sim_fx",
+	"sim_fx_gbp_tgbp",
 ]
 
-describe("the six simulated providers", () => {
-	it("builds exactly the six baseline providers from config", () => {
+describe("the simulated providers", () => {
+	it("builds exactly the configured providers", () => {
 		const sim = fresh()
 		expect([...sim.providers.keys()].sort()).toEqual(SF1_PROVIDERS)
-		expect(sim.providers.size).toBe(6)
+		expect(sim.providers.size).toBe(8)
 	})
 
 	it("reports the config's capabilities, unchanged", () => {

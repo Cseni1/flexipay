@@ -129,7 +129,9 @@ function crossRules(config: FlexiPayConfig): ConfigIssue[] {
 
     // domestic rail exactly when the countries match
     const domestic = c.from.country === c.to.country;
-    if (domestic && !c.domesticRail) flag("domesticRail", "domestic corridor needs a domesticRail");
+    // CCR-26: a crypto-only domestic corridor (GB collect -> tGBP settle) has no domestic payout rail.
+    const cryptoOnly = c.allowedDestinationTypes.length > 0 && c.allowedDestinationTypes.every(isCryptoEndpoint);
+    if (domestic && !c.domesticRail && !cryptoOnly) flag("domesticRail", "domestic corridor needs a domesticRail");
     if (!domestic && c.domesticRail) flag("domesticRail", "domesticRail is only for same-country corridors");
     if (c.domesticRail) {
       if (!c.legsAvailable.collect.includes(c.domesticRail) || !c.legsAvailable.payout.includes(c.domesticRail)) {
@@ -147,9 +149,11 @@ function crossRules(config: FlexiPayConfig): ConfigIssue[] {
       }
     }
     for (const [from, to] of needed) {
+      if (from === to) continue;
       if (!rates.has(`${from}>${to}`)) flag("legsAvailable.convert", `missing fx rate ${from} > ${to}`);
     }
-    if (c.from.currency === c.to.currency && c.legsAvailable.convert.length > 0) {
+    const settleAssetForSame = config.settlementRails.find((r) => c.legsAvailable.settle.includes(r.id))?.asset;
+    if (c.from.currency === c.to.currency && c.legsAvailable.convert.length > 0 && !settleAssetForSame) {
       flag("legsAvailable.convert", "same currency needs no conversion");
     }
 

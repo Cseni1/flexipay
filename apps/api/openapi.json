@@ -7010,7 +7010,7 @@
     },
     "/v1/solana/config": {
       "get": {
-        "summary": "Public Solana cluster/mint labels (devnet test USDC)",
+        "summary": "Public Solana cluster, settlement assets and mint labels (devnet test USDC / tGBP)",
         "security": [],
         "responses": {
           "200": {
@@ -7028,6 +7028,38 @@
                         "testnet",
                         "mainnet-beta"
                       ]
+                    },
+                    "assets": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "asset": {
+                            "type": "string",
+                            "enum": [
+                              "USDC",
+                              "TGBP"
+                            ]
+                          },
+                          "mint": {
+                            "type": "string",
+                            "minLength": 32,
+                            "maxLength": 88
+                          },
+                          "decimals": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "asset",
+                          "mint",
+                          "decimals"
+                        ],
+                        "additionalProperties": false
+                      }
                     },
                     "usdcMint": {
                       "type": "string",
@@ -7061,6 +7093,7 @@
                   },
                   "required": [
                     "cluster",
+                    "assets",
                     "usdcMint",
                     "usdcDecimals",
                     "explorerTxUrlTemplate",
@@ -7100,7 +7133,7 @@
     },
     "/v1/payments/{id}/solana/intent": {
       "get": {
-        "summary": "Expected Solana USDC transfer for a claim-accepted payment",
+        "summary": "Expected Solana transfer (USDC or tGBP) for a claim-accepted payment",
         "security": [
           {
             "bearerAuth": []
@@ -7139,6 +7172,23 @@
                         "testnet",
                         "mainnet-beta"
                       ]
+                    },
+                    "asset": {
+                      "type": "string",
+                      "enum": [
+                        "USDC",
+                        "TGBP"
+                      ]
+                    },
+                    "mint": {
+                      "type": "string",
+                      "minLength": 32,
+                      "maxLength": 88
+                    },
+                    "decimals": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     },
                     "usdcMint": {
                       "type": "string",
@@ -7181,6 +7231,9 @@
                   "required": [
                     "paymentId",
                     "cluster",
+                    "asset",
+                    "mint",
+                    "decimals",
                     "usdcMint",
                     "usdcDecimals",
                     "amount",
@@ -7246,7 +7299,7 @@
     },
     "/v1/payments/{id}/solana/confirm": {
       "post": {
-        "summary": "Verify on-chain Solana USDC transfer then mark payment paid",
+        "summary": "Verify on-chain Solana transfer (USDC or tGBP) then mark payment paid",
         "security": [
           {
             "bearerAuth": []
