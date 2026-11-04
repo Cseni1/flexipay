@@ -1,5 +1,6 @@
 export * from "./enums.ts";
 export * from "./money.ts";
+export * from "./solana-assets.ts";
 export * from "./adapters.ts";
 export * from "./config/schemas.ts";
 export { corridorId, loadConfig, validateConfig } from "./config/load.ts";

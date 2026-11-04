@@ -6,6 +6,10 @@ import {
 	SolanaTransferIntentSchema,
 } from "@flexipay/domain";
 import {
+	solanaAssetConfig,
+	type SolanaAssetConfig,
+} from "@flexipay/adapter-solana";
+import {
 	AmountNotRepresentableError,
 	AMOUNT_NOT_REPRESENTABLE_CODE,
 	flexipayUsdcToSolanaMinor,
@@ -13,7 +17,23 @@ import {
 } from "@flexipay/adapter-solana";
 import { ApiError } from "../errors.ts";
 
-/** Map FlexiPay USDC → Solana mint minor units; unrepresentable amounts are 422, never 500. */
+/** CCR-26: the configured Solana asset for a quote's receive currency, or a 422. */
+function assetForQuote(
+	cfg: { assets: SolanaAssetConfig[] },
+	receiveCurrency: string,
+): SolanaAssetConfig {
+	const asset = solanaAssetConfig(cfg, receiveCurrency);
+	if (!asset) {
+		throw new ApiError(
+			422,
+			"unsupported_asset",
+			`${receiveCurrency} is not a configured Solana settlement asset`,
+		);
+	}
+	return asset;
+}
+
+/** Map FlexiPay asset (USDC/TGBP, same 7-decimal convention) → Solana mint minor units; unrepresentable amounts are 422, never 500. */
 function solanaTransferAmountMinor(
 	flexipayMinor: bigint,
 	usdcDecimals: number,
@@ -24,14 +44,14 @@ function solanaTransferAmountMinor(
 		if (
 			cause instanceof AmountNotRepresentableError ||
 			(cause instanceof Error &&
-				/not representable at the Solana USDC mint/i.test(cause.message))
+				/not representable at the Solana .* mint/i.test(cause.message))
 		) {
 			throw new ApiError(
 				422,
 				AMOUNT_NOT_REPRESENTABLE_CODE,
 				cause instanceof Error
 					? cause.message
-					: "payment amount is not representable at the Solana USDC mint decimals",
+					: "payment amount is not representable at the Solana mint decimals",
 			);
 		}
 		throw cause;
@@ -98,13 +118,14 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 	defineRoute({
 		method: "get",
 		path: "/v1/solana/config",
-		summary: "Public Solana cluster/mint labels (devnet test USDC)",
+		summary: "Public Solana cluster, settlement assets and mint labels (devnet test USDC / tGBP)",
 		auth: "none",
 		success: { status: 200, schema: SolanaConfigResponseSchema },
 		handler: async () => {
 			const cfg = getSolanaRuntimeConfig();
 			return {
 				cluster: cfg.cluster,
+				assets: cfg.assets,
 				usdcMint: cfg.usdcMint,
 				usdcDecimals: cfg.usdcDecimals,
 				explorerTxUrlTemplate: cfg.explorerTxUrlTemplate,
@@ -117,7 +138,7 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 	defineRoute({
 		method: "get",
 		path: "/v1/payments/{id}/solana/intent",
-		summary: "Expected Solana USDC transfer for a claim-accepted payment",
+		summary: "Expected Solana transfer (USDC or tGBP) for a claim-accepted payment",
 		auth: "customer",
 		success: { status: 200, schema: SolanaTransferIntentSchema },
 		handler: async (ctx, { params }) => {
@@ -160,20 +181,25 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 			}
 			const intentAt = await ensureSolanaIntentIssuedAt(ctx.db, payment.id);
 			const cfg = getSolanaRuntimeConfig();
+			const asset = assetForQuote(cfg, payment.quote.receiveCurrency);
 			const amount = solanaTransferAmountMinor(
 				BigInt(payment.quote.expectedReceive),
-				cfg.usdcDecimals,
+				asset.decimals,
 			).toString();
 			return {
 				paymentId: payment.id,
 				cluster: cfg.cluster,
-				usdcMint: cfg.usdcMint,
-				usdcDecimals: cfg.usdcDecimals,
+				asset: asset.asset,
+				mint: asset.mint,
+				decimals: asset.decimals,
+				// Deprecated aliases (CCR-26): equal mint/decimals, also for TGBP.
+				usdcMint: asset.mint,
+				usdcDecimals: asset.decimals,
 				amount,
 				recipient: destination.address,
 				reference: destination.reference,
 				intentIssuedAt: intentAt.toISOString(),
-				label: cfg.label,
+				label: asset.asset === "USDC" ? cfg.label : cfg.label.replace("USDC", asset.asset),
 				explorerTxUrlTemplate: cfg.explorerTxUrlTemplate,
 			};
 		},
@@ -181,7 +207,7 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 	defineRoute({
 		method: "post",
 		path: "/v1/payments/{id}/solana/confirm",
-		summary: "Verify on-chain Solana USDC transfer then mark payment paid",
+		summary: "Verify on-chain Solana transfer (USDC or tGBP) then mark payment paid",
 		auth: "customer",
 		body: SolanaConfirmRequestSchema,
 		success: { status: 200, schema: SolanaConfirmResponseSchema },
@@ -251,19 +277,20 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 			}
 
 			const cfg = getSolanaRuntimeConfig();
+			const asset = assetForQuote(cfg, payment.quote.receiveCurrency);
 			const amountMinor = solanaTransferAmountMinor(
 				BigInt(payment.quote.expectedReceive),
-				cfg.usdcDecimals,
+				asset.decimals,
 			);
 			const intentAt =
 				destination.intentAt ??
 				(await ensureSolanaIntentIssuedAt(ctx.db, payment.id));
 			const verified = await verifyPaymentTransfer({
 				signature: body.signature,
-				mint: cfg.usdcMint,
+				mint: asset.mint,
 				recipientOwner: destination.address,
 				amountMinor,
-				usdcDecimals: cfg.usdcDecimals,
+				usdcDecimals: asset.decimals,
 				reference: destination.reference,
 				notBeforeUnix: Math.floor(intentAt.getTime() / 1000),
 			});

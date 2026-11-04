@@ -1046,3 +1046,70 @@ describe("domain package boundaries", () => {
 		}
 	});
 });
+
+describe("CCR-26: GBP to tGBP corridor (solana_tgbp)", () => {
+	const gbReq = (value: string, feeMode: FeeMode): CreateQuoteRequest => ({
+		source: { type: "bank_account", currency: "GBP", country: "GB" },
+		destination: {
+			type: "crypto_wallet",
+			currency: "TGBP",
+			country: "",
+			recipientKind: "individual",
+		},
+		amount: { side: "send", value: money(value, "GBP") },
+		policy: "cheapest",
+		feeMode,
+	});
+
+	it("routes collect -> convert -> settle on solana_tgbp with expectedReceive in TGBP", async () => {
+		const result = await buildQuote(gbReq("10000", "RecipientPays"), deps());
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		const { quote } = result;
+		expect(quote.route.map((l) => l.kind)).toEqual(["collect", "convert", "settle"]);
+		expect(quote.route.find((l) => l.kind === "settle")!.rail).toBe("solana_tgbp");
+		expect(quote.expectedReceive.currency).toBe("TGBP");
+		// No FX spread: GBP>TGBP is 1.0000000 and the convert provider has 0 bps spread and fee.
+		const convert = quote.route.find((l) => l.kind === "convert")!;
+		expect(quote.fees.legs.find((l) => l.kind === "convert")!.fee.amount).toBe("0");
+		expect(convert.amountOut.amount).toBe(
+			convertMoney(money("10000", "GBP"), "1.0000000", "TGBP").amount,
+		);
+		// GBP has 2 decimals, TGBP 7: £100.00 -> 100.0000000 before the 1% vault fee.
+		const gross = convertMoney(money("10000", "GBP"), "1.0000000", "TGBP");
+		expect(gross.amount).toBe("1000000000");
+	});
+
+	it("floors the TGBP settle amount to the 6-decimal mint step in both fee modes", async () => {
+		for (const mode of ["PayerPays", "RecipientPays"] as const) {
+			const result = await buildQuote(gbReq("10001", mode), deps());
+			expect(result.ok).toBe(true);
+			if (!result.ok) return;
+			expect(result.quote.expectedReceive.currency).toBe("TGBP");
+			expect(BigInt(result.quote.expectedReceive.amount) % 10n).toBe(0n);
+		}
+	});
+
+	it("keeps GB crypto-only: bank_account destinations and US->crypto are unchanged", async () => {
+		const gb = config.corridors.find((c) => c.from.country === "GB")!;
+		expect(routeTemplate(gb, "crypto_wallet")).toEqual(["collect", "convert", "settle"]);
+		expect(routeTemplate(gb, "bank_account")).toEqual(["collect", "payout"]);
+		const bank = checkEligibility(
+			{ ...gbReq("10000", "RecipientPays"), destination: { type: "bank_account", currency: "GBP", country: "GB", recipientKind: "individual" } },
+			config,
+		);
+		expect(bank.ok).toBe(false);
+		const us = config.corridors.find((c) => c.to.country === "US")!;
+		expect(routeTemplate(us, "crypto_wallet")).toBeNull();
+	});
+
+	it("floorMinorForSolanaMint handles USDC and TGBP the same way", async () => {
+		const { floorMinorForSolanaMint, isSolanaSettleRail, solanaRailForAsset } = await import("../src/index.ts");
+		expect(floorMinorForSolanaMint(9851485n, "TGBP").toString()).toBe("9851480");
+		expect(floorMinorForSolanaMint(9851485n, "USDC").toString()).toBe("9851480");
+		expect(solanaRailForAsset("TGBP")).toBe("solana_tgbp");
+		expect(solanaRailForAsset("PHP")).toBeUndefined();
+		expect(isSolanaSettleRail("solana_usdc") && isSolanaSettleRail("solana_tgbp")).toBe(true);
+		expect(isSolanaSettleRail("stellar_usdc")).toBe(false);
+	});
+});

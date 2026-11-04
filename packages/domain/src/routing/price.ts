@@ -1,11 +1,12 @@
 import type { EndpointType, FeeMode, LegKind } from "../enums.ts";
 import { isCryptoEndpoint } from "../enums.ts";
+import { isSolanaSettleRail } from "../solana-assets.ts";
 import {
 	CURRENCY_DECIMALS,
 	addMoney,
 	applyBps,
 	convertMoney,
-	floorUsdcMinorForSolanaMint,
+	floorMinorForSolanaMint,
 	money,
 	subtractMoney,
 	toMinor,
@@ -79,7 +80,7 @@ function shouldFloorSettleForSolanaMint(
 	railId: string,
 	destinationType: EndpointType,
 ): boolean {
-	return railId === "solana_usdc" || isCryptoEndpoint(destinationType);
+	return isSolanaSettleRail(railId) || isCryptoEndpoint(destinationType);
 }
 
 function rateLookup(
@@ -291,7 +292,8 @@ function priceSettle(
 	  }
 	| { ok: false; error: string } {
 	const applySolanaFloor =
-		floorForSolanaMint && available.currency === "USDC";
+		floorForSolanaMint &&
+		(available.currency === "USDC" || available.currency === "TGBP");
 
 	if (feeMode === "RecipientPays") {
 		let fee: Money;
@@ -314,19 +316,19 @@ function priceSettle(
 		let remainderNote: string | undefined;
 		// Floor net out to Solana mint step; dust stays unlocked.
 		if (applySolanaFloor) {
-			const floored = floorUsdcMinorForSolanaMint(toMinor(amountOut));
+			const floored = floorMinorForSolanaMint(toMinor(amountOut), amountOut.currency);
 			if (floored !== toMinor(amountOut)) {
 				if (floored <= 0n) {
 					return {
 						ok: false,
 						error:
-							"Solana USDC settle net floors to zero at mint decimals",
+							`Solana ${amountOut.currency} settle net floors to zero at mint decimals`,
 					};
 				}
 				const dust = toMinor(amountOut) - floored;
 				amountOut = money(floored, available.currency);
 				unlockedRemainder = money(dust, available.currency);
-				remainderNote = `RecipientPays Solana USDC mint floor discarded ${dust} minor units (unlocked; not a fee)`;
+				remainderNote = `RecipientPays Solana ${amountOut.currency} mint floor discarded ${dust} minor units (unlocked; not a fee)`;
 			}
 		}
 		return {
@@ -366,13 +368,13 @@ function priceSettle(
 	// Rule: P' = floor(P / 10) * 10; recompute f(P'); remainder absorbs the dust.
 	// Examples: 9851485 → 9851480; 9950000 unchanged.
 	if (applySolanaFloor) {
-		const floored = floorUsdcMinorForSolanaMint(toMinor(principal));
+		const floored = floorMinorForSolanaMint(toMinor(principal), principal.currency);
 		if (floored !== toMinor(principal)) {
 			if (floored <= 0n) {
 				return {
 					ok: false,
 					error:
-						"Solana USDC settle principal floors to zero at mint decimals",
+						`Solana ${principal.currency} settle principal floors to zero at mint decimals`,
 				};
 			}
 			principal = money(floored, available.currency);
@@ -381,7 +383,7 @@ function priceSettle(
 			if (rem < 0n) {
 				return {
 					ok: false,
-					error: "Solana USDC settle floor broke P+f(P) ≤ A",
+					error: `Solana ${principal.currency} settle floor broke P+f(P) ≤ A`,
 				};
 			}
 			remainder = money(rem, available.currency);

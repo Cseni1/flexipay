@@ -1,6 +1,8 @@
 import { Keypair } from "@solana/web3.js";
 import {
 	isPaid,
+	isSolanaSettleRail,
+	solanaRailForAsset,
 	type LegKind,
 	type LegStatus,
 	type PaymentStatus,
@@ -15,10 +17,10 @@ import {
 } from "./persist.ts";
 
 /**
- * CCR-24 + Lane B: accept a Solana USDC destination without vault release.
+ * CCR-24 + Lane B: accept a Solana destination (USDC or, CCR-26, TGBP) without vault release.
  * Binds the accepted endpoint id and a Solana Pay reference on the claim (F4/F5).
  * If the settle leg still holds a Stellar/mock vault lock, refund it and switch
- * the settle rail to `solana_usdc` so funds are not double-locked (F9).
+ * the settle rail to the payment's Solana rail (`solana_usdc` or `solana_tgbp`) so funds are not double-locked (F9).
  */
 export async function acceptSolanaClaimDestination(
 	db: Db,
@@ -31,8 +33,10 @@ export async function acceptSolanaClaimDestination(
 ): Promise<{ status: PaymentStatus; endpointId: string; reference: string }> {
 	const payment = await db.payment.findUniqueOrThrow({
 		where: { id: paymentId },
-		include: { claimLink: true, legs: true },
+		include: { claimLink: true, legs: true, quote: true },
 	});
+	// CCR-26: the payment keeps its own asset; TGBP payments never switch to solana_usdc.
+	const solanaRail = solanaRailForAsset(payment.quote.receiveCurrency) ?? "solana_usdc";
 	if (!payment.claimLink || payment.claimLink.status !== "open") {
 		throw new Error("claim is not open");
 	}
@@ -65,8 +69,8 @@ export async function acceptSolanaClaimDestination(
 		await db.leg.update({
 			where: { id: settle.id },
 			data: {
-				rail: "solana_usdc",
-				providerId: "solana_usdc",
+				rail: solanaRail,
+				providerId: solanaRail,
 				externalRef: null,
 				lockTxRef: null,
 				fundTxRef: null,
@@ -79,15 +83,15 @@ export async function acceptSolanaClaimDestination(
 		});
 		await emitPaymentEvent(db, payment.organizationId, paymentId, "payment.onchain", {
 			phase: "solana_settle_rail",
-			detail: "vault_lock_refunded_for_solana_usdc",
+			detail: `vault_lock_refunded_for_${solanaRail}`,
 			legId: settle.id,
 		});
-	} else if (settle.rail !== "solana_usdc") {
+	} else if (settle.rail !== solanaRail) {
 		await db.leg.update({
 			where: { id: settle.id },
 			data: {
-				rail: "solana_usdc",
-				providerId: "solana_usdc",
+				rail: solanaRail,
+				providerId: solanaRail,
 				fundNetwork: "solana",
 			},
 		});
@@ -194,10 +198,15 @@ export async function completeSolanaTransferSettle(
 ): Promise<{ status: PaymentStatus }> {
 	const payment = await db.payment.findUniqueOrThrow({
 		where: { id: paymentId },
-		include: { legs: { orderBy: { position: "asc" } }, claimLink: true },
+		include: {
+			legs: { orderBy: { position: "asc" } },
+			claimLink: true,
+			quote: true,
+		},
 	});
 	const settle = payment.legs.find((l) => l.kind === "settle");
 	if (!settle) throw new Error("settle leg missing");
+	const solanaRail = solanaRailForAsset(payment.quote.receiveCurrency) ?? "solana_usdc";
 
 	if (settle.releaseTxRef) {
 		if (settle.releaseTxRef !== opts.signature) {
@@ -231,9 +240,10 @@ export async function completeSolanaTransferSettle(
 			data: {
 				releaseTxRef: opts.signature,
 				fundNetwork: "solana",
-				rail: settle.rail === "solana_usdc" ? settle.rail : "solana_usdc",
-				providerId:
-					settle.providerId === "solana_usdc" ? settle.providerId : "solana_usdc",
+				rail: isSolanaSettleRail(settle.rail) ? settle.rail : solanaRail,
+				providerId: isSolanaSettleRail(settle.providerId)
+					? settle.providerId
+					: solanaRail,
 			},
 		});
 	} catch (cause) {

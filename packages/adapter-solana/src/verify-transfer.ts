@@ -74,7 +74,7 @@ type TokenBalance = {
 };
 
 /**
- * Independently verifies a confirmed SPL USDC transfer to `recipientOwner`.
+ * Independently verifies a confirmed SPL transfer (USDC or TGBP, by the mint passed in) to `recipientOwner`.
  * Verification is mint-scoped balance delta only (Lane B / F3) — no instruction
  * fallback that could treat a mint-less SPL `transfer` as the expected mint.
  */
@@ -202,7 +202,7 @@ export function evaluateParsedTransfer(
 		return {
 			ok: false,
 			reason: "wrong_mint",
-			message: "Recipient gained a non-USDC token; expected configured mint only",
+			message: "Recipient gained a different token; expected the configured mint only",
 		};
 	}
 
@@ -211,13 +211,13 @@ export function evaluateParsedTransfer(
 		return {
 			ok: false,
 			reason: "wrong_recipient",
-			message: "USDC mint moved but not to the expected recipient owner",
+			message: "Configured mint moved but not to the expected recipient owner",
 		};
 	}
 	return {
 		ok: false,
 		reason: "no_token_transfer",
-		message: "No matching SPL USDC transfer found in the transaction",
+		message: "No matching SPL transfer of the configured mint found in the transaction",
 	};
 }
 

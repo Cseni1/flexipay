@@ -55,7 +55,10 @@ export const CURRENCY_DECIMALS: Readonly<Record<string, number>> = {
   PHP: 2,
   BRL: 2,
   ZAR: 2,
+  GBP: 2,
   USDC: 7,
+  /** tGBP (Tokenised GBP, CCR-26): same convention as USDC, 7 domain decimals floored to the mint's. */
+  TGBP: 7,
 };
 
 /**
@@ -72,12 +75,26 @@ export const SOLANA_USDC_MINT_DECIMALS = 6;
  * (which may pay on Solana after claim accept). Not applied to fiat bank settles.
  */
 export function floorUsdcMinorForSolanaMint(flexipayMinor: bigint): bigint {
-  const domain = CURRENCY_DECIMALS.USDC;
-  if (domain === undefined) throw new Error("USDC decimals missing");
-  if (SOLANA_USDC_MINT_DECIMALS > domain) {
-    throw new Error("Solana USDC mint decimals exceed FlexiPay USDC decimals");
+  return floorMinorForSolanaMint(flexipayMinor, "USDC", SOLANA_USDC_MINT_DECIMALS);
+}
+
+/**
+ * CCR-26: floor FlexiPay minor units of a Solana settlement asset (USDC or TGBP) down to
+ * a multiple of `10^(domainDecimals - mintDecimals)`. `mintDecimals` defaults to 6 (the
+ * USDC mint; tGBP's real decimals are unconfirmed with the issuer, so confirm still
+ * rejects amounts the configured mint cannot represent).
+ */
+export function floorMinorForSolanaMint(
+  flexipayMinor: bigint,
+  asset: string,
+  mintDecimals: number = SOLANA_USDC_MINT_DECIMALS,
+): bigint {
+  const domain = CURRENCY_DECIMALS[asset];
+  if (domain === undefined) throw new Error(`${asset} decimals missing`);
+  if (mintDecimals > domain) {
+    throw new Error(`Solana ${asset} mint decimals exceed FlexiPay ${asset} decimals`);
   }
-  const step = 10n ** BigInt(domain - SOLANA_USDC_MINT_DECIMALS);
+  const step = 10n ** BigInt(domain - mintDecimals);
   return flexipayMinor - (flexipayMinor % step);
 }
 

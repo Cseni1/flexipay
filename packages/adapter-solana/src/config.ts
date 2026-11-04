@@ -6,7 +6,25 @@ export const DEFAULT_DEVNET_USDC_MINT =
 
 export const DEFAULT_USDC_DECIMALS = 6;
 
+/** Settlement assets FlexiPay can verify on Solana (CCR-26). */
+export type SolanaSettlementAsset = "USDC" | "TGBP";
+
+/**
+ * Default decimals for the tGBP SPL mint when FP_SOLANA_TGBP_DECIMALS is unset.
+ * UNCONFIRMED with the issuer (Tokenised GBP): the website does not state them.
+ * Confirm with the issuer before any mainnet use; never rely on this default there.
+ */
+export const DEFAULT_TGBP_DECIMALS = 6;
+
+export interface SolanaAssetConfig {
+	asset: SolanaSettlementAsset;
+	mint: string;
+	decimals: number;
+}
+
 export interface SolanaRuntimeConfig {
+	/** Settlement assets registry: USDC always; TGBP only when FP_SOLANA_TGBP_MINT is set. */
+	assets: SolanaAssetConfig[];
 	cluster: SolanaCluster;
 	rpcUrl: string;
 	usdcMint: string;
@@ -57,6 +75,18 @@ export function loadSolanaRuntimeConfig(
 	if (!Number.isInteger(usdcDecimals) || usdcDecimals < 0 || usdcDecimals > 9) {
 		throw new Error("FP_SOLANA_USDC_DECIMALS must be an integer 0–9");
 	}
+	const assets: SolanaAssetConfig[] = [
+		{ asset: "USDC", mint: usdcMint, decimals: usdcDecimals },
+	];
+	const tgbpMint = env.FP_SOLANA_TGBP_MINT?.trim();
+	if (tgbpMint) {
+		const tgbpRaw = env.FP_SOLANA_TGBP_DECIMALS?.trim();
+		const tgbpDecimals = tgbpRaw ? Number(tgbpRaw) : DEFAULT_TGBP_DECIMALS;
+		if (!Number.isInteger(tgbpDecimals) || tgbpDecimals < 0 || tgbpDecimals > 9) {
+			throw new Error("FP_SOLANA_TGBP_DECIMALS must be an integer 0–9");
+		}
+		assets.push({ asset: "TGBP", mint: tgbpMint, decimals: tgbpDecimals });
+	}
 	const explorerTxUrlTemplate =
 		env.FP_SOLANA_EXPLORER_TX_URL?.trim() ||
 		`https://explorer.solana.com/tx/{signature}?cluster=${cluster}`;
@@ -66,6 +96,7 @@ export function loadSolanaRuntimeConfig(
 			: `Solana ${cluster} USDC (test — not mainnet)`;
 	const publicRpcUrl = env.FP_SOLANA_PUBLIC_RPC_URL?.trim() || undefined;
 	return {
+		assets,
 		cluster,
 		rpcUrl,
 		usdcMint,
@@ -81,4 +112,12 @@ export function explorerUrlForSignature(
 	signature: string,
 ): string {
 	return template.replaceAll("{signature}", signature);
+}
+
+/** The configured settlement asset for a FlexiPay currency code, or undefined when unsupported/unconfigured. */
+export function solanaAssetConfig(
+	cfg: Pick<SolanaRuntimeConfig, "assets">,
+	currency: string,
+): SolanaAssetConfig | undefined {
+	return cfg.assets.find((a) => a.asset === currency);
 }
