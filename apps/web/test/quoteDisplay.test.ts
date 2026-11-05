@@ -10,8 +10,16 @@ import {
 describe("quote display money", () => {
 	test("formats GBP and TGBP as pounds", () => {
 		assert.equal(displayMoney("10", "GBP"), "£0.10")
+		assert.equal(displayMoney("1000", "GBP"), "£10.00")
 		assert.equal(displayMoney("1000000", "TGBP"), "£0.10")
 		assert.equal(displayMoney("10000000", "TGBP"), "£1.00")
+		// Live claim-shaped receive: 99_009_900 at 7dp → £9.90
+		assert.equal(displayMoney("99009900", "TGBP"), "£9.90")
+	})
+
+	test("leaves USD and USDC on the web-lib formatter", () => {
+		assert.equal(displayMoney("125000", "USD"), "1,250.00 USD")
+		assert.match(displayMoney("250000000", "USDC"), /USDC/)
 	})
 
 	test("All fees counts the settle fee once (flexiPayFee mirrors it), rounded like the line items", () => {

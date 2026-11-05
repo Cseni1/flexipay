@@ -10,13 +10,18 @@ const QUOTE_DECIMALS: Readonly<Record<string, number>> = {
 }
 
 /**
- * Fee/send preview: GBP and TGBP use the CCR-26 £ helper; other codes stay on formatMoney.
+ * Shared apps/web money formatter (packages/web-lib formatMoney has no GBP/TGBP).
+ * GBP (2dp) and TGBP (7dp domain) → £ via formatAssetAmount; other codes unchanged.
  */
 export const displayMoney = (amount: string, currency: string): string => {
 	if (currency === "GBP") return formatAssetAmount("TGBP", amount, 2)
 	if (currency === "TGBP") return formatAssetAmount("TGBP", amount, 7)
 	return formatMoney(amount, currency)
 }
+
+/** True when displayMoney renders a single £ string (no separate currency suffix). */
+export const isPoundDisplayCurrency = (currency: string): boolean =>
+	currency === "GBP" || currency === "TGBP"
 
 /**
  * Round (half-up) domain minors to pound pence (2dp). Used so All fees matches

@@ -22,10 +22,12 @@ import {
 	SimulatedLabel,
 	TextField,
 } from "../components/ui"
+import { displayMoney, isPoundDisplayCurrency } from "../payments/quoteDisplay"
 import { type ConnectedSolanaWallet } from "../solana/walletStandard"
 
 type DestinationType = ClaimView["allowedDestinationTypes"][number]
 
+/** Legacy split for non-pound claim amounts (USD/USDC/fiat). Pounds use displayMoney. */
 const CURRENCY_DECIMALS: Readonly<Record<string, number>> = {
 	USD: 2,
 	PHP: 2,
@@ -124,7 +126,10 @@ const detailPlaceholder = (
 const formatAmount = (
 	amount: string,
 	currency: string,
-): { value: string; currency: string } => {
+): { value: string; currency: string | null } => {
+	if (isPoundDisplayCurrency(currency)) {
+		return { value: displayMoney(amount, currency), currency: null }
+	}
 	const decimals = CURRENCY_DECIMALS[currency] ?? 0
 	const padded = amount.padStart(decimals + 1, "0")
 	const whole = decimals === 0 ? padded : padded.slice(0, -decimals)
@@ -420,7 +425,7 @@ export default function ClaimPage() {
 						<h1 className="phone-title">Claim your payment</h1>
 						<p className="muted">
 							Choose how you want to be paid. Bank and e-wallet payouts are
-							simulated; Solana USDC is devnet only. No real money moves.
+							simulated; Solana devnet only; no real money moves.
 						</p>
 					</div>
 
@@ -447,10 +452,17 @@ export default function ClaimPage() {
 							<div className="amount-display">
 								<div>
 									<span className="amount-display__label">Amount</span>
-									<span className="amount-display__value">{amount.value}</span>
-									<span className="amount-display__currency">
-										{amount.currency}
+									<span
+										className="amount-display__value"
+										data-testid="claim-amount"
+									>
+										{amount.value}
 									</span>
+									{amount.currency ? (
+										<span className="amount-display__currency">
+											{amount.currency}
+										</span>
+									) : null}
 								</div>
 								<InfoPopover label="Amount and fee">
 									The amount is the expected receive side from the payment

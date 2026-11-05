@@ -1,6 +1,6 @@
-import { formatMoney } from "@flexipay/web-lib"
 import { type PaymentDetail } from "@flexipay/web-lib/contract"
 import { useState } from "react"
+import { displayMoney } from "../../payments/quoteDisplay"
 import { shortAddress } from "../../solana/walletStandard"
 import { Button, StatusBadge } from "../ui"
 
@@ -31,11 +31,11 @@ export function PaymentReceipt({
 	const firstLeg = payment.legs[0]
 	const settleLeg = payment.legs.find((leg) => leg.kind === "settle")
 	const amountLabel = firstLeg
-		? formatMoney(firstLeg.amountIn.amount, firstLeg.amountIn.currency)
+		? displayMoney(firstLeg.amountIn.amount, firstLeg.amountIn.currency)
 		: "—"
 	const settleLabel =
 		settleLeg && settleLeg.amountOut
-			? formatMoney(settleLeg.amountOut.amount, settleLeg.amountOut.currency)
+			? displayMoney(settleLeg.amountOut.amount, settleLeg.amountOut.currency)
 			: null
 	const receiver = receiverAddress?.trim() || payment.recipientId
 	const sender = payment.organizationId
