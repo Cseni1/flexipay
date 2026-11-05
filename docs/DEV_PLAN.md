@@ -186,7 +186,7 @@ legal entity; book the lawyer hour on UK crypto promotions.
 | What | Result |
 |---|---|
 | First real devnet USDC payment | Verified on-chain: 0.995 USDC, Account 1 to Account 2, payment `pay_d4368218d8e2cd30e05086ee` paid on the `solana_usdc` rail. Signature `zfqqBU9QV1XBu63k43GtnL8adAto7oGQKgXmbRTBGLJE94eMJHJ4x59iT6cwbHZiuVQjHPJfdNXXq2nFriA9dnN` ([Explorer](https://explorer.solana.com/tx/zfqqBU9QV1XBu63k43GtnL8adAto7oGQKgXmbRTBGLJE94eMJHJ4x59iT6cwbHZiuVQjHPJfdNXXq2nFriA9dnN?cluster=devnet)). Balance deltas checked from the transaction itself. |
-| Hosted web app | https://flexipay-web.vercel.app, rewrites to the Render API. |
+| Hosted web app | https://my.getflexipay.app (the older flexipay-web.vercel.app still works), rewrites to the Render API. |
 | Sign-in | Sign-up, email verification (Brevo), login, `/v1/me`, logout verified on the live site; signed-out and cookie-less requests get 401. |
 | Decimals bug (fixed) | Quote-time floor of USDC settle amounts to a multiple of 10 for `solana_usdc` and crypto_wallet quotes (`9851485` → `9851480`) so the Solana mint (6 dec) can represent FlexiPay’s 7-dec USDC. Intent/confirm map any remaining unrepresentable amount to HTTP **422** `amount_not_representable` (never 500). |
 | Hosted-app payment (signed in) | `pay_b83907fe8321c623c60c2735` paid; 0.995 USDC, Account 1 to Account 2, signature `2xf9zSsYM1EvHoRUDHA7hL7GFd1UHQS3mzN1u2Uj7E3g18fHDVjw7FZuDhzm4Ne7yf9Y9TaidnZizJA4kHDfqkEg` ([Explorer](https://explorer.solana.com/tx/2xf9zSsYM1EvHoRUDHA7hL7GFd1UHQS3mzN1u2Uj7E3g18fHDVjw7FZuDhzm4Ne7yf9Y9TaidnZizJA4kHDfqkEg?cluster=devnet)). Balances 19.005 to 18.01 and 20.995 to 21.99 read from the transaction. |
@@ -239,7 +239,27 @@ Rules: devnet only; anything simulated stays labelled; no mainnet and no real mo
 
 ### Done when (Demo Day path)
 
-Sign in on https://flexipay-web.vercel.app, add test funds with the widget, create a payment, the receiver claims, the sender pays in Phantom, and the receipt shows the signature and Explorer link: under 3 minutes, on a phone and a laptop.
+Sign in on https://my.getflexipay.app, add test funds with the widget, create a payment, the receiver claims, the sender pays in Phantom, and the receipt shows the signature and Explorer link: under 3 minutes, on a phone and a laptop.
+
+## Status, 5 Nov (integrator)
+
+Pounds (tGBP on Solana) are now the main focus; USDC is the second asset. Today is Thursday 5 Nov; feature freeze is Sunday 8 Nov; Demo Day is Thursday 12 Nov.
+
+| Area | State |
+| --- | --- |
+| Hosted app and API, sign-in, e-mail | Live and checked. E-mail still sends from flexiwork.site; the getflexipay.app sender is pending in Brevo. |
+| Coin to coin, USDC (devnet) | Verified on-chain several times from the hosted app. |
+| Pound payments (tGBP, CCR-26) | Live up to the Solana payment instruction (quote, payment, fund, claim accept, intent). The on-chain transfer is not yet proven. The devnet token is the USDC test mint standing in for tGBP until the issuer's mint and decimals are confirmed. |
+| UK send form and pound screens | Live: send form, quote, claim page, payment page, history show pounds. |
+| Card on-ramp (Crossmint, test mode) | Order route and checkout form load. No test card payment completed. Transak needs its staging key; MoonPay parked. |
+| FlexiPay wallet (Crossmint embedded) | Screen live; sign-in window opens; wallet creation after the e-mailed code unverified; cannot send payments yet. |
+| Till QR (CCR-27, payment requests) | Built and tested in two open PRs (API #139, screen #138), held until Csenge confirms. |
+| Off-ramp to a bank | Not available. No provider confirmed. |
+| Bank legs | Simulated and labelled as such. |
+| Dependencies | 87 npm audit findings; three Stellar ones fixed; the rest are triaged in docs/DEPENDENCY_ADVISORIES.md. |
+| Mainnet and real money | Blocked. Needs Csenge's written approval. |
+
+Open for Csenge: one real Phantom payment of a waiting pound payment (devnet), send the provider messages in docs/PROVIDER_QUOTES.md, try the wallet login, Brevo sender for getflexipay.app, Transak staging key, the 1% simulated fee decision, OK to merge the till QR.
 
 ## Original schedule (superseded by the plan above)
 
