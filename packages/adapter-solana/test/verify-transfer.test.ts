@@ -233,3 +233,47 @@ describe("isSolanaAddress", () => {
 		);
 	});
 });
+
+describe("evaluateParsedTransfer payer", () => {
+	const sender = Keypair.generate().publicKey.toBase58();
+	const withSender = (preSender: string, postSender: string) =>
+		baseTx({
+			meta: {
+				err: null,
+				preTokenBalances: [
+					{ accountIndex: 0, mint, owner: recipient, uiTokenAmount: { amount: "100", decimals: 6 } },
+					{ accountIndex: 1, mint, owner: sender, uiTokenAmount: { amount: preSender, decimals: 6 } },
+				],
+				postTokenBalances: [
+					{ accountIndex: 0, mint, owner: recipient, uiTokenAmount: { amount: "1100", decimals: 6 } },
+					{ accountIndex: 1, mint, owner: sender, uiTokenAmount: { amount: postSender, decimals: 6 } },
+				],
+			},
+		});
+
+	test("reports the wallet whose balance fell as the payer", () => {
+		const result = evaluateParsedTransfer(withSender("5000", "4000"), {
+			signature: "sig-payer",
+			mint,
+			recipientOwner: recipient,
+			amountMinor: 1000n,
+			usdcDecimals: 6,
+			reference,
+		} as never);
+		assert.equal(result.ok, true);
+		if (result.ok) assert.equal(result.payer, sender);
+	});
+
+	test("payer is null when no other balance fell", () => {
+		const result = evaluateParsedTransfer(baseTx(), {
+			signature: "sig-nopayer",
+			mint,
+			recipientOwner: recipient,
+			amountMinor: 1000n,
+			usdcDecimals: 6,
+			reference,
+		} as never);
+		assert.equal(result.ok, true);
+		if (result.ok) assert.equal(result.payer, null);
+	});
+});

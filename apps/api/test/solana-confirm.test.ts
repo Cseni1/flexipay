@@ -140,6 +140,7 @@ describe("CCR-24 Solana claim + confirm", () => {
 				amountMinor: input.amountMinor,
 				mint: input.mint,
 				recipientOwner: input.recipientOwner,
+				payer: "PayerWallet1111111111111111111111111111111111",
 				slot: 99,
 				blockTime: Math.floor(Date.now() / 1000),
 			};
@@ -243,6 +244,18 @@ describe("CCR-24 Solana claim + confirm", () => {
 			});
 			assert.equal(settle?.rail, "solana_usdc");
 			assert.equal(settle?.lockTxRef, null);
+
+			// The paying wallet is recorded on the on-chain event so screens can show who paid.
+			const onchain = await api.db.event.findMany({
+				where: { paymentId: payment.id, type: "payment.onchain" },
+			});
+			const withPayer = onchain.find(
+				(e) => (e.snapshot as { payer?: string }).payer !== undefined,
+			);
+			assert.equal(
+				(withPayer?.snapshot as { payer?: string } | undefined)?.payer,
+				"PayerWallet1111111111111111111111111111111111",
+			);
 			assert.equal(settle?.externalRef, null);
 		} finally {
 			await stopApi(api);

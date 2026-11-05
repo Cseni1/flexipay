@@ -318,6 +318,7 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 				const result = await completeSolanaTransferSettle(ctx.db, payment.id, {
 					signature: body.signature,
 					destination: destination.address,
+					payer: verified.payer,
 				});
 				if (result.status !== "paid") {
 					throw new ApiError(
