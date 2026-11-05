@@ -16,6 +16,7 @@ import PaymentDetail from "./pages/PaymentDetail"
 import PaymentsHistory from "./pages/PaymentsHistory"
 import Recipients from "./pages/Recipients"
 import SendPayment from "./pages/SendPayment"
+import TakePayment from "./pages/TakePayment"
 import { RequireSession } from "./providers/SessionProvider"
 
 function App() {
@@ -33,6 +34,7 @@ function App() {
 				}
 			>
 				<Route index element={<SendPayment />} />
+				<Route path="take-payment" element={<TakePayment />} />
 				<Route path="dashboard" element={<Dashboard />} />
 				<Route path="payments" element={<PaymentsHistory />} />
 				<Route path="recipients" element={<Recipients />} />
