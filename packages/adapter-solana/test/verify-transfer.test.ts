@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import { Keypair } from "@solana/web3.js";
+import { Keypair, PublicKey } from "@solana/web3.js";
+import { ataFor } from "../src/build-transfer.ts";
 import { evaluateParsedTransfer } from "../src/verify-transfer.ts";
 import { isSolanaAddress } from "../src/address.ts";
 
@@ -220,6 +221,21 @@ describe("evaluateParsedTransfer", () => {
 		});
 		assert.equal(result.ok, false);
 		if (!result.ok) assert.equal(result.reason, "stale_transaction");
+	});
+});
+
+describe("smart wallet (off-curve) addresses", () => {
+	// The FlexiPay (Crossmint embedded) wallet is a program-derived address, off the ed25519 curve.
+	const smartWallet = "GjsyKr9wKg9yCJ1a98Luqvf6J6isqTpqtYSrY1Y7jwRg";
+
+	test("accepts an off-curve owner address", () => {
+		assert.equal(PublicKey.isOnCurve(new PublicKey(smartWallet).toBytes()), false);
+		assert.equal(isSolanaAddress(smartWallet), true);
+	});
+
+	test("derives a token account for an off-curve owner without throwing", () => {
+		const ata = ataFor(new PublicKey(mint), new PublicKey(smartWallet));
+		assert.equal(ata.toBytes().length, 32);
 	});
 });
 
