@@ -293,6 +293,19 @@
 	display: grid;
 	gap: 0.65rem;
 }
+.solana-already-paid {
+	margin-top: 0.75rem;
+	padding: 0.65rem 0.75rem;
+	border: 1px dashed var(--line);
+	border-radius: 10px;
+}
+.solana-already-paid summary {
+	cursor: pointer;
+	font-weight: 600;
+}
+.solana-already-paid .field {
+	margin-top: 0.65rem;
+}
 .solana-success {
 	display: grid;
 	gap: 0.55rem;

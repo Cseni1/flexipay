@@ -2,12 +2,7 @@ import { type Payment } from "@flexipay/web-lib/contract"
 import { Link } from "react-router-dom"
 import { displayMoney } from "../../payments/quoteDisplay"
 import { StatusBadge } from "../ui"
-
-const when = (iso: string): string =>
-	new Intl.DateTimeFormat(undefined, {
-		dateStyle: "medium",
-		timeStyle: "short",
-	}).format(new Date(iso))
+import { PaymentTimestamp } from "./PaymentTimestamp"
 
 const firstAmount = (payment: Payment): string => {
 	const leg = payment.legs[0]
@@ -41,7 +36,9 @@ export function PaymentHistoryTable({ payments }: { payments: Payment[] }) {
 									<code className="code-text">{payment.id}</code>
 								</Link>
 							</td>
-							<td>{when(payment.createdAt)}</td>
+							<td>
+								<PaymentTimestamp iso={payment.createdAt} />
+							</td>
 							<td>
 								{payment.delivery === "claim_link" ? "Claim link" : "Direct"}
 							</td>

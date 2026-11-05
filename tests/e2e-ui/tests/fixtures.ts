@@ -269,12 +269,17 @@ const basePayment = (status: string, legs: ReturnType<typeof leg>[]) => ({
 	updatedAt: now(),
 })
 
-const event = (id: string, type: string, offsetMs: number) => ({
+const event = (
+	id: string,
+	type: string,
+	offsetMs: number,
+	snapshot: Record<string, unknown> = {},
+) => ({
 	id,
 	type,
 	createdAt: now(offsetMs),
 	paymentId: "pay_1",
-	snapshot: { status: "pay_1" },
+	snapshot: { status: type, ...snapshot },
 })
 
 export function paymentDetailFixture(
@@ -287,7 +292,7 @@ export function paymentDetailFixture(
 				event("evt_1", "payment.created", -30_000),
 				event("evt_2", "payment.funded", -20_000),
 				event("evt_3", "payment.processing", -15_000),
-				event("evt_4", "leg.failed", -10_000),
+				event("evt_4", "leg.failed", -10_000, { legId: "leg_5" }),
 				event("evt_5", "payment.failed", -8_000),
 			],
 		}
@@ -299,8 +304,10 @@ export function paymentDetailFixture(
 				event("evt_1", "payment.created", -30_000),
 				event("evt_2", "payment.funded", -20_000),
 				event("evt_3", "payment.processing", -15_000),
-				event("evt_4", "leg.succeeded", -10_000),
-				event("evt_5", "payment.onchain", -8_000),
+				event("evt_4", "leg.succeeded", -12_000, { legId: "leg_1" }),
+				event("evt_5", "leg.succeeded", -11_000, { legId: "leg_2" }),
+				event("evt_6", "payment.onchain", -8_000),
+				event("evt_7", "leg.succeeded", -7_000, { legId: "leg_4" }),
 			],
 		}
 	}

@@ -471,6 +471,12 @@
 	font-size: 0.86rem;
 }
 
+.timeline__when {
+	margin: 0.15rem 0 0;
+	font-size: 0.85rem;
+	color: var(--ink-muted, var(--ink));
+}
+
 .timeline__meta,
 .timeline__reference,
 .timeline__note {
