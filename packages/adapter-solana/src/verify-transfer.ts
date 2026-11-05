@@ -29,6 +29,8 @@ export type TransferVerifyOk = {
 	amountMinor: bigint;
 	mint: string;
 	recipientOwner: string;
+	/** Owner whose balance of the mint fell the most (the paying wallet), when one can be identified. */
+	payer?: string | null;
 	slot: number;
 	blockTime: number | null;
 };
@@ -187,6 +189,7 @@ export function evaluateParsedTransfer(
 			amountMinor: delta,
 			mint,
 			recipientOwner,
+			payer: payerForMint(pre, post, mint, recipientOwner),
 			slot: tx.slot,
 			blockTime: tx.blockTime ?? null,
 		};
@@ -219,6 +222,27 @@ export function evaluateParsedTransfer(
 		reason: "no_token_transfer",
 		message: "No matching SPL transfer of the configured mint found in the transaction",
 	};
+}
+
+/** The owner (other than the recipient) whose balance of `mint` fell the most, or null. */
+function payerForMint(
+	pre: TokenBalance[],
+	post: TokenBalance[],
+	mint: string,
+	recipientOwner: string,
+): string | null {
+	const owners = new Set<string>();
+	for (const row of [...pre, ...post]) {
+		if (row.mint === mint && row.owner && row.owner !== recipientOwner) {
+			owners.add(row.owner);
+		}
+	}
+	let best: { owner: string; drop: bigint } | null = null;
+	for (const owner of owners) {
+		const drop = (sumOwnerMint(pre, mint, owner) ?? 0n) - (sumOwnerMint(post, mint, owner) ?? 0n);
+		if (drop > 0n && (!best || drop > best.drop)) best = { owner, drop };
+	}
+	return best?.owner ?? null;
 }
 
 function recipientMintDelta(

@@ -194,7 +194,7 @@ export class ReusedSolanaSignatureError extends Error {
 export async function completeSolanaTransferSettle(
 	db: Db,
 	paymentId: string,
-	opts: { signature: string; destination: string },
+	opts: { signature: string; destination: string; payer?: string | null },
 ): Promise<{ status: PaymentStatus }> {
 	const payment = await db.payment.findUniqueOrThrow({
 		where: { id: paymentId },
@@ -259,6 +259,7 @@ export async function completeSolanaTransferSettle(
 		releaseTxRef: opts.signature,
 		network: "solana",
 		destination: opts.destination,
+		...(opts.payer ? { payer: opts.payer } : {}),
 		legId: settle.id,
 	});
 	await transitionLeg(db, paymentId, settle.id, "processing", "succeeded");
