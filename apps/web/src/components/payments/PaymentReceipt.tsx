@@ -1,8 +1,10 @@
 import { type PaymentDetail } from "@flexipay/web-lib/contract"
 import { useState } from "react"
+import { findEventTime } from "../../payments/paymentEventTimes"
 import { displayMoney } from "../../payments/quoteDisplay"
 import { shortAddress } from "../../solana/walletStandard"
 import { Button, StatusBadge } from "../ui"
+import { PaymentTimestamp } from "./PaymentTimestamp"
 
 type Props = {
 	payment: PaymentDetail
@@ -11,12 +13,6 @@ type Props = {
 	/** Optional on-chain recipient (Solana address); falls back to payment.recipientId. */
 	receiverAddress?: string | null
 }
-
-const formatTimestamp = (iso: string): string =>
-	new Intl.DateTimeFormat(undefined, {
-		dateStyle: "medium",
-		timeStyle: "short",
-	}).format(new Date(iso))
 
 /**
  * Print-friendly receipt for a paid payment. Keeps Solana success testids stable.
@@ -30,6 +26,8 @@ export function PaymentReceipt({
 	const [copied, setCopied] = useState(false)
 	const firstLeg = payment.legs[0]
 	const settleLeg = payment.legs.find((leg) => leg.kind === "settle")
+	const paidAt =
+		findEventTime(payment.events, "payment.paid") ?? payment.updatedAt
 	const amountLabel = firstLeg
 		? displayMoney(firstLeg.amountIn.amount, firstLeg.amountIn.currency)
 		: "—"
@@ -63,7 +61,10 @@ export function PaymentReceipt({
 					<h3 className="payment-receipt__title">Payment paid</h3>
 					<p className="muted">
 						Payment <code className="code-text">{payment.id}</code> ·{" "}
-						{formatTimestamp(payment.updatedAt)}
+						<PaymentTimestamp
+							iso={paidAt}
+							data-testid="payment-receipt-paid-at"
+						/>
 					</p>
 				</div>
 				<StatusBadge status={payment.status} />

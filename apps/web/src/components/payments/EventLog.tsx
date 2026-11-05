@@ -1,12 +1,7 @@
 import { type Event } from "@flexipay/web-lib/contract"
 import { useState } from "react"
 import { Button } from "../ui"
-
-const formatEventTime = (iso: string): string =>
-	new Intl.DateTimeFormat(undefined, {
-		dateStyle: "medium",
-		timeStyle: "medium",
-	}).format(new Date(iso))
+import { PaymentTimestamp } from "./PaymentTimestamp"
 
 const eventLabel = (type: string): string => {
 	const words = type.split(".")
@@ -45,9 +40,10 @@ export function EventLog({ events }: { events: Event[] }) {
 								<code className="code-text">{event.id}</code>
 							</p>
 						</div>
-						<time className="event-row__time" dateTime={event.createdAt}>
-							{formatEventTime(event.createdAt)}
-						</time>
+						<PaymentTimestamp
+							className="event-row__time"
+							iso={event.createdAt}
+						/>
 					</li>
 				))}
 			</ol>

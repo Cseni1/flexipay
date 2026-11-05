@@ -15,6 +15,7 @@ import { AuthBlockedNotice } from "../components/AuthBlockedNotice"
 import { EventLog } from "../components/payments/EventLog"
 import { LegTimeline } from "../components/payments/LegTimeline"
 import { PaymentReceipt } from "../components/payments/PaymentReceipt"
+import { PaymentTimestamp } from "../components/payments/PaymentTimestamp"
 import { SolanaPayPanel } from "../components/solana/SolanaPayPanel"
 import {
 	Button,
@@ -30,7 +31,9 @@ import {
 } from "../components/ui"
 import { usePaymentDetail } from "../hooks/usePaymentDetail"
 import { useWakeUpRetry } from "../hooks/useWakeUpRetry"
+import { paymentMilestoneTimes } from "../payments/paymentEventTimes"
 import { displayMoney } from "../payments/quoteDisplay"
+import { clearSolanaTransfer } from "../payments/solanaTransferStorage"
 
 const solanaExplorerUrl = (
 	template: string | undefined,
@@ -43,12 +46,6 @@ const solanaExplorerUrl = (
 }
 
 const POLLING_STATUSES = new Set(["funded", "processing", "refunding"])
-
-const formatTimestamp = (iso: string): string =>
-	new Intl.DateTimeFormat(undefined, {
-		dateStyle: "medium",
-		timeStyle: "short",
-	}).format(new Date(iso))
 
 // The API returns the claim token only on create. Map its /v1/claims/{token} path onto the
 // browser claim route; never persist or log the token.
@@ -162,6 +159,12 @@ export default function PaymentDetail() {
 		return () => controller.abort()
 	}, [])
 
+	useEffect(() => {
+		if (payment?.status === "paid") {
+			clearSolanaTransfer(payment.id)
+		}
+	}, [payment?.status, payment?.id])
+
 	const authBlocked = fundAuthBlocked || isAuthRequired(error)
 
 	const handleFund = async () => {
@@ -197,6 +200,10 @@ export default function PaymentDetail() {
 	const claimLink = payment?.claimLink ?? handedOffClaimLink
 	const settleLeg = payment?.legs.find((leg) => leg.kind === "settle")
 	const lastLeg = payment?.legs.at(-1)
+	const milestones = payment
+		? paymentMilestoneTimes(payment.events)
+		: { created: null, funded: null, paid: null }
+	const createdAtIso = milestones.created ?? payment?.createdAt ?? null
 	const canFund =
 		(status === "awaiting_funding" || status === "quoted") && !authBlocked
 	const polling = status ? POLLING_STATUSES.has(status) : false
@@ -314,12 +321,35 @@ export default function PaymentDetail() {
 								/>
 								<StaticField
 									label="Created"
-									value={formatTimestamp(payment.createdAt)}
+									value={
+										<PaymentTimestamp
+											iso={createdAtIso}
+											data-testid="payment-created-at"
+										/>
+									}
 								/>
-								<StaticField
-									label="Updated"
-									value={formatTimestamp(payment.updatedAt)}
-								/>
+								{milestones.funded ? (
+									<StaticField
+										label="Funded"
+										value={
+											<PaymentTimestamp
+												iso={milestones.funded}
+												data-testid="payment-funded-at"
+											/>
+										}
+									/>
+								) : null}
+								{milestones.paid ? (
+									<StaticField
+										label="Paid"
+										value={
+											<PaymentTimestamp
+												iso={milestones.paid}
+												data-testid="payment-paid-at"
+											/>
+										}
+									/>
+								) : null}
 								<StaticField
 									label="Quote"
 									value={<code className="code-text">{payment.quoteId}</code>}
@@ -369,7 +399,7 @@ export default function PaymentDetail() {
 							title="Timeline"
 							description="Journey of this payment: legs run in order. Errors and retry evidence appear in the event log."
 						>
-							<LegTimeline legs={payment.legs} />
+							<LegTimeline legs={payment.legs} events={payment.events} />
 						</Panel>
 
 						<Panel

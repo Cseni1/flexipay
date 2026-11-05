@@ -2,8 +2,12 @@ import {
 	buildUsdcTransferTransaction,
 	getSolAndUsdcBalances,
 } from "@flexipay/adapter-solana/browser"
-import { useEffect, useState } from "react"
-import { ApiError, newIdempotencyKey } from "../../api/client"
+import { useEffect, useRef, useState } from "react"
+import {
+	ApiError,
+	isTransientApiError,
+	newIdempotencyKey,
+} from "../../api/client"
 import {
 	confirmSolanaTransfer,
 	getSolanaConfig,
@@ -11,6 +15,13 @@ import {
 	type SolanaConfirmOk,
 	type SolanaIntent,
 } from "../../api/solanaClient"
+import { formatLocalClock } from "../../payments/formatPaymentTime"
+import {
+	clearSolanaTransfer,
+	loadSolanaTransfer,
+	saveSolanaTransfer,
+	type SolanaTransferMemory,
+} from "../../payments/solanaTransferStorage"
 import { assetLabel, formatAssetAmount } from "../../solana/assets"
 import {
 	friendlySolanaPayError,
@@ -35,14 +46,36 @@ type Props = {
 /** Rough lower bound so the wallet can pay a simple SPL transfer fee on devnet. */
 const MIN_SOL_LAMPORTS_FOR_FEES = 5_000n
 
+const CONFIRM_BUDGET_MS = 90_000
+const CONFIRM_DELAY_START_MS = 1_500
+const CONFIRM_DELAY_MAX_MS = 5_000
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const shouldKeepConfirming = (cause: unknown): boolean => {
+	if (cause instanceof ApiError) {
+		if (cause.status === 202 || cause.code === "pending") return true
+		return isTransientApiError(cause)
+	}
+	/* Transient fetch failures that never became ApiError. */
+	return cause instanceof TypeError
+}
+
 export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 	const [intent, setIntent] = useState<SolanaIntent | null>(null)
 	const [notSolanaSettle, setNotSolanaSettle] = useState(false)
 	const [connected, setConnected] = useState<ConnectedSolanaWallet | null>(null)
 	const [error, setError] = useState<string | null>(null)
 	const [busy, setBusy] = useState(false)
+	const [verifying, setVerifying] = useState(false)
 	const [result, setResult] = useState<SolanaConfirmOk | null>(null)
+	const [stored, setStored] = useState<SolanaTransferMemory | null>(() =>
+		loadSolanaTransfer(paymentId),
+	)
+	const [manualSignature, setManualSignature] = useState("")
 	const [idemKey] = useState(() => newIdempotencyKey("solana-confirm"))
+	const confirmLock = useRef(false)
+	const autoStarted = useRef(false)
 
 	useEffect(() => {
 		const controller = new AbortController()
@@ -63,6 +96,76 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 		return () => controller.abort()
 	}, [paymentId])
 
+	useEffect(() => {
+		setStored(loadSolanaTransfer(paymentId))
+		autoStarted.current = false
+	}, [paymentId])
+
+	const markPaid = (confirmed: SolanaConfirmOk) => {
+		clearSolanaTransfer(paymentId)
+		setStored(null)
+		setResult(confirmed)
+		setVerifying(false)
+		setError(null)
+		onPaid?.(confirmed)
+	}
+
+	const confirmStored = async (
+		memory: SolanaTransferMemory,
+		opts: { announce?: boolean } = {},
+	) => {
+		if (confirmLock.current) return
+		confirmLock.current = true
+		setVerifying(true)
+		setBusy(true)
+		if (opts.announce !== false) {
+			setError(null)
+		}
+		const started = Date.now()
+		let delay = CONFIRM_DELAY_START_MS
+		try {
+			while (Date.now() - started < CONFIRM_BUDGET_MS) {
+				try {
+					const confirmed = await confirmSolanaTransfer(
+						paymentId,
+						memory.signature,
+						idemKey,
+					)
+					markPaid(confirmed)
+					return
+				} catch (cause) {
+					const elapsed = Date.now() - started
+					if (
+						shouldKeepConfirming(cause) &&
+						elapsed + delay < CONFIRM_BUDGET_MS
+					) {
+						await sleep(delay)
+						delay = Math.min(CONFIRM_DELAY_MAX_MS, Math.round(delay * 1.5))
+						continue
+					}
+					throw cause
+				}
+			}
+			throw new Error(
+				"Transfer was submitted but not yet verified. Do not send again — use Verify transfer.",
+			)
+		} catch (cause) {
+			setError(friendlySolanaPayError(cause))
+		} finally {
+			setVerifying(false)
+			setBusy(false)
+			confirmLock.current = false
+		}
+	}
+
+	useEffect(() => {
+		if (!stored || result || autoStarted.current) return
+		autoStarted.current = true
+		void confirmStored(stored, { announce: false })
+		// Only auto-start once per mounted stored signature.
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot
+	}, [stored, result])
+
 	if (notSolanaSettle) return null
 
 	const settlement = intent
@@ -79,7 +182,7 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 			: null
 
 	const pay = async () => {
-		if (!intent || !connected || !settlement) return
+		if (!intent || !connected || !settlement || stored) return
 		setBusy(true)
 		setError(null)
 		try {
@@ -125,35 +228,38 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 				connection,
 				cluster,
 			})
-			let confirmed: SolanaConfirmOk | null = null
-			for (let attempt = 0; attempt < 8; attempt += 1) {
-				try {
-					confirmed = await confirmSolanaTransfer(paymentId, signature, idemKey)
-					break
-				} catch (cause) {
-					if (
-						cause instanceof ApiError &&
-						(cause.status === 202 || cause.code === "pending")
-					) {
-						await new Promise((r) => setTimeout(r, 1500))
-						continue
-					}
-					throw cause
-				}
+			const memory: SolanaTransferMemory = {
+				signature,
+				sentAt: new Date().toISOString(),
 			}
-			if (!confirmed) {
-				throw new Error(
-					"Transfer was submitted but not yet verified. Do not send again — retry confirm later.",
-				)
-			}
-			setResult(confirmed)
-			onPaid?.(confirmed)
+			saveSolanaTransfer(paymentId, memory)
+			autoStarted.current = true
+			setStored(memory)
+			await confirmStored(memory)
 		} catch (cause) {
 			setError(friendlySolanaPayError(cause))
-		} finally {
 			setBusy(false)
 		}
 	}
+
+	const verifyManual = async () => {
+		const signature = manualSignature.trim()
+		if (!signature) {
+			setError("Enter a Solana transaction signature.")
+			return
+		}
+		const memory: SolanaTransferMemory = {
+			signature,
+			sentAt: new Date().toISOString(),
+		}
+		saveSolanaTransfer(paymentId, memory)
+		autoStarted.current = true
+		setStored(memory)
+		await confirmStored(memory)
+	}
+
+	const sentClock = stored ? formatLocalClock(stored.sentAt) : null
+	const signDisabled = Boolean(busy || !intent || !connected || stored)
 
 	return (
 		<div
@@ -177,6 +283,11 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 				{error ? (
 					<Notice tone="warning" data-testid="solana-pay-error">
 						{error}
+					</Notice>
+				) : null}
+				{stored && !result ? (
+					<Notice data-testid="solana-transfer-pending">
+						Transfer sent at {sentClock} — verifying. Do not send again.
 					</Notice>
 				) : null}
 				{intent && settlement ? (
@@ -211,14 +322,66 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 						explorerUrl={result.explorerUrl}
 					/>
 				) : (
-					<Button
-						type="button"
-						disabled={busy || !intent || !connected}
-						onClick={() => void pay()}
-						data-testid="solana-pay-send"
-					>
-						{busy ? "Signing / confirming…" : `Sign and send ${label}`}
-					</Button>
+					<>
+						<div className="form-actions">
+							<Button
+								type="button"
+								disabled={signDisabled}
+								onClick={() => void pay()}
+								data-testid="solana-pay-send"
+							>
+								{busy && !stored
+									? "Signing / confirming…"
+									: `Sign and send ${label}`}
+							</Button>
+							{stored ? (
+								<Button
+									type="button"
+									variant="secondary"
+									disabled={busy}
+									onClick={() => void confirmStored(stored)}
+									data-testid="solana-verify-transfer"
+								>
+									{verifying ? "Verifying…" : "Verify transfer"}
+								</Button>
+							) : null}
+						</div>
+						<details
+							className="solana-already-paid"
+							data-testid="solana-already-paid"
+						>
+							<summary>I already paid</summary>
+							<p className="form-note">
+								Paste the Solana transaction signature if you sent from another
+								wallet or the page lost the transfer.
+							</p>
+							<div className="field">
+								<label className="field__label" htmlFor="solana-manual-sig">
+									Transaction signature
+								</label>
+								<input
+									id="solana-manual-sig"
+									className="field__control"
+									value={manualSignature}
+									onChange={(event) => setManualSignature(event.target.value)}
+									autoComplete="off"
+									spellCheck={false}
+									data-testid="solana-manual-signature"
+								/>
+							</div>
+							<div className="form-actions">
+								<Button
+									type="button"
+									variant="secondary"
+									disabled={busy || !manualSignature.trim()}
+									onClick={() => void verifyManual()}
+									data-testid="solana-manual-verify"
+								>
+									Verify signature
+								</Button>
+							</div>
+						</details>
+					</>
 				)}
 			</Panel>
 		</div>
