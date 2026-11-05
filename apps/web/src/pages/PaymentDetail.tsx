@@ -12,6 +12,7 @@ import { getSolanaConfig } from "../api/solanaClient"
 import { aboutDaysLeft, formatClaimValidUntil } from "../claim/expiry"
 import { ApiWakeUpNotice } from "../components/ApiWakeUpNotice"
 import { AuthBlockedNotice } from "../components/AuthBlockedNotice"
+import { CopyableValue } from "../components/CopyableValue"
 import { EventLog } from "../components/payments/EventLog"
 import { LegTimeline } from "../components/payments/LegTimeline"
 import { PaymentReceipt } from "../components/payments/PaymentReceipt"
@@ -306,7 +307,14 @@ export default function PaymentDetail() {
 								<StaticField
 									label="Recipient"
 									value={
-										<code className="code-text">{payment.recipientId}</code>
+										payment.recipientId ? (
+											<CopyableValue
+												value={payment.recipientId}
+												label="Copy recipient id"
+											/>
+										) : (
+											"—"
+										)
 									}
 								/>
 								<StaticField
@@ -352,7 +360,12 @@ export default function PaymentDetail() {
 								) : null}
 								<StaticField
 									label="Quote"
-									value={<code className="code-text">{payment.quoteId}</code>}
+									value={
+										<CopyableValue
+											value={payment.quoteId}
+											label="Copy quote id"
+										/>
+									}
 								/>
 								<StaticField
 									label="Route ends at"
@@ -425,7 +438,10 @@ export default function PaymentDetail() {
 									label="Payout id"
 									value={
 										settleLeg?.externalRef ? (
-											<code className="code-text">{settleLeg.externalRef}</code>
+											<CopyableValue
+												value={settleLeg.externalRef}
+												label="Copy payout id"
+											/>
 										) : (
 											"—"
 										)
@@ -436,7 +452,10 @@ export default function PaymentDetail() {
 									label="Lock transaction"
 									value={
 										settleLeg?.lockTxRef ? (
-											<code className="code-text">{settleLeg.lockTxRef}</code>
+											<CopyableValue
+												value={settleLeg.lockTxRef}
+												label="Copy lock transaction"
+											/>
 										) : (
 											"—"
 										)
@@ -447,9 +466,10 @@ export default function PaymentDetail() {
 									label="Release transaction"
 									value={
 										settleLeg?.releaseTxRef ? (
-											<code className="code-text">
-												{settleLeg.releaseTxRef}
-											</code>
+											<CopyableValue
+												value={settleLeg.releaseTxRef}
+												label="Copy release transaction"
+											/>
 										) : (
 											"—"
 										)

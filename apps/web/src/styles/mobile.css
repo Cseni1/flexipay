@@ -1,0 +1,263 @@
+/* Phone / demo-handset polish (claim, payment detail, history, dashboard). */
+
+.copyable-value {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.45rem;
+	max-width: 100%;
+	min-width: 0;
+}
+
+.copyable-value__text {
+	min-width: 0;
+	max-width: 100%;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.copyable-value__actions {
+	flex: 0 0 auto;
+}
+
+.copyable-value__copy.button--sm {
+	min-height: 44px;
+	min-width: 44px;
+	padding: 0.55rem 0.85rem;
+	font-size: 0.88rem;
+}
+
+.history-cards {
+	display: none;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	gap: 0.75rem;
+}
+
+.history-card {
+	border: 1px solid var(--line, var(--color-border));
+	border-radius: var(--radius, 12px);
+	background: var(--surface, var(--color-bg));
+	overflow: hidden;
+}
+
+.history-card__link {
+	display: grid;
+	gap: 0.55rem;
+	padding: 0.9rem 1rem;
+	color: inherit;
+	text-decoration: none;
+	min-height: 44px;
+}
+
+.history-card__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.35rem 0.75rem;
+	min-width: 0;
+}
+
+.history-card__label {
+	color: var(--muted, var(--color-text-muted));
+	font-size: 14px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.history-card__amount {
+	font-variant-numeric: tabular-nums;
+}
+
+.history-card .code-text {
+	max-width: 100%;
+	overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+	.app-main {
+		font-size: 14px;
+		overflow-x: clip;
+		padding-left: max(16px, env(safe-area-inset-left, 0px));
+		padding-right: max(16px, env(safe-area-inset-right, 0px));
+	}
+
+	.page,
+	.stack,
+	.panel,
+	.panel__body,
+	.claim-shell,
+	.phone-frame {
+		max-width: 100%;
+		min-width: 0;
+		overflow-x: clip;
+	}
+
+	.page-header__actions {
+		width: 100%;
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.65rem;
+	}
+
+	.page-header__actions .button,
+	.page-header__actions a.button {
+		width: 100%;
+		min-height: 44px;
+		justify-content: center;
+	}
+
+	.form-note,
+	.field__hint,
+	.field__label,
+	.notice,
+	.panel__description,
+	.empty-state__body,
+	.event-row__meta,
+	.timeline__meta,
+	.timeline__note,
+	.timeline__when,
+	.option-card__detail,
+	.option-card__title,
+	.muted,
+	.payment-receipt__grid dt,
+	.payment-receipt__grid dd {
+		font-size: 14px;
+		line-height: 1.45;
+	}
+
+	.phone-frame .button,
+	.phone-frame [data-testid="claim-accept"] {
+		width: 100%;
+		min-height: 44px;
+		justify-content: center;
+	}
+
+	.api-status {
+		font-size: 14px;
+		line-height: 1.4;
+		overflow-wrap: anywhere;
+	}
+
+	.api-wakeup {
+		position: relative;
+		z-index: 0;
+		width: 100%;
+		max-width: 100%;
+		margin: 0 0 0.75rem;
+		padding: 0.85rem 0.9rem;
+		border: 1px solid var(--line, var(--color-border));
+		border-radius: 12px;
+		background: var(--surface, var(--color-bg));
+		overflow-wrap: anywhere;
+		pointer-events: auto;
+	}
+
+	.api-wakeup__title {
+		font-size: 1.05rem;
+		overflow-wrap: anywhere;
+	}
+
+	.api-wakeup .form-actions {
+		margin-top: 0.65rem;
+		padding-top: 0.65rem;
+	}
+
+	.notice {
+		position: relative;
+		z-index: 0;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+	}
+
+	.mono,
+	.code-text,
+	.field__static,
+	.event-row__type,
+	.solana-intent-grid .field__static,
+	.payment-receipt__grid dd,
+	.receive-panel__address {
+		overflow-wrap: anywhere;
+		word-break: break-word;
+		max-width: 100%;
+	}
+
+	.form-actions {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.form-actions .button,
+	.form-actions a.button {
+		width: 100%;
+		min-height: 44px;
+	}
+
+	.solana-panel .form-actions,
+	.solana-success__actions,
+	.payment-receipt .form-actions {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.solana-panel .form-actions .button,
+	.solana-success__actions .button,
+	.solana-success__actions a.button,
+	.payment-receipt .form-actions .button {
+		width: 100%;
+		min-height: 44px;
+	}
+
+	.filter-row {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.filter-chip {
+		min-height: 44px;
+		justify-content: center;
+	}
+
+	.filter-search {
+		margin-left: 0;
+		max-width: none;
+		width: 100%;
+		min-height: 44px;
+		font-size: 14px;
+	}
+
+	.history-table-wrap {
+		display: none;
+	}
+
+	.history-cards {
+		display: grid;
+	}
+
+	.stat-row {
+		grid-template-columns: 1fr 1fr;
+	}
+
+	.stat-card__value {
+		font-size: 1.45rem;
+	}
+
+	.timeline__reference .code-text,
+	.event-row .code-text {
+		display: inline-block;
+		max-width: 100%;
+	}
+
+	.option-card {
+		min-height: 44px;
+	}
+
+	.claim-share__input {
+		min-height: 44px;
+		font-size: 14px;
+	}
+}
