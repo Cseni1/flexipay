@@ -26,11 +26,23 @@ import {
 	parseTillAmountPounds,
 } from "../payments/tillAmount"
 import {
+	clearTillMerchant,
+	loadTillMerchant,
+	saveTillMerchant,
+} from "../payments/tillMerchantStorage"
+import {
 	shortAddress,
 	type ConnectedSolanaWallet,
 } from "../solana/walletStandard"
 
 const POLL_MS = 2_000
+
+/** Stable ids so labels stay tied to inputs (Playwright getByLabel / a11y). */
+const FIELD_IDS = {
+	amount: "till-amount",
+	wallet: "till-wallet",
+	label: "till-label",
+} as const
 
 type Phase = "form" | "waiting" | "paid" | "expired"
 
@@ -38,6 +50,7 @@ export default function TakePayment() {
 	const [amount, setAmount] = useState("")
 	const [wallet, setWallet] = useState("")
 	const [label, setLabel] = useState("")
+	const [hasSavedMerchant, setHasSavedMerchant] = useState(false)
 	const [connected, setConnected] = useState<ConnectedSolanaWallet | null>(null)
 	const [formError, setFormError] = useState<string | null>(null)
 	const [authBlocked, setAuthBlocked] = useState(false)
@@ -47,10 +60,19 @@ export default function TakePayment() {
 	const [printMode, setPrintMode] = useState(false)
 	const createLock = useRef(false)
 	const pollAbort = useRef<AbortController | null>(null)
+	const pollCount = useRef(0)
 
 	const countdown = useCountdown(
 		phase === "waiting" ? (request?.expiresAt ?? null) : null,
 	)
+
+	useEffect(() => {
+		const saved = loadTillMerchant()
+		if (!saved) return
+		setWallet(saved.wallet)
+		setLabel(saved.label)
+		setHasSavedMerchant(true)
+	}, [])
 
 	useEffect(() => {
 		if (connected?.address && !wallet.trim()) {
@@ -72,9 +94,11 @@ export default function TakePayment() {
 		pollAbort.current = controller
 		let timer: number | undefined
 		let stopped = false
+		pollCount.current = 0
 
 		const tick = async () => {
 			try {
+				pollCount.current += 1
 				const next = await getPaymentRequest(requestId, controller.signal)
 				if (stopped || controller.signal.aborted) return
 				setRequest(next)
@@ -119,6 +143,14 @@ export default function TakePayment() {
 		setFormError(null)
 		setCreating(false)
 		createLock.current = false
+		setAmount("")
+	}
+
+	const forgetSavedMerchant = () => {
+		clearTillMerchant()
+		setHasSavedMerchant(false)
+		setWallet("")
+		setLabel("")
 	}
 
 	const handleCreate = async (event: FormEvent) => {
@@ -152,6 +184,11 @@ export default function TakePayment() {
 				merchantWallet,
 				...(normalizedLabel !== undefined ? { label: normalizedLabel } : {}),
 			})
+			saveTillMerchant({
+				wallet: merchantWallet,
+				label: normalizedLabel ?? "",
+			})
+			setHasSavedMerchant(true)
 			setRequest(created)
 			setPhase(created.status === "paid" ? "paid" : "waiting")
 		} catch (cause) {
@@ -173,162 +210,198 @@ export default function TakePayment() {
 
 	return (
 		<Page>
-			<PageHeader
-				eyebrow="Till"
-				title="Take payment"
-				description="Create a Solana Pay QR for tGBP. The customer pays wallet to wallet; FlexiPay does not hold the funds."
-				actions={<SimulatedLabel />}
-			/>
-
-			{authBlocked ? <AuthBlockedNotice /> : null}
-
-			<p className="form-note till-devnet-note" data-testid="till-devnet-note">
-				Test mode: devnet tGBP. The customer&apos;s wallet must be set to
-				devnet.
-			</p>
-
-			{phase === "form" ? (
-				<Panel
-					title="New request"
-					description="Amount is what you receive in pounds. Collect and fee steps stay simulated."
+			<div className="till-page" data-testid="till-page">
+				<PageHeader
+					eyebrow="Till"
+					title="Take payment"
+					description="Create a Solana Pay QR for tGBP. The customer pays wallet to wallet; FlexiPay does not hold the funds."
 					actions={<SimulatedLabel />}
-				>
-					<form onSubmit={(event) => void handleCreate(event)}>
-						<div className="form-grid">
-							<TextField
-								id="till-amount"
-								label="Amount (£)"
-								placeholder="10.00"
-								inputMode="decimal"
-								value={amount}
-								hint="£1.00 to £10,000.00 · at most two decimals."
-								disabled={authBlocked}
-								onChange={(event) => setAmount(event.target.value)}
-							/>
-							<TextField
-								id="till-wallet"
-								label="Merchant wallet"
-								placeholder="Base58 Solana address…"
-								value={wallet}
-								hint={
-									connected
-										? `Pre-filled from ${shortAddress(connected.address)}. You can edit it.`
-										: "Connect a wallet below or paste a base58 address (32–44 characters)."
-								}
-								autoComplete="off"
-								disabled={authBlocked}
-								onChange={(event) => setWallet(event.target.value)}
-							/>
-							<TextField
-								id="till-label"
-								label="Label (optional)"
-								placeholder="Table 4"
-								value={label}
-								hint="Shown in the customer's wallet · max 40 characters."
-								disabled={authBlocked}
-								onChange={(event) => setLabel(event.target.value)}
-							/>
-						</div>
-						{formError ? (
-							<Notice tone="warning" data-testid="till-form-error">
-								{formError}
-							</Notice>
-						) : null}
-						<div className="form-actions">
-							<Button type="submit" disabled={creating || authBlocked}>
-								{creating ? "Creating…" : "Create QR"}
-							</Button>
-						</div>
-					</form>
-					<div className="till-wallet-panel">
-						<SolanaWalletPanel
-							title="Merchant wallet (optional)"
-							onConnected={setConnected}
-						/>
-					</div>
-				</Panel>
-			) : null}
+				/>
 
-			{phase === "waiting" && request && amountLabel ? (
-				<div data-testid="till-waiting">
+				{authBlocked ? <AuthBlockedNotice /> : null}
+
+				<p
+					className="form-note till-devnet-note"
+					data-testid="till-devnet-note"
+				>
+					Test mode: devnet tGBP. The customer&apos;s wallet must be set to
+					devnet.
+				</p>
+
+				{phase === "form" ? (
 					<Panel
-						title="Waiting for payment…"
-						description="Show this QR to the customer. Status updates every few seconds."
+						title="New request"
+						description="Amount is what you receive in pounds. Collect and fee steps stay simulated."
 						actions={<SimulatedLabel />}
 					>
-						<div className="till-waiting">
-							<div className="till-qr" data-testid="till-qr">
-								<QrCode
-									value={request.solanaPayUrl}
-									label="Solana Pay QR"
-									size={printMode ? 420 : 260}
+						<form onSubmit={(event) => void handleCreate(event)}>
+							<div className="form-grid">
+								<TextField
+									id={FIELD_IDS.amount}
+									name="tillAmount"
+									label="Amount (£)"
+									placeholder="10.00"
+									inputMode="decimal"
+									value={amount}
+									hint="£1.00 to £10,000.00 · at most two decimals."
+									disabled={authBlocked}
+									onChange={(event) => setAmount(event.target.value)}
 								/>
-							</div>
-							<div className="till-waiting__meta">
-								<StaticField label="Amount" value={amountLabel} />
-								<StaticField
+								<TextField
+									id={FIELD_IDS.wallet}
+									name="merchantWallet"
 									label="Merchant wallet"
-									value={shortAddress(request.merchantWallet)}
+									placeholder="Base58 Solana address…"
+									value={wallet}
+									hint={
+										connected
+											? `Pre-filled from ${shortAddress(connected.address)}. You can edit it.`
+											: "Connect a wallet below or paste a base58 address (32–44 characters)."
+									}
+									autoComplete="off"
+									disabled={authBlocked}
+									onChange={(event) => setWallet(event.target.value)}
 								/>
-								<StaticField
-									label="Expires in"
-									value={countdown.expired ? "Expired" : countdown.label}
+								<TextField
+									id={FIELD_IDS.label}
+									name="tillLabel"
+									label="Label"
+									placeholder="Table 4"
+									value={label}
+									hint="Optional · shown in the customer's wallet · max 40 characters."
+									disabled={authBlocked}
+									onChange={(event) => setLabel(event.target.value)}
 								/>
-								<p className="form-note" role="status">
-									Waiting for payment…
-								</p>
 							</div>
-						</div>
-						<div className="form-actions no-print">
-							<Button
-								type="button"
-								variant="secondary"
-								onClick={() => setPrintMode((value) => !value)}
-								data-testid="till-print-toggle"
-							>
-								{printMode ? "Exit full screen" : "Print / full screen"}
-							</Button>
-							<Button type="button" variant="secondary" onClick={resetToForm}>
-								Cancel
-							</Button>
+							{hasSavedMerchant ? (
+								<p className="form-note">
+									<button
+										type="button"
+										className="linkish"
+										data-testid="till-forget-merchant"
+										onClick={forgetSavedMerchant}
+									>
+										Forget saved wallet
+									</button>
+								</p>
+							) : null}
+							{formError ? (
+								<Notice tone="warning" data-testid="till-form-error">
+									{formError}
+								</Notice>
+							) : null}
+							<div className="form-actions">
+								<Button type="submit" disabled={creating || authBlocked}>
+									{creating ? "Creating…" : "Create QR"}
+								</Button>
+							</div>
+						</form>
+						<div className="till-wallet-panel">
+							<SolanaWalletPanel
+								title="Connect Solana (optional)"
+								onConnected={setConnected}
+							/>
 						</div>
 					</Panel>
-				</div>
-			) : null}
+				) : null}
 
-			{phase === "paid" && request && amountLabel ? (
-				<div className="till-paid" data-testid="till-paid">
-					<p className="till-paid__title">Paid {amountLabel}</p>
-					{request.explorerUrl ? (
-						<p>
-							<a
-								href={request.explorerUrl}
-								target="_blank"
-								rel="noreferrer"
-								data-testid="till-explorer"
-							>
-								View on Solana Explorer
-							</a>
+				{phase === "waiting" && request && amountLabel ? (
+					<div data-testid="till-waiting">
+						<Panel
+							title="Waiting for payment…"
+							description="Show this QR to the customer. Status updates every few seconds."
+							actions={<SimulatedLabel />}
+						>
+							<div className="till-waiting">
+								<div className="till-qr-stack">
+									<div className="till-qr" data-testid="till-qr">
+										<QrCode
+											value={request.solanaPayUrl}
+											label="Solana Pay QR"
+											size={printMode ? 420 : 280}
+										/>
+									</div>
+									<p
+										className="till-waiting__amount"
+										data-testid="till-waiting-amount"
+									>
+										{amountLabel}
+									</p>
+									<p className="till-waiting__status" role="status">
+										Waiting for payment…
+									</p>
+								</div>
+								<div className="till-waiting__meta">
+									<StaticField label="Amount" value={amountLabel} />
+									<StaticField
+										label="Merchant wallet"
+										value={shortAddress(request.merchantWallet)}
+									/>
+									<StaticField
+										label="Expires in"
+										value={countdown.expired ? "Expired" : countdown.label}
+									/>
+								</div>
+							</div>
+							<div className="form-actions">
+								<Button
+									type="button"
+									variant="secondary"
+									onClick={() => setPrintMode((value) => !value)}
+									data-testid="till-print-toggle"
+								>
+									{printMode ? "Exit full screen" : "Print / full screen"}
+								</Button>
+								<Button
+									type="button"
+									variant="secondary"
+									className="no-print"
+									onClick={resetToForm}
+								>
+									Cancel
+								</Button>
+							</div>
+						</Panel>
+					</div>
+				) : null}
+
+				{phase === "paid" && request && amountLabel ? (
+					<div className="till-paid" data-testid="till-paid">
+						<p className="till-paid__title">Paid {amountLabel}</p>
+						<p className="till-paid__confirm" data-testid="till-paid-confirm">
+							Paid {amountLabel}
 						</p>
-					) : null}
-					<div className="form-actions">
-						<Button type="button" onClick={resetToForm}>
-							New request
-						</Button>
+						{request.explorerUrl ? (
+							<p>
+								<a
+									href={request.explorerUrl}
+									target="_blank"
+									rel="noreferrer"
+									data-testid="till-explorer"
+								>
+									View on Solana Explorer
+								</a>
+							</p>
+						) : null}
+						<div className="form-actions">
+							<Button type="button" onClick={resetToForm}>
+								New request
+							</Button>
+						</div>
 					</div>
-				</div>
-			) : null}
+				) : null}
 
-			{phase === "expired" ? (
-				<div className="till-expired" data-testid="till-expired">
-					<p className="till-expired__title">Expired, create a new request</p>
-					<div className="form-actions">
-						<Button type="button" onClick={resetToForm}>
-							New request
-						</Button>
+				{phase === "expired" ? (
+					<div className="till-expired" data-testid="till-expired">
+						<p className="till-expired__title">Expired, create a new request</p>
+						<div className="form-actions">
+							<Button type="button" onClick={resetToForm}>
+								New request
+							</Button>
+						</div>
 					</div>
-				</div>
-			) : null}
+				) : null}
+			</div>
 		</Page>
 	)
 }
