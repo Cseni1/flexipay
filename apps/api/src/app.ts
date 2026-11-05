@@ -18,6 +18,7 @@ import { paymentRoutes } from "./routes/payments.ts";
 import { quoteRoutes } from "./routes/quotes.ts";
 import { sandboxRoutes } from "./routes/sandbox.ts";
 import { solanaRoutes } from "./routes/solana.ts";
+import { paymentRequestRoutes } from "./routes/payment-requests.ts";
 import type { ApiRuntime } from "./runtime.ts";
 import type { AuthRuntime } from "./auth/auth.ts";
 import { createAuthRateLimiter } from "./auth/rate-limit.ts";
@@ -37,6 +38,7 @@ export const ROUTES: RouteDef<any, any>[] = [
 	...passkeyClaimRoutes,
 	...anchorClaimRoutes,
 	...solanaRoutes,
+	...paymentRequestRoutes,
 	...sandboxRoutes,
 ];
 

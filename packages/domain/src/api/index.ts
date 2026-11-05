@@ -155,3 +155,12 @@ export {
 	type SolanaConfirmResponse,
 	type SolanaTransferIntent,
 } from "./solana.ts";
+
+export {
+  CreatePaymentRequestBodySchema,
+  PaymentRequestAmountSchema,
+  PaymentRequestSchema,
+  PaymentRequestStatusSchema,
+  type CreatePaymentRequestBody,
+  type PaymentRequest,
+} from "./payment-requests.ts";
