@@ -29,6 +29,11 @@ export type BuiltUsdcTransfer = {
 	instructions: TransactionInstruction[];
 };
 
+/** Associated token account for an owner. `allowOwnerOffCurve` so smart wallets (PDAs) work. */
+export function ataFor(mint: PublicKey, owner: PublicKey): PublicKey {
+	return getAssociatedTokenAddressSync(mint, owner, true);
+}
+
 /**
  * Builds an unsigned SPL Token transferChecked (+ ATA create if needed) for the sender wallet to sign.
  * Does not broadcast. Fee payer = sender (`payer`).
@@ -43,8 +48,8 @@ export async function buildUsdcTransferTransaction(
 		throw new Error("transfer amount must be positive");
 	}
 
-	const sourceAta = getAssociatedTokenAddressSync(mint, payer);
-	const destinationAta = getAssociatedTokenAddressSync(mint, recipient);
+	const sourceAta = ataFor(mint, payer);
+	const destinationAta = ataFor(mint, recipient);
 
 	const transferIx = createTransferCheckedInstruction(
 		sourceAta,
@@ -97,7 +102,7 @@ export async function getSolAndUsdcBalances(
 	const ownerKey = parseSolanaAddress(owner);
 	const mintKey = parseSolanaAddress(mint);
 	const solLamports = BigInt(await connection.getBalance(ownerKey, "confirmed"));
-	const ata = getAssociatedTokenAddressSync(mintKey, ownerKey);
+	const ata = ataFor(mintKey, ownerKey);
 	try {
 		const bal = await connection.getTokenAccountBalance(ata, "confirmed");
 		return { solLamports, usdcMinor: BigInt(bal.value.amount) };
