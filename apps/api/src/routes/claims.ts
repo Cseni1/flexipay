@@ -102,7 +102,7 @@ export function toClaimView(link: LoadedClaim, now: Date): ClaimView {
 	});
 }
 
-function adaptersOf(runtime: ApiRuntime): OrchestratorAdapters {
+export function adaptersOf(runtime: ApiRuntime): OrchestratorAdapters {
 	return {
 		getProvider: runtime.getProvider,
 		settlement: runtime.settlement,
