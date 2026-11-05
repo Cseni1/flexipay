@@ -20,7 +20,7 @@ test.describe("Pay-from FlexiPay wallet (Crossmint stub)", () => {
 		await page.getByTestId("flexipay-wallet-open").click()
 		await expect(page.getByTestId("flexipay-wallet-ready")).toBeVisible()
 		await expect(page.getByTestId("flexipay-wallet-address")).toContainText(
-			/FpStub|…|^\w{4}/,
+			/So11|…|^\w{4}/,
 		)
 		await expect(page.getByTestId("flexipay-wallet-usdc")).toContainText(
 			/12\.5/,
