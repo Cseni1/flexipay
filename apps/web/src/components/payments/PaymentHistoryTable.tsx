@@ -1,6 +1,6 @@
-import { formatMoney } from "@flexipay/web-lib"
 import { type Payment } from "@flexipay/web-lib/contract"
 import { Link } from "react-router-dom"
+import { displayMoney } from "../../payments/quoteDisplay"
 import { StatusBadge } from "../ui"
 
 const when = (iso: string): string =>
@@ -11,7 +11,7 @@ const when = (iso: string): string =>
 
 const firstAmount = (payment: Payment): string => {
 	const leg = payment.legs[0]
-	return leg ? formatMoney(leg.amountIn.amount, leg.amountIn.currency) : "-"
+	return leg ? displayMoney(leg.amountIn.amount, leg.amountIn.currency) : "-"
 }
 
 const lastLeg = (payment: Payment): string => {

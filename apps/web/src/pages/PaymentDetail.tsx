@@ -1,4 +1,3 @@
-import { formatMoney } from "@flexipay/web-lib"
 import { type ClaimLinkHandle } from "@flexipay/web-lib/contract"
 import { useEffect, useRef, useState } from "react"
 import { useLocation, useParams } from "react-router-dom"
@@ -31,6 +30,7 @@ import {
 } from "../components/ui"
 import { usePaymentDetail } from "../hooks/usePaymentDetail"
 import { useWakeUpRetry } from "../hooks/useWakeUpRetry"
+import { displayMoney } from "../payments/quoteDisplay"
 
 const solanaExplorerUrl = (
 	template: string | undefined,
@@ -288,7 +288,7 @@ export default function PaymentDetail() {
 									label="Amount"
 									value={
 										firstLeg
-											? formatMoney(
+											? displayMoney(
 													firstLeg.amountIn.amount,
 													firstLeg.amountIn.currency,
 												)

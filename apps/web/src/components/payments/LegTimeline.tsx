@@ -1,5 +1,5 @@
-import { formatMoney } from "@flexipay/web-lib"
 import { type Leg } from "@flexipay/web-lib/contract"
+import { displayMoney } from "../../payments/quoteDisplay"
 import { Notice, SimulatedLabel, StatusBadge, Timeline } from "../ui"
 
 const KIND_LABELS: Record<Leg["kind"], string> = {
@@ -55,13 +55,13 @@ export function LegTimeline({ legs }: { legs: Leg[] }) {
 						</p>
 						<p className="timeline__amounts">
 							<span>
-								{formatMoney(leg.amountIn.amount, leg.amountIn.currency)}
+								{displayMoney(leg.amountIn.amount, leg.amountIn.currency)}
 							</span>
 							<span className="timeline__arrow" aria-hidden="true">
 								→
 							</span>
 							<span>
-								{formatMoney(leg.amountOut.amount, leg.amountOut.currency)}
+								{displayMoney(leg.amountOut.amount, leg.amountOut.currency)}
 							</span>
 						</p>
 						{leg.attempt > 1 ? (

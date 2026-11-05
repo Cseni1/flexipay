@@ -77,6 +77,11 @@ export function SolanaWalletPanel({
 	const tokenName = activeSettlement
 		? assetLabel(activeSettlement.asset)
 		: "token"
+	/** API config.label often names USDC; keep it for USDC, stay asset-neutral for tGBP. */
+	const networkLabel =
+		activeSettlement?.asset === "TGBP"
+			? "Solana devnet (test)"
+			: (config?.label ?? "Solana")
 
 	const refreshWalletList = useCallback(() => {
 		setWalletNames(
@@ -251,10 +256,10 @@ export function SolanaWalletPanel({
 	return (
 		<div className="solana-panel" data-testid="solana-wallet-panel">
 			<Panel title={title}>
-				<Notice>
-					{config?.label ?? "Solana"} — Wallet Standard (Phantom / Solflare).
-					FlexiPay never stores private keys or seed phrases. Balances below are
-					for the configured Devnet {tokenName} mint, not mainnet money.
+				<Notice data-testid="solana-wallet-network-label">
+					{networkLabel} — Wallet Standard (Phantom / Solflare). FlexiPay never
+					stores private keys or seed phrases. Balances below are for the
+					configured Devnet {tokenName} mint, not mainnet money.
 				</Notice>
 				{error ? (
 					<Notice tone="warning" data-testid="solana-wallet-error">
