@@ -30,6 +30,10 @@ export function AppShell() {
 						<span className="nav-link__dot" aria-hidden="true" />
 						New payment
 					</NavLink>
+					<NavLink to="/take-payment" className="nav-link">
+						<span className="nav-link__dot" aria-hidden="true" />
+						Take payment
+					</NavLink>
 					<NavLink to="/recipients" className="nav-link">
 						<span className="nav-link__dot" aria-hidden="true" />
 						Recipients

@@ -1,0 +1,107 @@
+.till-devnet-note {
+	margin: 0 0 1rem;
+}
+
+.till-wallet-panel {
+	margin-top: 1.25rem;
+}
+
+.till-waiting {
+	display: grid;
+	grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+	gap: 1.5rem;
+	align-items: start;
+}
+
+.till-qr {
+	justify-self: center;
+}
+
+.till-qr .qr-code {
+	width: min(100%, 260px);
+	height: auto;
+	border-radius: 12px;
+	border: 1px solid var(--line);
+	background: #fff;
+}
+
+.till-waiting__meta {
+	display: grid;
+	gap: 0.75rem;
+}
+
+.till-paid {
+	padding: 2rem 1.5rem;
+	border-radius: 16px;
+	background: color-mix(in srgb, #1a7f4b 18%, var(--surface));
+	border: 1px solid color-mix(in srgb, #1a7f4b 40%, var(--line));
+	text-align: center;
+}
+
+.till-paid__title {
+	margin: 0 0 0.75rem;
+	font-family: var(--display);
+	font-size: clamp(1.6rem, 3vw, 2.2rem);
+	font-weight: 800;
+	letter-spacing: -0.02em;
+	color: #14653a;
+}
+
+.till-expired {
+	padding: 2rem 1.5rem;
+	border-radius: 16px;
+	background: color-mix(in srgb, var(--ink) 6%, var(--surface));
+	border: 1px solid var(--line);
+	text-align: center;
+}
+
+.till-expired__title {
+	margin: 0 0 0.75rem;
+	font-family: var(--display);
+	font-size: clamp(1.3rem, 2.5vw, 1.8rem);
+	font-weight: 700;
+	color: var(--ink-muted, var(--ink));
+}
+
+html.till-print .app-sidebar {
+	display: none;
+}
+
+html.till-print .app-shell {
+	grid-template-columns: 1fr;
+}
+
+html.till-print .till-waiting {
+	grid-template-columns: 1fr;
+	justify-items: center;
+	text-align: center;
+}
+
+html.till-print .till-qr .qr-code {
+	width: min(80vw, 420px);
+}
+
+html.till-print .no-print {
+	display: none;
+}
+
+@media print {
+	.app-sidebar,
+	.no-print {
+		display: none !important;
+	}
+
+	.app-shell {
+		grid-template-columns: 1fr;
+	}
+
+	.till-qr .qr-code {
+		width: 360px;
+	}
+}
+
+@media (max-width: 720px) {
+	.till-waiting {
+		grid-template-columns: 1fr;
+	}
+}
