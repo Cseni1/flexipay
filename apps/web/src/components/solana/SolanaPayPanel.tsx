@@ -2,7 +2,14 @@ import {
 	buildUsdcTransferTransaction,
 	getSolAndUsdcBalances,
 } from "@flexipay/adapter-solana/browser"
-import { useEffect, useRef, useState } from "react"
+import {
+	lazy,
+	Suspense,
+	useEffect,
+	useRef,
+	useState,
+	type ReactNode,
+} from "react"
 import {
 	ApiError,
 	isTransientApiError,
@@ -15,6 +22,14 @@ import {
 	type SolanaConfirmOk,
 	type SolanaIntent,
 } from "../../api/solanaClient"
+import {
+	isFlexiPayWalletConfigured,
+	readCrossmintClientKey,
+} from "../../flexipayWallet/config"
+import {
+	sendFlexiPaySolanaTransaction,
+	type FlexiPaySolanaWallet,
+} from "../../flexipayWallet/sendFlexiPaySolanaTransaction"
 import { formatLocalClock } from "../../payments/formatPaymentTime"
 import {
 	clearSolanaTransfer,
@@ -35,6 +50,7 @@ import {
 	type ConnectedSolanaWallet,
 } from "../../solana/walletStandard"
 import { Button, Notice, Panel, StaticField } from "../ui"
+import { FlexiPayWalletPayButton } from "./FlexiPayWalletPayButton"
 import { SolanaTxSuccess } from "./SolanaTxSuccess"
 import { SolanaWalletPanel } from "./SolanaWalletPanel"
 
@@ -57,9 +73,23 @@ const shouldKeepConfirming = (cause: unknown): boolean => {
 		if (cause.status === 202 || cause.code === "pending") return true
 		return isTransientApiError(cause)
 	}
-	/* Transient fetch failures that never became ApiError. */
 	return cause instanceof TypeError
 }
+
+const FlexiPayPayProviders = lazy(async () => {
+	const { FlexiPayWalletProviders } =
+		await import("../../flexipayWallet/FlexiPayWalletProviders")
+	function Loaded({ children }: { children: ReactNode }) {
+		const apiKey = readCrossmintClientKey(import.meta.env)
+		if (!apiKey) return null
+		return (
+			<FlexiPayWalletProviders apiKey={apiKey}>
+				{children}
+			</FlexiPayWalletProviders>
+		)
+	}
+	return { default: Loaded }
+})
 
 export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 	const [intent, setIntent] = useState<SolanaIntent | null>(null)
@@ -76,6 +106,7 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 	const [idemKey] = useState(() => newIdempotencyKey("solana-confirm"))
 	const confirmLock = useRef(false)
 	const autoStarted = useRef(false)
+	const flexiConfigured = isFlexiPayWalletConfigured(import.meta.env)
 
 	useEffect(() => {
 		const controller = new AbortController()
@@ -86,7 +117,6 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 			})
 			.catch((cause) => {
 				if (controller.signal.aborted) return
-				// 409 = claim not accepted to Solana / settle not waiting — hide panel.
 				if (cause instanceof ApiError && cause.status === 409) {
 					setNotSolanaSettle(true)
 					return
@@ -162,7 +192,6 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 		if (!stored || result || autoStarted.current) return
 		autoStarted.current = true
 		void confirmStored(stored, { announce: false })
-		// Only auto-start once per mounted stored signature.
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot
 	}, [stored, result])
 
@@ -181,7 +210,50 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 			? formatAssetAmount(settlement.asset, intent.amount, settlement.decimals)
 			: null
 
-	const pay = async () => {
+	const afterSigned = async (signature: string) => {
+		const memory: SolanaTransferMemory = {
+			signature,
+			sentAt: new Date().toISOString(),
+		}
+		saveSolanaTransfer(paymentId, memory)
+		autoStarted.current = true
+		setStored(memory)
+		await confirmStored(memory)
+	}
+
+	const prepareTransfer = async (payer: string) => {
+		if (!intent || !settlement) {
+			throw new Error("Solana intent is not ready.")
+		}
+		const config = await getSolanaConfig()
+		const connection = new Connection(
+			config.publicRpcUrl ?? "https://api.devnet.solana.com",
+			"confirmed",
+		)
+		const balances = await getSolAndUsdcBalances(
+			connection,
+			payer,
+			settlement.mint,
+		)
+		if (balances.solLamports < MIN_SOL_LAMPORTS_FOR_FEES) {
+			throw new Error("no devnet SOL for network fees")
+		}
+		const needed = BigInt(intent.amount)
+		if (balances.usdcMinor < needed) {
+			throw new Error(`insufficient ${settlement.asset}`)
+		}
+		return buildUsdcTransferTransaction({
+			connection,
+			payer,
+			recipientOwner: intent.recipient,
+			mint: settlement.mint,
+			amountMinor: needed,
+			decimals: settlement.decimals,
+			reference: intent.reference,
+		})
+	}
+
+	const payWithPhantom = async () => {
 		if (!intent || !connected || !settlement || stored) return
 		setBusy(true)
 		setError(null)
@@ -194,48 +266,35 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 			if (!accountSupportsCluster(connected.account, cluster)) {
 				throw new Error(SOLANA_PAY_ERROR_COPY.WRONG_CLUSTER)
 			}
-
+			const built = await prepareTransfer(connected.address)
 			const connection = new Connection(
 				config.publicRpcUrl ?? "https://api.devnet.solana.com",
 				"confirmed",
 			)
-
-			const balances = await getSolAndUsdcBalances(
-				connection,
-				connected.address,
-				settlement.mint,
-			)
-			if (balances.solLamports < MIN_SOL_LAMPORTS_FOR_FEES) {
-				throw new Error("no devnet SOL for network fees")
-			}
-			const needed = BigInt(intent.amount)
-			if (balances.usdcMinor < needed) {
-				throw new Error(`insufficient ${settlement.asset}`)
-			}
-
-			const built = await buildUsdcTransferTransaction({
-				connection,
-				payer: connected.address,
-				recipientOwner: intent.recipient,
-				mint: settlement.mint,
-				amountMinor: needed,
-				decimals: settlement.decimals,
-				reference: intent.reference,
-			})
 			const signature = await signAndSendSolanaTransaction({
 				connected,
 				transaction: built.transaction,
 				connection,
 				cluster,
 			})
-			const memory: SolanaTransferMemory = {
-				signature,
-				sentAt: new Date().toISOString(),
-			}
-			saveSolanaTransfer(paymentId, memory)
-			autoStarted.current = true
-			setStored(memory)
-			await confirmStored(memory)
+			await afterSigned(signature)
+		} catch (cause) {
+			setError(friendlySolanaPayError(cause))
+			setBusy(false)
+		}
+	}
+
+	const payWithFlexiPay = async (wallet: FlexiPaySolanaWallet) => {
+		if (!intent || !settlement || stored) return
+		setBusy(true)
+		setError(null)
+		try {
+			const built = await prepareTransfer(wallet.address)
+			const signature = await sendFlexiPaySolanaTransaction(
+				wallet,
+				built.transaction,
+			)
+			await afterSigned(signature)
 		} catch (cause) {
 			setError(friendlySolanaPayError(cause))
 			setBusy(false)
@@ -248,18 +307,12 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 			setError("Enter a Solana transaction signature.")
 			return
 		}
-		const memory: SolanaTransferMemory = {
-			signature,
-			sentAt: new Date().toISOString(),
-		}
-		saveSolanaTransfer(paymentId, memory)
-		autoStarted.current = true
-		setStored(memory)
-		await confirmStored(memory)
+		await afterSigned(signature)
 	}
 
 	const sentClock = stored ? formatLocalClock(stored.sentAt) : null
-	const signDisabled = Boolean(busy || !intent || !connected || stored)
+	const phantomDisabled = Boolean(busy || !intent || !connected || stored)
+	const flexiDisabled = Boolean(busy || !intent || stored)
 
 	return (
 		<div
@@ -313,7 +366,7 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 				)}
 				<SolanaWalletPanel
 					onConnected={setConnected}
-					title="Sender wallet"
+					title="Sender wallet (Phantom / Wallet Standard)"
 					settlement={settlement ?? undefined}
 				/>
 				{result ? (
@@ -326,14 +379,26 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 						<div className="form-actions">
 							<Button
 								type="button"
-								disabled={signDisabled}
-								onClick={() => void pay()}
+								disabled={phantomDisabled}
+								onClick={() => void payWithPhantom()}
 								data-testid="solana-pay-send"
 							>
-								{busy && !stored
+								{busy && !stored && connected
 									? "Signing / confirming…"
 									: `Sign and send ${label}`}
 							</Button>
+							{flexiConfigured ? (
+								<Suspense fallback={null}>
+									<FlexiPayPayProviders>
+										<FlexiPayWalletPayButton
+											disabled={flexiDisabled}
+											busy={busy}
+											label="Pay with FlexiPay wallet"
+											onPay={(wallet) => void payWithFlexiPay(wallet)}
+										/>
+									</FlexiPayPayProviders>
+								</Suspense>
+							) : null}
 							{stored ? (
 								<Button
 									type="button"

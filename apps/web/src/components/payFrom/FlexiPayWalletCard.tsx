@@ -5,18 +5,22 @@ import {
 } from "../../flexipayWallet/config"
 import { Panel } from "../ui"
 
+type Props = {
+	onAddressChange?: (address: string | null) => void
+}
+
 const FlexiPayWalletLazy = lazy(async () => {
 	const [{ FlexiPayWalletProviders }, { FlexiPayWalletSession }] =
 		await Promise.all([
 			import("../../flexipayWallet/FlexiPayWalletProviders"),
 			import("../../flexipayWallet/FlexiPayWalletSession"),
 		])
-	function Loaded() {
+	function Loaded({ onAddressChange }: Props) {
 		const apiKey = readCrossmintClientKey(import.meta.env)
 		if (!apiKey) return null
 		return (
 			<FlexiPayWalletProviders apiKey={apiKey}>
-				<FlexiPayWalletSession />
+				<FlexiPayWalletSession onAddressChange={onAddressChange} />
 			</FlexiPayWalletProviders>
 		)
 	}
@@ -27,7 +31,7 @@ const FlexiPayWalletLazy = lazy(async () => {
  * Optional Crossmint embedded Solana wallet on Pay-from.
  * Lazy-loaded so the Crossmint auth/wallet graph stays out of the main bundle.
  */
-export function FlexiPayWalletCard() {
+export function FlexiPayWalletCard({ onAddressChange }: Props = {}) {
 	const configured = isFlexiPayWalletConfigured(import.meta.env)
 
 	return (
@@ -52,7 +56,7 @@ export function FlexiPayWalletCard() {
 							</p>
 						}
 					>
-						<FlexiPayWalletLazy />
+						<FlexiPayWalletLazy onAddressChange={onAddressChange} />
 					</Suspense>
 				) : (
 					<p className="form-note" data-testid="flexipay-wallet-unconfigured">

@@ -43,6 +43,8 @@ const COMING_SOON = [
 
 export default function PayFrom() {
 	const [connected, setConnected] = useState<ConnectedSolanaWallet | null>(null)
+	const [flexiAddress, setFlexiAddress] = useState<string | null>(null)
+	const fundingAddress = flexiAddress ?? (connected ? connected.address : null)
 
 	return (
 		<Page>
@@ -97,10 +99,10 @@ export default function PayFrom() {
 						</p>
 					}
 				>
-					<FlexiPayWalletCard />
+					<FlexiPayWalletCard onAddressChange={setFlexiAddress} />
 				</Suspense>
 
-				<AddFundsPanel walletAddress={connected ? connected.address : null} />
+				<AddFundsPanel walletAddress={fundingAddress} />
 
 				<Panel
 					title="Other funding methods"

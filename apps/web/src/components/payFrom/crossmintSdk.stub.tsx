@@ -2,6 +2,7 @@ import {
 	createContext,
 	useCallback,
 	useContext,
+	useEffect,
 	useMemo,
 	useState,
 	type ReactNode,
@@ -12,9 +13,16 @@ import {
  * Enabled via FP_CROSSMINT_SDK_STUB=1 on the Vite webServer — no real Crossmint calls.
  *
  * Covers embedded checkout (card) and embedded Solana wallet (email auth).
+ * Auth is persisted in sessionStorage so Pay-from and SolanaPayPanel provider
+ * trees share the same signed-in session (mirrors Crossmint JWT restore).
  */
 
-const STUB_ADDRESS = "FpStubWallet1111111111111111111111111111111"
+/** Valid base58 Solana pubkey (wrapped-SOL mint) used as the stub wallet address. */
+export const STUB_ADDRESS = "So11111111111111111111111111111111111111112"
+export const FLEXIPAY_STUB_SIGNATURE =
+	"5FlexiPayStubSigaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+const AUTH_STORAGE_KEY = "fp.crossmint.stub.auth"
 
 type AuthStatus = "logged-in" | "logged-out" | "in-progress" | "initializing"
 type WalletStatus = "not-loaded" | "in-progress" | "loaded" | "error"
@@ -29,17 +37,22 @@ type StubAuth = {
 	getUser: () => void
 }
 
+type StubWalletInstance = {
+	address: string
+	balances: () => Promise<{
+		usdc: { amount: string; decimals: number }
+		nativeToken: { amount: string }
+		tokens: unknown[]
+	}>
+	sendTransaction: (params: unknown) => Promise<{
+		hash: string
+		explorerLink: string
+		transactionId: string
+	}>
+}
+
 type StubWallet = {
-	wallet:
-		| {
-				address: string
-				balances: () => Promise<{
-					usdc: { amount: string; decimals: number }
-					nativeToken: { amount: string }
-					tokens: unknown[]
-				}>
-		  }
-		| undefined
+	wallet: StubWalletInstance | undefined
 	status: WalletStatus
 	getWallet: () => Promise<unknown>
 	createWallet: () => Promise<unknown>
@@ -48,6 +61,24 @@ type StubWallet = {
 
 const AuthCtx = createContext<StubAuth | null>(null)
 const WalletCtx = createContext<StubWallet | null>(null)
+
+const readStoredEmail = (): string | null => {
+	try {
+		const raw = sessionStorage.getItem(AUTH_STORAGE_KEY)
+		return raw && raw.includes("@") ? raw : null
+	} catch {
+		return null
+	}
+}
+
+const writeStoredEmail = (email: string | null) => {
+	try {
+		if (!email) sessionStorage.removeItem(AUTH_STORAGE_KEY)
+		else sessionStorage.setItem(AUTH_STORAGE_KEY, email)
+	} catch {
+		/* ignore */
+	}
+}
 
 export function CrossmintProvider({ children }: { children?: ReactNode }) {
 	return <>{children}</>
@@ -60,8 +91,28 @@ export function CrossmintAuthProvider({
 	loginMethods?: string[]
 	appearance?: unknown
 }) {
-	const [status, setStatus] = useState<AuthStatus>("logged-out")
-	const [email, setEmail] = useState<string | undefined>()
+	const stored = readStoredEmail()
+	const [status, setStatus] = useState<AuthStatus>(
+		stored ? "logged-in" : "logged-out",
+	)
+	const [email, setEmail] = useState<string | undefined>(stored ?? undefined)
+
+	useEffect(() => {
+		const onStorage = (event: StorageEvent) => {
+			if (event.storageArea !== sessionStorage) return
+			if (event.key !== AUTH_STORAGE_KEY) return
+			const next = event.newValue
+			if (next && next.includes("@")) {
+				setEmail(next)
+				setStatus("logged-in")
+			} else {
+				setEmail(undefined)
+				setStatus("logged-out")
+			}
+		}
+		window.addEventListener("storage", onStorage)
+		return () => window.removeEventListener("storage", onStorage)
+	}, [])
 
 	const login = useCallback((defaultEmail?: string) => {
 		setStatus("in-progress")
@@ -70,12 +121,14 @@ export function CrossmintAuthProvider({
 				? defaultEmail
 				: "stub@flexipay.test"
 		queueMicrotask(() => {
+			writeStoredEmail(nextEmail)
 			setEmail(nextEmail)
 			setStatus("logged-in")
 		})
 	}, [])
 
 	const logout = useCallback(async () => {
+		writeStoredEmail(null)
 		setEmail(undefined)
 		setStatus("logged-out")
 	}, [])
@@ -119,12 +172,17 @@ export function CrossmintWalletProvider({
 				error: null,
 			}
 		}
-		const wallet = {
+		const wallet: StubWalletInstance = {
 			address: STUB_ADDRESS,
 			balances: async () => ({
 				usdc: { amount: "12.5", decimals: 6 },
 				nativeToken: { amount: "0.1" },
-				tokens: [],
+				tokens: [{ symbol: "tGBP", amount: "25.00", mint: "TgbpDevMint" }],
+			}),
+			sendTransaction: async () => ({
+				hash: FLEXIPAY_STUB_SIGNATURE,
+				explorerLink: `https://explorer.solana.com/tx/${FLEXIPAY_STUB_SIGNATURE}?cluster=devnet`,
+				transactionId: "tx_stub_flexipay",
 			}),
 		}
 		return {
@@ -171,4 +229,14 @@ export type ClientSideWalletCreateArgs<C extends string = string> = {
 	chain: C
 	recoveryMethods?: Array<{ type: string; email?: string }>
 	signers?: unknown[]
+}
+
+export type Chain = string
+export type Wallet<C extends string = string> = StubWalletInstance & {
+	chain?: C
+}
+
+/** Minimal stand-in so production imports of SolanaWallet type-check under the stub. */
+export const SolanaWallet = {
+	from: (wallet: StubWalletInstance) => wallet,
 }
