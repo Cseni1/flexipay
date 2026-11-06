@@ -350,6 +350,11 @@ export class BlindPayAdapter implements ProviderAdapter {
 
 		const receiverId = endpoint.partnerRefs?.[RECEIVER_REF]
 		if (!receiverId) {
+			// Integrator (CCR-34): recipients are not KYC-onboarded at BlindPay yet, so on a development
+			// instance a payout with bank details still goes to the sandbox account instead of failing.
+			if (type === "development") {
+				return { bankAccountId: funding.bankAccountId }
+			}
 			throw new ProviderError(
 				"unsupported",
 				`BlindPay bank account for endpoint ${endpoint.endpointId} needs a KYC-approved receiver id in partnerRefs.${RECEIVER_REF}; FlexiPay does not store the customer KYC fields BlindPay requires (${KYC_FIELDS.join(", ")}), so no receiver was created`,

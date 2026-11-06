@@ -262,9 +262,20 @@ describe("BlindPay adapter", () => {
 		).toHaveLength(1)
 	})
 
-	it("refuses without a KYC-approved receiver instead of inventing KYC data", async () => {
+	it("on a development instance, bank details without a KYC receiver still pay the sandbox account", async () => {
 		const api = fakeApi()
-		const error = await adapter(api)
+		const result = await adapter(api).execute(
+			leg("payout", money("5443", "BRL"), { ...BR_ENDPOINT, partnerRefs: undefined }),
+		)
+		expect(result.externalRef).toBeTruthy()
+		expect(api.calls.some((c) => c.path.endsWith("/bank-accounts"))).toBe(false)
+		const quote = api.calls.find((c) => c.path.endsWith("/quotes"))
+		expect(quote?.body).toMatchObject({ bank_account_id: SANDBOX.bankAccountId })
+	})
+
+	it("in production, refuses without a KYC-approved receiver instead of inventing KYC data", async () => {
+		const api = fakeApi({ instanceType: "production" })
+		const error = await adapter(api, { liveApproved: true })
 			.execute(
 				leg("payout", money("5443", "BRL"), {
 					...BR_ENDPOINT,
