@@ -1,9 +1,5 @@
 import { type Delivery, type Quote } from "@flexipay/web-lib/contract"
-import {
-	displayFeesTotal,
-	displayMoney,
-	formatQuoteReason,
-} from "../../payments/quoteDisplay"
+import { displayFeesTotal, displayMoney } from "../../payments/quoteDisplay"
 import {
 	Button,
 	EmptyState,
@@ -12,6 +8,7 @@ import {
 	SimulatedLabel,
 	StaticField,
 } from "../ui"
+import { WhyThisRoutePanel } from "./WhyThisRoutePanel"
 
 interface QuotePanelProps {
 	quote: Quote | null
@@ -169,58 +166,7 @@ export function QuotePanel({
 						</ul>
 					</section>
 
-					<section className="quote-section" aria-labelledby="quote-reasons">
-						<h4 className="quote-section__title" id="quote-reasons">
-							Why this route?
-						</h4>
-						{quote.reasons.length === 0 ? (
-							<p className="muted">No additional reasons were returned.</p>
-						) : (
-							<ul className="reason-list reason-list--text">
-								{quote.reasons.map((reason) => (
-									<li key={reason}>{formatQuoteReason(reason)}</li>
-								))}
-							</ul>
-						)}
-					</section>
-
-					<section
-						className="quote-section"
-						aria-labelledby="quote-alternatives"
-					>
-						<h4 className="quote-section__title" id="quote-alternatives">
-							Other eligible routes
-						</h4>
-						{quote.alternatives.length === 0 ? (
-							<p className="muted">
-								No alternative eligible route was returned.
-							</p>
-						) : (
-							<ul className="reason-list reason-list--text">
-								{quote.alternatives.map((alternative, index) => (
-									<li key={`alternative-${index}`}>
-										<span>
-											{alternative.route.map((leg) => leg.rail).join(" → ")}
-										</span>
-										<span>
-											{displayMoney(
-												alternative.totalCost.amount,
-												alternative.totalCost.currency,
-											)}{" "}
-											· {alternative.estimatedTimeSeconds}s
-										</span>
-										{alternative.reasons.length > 0 ? (
-											<span className="reason-list__detail">
-												{alternative.reasons
-													.map((reason) => formatQuoteReason(reason))
-													.join(" ")}
-											</span>
-										) : null}
-									</li>
-								))}
-							</ul>
-						)}
-					</section>
+					<WhyThisRoutePanel quote={quote} />
 
 					<fieldset className="option-list quote-delivery">
 						<legend className="field__label">Delivery</legend>

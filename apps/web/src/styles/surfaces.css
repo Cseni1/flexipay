@@ -322,6 +322,137 @@
 	gap: 0.9rem;
 }
 
+.why-route__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 0.75rem;
+}
+
+.why-route__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: 0.45rem 0.55rem;
+	padding: 0.75rem 0.85rem;
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	background: var(--surface);
+}
+
+.why-route__sentence {
+	margin: 0;
+	flex: 1 1 100%;
+	font-size: 0.95rem;
+	line-height: 1.45;
+	overflow-wrap: anywhere;
+}
+
+.why-route__reasons {
+	margin-top: 0.75rem;
+}
+
+.provider-badge {
+	display: inline-flex;
+	align-items: center;
+	min-height: 28px;
+	padding: 0.2rem 0.55rem;
+	border-radius: 999px;
+	border: 1px solid var(--line);
+	font-size: 0.72rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.provider-badge--simulated {
+	background: color-mix(in srgb, var(--warn, #b45309) 14%, var(--surface));
+	color: var(--warn, #b45309);
+}
+
+.provider-badge--sandbox {
+	background: color-mix(in srgb, var(--brand, #1a5fb4) 12%, var(--surface));
+	color: var(--brand, #1a5fb4);
+}
+
+.provider-badge--live {
+	background: color-mix(in srgb, #14653a 14%, var(--surface));
+	color: #14653a;
+}
+
+.coverage-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 0.35rem;
+}
+
+.coverage-list__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.4rem 0.75rem;
+	padding: 0.55rem 0;
+	border-bottom: 1px solid var(--line);
+}
+
+.coverage-list__row:last-child {
+	border-bottom: 0;
+}
+
+.coverage-list__name {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.coverage-list__code {
+	font-family: var(--mono, ui-monospace, monospace);
+	font-size: 0.85rem;
+	color: var(--muted);
+}
+
+.coverage-pill {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	min-height: 28px;
+	padding: 0.2rem 0.55rem;
+	border-radius: 999px;
+	border: 1px solid var(--line);
+	font-size: 0.72rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.coverage-pill--local_bank {
+	background: color-mix(in srgb, #14653a 12%, var(--surface));
+	color: #14653a;
+}
+
+.coverage-pill--swift_only {
+	background: color-mix(in srgb, var(--brand, #1a5fb4) 12%, var(--surface));
+	color: var(--brand, #1a5fb4);
+}
+
+.coverage-pill--not_covered {
+	background: color-mix(in srgb, var(--ink) 8%, var(--surface));
+	color: var(--muted);
+}
+
+@media (max-width: 640px) {
+	.why-route__sentence {
+		font-size: 14px;
+	}
+
+	.coverage-list__row {
+		align-items: flex-start;
+	}
+}
+
 .quote-section {
 	display: grid;
 	gap: 0.55rem;

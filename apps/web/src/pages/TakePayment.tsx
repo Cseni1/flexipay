@@ -19,6 +19,7 @@ import {
 	TextField,
 } from "../components/ui"
 import { useCountdown } from "../hooks/useCountdown"
+import { formatLocalDateTime } from "../payments/formatPaymentTime"
 import { displayMoney } from "../payments/quoteDisplay"
 import {
 	isValidMerchantWallet,
@@ -58,6 +59,7 @@ export default function TakePayment() {
 	const [request, setRequest] = useState<PaymentRequest | null>(null)
 	const [phase, setPhase] = useState<Phase>("form")
 	const [printMode, setPrintMode] = useState(false)
+	const [paidAt, setPaidAt] = useState<string | null>(null)
 	const createLock = useRef(false)
 	const pollAbort = useRef<AbortController | null>(null)
 	const pollCount = useRef(0)
@@ -103,6 +105,7 @@ export default function TakePayment() {
 				if (stopped || controller.signal.aborted) return
 				setRequest(next)
 				if (next.status === "paid") {
+					setPaidAt((prev) => prev ?? new Date().toISOString())
 					setPhase("paid")
 					setPrintMode(false)
 					return
@@ -137,6 +140,7 @@ export default function TakePayment() {
 
 	const resetToForm = () => {
 		pollAbort.current?.abort()
+		setPaidAt(null)
 		setRequest(null)
 		setPhase("form")
 		setPrintMode(false)
@@ -190,7 +194,12 @@ export default function TakePayment() {
 			})
 			setHasSavedMerchant(true)
 			setRequest(created)
-			setPhase(created.status === "paid" ? "paid" : "waiting")
+			if (created.status === "paid") {
+				setPaidAt(new Date().toISOString())
+				setPhase("paid")
+			} else {
+				setPhase("waiting")
+			}
 		} catch (cause) {
 			if (isAuthRequired(cause)) setAuthBlocked(true)
 			setFormError(
@@ -366,27 +375,66 @@ export default function TakePayment() {
 				) : null}
 
 				{phase === "paid" && request && amountLabel ? (
-					<div className="till-paid" data-testid="till-paid">
-						<p className="till-paid__title">Paid {amountLabel}</p>
-						<p className="till-paid__confirm" data-testid="till-paid-confirm">
-							Paid {amountLabel}
-						</p>
-						{request.explorerUrl ? (
-							<p>
-								<a
-									href={request.explorerUrl}
-									target="_blank"
-									rel="noreferrer"
-									data-testid="till-explorer"
+					<div
+						className="till-paid-screen"
+						data-testid="till-paid"
+						role="dialog"
+						aria-modal="true"
+						aria-labelledby="till-paid-heading"
+					>
+						<div className="till-paid-screen__card">
+							<p className="till-paid-screen__eyebrow">Payment received</p>
+							<h2
+								className="till-paid-screen__amount"
+								id="till-paid-heading"
+								data-testid="till-paid-confirm"
+							>
+								{amountLabel} received
+							</h2>
+							{paidAt ? (
+								<p
+									className="till-paid-screen__meta"
+									data-testid="till-paid-at"
 								>
-									View on Solana Explorer
-								</a>
-							</p>
-						) : null}
-						<div className="form-actions">
-							<Button type="button" onClick={resetToForm}>
-								New request
-							</Button>
+									{formatLocalDateTime(paidAt)}
+								</p>
+							) : null}
+							{request.payer ? (
+								<p
+									className="till-paid-screen__meta"
+									data-testid="till-paid-payer"
+								>
+									From{" "}
+									<code className="code-text" title={request.payer}>
+										{shortAddress(request.payer)}
+									</code>
+								</p>
+							) : (
+								<p className="till-paid-screen__meta muted">
+									Payer wallet not reported on this request.
+								</p>
+							)}
+							{request.explorerUrl ? (
+								<p>
+									<a
+										href={request.explorerUrl}
+										target="_blank"
+										rel="noreferrer"
+										data-testid="till-explorer"
+									>
+										View on Solana Explorer
+									</a>
+								</p>
+							) : null}
+							<div className="form-actions">
+								<Button
+									type="button"
+									onClick={resetToForm}
+									data-testid="till-paid-done"
+								>
+									Done
+								</Button>
+							</div>
 						</div>
 					</div>
 				) : null}
