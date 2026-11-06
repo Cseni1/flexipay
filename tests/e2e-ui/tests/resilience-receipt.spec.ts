@@ -77,10 +77,15 @@ test.describe("Resilience: API wake-up", () => {
 		await expect(wake).not.toContainText("{")
 		await expect(wake).not.toContainText("stack")
 		allowSuccess = true
-		await page.getByTestId("api-wakeup-retry").click()
-		await expect(page.getByTestId("api-wakeup")).toHaveCount(0, {
-			timeout: 10_000,
-		})
+		await Promise.all([
+			page.waitForResponse(
+				(response) =>
+					response.url().includes("/v1/payments/pay_asleep") &&
+					response.ok(),
+			),
+			page.getByTestId("api-wakeup-retry").click(),
+		])
+		await expect(page.getByTestId("api-wakeup")).toHaveCount(0)
 		await expect(
 			page.getByRole("heading", { name: "Payment", exact: true }),
 		).toBeVisible()
@@ -106,7 +111,8 @@ test.describe("Resilience: API wake-up", () => {
 		const wake = page.getByTestId("api-wakeup")
 		await expect(wake).toBeVisible()
 		await expect(wake).toContainText("Waking up the server")
-		// Six scheduled delays: 3+5+8+12+15+17s.
+		// Six scheduled delays: 3+5+8+12+15+17s. Advance the fake clock, then
+		// wait for the exhausted UI (not a fixed wall-clock sleep).
 		for (let i = 0; i < 6; i += 1) {
 			await page.clock.runFor(20_000)
 		}
@@ -152,7 +158,9 @@ test.describe("Receipt: paid Solana payment", () => {
 			"href",
 			`https://explorer.solana.com/tx/${signature}?cluster=devnet`,
 		)
-		await page.getByRole("button", { name: "Copy signature" }).click()
+		const copy = page.getByRole("button", { name: "Copy signature", exact: true })
+		await expect(copy).toBeVisible()
+		await copy.click()
 		await expect(
 			page.getByRole("status").filter({ hasText: "Copied" }),
 		).toBeVisible()

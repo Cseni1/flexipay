@@ -39,6 +39,7 @@ import {
 } from "../hooks/useRecipientDirectory"
 import { useWakeUpRetry } from "../hooks/useWakeUpRetry"
 import { paymentMilestoneTimes } from "../payments/paymentEventTimes"
+import { providerLabel } from "../payments/providerNames"
 import { displayMoney } from "../payments/quoteDisplay"
 import { clearSolanaTransfer } from "../payments/solanaTransferStorage"
 import { useSession } from "../providers/SessionProvider"
@@ -52,8 +53,6 @@ const solanaExplorerUrl = (
 	}
 	return `https://explorer.solana.com/tx/${signature}?cluster=devnet`
 }
-
-const POLLING_STATUSES = new Set(["funded", "processing", "refunding"])
 
 // The API returns the claim token only on create. Map its /v1/claims/{token} path onto the
 // browser claim route; never persist or log the token.
@@ -140,7 +139,8 @@ export default function PaymentDetail() {
 	const handedOffClaimLink =
 		(location.state as { claimLink?: ClaimLinkHandle | null } | null)
 			?.claimLink ?? null
-	const { payment, error, loading, refresh } = usePaymentDetail(paymentId)
+	const { payment, error, loading, polling, refresh } =
+		usePaymentDetail(paymentId)
 	const { waking, exhausted, attempt, retryNow } = useWakeUpRetry({
 		error,
 		hasData: payment !== null,
@@ -216,7 +216,6 @@ export default function PaymentDetail() {
 	const createdAtIso = milestones.created ?? payment?.createdAt ?? null
 	const canFund =
 		(status === "awaiting_funding" || status === "quoted") && !authBlocked
-	const polling = status ? POLLING_STATUSES.has(status) : false
 	const orgName =
 		sessionState.status === "signed_in"
 			? sessionState.session.organization.name
@@ -235,7 +234,7 @@ export default function PaymentDetail() {
 			<PageHeader
 				eyebrow={`Payments / ${paymentId ?? "unknown"}`}
 				title="Payment detail"
-				description="Journey, cost breakdown, settlement reference and the event log. The screen polls only while the payment is moving."
+				description="Journey, cost breakdown, settlement reference and the event log. While a partner payout is processing, this screen refreshes every 10 seconds for up to 15 minutes."
 				actions={
 					<Button variant="secondary" onClick={refresh} disabled={loading}>
 						Refresh
@@ -292,7 +291,7 @@ export default function PaymentDetail() {
 							title="Payment"
 							description={
 								polling
-									? "Updating every two seconds while it moves."
+									? "Checking every 10 seconds while a leg is with the partner."
 									: undefined
 							}
 							actions={<StatusBadge status={payment.status} />}
@@ -396,7 +395,11 @@ export default function PaymentDetail() {
 								/>
 								<StaticField
 									label="Route ends at"
-									value={lastLeg ? lastLeg.rail : "—"}
+									value={
+										lastLeg
+											? providerLabel(lastLeg.providerId || lastLeg.rail)
+											: "—"
+									}
 								/>
 							</div>
 
@@ -439,7 +442,11 @@ export default function PaymentDetail() {
 							title="Timeline"
 							description="Journey of this payment: legs run in order. Errors and retry evidence appear in the event log."
 						>
-							<LegTimeline legs={payment.legs} events={payment.events} />
+							<LegTimeline
+								legs={payment.legs}
+								events={payment.events}
+								polling={polling}
+							/>
 						</Panel>
 
 						<Panel
@@ -459,7 +466,11 @@ export default function PaymentDetail() {
 							<div className="form-grid">
 								<StaticField
 									label="Adapter"
-									value={settleLeg ? settleLeg.providerId : "No settlement leg"}
+									value={
+										settleLeg
+											? providerLabel(settleLeg.providerId)
+											: "No settlement leg"
+									}
 								/>
 								<StaticField
 									label="Payout id"

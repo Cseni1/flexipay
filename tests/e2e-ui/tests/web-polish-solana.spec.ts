@@ -80,17 +80,21 @@ test.describe("Web polish: Solana pay messaging", () => {
 		await expect(page.getByTestId("solana-pay-success")).toBeVisible()
 		await expect(page.getByTestId("solana-tx-signature")).toHaveText(signature)
 		const explorer = page.getByTestId("payment-explorer-link")
+		await expect(explorer).toBeVisible()
 		await expect(explorer).toHaveText("View on Solana Explorer")
 		await expect(explorer).toHaveAttribute(
 			"href",
 			`https://explorer.solana.com/tx/${signature}?cluster=devnet`,
 		)
-		await page.getByRole("button", { name: "Copy signature" }).click()
+		const copy = page.getByRole("button", { name: "Copy signature", exact: true })
+		await expect(copy).toBeVisible()
+		await copy.click()
 		await expect(
 			page.getByRole("status").filter({ hasText: "Copied" }),
 		).toBeVisible()
-		const text = await page.evaluate(() => navigator.clipboard.readText())
-		expect(text).toBe(signature)
+		await expect
+			.poll(async () => page.evaluate(() => navigator.clipboard.readText()))
+			.toBe(signature)
 	})
 
 	test("Solana intent 500 shows the prepare-failed message, not JSON", async ({
@@ -110,6 +114,7 @@ test.describe("Web polish: Solana pay messaging", () => {
 			},
 		)
 		await page.goto("/payments/pay_proc")
+		await expect(page.getByTestId("solana-pay-panel")).toBeVisible()
 		const error = page.getByTestId("solana-pay-error")
 		await expect(error).toBeVisible()
 		await expect(error).toContainText(

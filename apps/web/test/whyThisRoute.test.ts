@@ -23,8 +23,9 @@ const leg = (
 })
 
 describe("whyThisRoute", () => {
-	test("labels providers and badges", () => {
+	test("labels providers and badges via the shared helper", () => {
 		assert.equal(providerLabel("sim_ewallet_ph"), "Ewallet Ph")
+		assert.equal(providerLabel("blindpay_sandbox"), "BlindPay")
 		assert.equal(providerBadge(true), "Simulated")
 		assert.equal(providerBadge(false), "Sandbox")
 	})
@@ -39,7 +40,7 @@ describe("whyThisRoute", () => {
 				{
 					route: [
 						leg("collect", "sim_bank_us_ach", "125000", "USD"),
-						leg("payout", "blindpay_ph", "6500000", "PHP", false),
+						leg("payout", "blindpay_sandbox", "6500000", "PHP", true),
 					],
 					totalCost: { amount: "100", currency: "USD" },
 					estimatedTimeSeconds: 60,
@@ -52,7 +53,7 @@ describe("whyThisRoute", () => {
 		const lines = buildWhyThisRoute(quote)
 		assert.equal(lines.length, 2)
 		assert.match(lines[1]!.sentence, /Payout: Ewallet Ph delivers/)
-		assert.match(lines[1]!.sentence, /others: Blindpay Ph/)
+		assert.match(lines[1]!.sentence, /others: BlindPay/)
 		assert.equal(lines[1]!.chosenBadge, "Simulated")
 		assert.equal(lines[1]!.others[0]?.badge, "Sandbox")
 	})
