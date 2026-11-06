@@ -701,3 +701,4 @@ Idempotency: same signature replay returns current paid state; a **different** s
   - Look-up failures are a 502 `rpc_error`; a signature already used by another payment is skipped.
   - Expiry (15 minutes) is evaluated on read; an expired request is reported `expired` and never settles, but its underlying payment is left as it was (a later clean-up job or the existing cancel route can close it).
 - **Status:** implemented, not merged.
+- **Addendum (6 Nov, PR #150):** `PaymentRequest` gains optional `payer` (the paying wallet from the verified transfer, read from the `payment.onchain` event; `null` when unknown). Additive, no status change; `openapi.json` regenerated.
