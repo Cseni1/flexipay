@@ -14,6 +14,7 @@ import {
 	formatClaimValidUntil,
 } from "../claim/expiry"
 import { NoWalletYetHelp } from "../components/claim/NoWalletYetHelp"
+import { CopyableValue } from "../components/CopyableValue"
 import { SolanaWalletPanel } from "../components/solana/SolanaWalletPanel"
 import {
 	Button,
@@ -700,9 +701,11 @@ export default function ClaimPage() {
 									{claim.paymentStatus === "paid" && claim.releaseEvidence ? (
 										<Notice data-testid="claim-release-evidence">
 											Verified on {claim.releaseEvidence.network}. Signature:{" "}
-											<code className="code-text">
-												{claim.releaseEvidence.signature}
-											</code>
+											<CopyableValue
+												value={claim.releaseEvidence.signature}
+												label="Copy signature"
+												data-testid="claim-release-signature"
+											/>
 											{claim.releaseEvidence.explorerUrl ? (
 												<>
 													{" "}
