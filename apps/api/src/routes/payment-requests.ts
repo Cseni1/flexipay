@@ -246,6 +246,7 @@ export const paymentRequestRoutes: RouteDef<any, any>[] = [
 					claimSealKey: runtime.claimSealKey,
 					defaultClaimDestination:
 						process.env.FP_RECIPIENT_A_ADDRESS ?? runtime.vaultPayer,
+					partnerProviderIds: new Set(runtime.liveProviderIds ?? []),
 				});
 				await acceptSolanaClaimDestination(ctx.db, paymentId, {
 					address: body.merchantWallet,

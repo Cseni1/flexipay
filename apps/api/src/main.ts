@@ -60,5 +60,6 @@ if (runtime.liveProviderIds && runtime.liveProviderIds.length > 0) {
 		now: runtime.now,
 		claimSealKey: runtime.claimSealKey,
 		defaultClaimDestination: process.env.FP_RECIPIENT_A_ADDRESS ?? runtime.vaultPayer,
+		partnerProviderIds: new Set(runtime.liveProviderIds),
 	});
 }

@@ -8,7 +8,7 @@ import type { OrchestratorAdapters } from "../orchestrator/types.ts"
 
 const NON_SETTLE_KINDS = ["collect", "convert", "payout"]
 
-/** Payment ids with a non-settle leg waiting on a partner. */
+/** Payment ids with a non-settle leg waiting on a partner, or with every leg done but not paid. */
 export async function paymentsWaitingOnProviders(db: Db): Promise<string[]> {
 	const rows = await db.leg.findMany({
 		where: {
@@ -21,7 +21,19 @@ export async function paymentsWaitingOnProviders(db: Db): Promise<string[]> {
 		distinct: ["paymentId"],
 		take: 50,
 	})
-	return rows.map((r) => r.paymentId)
+	// CCR-33: every leg succeeded but the payment was never marked paid (for example the final
+	// step failed once); without this the payment would never be picked up again.
+	const finished = await db.payment.findMany({
+		where: {
+			status: "processing",
+			legs: { some: {}, every: { status: "succeeded" } },
+		},
+		select: { id: true },
+		take: 50,
+	})
+	return [
+		...new Set([...rows.map((r) => r.paymentId), ...finished.map((p) => p.id)]),
+	]
 }
 
 /** One pass: resumes every waiting payment; a failure on one never stops the others. */

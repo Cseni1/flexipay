@@ -109,6 +109,7 @@ export function adaptersOf(runtime: ApiRuntime): OrchestratorAdapters {
 		vaultPayer: runtime.vaultPayer,
 		now: runtime.now,
 		claimSealKey: runtime.claimSealKey,
+		partnerProviderIds: new Set(runtime.liveProviderIds ?? []),
 	};
 }
 

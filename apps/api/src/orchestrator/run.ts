@@ -275,6 +275,16 @@ async function runPendingLegs(
 		) {
 			return;
 		}
+		// CCR-33: release the vault lock before a partner leg runs. The lock expires with the quote
+		// (minutes) while a partner payout can take days, and a partner payout is not reversible.
+		if (
+			leg.kind !== "settle" &&
+			leg.status === "pending" &&
+			!rt.claimWaitSettle &&
+			adapters.partnerProviderIds?.has(leg.providerId)
+		) {
+			await releasePendingSettle(db, paymentId, adapters, rt);
+		}
 		await executeLeg(db, rt, leg, adapters);
 
 		const refreshed = await db.leg.findUniqueOrThrow({ where: { id: leg.id } });
@@ -1128,6 +1138,20 @@ async function releasePendingSettle(
 	if (!settle?.externalRef) return;
 	const st = await adapters.settlement.status(settle.externalRef);
 	if (st.state !== "pending") return;
+
+	// CCR-33: a lock that expired before release can only go back to the payer (FlexiPay's vault
+	// payer). The recipient was already paid by the later legs, so refund instead of failing forever.
+	if (st.expiresAt.getTime() <= adapters.now().getTime()) {
+		const refunded = await adapters.settlement.refund(settle.externalRef);
+		const payment = await db.payment.findUniqueOrThrow({ where: { id: paymentId } });
+		await emitPaymentEvent(db, payment.organizationId, paymentId, "payment.onchain", {
+			phase: "refund_after_expiry",
+			payoutId: settle.externalRef,
+			refundTxRef: refunded.txRef,
+			legId: settle.id,
+		});
+		return;
+	}
 
 	const secretHex = await loadUnsealedSecret(db, paymentId, adapters);
 	const destination =
