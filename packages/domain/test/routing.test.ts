@@ -156,6 +156,8 @@ function registry(
 ): Map<string, ProviderAdapter> {
 	const map = new Map<string, ProviderAdapter>();
 	for (const row of config.providers) {
+		// CCR-29: partner rows are served by @flexipay/adapters-live, not by a simulated mock.
+		if (row.implementation && row.implementation !== "sim") continue;
 		map.set(row.id, mockAdapter(row, config.fxRates, over[row.id] ?? "up"));
 	}
 	return map;

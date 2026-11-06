@@ -1,5 +1,6 @@
 import type { FlexiPayConfig, ProviderAdapter, SettlementAdapter } from "@flexipay/domain";
 import { createSimProviders, type SimProviders } from "@flexipay/adapters-sim";
+import { createLiveProviders } from "@flexipay/adapters-live";
 import type {
 	AnchorPaymentExpectation,
 	ClassicPaymentResult,
@@ -52,6 +53,8 @@ export interface ApiRuntime {
 	/** Base for claim URLs, e.g. https://api.example (no trailing slash). */
 	apiPublicBase: string;
 	sim?: SimProviders;
+	/** CCR-29: partner adapters registered from keys (BlindPay, Tazapay sandbox). */
+	liveProviderIds?: string[];
 	/** True when createApiRuntime selected FP_ANCHOR_MODE=1. */
 	anchorMode?: boolean;
 	/**
@@ -86,6 +89,10 @@ export async function createApiRuntime(
 	const claimSealKey = claimSealKeyFromEnv(env);
 	const apiPublicBase = (env.FP_API_URL ?? "").replace(/\/$/, "");
 	const sim = createSimProviders(config);
+	// CCR-29: partner adapters first; a partner row without keys stays unregistered.
+	const live = createLiveProviders(config, env);
+	const getProvider = (id: string) => live.providers.get(id) ?? sim.providers.get(id);
+	const liveProviderIds = [...live.providers.keys()];
 	const vaultPayer =
 		env.FP_PAYER_DEMO_ADDRESS?.trim() ||
 		"GDEMOPAYER000000000000000000000000000000000000000000";
@@ -101,7 +108,8 @@ export async function createApiRuntime(
 		}
 		const { adapter, mapping } = await createAnchorSettlement({ env });
 		return {
-			getProvider: (id) => sim.providers.get(id),
+			getProvider,
+			liveProviderIds,
 			settlement: adapter,
 			settlementSimulated: adapter.network === "mock",
 			vaultPayer,
@@ -118,7 +126,8 @@ export async function createApiRuntime(
 	const mode = settlementModeFromEnv(env);
 	const { adapter } = await createSettlement({ env });
 	return {
-		getProvider: (id) => sim.providers.get(id),
+		getProvider,
+			liveProviderIds,
 		settlement: adapter,
 		settlementSimulated: mode === "mock",
 		vaultPayer,

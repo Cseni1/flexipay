@@ -281,6 +281,10 @@ async function runPendingLegs(
 		if (refreshed.status === "failed") {
 			await handleLegFailure(db, paymentId, leg.id, adapters);
 		}
+		// CCR-29: a partner leg can stay processing for minutes or days. When it is waiting on the
+		// partner (it holds a reference), stop instead of re-polling in a tight loop; the provider
+		// poller resumes the payment later. A retry (CCR-14) clears the reference and runs on.
+		if (refreshed.status === "processing" && refreshed.externalRef && refreshed.kind !== "settle") return;
 	}
 }
 

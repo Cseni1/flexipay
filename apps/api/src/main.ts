@@ -8,6 +8,7 @@ import { loadAuthConfig } from "./auth/config.ts";
 import { createDb } from "./db.ts";
 import { sandboxEnabledFromEnv } from "./sandbox-gate.ts";
 import { createApiRuntime } from "./runtime.ts";
+import { startProviderPoller } from "./ops/provider-poller.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required");
@@ -48,3 +49,16 @@ const app = createApp({
 });
 const port = Number(process.env.PORT ?? 8788);
 app.listen(port, () => console.log(`FlexiPay API listening on :${port}`));
+
+// CCR-29: partner legs finish later; resume those payments in the background.
+if (runtime.liveProviderIds && runtime.liveProviderIds.length > 0) {
+	console.log(`partner providers: ${runtime.liveProviderIds.join(", ")} (sandbox unless approved)`);
+	startProviderPoller(db, {
+		getProvider: runtime.getProvider,
+		settlement: runtime.settlement,
+		vaultPayer: runtime.vaultPayer,
+		now: runtime.now,
+		claimSealKey: runtime.claimSealKey,
+		defaultClaimDestination: process.env.FP_RECIPIENT_A_ADDRESS ?? runtime.vaultPayer,
+	});
+}

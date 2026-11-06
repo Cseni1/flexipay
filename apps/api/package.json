@@ -17,6 +17,7 @@
   "dependencies": {
     "@flexipay/adapter-solana": "*",
     "@flexipay/adapter-stellar": "*",
+    "@flexipay/adapters-live": "*",
     "@flexipay/adapters-sim": "*",
     "@flexipay/domain": "*",
     "@prisma/adapter-pg": "^7.10.1",

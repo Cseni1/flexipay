@@ -29,6 +29,8 @@ export function createSimProviders(config: FlexiPayConfig): SimProviders {
 
 	for (const row of config.providers) {
 		if (!row.simulated) continue
+		// CCR-29: a partner row (BlindPay, Tazapay sandbox) is served by @flexipay/adapters-live.
+		if (row.implementation && row.implementation !== "sim") continue
 		const override = newOverride()
 		overrides.set(row.id, override)
 		providers.set(row.id, new SimProviderAdapter(row, config.fxRates, override))

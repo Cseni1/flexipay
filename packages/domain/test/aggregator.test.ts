@@ -175,6 +175,8 @@ function withExtraPayouts(
 function depsFor(config: FlexiPayConfig, down: string[] = []) {
 	const providers = new Map<string, ProviderAdapter>();
 	for (const row of config.providers) {
+		// CCR-29: partner rows are served by @flexipay/adapters-live, not by a simulated mock.
+		if (row.implementation && row.implementation !== "sim") continue;
 		providers.set(row.id, mockAdapter(row, config.fxRates, down.includes(row.id) ? "down" : "up"));
 	}
 	return {
@@ -267,5 +269,78 @@ describe("aggregator: best quote per leg", () => {
 		const result = await buildQuote(phBankReq, depsFor(config));
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.reasons.join(" ")).toMatch(/below min/);
+	});
+});
+
+// CCR-29: an off-ramp partner (converts and pays out in one step) competes with the plain
+// convert + payout route on what the recipient receives, and always serves both legs.
+describe("aggregator: off-ramp partner on the convert + payout pair", () => {
+	const OFFRAMP = "blindpay_sandbox";
+	const brBankReq: CreateQuoteRequest = {
+		...phBankReq,
+		destination: { type: "bank_account", currency: "BRL", country: "BR", recipientKind: "individual" },
+	};
+
+	/** Off-ramp mock: converts USDC to BRL at `rate` with no fee, payout passes through. */
+	function offramp(rate: string): ProviderAdapter {
+		const row = baseConfig.providers.find((p) => p.id === OFFRAMP)!;
+		const base = mockAdapter(row, baseConfig.fxRates);
+		return {
+			...base,
+			async quote(req: LegQuoteRequest) {
+				if (req.kind === "convert") {
+					if (req.amountIn.currency !== "USDC") throw new ProviderError("unsupported", "USDC only");
+					return {
+						providerId: OFFRAMP,
+						fee: money("0", "USDC"),
+						fxRate: rate,
+						amountOut: convertMoney(req.amountIn, rate, req.outCurrency),
+						estimatedTimeSeconds: 0,
+						simulated: true as const,
+					};
+				}
+				return {
+					providerId: OFFRAMP,
+					fee: money("0", req.outCurrency),
+					fxRate: null,
+					amountOut: req.amountIn,
+					estimatedTimeSeconds: 600,
+					simulated: true as const,
+				};
+			},
+		};
+	}
+
+	async function brQuote(partner: ProviderAdapter | null) {
+		const deps = depsFor(baseConfig);
+		const getProvider = (id: string) => (id === OFFRAMP ? (partner ?? undefined) : deps.getProvider(id));
+		const result = await buildQuote(brBankReq, { ...deps, getProvider });
+		if (!result.ok) throw new Error(`quote failed: ${result.reasons.join("; ")}`);
+		return result.quote;
+	}
+
+	const legOf = (q: Awaited<ReturnType<typeof brQuote>>, kind: string) => q.route.filter((l) => l.kind === kind);
+
+	it("picks the partner for both legs when it delivers more", async () => {
+		const plain = await brQuote(null);
+		const q = await brQuote(offramp("6.0000000"));
+		const converts = legOf(q, "convert");
+		expect(converts[converts.length - 1]!.providerId).toBe(OFFRAMP);
+		expect(legOf(q, "payout")[0]!.providerId).toBe(OFFRAMP);
+		// The convert before settle never uses the partner.
+		expect(converts[0]!.providerId).not.toBe(OFFRAMP);
+		expect(toMinor(q.expectedReceive)).toBeGreaterThan(toMinor(plain.expectedReceive));
+		expect(q.reasons.join(" ")).toMatch(/Best payout route: blindpay_sandbox delivers .*others: sim_fx \+ sim_bank_br_pix/);
+	});
+
+	it("keeps the plain route when the partner delivers less", async () => {
+		const q = await brQuote(offramp("4.0000000"));
+		expect(legOf(q, "payout")[0]!.providerId).toBe("sim_bank_br_pix");
+		expect(legOf(q, "convert").every((l) => l.providerId !== OFFRAMP)).toBe(true);
+	});
+
+	it("an unregistered partner (no keys) leaves the plain route working", async () => {
+		const q = await brQuote(null);
+		expect(legOf(q, "payout")[0]!.providerId).toBe("sim_bank_br_pix");
 	});
 });
