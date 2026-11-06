@@ -118,6 +118,7 @@ function view(
 	status: PaymentRequest["status"],
 	signature: string | null,
 	explorerTemplate: string,
+	payer: string | null = null,
 ): PaymentRequest {
 	const { payment, destination } = loaded;
 	const domainMinor = BigInt(payment.quote.amountValue);
@@ -146,7 +147,24 @@ function view(
 		explorerUrl: signature
 			? explorerUrlForSignature(explorerTemplate, signature)
 			: null,
+		payer,
 	};
+}
+
+async function payerFromOnchainEvent(
+	ctx: Ctx,
+	paymentId: string,
+): Promise<string | null> {
+	const row = await ctx.db.event.findFirst({
+		where: { paymentId, type: "payment.onchain" },
+		orderBy: { createdAt: "desc" },
+	});
+	const snapshot = row?.snapshot;
+	if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+		return null;
+	}
+	const payer = (snapshot as Record<string, unknown>).payer;
+	return typeof payer === "string" && payer.trim() ? payer.trim() : null;
 }
 
 async function tillRecipientId(ctx: Ctx, orgId: string): Promise<string> {
@@ -275,7 +293,15 @@ export const paymentRequestRoutes: RouteDef<any, any>[] = [
 			const settle = payment.legs.find((l) => l.kind === "settle");
 			if (payment.status === "paid" && settle?.releaseTxRef) {
 				releaseReferenceLookupSlot(payment.id);
-				return view(loaded, asset, "paid", settle.releaseTxRef, cfg.explorerTxUrlTemplate);
+				const payer = await payerFromOnchainEvent(ctx, payment.id);
+				return view(
+					loaded,
+					asset,
+					"paid",
+					settle.releaseTxRef,
+					cfg.explorerTxUrlTemplate,
+					payer,
+				);
 			}
 
 			const now = runtime.now();
@@ -333,7 +359,14 @@ export const paymentRequestRoutes: RouteDef<any, any>[] = [
 					throw cause;
 				}
 				releaseReferenceLookupSlot(payment.id);
-				return view(loaded, asset, "paid", signature, cfg.explorerTxUrlTemplate);
+				return view(
+					loaded,
+					asset,
+					"paid",
+					signature,
+					cfg.explorerTxUrlTemplate,
+					verified.payer ?? null,
+				);
 			}
 			return view(loaded, asset, "waiting", null, cfg.explorerTxUrlTemplate);
 		},

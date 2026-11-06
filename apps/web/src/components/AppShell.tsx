@@ -50,6 +50,10 @@ export function AppShell() {
 						<span className="nav-link__dot" aria-hidden="true" />
 						Developers
 					</NavLink>
+					<NavLink to="/where-we-pay" className="nav-link">
+						<span className="nav-link__dot" aria-hidden="true" />
+						Where we pay
+					</NavLink>
 					<NavLink to="/account" className="nav-link">
 						<span className="nav-link__dot" aria-hidden="true" />
 						Account
