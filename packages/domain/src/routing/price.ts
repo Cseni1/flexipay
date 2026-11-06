@@ -194,7 +194,7 @@ function outCurrenciesFor(
 	return outs;
 }
 
-async function firstHealthyProvider(
+async function healthyProviders(
 	ids: readonly string[],
 	kind: LegKind,
 	getProvider: (id: string) => ProviderAdapter | undefined,
@@ -202,7 +202,8 @@ async function firstHealthyProvider(
 	/** When set, the provider must serve this endpoint type (payout / collect). */
 	endpointType?: EndpointType,
 	endpointCountry?: string,
-): Promise<ProviderAdapter | null> {
+): Promise<ProviderAdapter[]> {
+	const healthy: ProviderAdapter[] = [];
 	for (const id of ids) {
 		const adapter = getProvider(id);
 		if (!adapter) {
@@ -235,9 +236,58 @@ async function firstHealthyProvider(
 			exclusionReasons.push(`Provider ${id} is down`);
 			continue;
 		}
-		return adapter;
+		healthy.push(adapter);
 	}
-	return null;
+	return healthy;
+}
+
+/**
+ * Aggregator selection: quote every healthy provider on a leg and keep the one that
+ * delivers the most out (that already nets its fee and FX spread). A tie keeps the earlier
+ * provider in config order, so a corridor with one provider behaves exactly as before.
+ * A provider whose quote throws is skipped with a reason; if every quote throws, the first
+ * error is returned unchanged.
+ */
+async function bestQuote(
+	candidates: readonly ProviderAdapter[],
+	kind: LegKind,
+	request: { kind: LegKind; amountIn: Money; outCurrency: string; endpoint?: EndpointRef },
+	exclusionReasons: string[],
+): Promise<
+	| { ok: true; adapter: ProviderAdapter; quoted: LegQuote }
+	| { ok: false; reasons: string[] }
+> {
+	const results: Array<{ adapter: ProviderAdapter; quoted: LegQuote }> = [];
+	let firstError: string | null = null;
+	for (const adapter of candidates) {
+		try {
+			results.push({ adapter, quoted: await adapter.quote(request) });
+		} catch (e) {
+			const msg =
+				e instanceof Error ? e.message : `Provider ${adapter.id} quote failed`;
+			if (firstError === null) firstError = msg;
+			if (candidates.length > 1) {
+				exclusionReasons.push(`Provider ${adapter.id} could not quote ${kind}: ${msg}`);
+			}
+		}
+	}
+	if (results.length === 0) {
+		return { ok: false, reasons: [firstError ?? `No ${kind} provider could quote`] };
+	}
+	let best = results[0]!;
+	for (const r of results.slice(1)) {
+		if (toMinor(r.quoted.amountOut) > toMinor(best.quoted.amountOut)) best = r;
+	}
+	if (results.length > 1) {
+		const others = results
+			.filter((r) => r !== best)
+			.map((r) => `${r.adapter.id} ${r.quoted.amountOut.amount} ${r.quoted.amountOut.currency}`)
+			.join(", ");
+		exclusionReasons.push(
+			`Best ${kind} quote: ${best.adapter.id} delivers ${best.quoted.amountOut.amount} ${best.quoted.amountOut.currency} (others: ${others})`,
+		);
+	}
+	return { ok: true, adapter: best.adapter, quoted: best.quoted };
 }
 
 /**
@@ -521,7 +571,7 @@ export async function priceRoute(
 				? destination.country
 				: corridor.to.country;
 
-		const adapter = await firstHealthyProvider(
+		const candidates = await healthyProviders(
 			candidateIds,
 			kind,
 			deps.getProvider,
@@ -534,7 +584,7 @@ export async function priceRoute(
 			kind === "payout" ? endpointCountry : undefined,
 		);
 
-		if (!adapter) {
+		if (candidates.length === 0) {
 			return {
 				ok: false,
 				reasons: [
@@ -554,22 +604,19 @@ export async function priceRoute(
 					}
 				: undefined;
 
-		let quoted: LegQuote;
-		try {
-			quoted = await adapter.quote({
-				kind,
-				amountIn,
-				outCurrency,
-				endpoint,
-			});
-		} catch (e) {
-			const msg =
-				e instanceof Error ? e.message : `Provider ${adapter.id} quote failed`;
+		const chosen = await bestQuote(
+			candidates,
+			kind,
+			{ kind, amountIn, outCurrency, endpoint },
+			exclusionReasons,
+		);
+		if (!chosen.ok) {
 			return {
 				ok: false,
-				reasons: [msg, ...exclusionReasons],
+				reasons: [...chosen.reasons, ...exclusionReasons],
 			};
 		}
+		const { adapter, quoted } = chosen;
 
 		legs.push({
 			kind,

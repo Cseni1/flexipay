@@ -701,3 +701,14 @@ Idempotency: same signature replay returns current paid state; a **different** s
   - Look-up failures are a 502 `rpc_error`; a signature already used by another payment is skipped.
   - Expiry (15 minutes) is evaluated on read; an expired request is reported `expired` and never settles, but its underlying payment is left as it was (a later clean-up job or the existing cancel route can close it).
 - **Status:** implemented, not merged.
+
+## CCR-28 (integrator, 6 Nov): aggregator, best quote per leg
+
+- **Why:** FlexiPay aggregates payout and ramp partners and must show the best quote. Until now the router took the first healthy provider in `legsAvailable` order, so a second partner could never win on price.
+- **Change:** `packages/domain/src/routing/price.ts` quotes every eligible and healthy provider on a collect, convert or payout leg and keeps the one whose `amountOut` is highest. A tie keeps the provider listed first. A provider whose quote throws (for example below its minimum) is skipped with a reason; if every provider throws, the first error is returned as before. When more than one provider quoted, the quote's `reasons` gain "Best <leg> quote: <id> delivers <amount> (others: ...)".
+- **Greedy by leg:** each leg is chosen on its own output, in order. A joint search across legs (for example a direct tGBP payout beating tGBP to USDC to local) is a later step; routes that avoid a conversion are added as separate route templates, not by this change.
+- **Not changed:** corridors, config format, route templates, settle and vault pricing, fee modes, error statuses, API shapes, `openapi.json`. A corridor with one provider per leg returns exactly the same quote as before (all existing routing tests pass unchanged).
+- **Adding a partner:** a provider entry in `config/providers.json`, an adapter registered with the API, and its id appended to the corridor's `legsAvailable`. A corridor is labelled live only after an end-to-end test passes (docs/PROVIDERS.md).
+- **Tests:** `packages/domain/test/aggregator.test.ts` (8): single provider unchanged, best wins with a reason, primary kept when cheapest, config order does not matter, tie keeps the first, a down provider is skipped, a provider that cannot quote the amount is skipped, all failing returns the original error.
+- **Status:** implemented on branch `claude/aggregator-best-quote`, not merged.
+
