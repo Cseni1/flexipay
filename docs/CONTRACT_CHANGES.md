@@ -725,7 +725,7 @@ Idempotency: same signature replay returns current paid state; a **different** s
 - **Corridor:** `blindpay_sandbox` added to US to BR convert and payout. More corridors (MX, CO, AR, GB to abroad) follow once their quotes are checked.
 - **Tests:** domain 95 (3 new pairing tests), adapters-live 12 (fake BlindPay API), API 162 (1 new: processing partner leg waits, poller completes it). Sandbox check by the integrator on 6 Nov: development instance, 10 USDB quoted to R$54.43 by Pix, payout completed in about 10 seconds.
 - **Not changed:** API shapes, `openapi.json`, error statuses, settle and vault pricing.
-- **Status:** implemented on branch `claude/aggregator-best-quote`, not merged.
+- **Status:** merged in #151 (6 Nov). Live sandbox check on 6 Nov: payment `pay_602f55385a7c85b8e25d8694`, US to BR $20 quoted R$107.33 via `blindpay_sandbox`; collect, convert, settle and the BlindPay convert succeeded at funding, the BlindPay payout was `processing`, and the poller marked the payment `paid` within 15 seconds. Live Playwright `tests/e2e-live/tests/live-aggregator.spec.ts` passes (7/7 live tests).
 
 ## CCR-30 (builder, 6 Nov 2026): Tazapay payout adapter
 
