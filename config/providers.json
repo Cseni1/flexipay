@@ -318,6 +318,35 @@
       "simulated": true,
       "placeholder": false,
       "implementation": "blindpay"
+    },
+    {
+      "id": "tazapay_sandbox",
+      "kind": "bank",
+      "countries": [
+        "PH"
+      ],
+      "currencies": [
+        "PHP"
+      ],
+      "endpointTypes": [
+        "bank_account"
+      ],
+      "legKinds": [
+        "payout"
+      ],
+      "fee": {
+        "fixed": {
+          "amount": "0",
+          "currency": "PHP"
+        },
+        "bps": 0
+      },
+      "fxSpreadBps": 0,
+      "estimatedTimeSeconds": 600,
+      "limits": null,
+      "simulated": true,
+      "placeholder": false,
+      "implementation": "tazapay"
     }
   ],
   "settlementRails": [

@@ -1,5 +1,6 @@
 import type { FlexiPayConfig, ProviderAdapter } from "@flexipay/domain"
 import { BlindPayAdapter } from "./blindpay.ts"
+import { TazapayAdapter } from "./tazapay.ts"
 import type { FetchLike } from "./http.ts"
 
 export {
@@ -7,6 +8,7 @@ export {
 	type BlindPayOptions,
 	type BlindPaySandboxAccount,
 } from "./blindpay.ts"
+export { TazapayAdapter, type TazapayOptions } from "./tazapay.ts"
 export type { FetchLike } from "./http.ts"
 
 export interface LiveProviders {
@@ -60,8 +62,25 @@ export function createLiveProviders(
 				}),
 			)
 		} else if (row.implementation === "tazapay") {
-			// Tazapay adapter lands in a follow-up PR (CCR-29); until then the row stays unregistered.
-			skipped.push(row.id)
+			const apiKey = value(env, "TAZAPAY_API_KEY")
+			const apiSecret = value(env, "TAZAPAY_API_SECRET")
+			if (!apiKey || !apiSecret) {
+				skipped.push(row.id)
+				continue
+			}
+			providers.set(
+				row.id,
+				new TazapayAdapter(row, {
+					apiKey,
+					apiSecret,
+					baseUrl: value(env, "TAZAPAY_BASE_URL"),
+					sandboxBeneficiaryId:
+						value(env, "TAZAPAY_SANDBOX_BENEFICIARY_ID") ?? null,
+					purposeCode: value(env, "TAZAPAY_PURPOSE_CODE"),
+					liveApproved: env.FP_TAZAPAY_LIVE_APPROVED === "1",
+					fetch: opts.fetch,
+				}),
+			)
 		}
 	}
 	return { providers, skipped }

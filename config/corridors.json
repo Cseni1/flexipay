@@ -47,7 +47,7 @@
 				"collect": ["sim_bank_us_ach"],
 				"convert": ["sim_fx"],
 				"settle": ["stellar_usdc"],
-				"payout": ["sim_bank_ph_instapay", "sim_ewallet_ph"]
+				"payout": ["sim_bank_ph_instapay", "sim_ewallet_ph", "tazapay_sandbox"]
 			},
 			"domesticRail": null,
 			"regulationNote": "Cross-border USD to PHP. Bank account, e-wallet and crypto-wallet destinations; simulated rails only.",
