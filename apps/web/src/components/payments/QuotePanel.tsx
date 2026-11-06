@@ -1,5 +1,9 @@
 import { type Delivery, type Quote } from "@flexipay/web-lib/contract"
-import { displayFeesTotal, displayMoney } from "../../payments/quoteDisplay"
+import {
+	displayFeesTotal,
+	displayMoney,
+	formatQuoteReason,
+} from "../../payments/quoteDisplay"
 import {
 	Button,
 	EmptyState,
@@ -167,6 +171,44 @@ export function QuotePanel({
 					</section>
 
 					<WhyThisRoutePanel quote={quote} />
+
+					<section
+						className="quote-section"
+						aria-labelledby="quote-alternatives"
+					>
+						<h4 className="quote-section__title" id="quote-alternatives">
+							Other eligible routes
+						</h4>
+						{quote.alternatives.length === 0 ? (
+							<p className="muted">
+								No alternative eligible route was returned.
+							</p>
+						) : (
+							<ul className="reason-list reason-list--text">
+								{quote.alternatives.map((alternative, index) => (
+									<li key={`alternative-${index}`}>
+										<span>
+											{alternative.route.map((leg) => leg.rail).join(" → ")}
+										</span>
+										<span>
+											{displayMoney(
+												alternative.totalCost.amount,
+												alternative.totalCost.currency,
+											)}{" "}
+											· {alternative.estimatedTimeSeconds}s
+										</span>
+										{alternative.reasons.length > 0 ? (
+											<span className="reason-list__detail">
+												{alternative.reasons
+													.map((reason) => formatQuoteReason(reason))
+													.join(" ")}
+											</span>
+										) : null}
+									</li>
+								))}
+							</ul>
+						)}
+					</section>
 
 					<fieldset className="option-list quote-delivery">
 						<legend className="field__label">Delivery</legend>

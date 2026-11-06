@@ -119,9 +119,12 @@ test.describe("CF1 payments", () => {
 		await fillQuoteForm(page)
 		await page.getByRole("button", { name: "Get quote" }).click()
 
-		await expect(page.getByText("1,250.00 USD")).toBeVisible()
-		await expect(page.getByText("66,250.00 PHP")).toBeVisible()
-		await expect(page.getByText("55.50")).toBeVisible()
+		// The "Why this route" panel (PR #150) repeats amounts; the summary shows them first.
+		await expect(page.getByText("1,250.00 USD").first()).toBeVisible()
+		// The "Why this route" panel (PR #150) repeats amounts; the summary shows them first.
+		await expect(page.getByText("66,250.00 PHP").first()).toBeVisible()
+		// The "Why this route" panel (PR #150) repeats amounts; the summary shows them first.
+		await expect(page.getByText("55.50").first()).toBeVisible()
 		await expect(page.getByText(/Quote is valid for/)).toBeVisible()
 		await expect(
 			page.getByText(
