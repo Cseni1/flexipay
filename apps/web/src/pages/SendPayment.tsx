@@ -13,13 +13,16 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import {
 	ApiError,
+	createEndpoint,
 	createPayment,
 	createQuote,
 	createRecipient,
 	describeApiError,
 	isAuthRequired,
 	listCorridors,
+	listEndpoints,
 	listRecipients,
+	type EndpointSummary,
 	type RecipientSummary,
 } from "../api/client"
 import {
@@ -39,6 +42,7 @@ import {
 	type SourceEndpoint,
 } from "../api/corridors"
 import { AuthBlockedNotice } from "../components/AuthBlockedNotice"
+import { BankDetailsFields } from "../components/payments/BankDetailsFields"
 import { QuotePanel } from "../components/payments/QuotePanel"
 import {
 	Button,
@@ -53,7 +57,16 @@ import {
 	TextField,
 } from "../components/ui"
 import { useCountdown } from "../hooks/useCountdown"
+import {
+	EMPTY_BANK_DETAILS,
+	bankDetailsPayload,
+	bankEndpointLabel,
+	type BankDetailsForm,
+} from "../payments/bankDetails"
 import { assetLabel } from "../solana/assets"
+
+/** Sentinel for "enter a new bank account" in the saved-endpoint picker. */
+const NEW_BANK_ENDPOINT = "__new__"
 
 type DestinationType = Extract<
 	EndpointType,
@@ -230,11 +243,22 @@ export default function SendPayment() {
 	const [recipientCountryNote, setRecipientCountryNote] = useState<
 		string | null
 	>(null)
+	const [bankDetails, setBankDetails] =
+		useState<BankDetailsForm>(EMPTY_BANK_DETAILS)
+	const [bankEndpointChoice, setBankEndpointChoice] =
+		useState(NEW_BANK_ENDPOINT)
+	const [recipientBankEndpoints, setRecipientBankEndpoints] = useState<
+		EndpointSummary[]
+	>([])
+	const [bankEndpointsError, setBankEndpointsError] = useState<string | null>(
+		null,
+	)
 	const quoteLock = useRef(false)
 	const createLock = useRef(false)
 	const quoteRequest = useRef(0)
 	const quoteAbort = useRef<AbortController | null>(null)
 	const createAbort = useRef<AbortController | null>(null)
+	const bankEndpointsAbort = useRef<AbortController | null>(null)
 
 	const countdown = useCountdown(quote?.validUntil ?? null)
 
@@ -286,6 +310,7 @@ export default function SendPayment() {
 		() => () => {
 			quoteAbort.current?.abort()
 			createAbort.current?.abort()
+			bankEndpointsAbort.current?.abort()
 		},
 		[],
 	)
@@ -343,6 +368,74 @@ export default function SendPayment() {
 		})
 	}, [corridors])
 
+	const showBankDetails = form.destinationType === "bank_account"
+
+	const matchingBankEndpoints = useMemo(() => {
+		if (form.destinationType !== "bank_account") return []
+		const dest = destinationOptions.find(
+			(option) => option.value === form.destinationType,
+		)
+		if (!dest) return []
+		return recipientBankEndpoints.filter(
+			(endpoint) =>
+				endpoint.type === "bank_account" &&
+				endpoint.country === form.country &&
+				endpoint.currency === dest.currency,
+		)
+	}, [
+		destinationOptions,
+		form.country,
+		form.destinationType,
+		recipientBankEndpoints,
+	])
+
+	useEffect(() => {
+		if (form.destinationType !== "bank_account" || !form.existingRecipientId) {
+			bankEndpointsAbort.current?.abort()
+			setRecipientBankEndpoints([])
+			setBankEndpointsError(null)
+			setBankEndpointChoice(NEW_BANK_ENDPOINT)
+			return
+		}
+		bankEndpointsAbort.current?.abort()
+		const controller = new AbortController()
+		bankEndpointsAbort.current = controller
+		setBankEndpointsError(null)
+		void listEndpoints({
+			recipientId: form.existingRecipientId,
+			signal: controller.signal,
+		})
+			.then((response) => {
+				if (controller.signal.aborted) return
+				const banks = response.endpoints.filter(
+					(endpoint) => endpoint.type === "bank_account",
+				)
+				setRecipientBankEndpoints(banks)
+				setBankEndpointChoice((current) => {
+					if (
+						current !== NEW_BANK_ENDPOINT &&
+						banks.some((entry) => entry.id === current)
+					) {
+						return current
+					}
+					return banks[0]?.id ?? NEW_BANK_ENDPOINT
+				})
+			})
+			.catch((cause: unknown) => {
+				if (controller.signal.aborted) return
+				setRecipientBankEndpoints([])
+				setBankEndpointChoice(NEW_BANK_ENDPOINT)
+				setBankEndpointsError(
+					cause instanceof ApiError
+						? describeApiError(cause)
+						: "Saved bank accounts could not be loaded.",
+				)
+			})
+		return () => {
+			controller.abort()
+		}
+	}, [form.destinationType, form.existingRecipientId])
+
 	const update = (patch: Partial<FormState>) => {
 		setForm((current) => ({ ...current, ...patch }))
 		setQuote(null)
@@ -354,6 +447,7 @@ export default function SendPayment() {
 	const changeCountry = (country: string) => {
 		sendFromChosen.current = false
 		setRecipientCountryNote(null)
+		setBankDetails(EMPTY_BANK_DETAILS)
 		if (country === "") {
 			update({
 				country,
@@ -387,6 +481,7 @@ export default function SendPayment() {
 	const applySavedRecipient = (recipientId: string) => {
 		if (recipientId === "") {
 			setRecipientCountryNote(null)
+			setBankDetails(EMPTY_BANK_DETAILS)
 			update({ existingRecipientId: "" })
 			return
 		}
@@ -400,6 +495,7 @@ export default function SendPayment() {
 		const nextSourceKey = resolveSourceKey(corridors, saved.country)
 		const nextSource = sourceForForm(corridors, saved.country, nextSourceKey)
 		const options = destinationsForForm(corridors, saved.country, nextSource)
+		setBankDetails(EMPTY_BANK_DETAILS)
 		update({
 			existingRecipientId: saved.id,
 			recipientName: saved.name,
@@ -418,6 +514,14 @@ export default function SendPayment() {
 	const destination = destinationOptions.find(
 		(option) => option.value === form.destinationType,
 	)
+
+	const usingSavedRecipient = Boolean(form.existingRecipientId)
+	const showBankPicker = showBankDetails && usingSavedRecipient
+	const enteringNewBank =
+		showBankDetails &&
+		(!usingSavedRecipient ||
+			bankEndpointChoice === NEW_BANK_ENDPOINT ||
+			matchingBankEndpoints.length === 0)
 
 	const handleQuote = async (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault()
@@ -502,6 +606,14 @@ export default function SendPayment() {
 
 	const handleCreate = async () => {
 		if (!quote || countdown.expired || createLock.current || authBlocked) return
+		if (
+			showBankDetails &&
+			enteringNewBank &&
+			!bankDetails.accountNumber.trim()
+		) {
+			setCreateError("Enter the recipient's account number.")
+			return
+		}
 		createLock.current = true
 		setCreating(true)
 		setCreateError(null)
@@ -529,12 +641,40 @@ export default function SendPayment() {
 								controller.signal,
 							)
 						).id
+
+			let endpointId: string | undefined
+			if (showBankDetails && destination) {
+				if (
+					!enteringNewBank &&
+					bankEndpointChoice &&
+					bankEndpointChoice !== NEW_BANK_ENDPOINT
+				) {
+					endpointId = bankEndpointChoice
+				} else {
+					const createdEndpoint = await createEndpoint(
+						{
+							recipientId,
+							type: "bank_account",
+							country: form.country,
+							currency: destination.currency,
+							network: null,
+							details: bankDetailsPayload(bankDetails),
+							simulated: true,
+						},
+						`endpoint-${quote.id}`,
+						controller.signal,
+					)
+					endpointId = createdEndpoint.id
+				}
+			}
+
 			const payment = await createPayment(
 				{
 					quoteId: quote.id,
 					recipientId,
 					delivery,
 					profile: "one_off",
+					...(endpointId ? { endpointId } : {}),
 				},
 				`payment-${quote.id}`,
 				controller.signal,
@@ -718,6 +858,49 @@ export default function SendPayment() {
 								<p className="form-note" data-testid="recipient-country-note">
 									{recipientCountryNote}
 								</p>
+							) : null}
+							{showBankDetails ? (
+								<>
+									{showBankPicker ? (
+										<SelectField
+											id="bank-endpoint"
+											label="Bank account"
+											value={
+												matchingBankEndpoints.length === 0
+													? NEW_BANK_ENDPOINT
+													: bankEndpointChoice
+											}
+											disabled={authBlocked}
+											options={[
+												...matchingBankEndpoints.map((endpoint) => ({
+													value: endpoint.id,
+													label: bankEndpointLabel(endpoint.details),
+												})),
+												{
+													value: NEW_BANK_ENDPOINT,
+													label: "Add a new bank account",
+												},
+											]}
+											hint="Saved accounts are masked. Choosing one sends its endpointId with the payment."
+											data-testid="bank-endpoint"
+											onChange={(event) =>
+												setBankEndpointChoice(event.target.value)
+											}
+										/>
+									) : null}
+									{bankEndpointsError ? (
+										<Notice tone="warning" data-testid="bank-endpoints-error">
+											{bankEndpointsError}
+										</Notice>
+									) : null}
+									{enteringNewBank ? (
+										<BankDetailsFields
+											value={bankDetails}
+											disabled={authBlocked}
+											onChange={setBankDetails}
+										/>
+									) : null}
+								</>
 							) : null}
 						</div>
 

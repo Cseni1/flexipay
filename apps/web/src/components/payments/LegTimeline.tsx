@@ -1,10 +1,18 @@
 import { type Event, type Leg } from "@flexipay/web-lib/contract"
+import { friendlyPayoutLegError } from "../../payments/bankDetails"
 import { legEventTime } from "../../payments/paymentEventTimes"
 import { providerLabel } from "../../payments/providerNames"
 import { displayMoney } from "../../payments/quoteDisplay"
 import { Notice, StatusBadge, Timeline } from "../ui"
 import { PaymentTimestamp } from "./PaymentTimestamp"
 import { ProviderBadge } from "./ProviderBadge"
+
+const legErrorText = (leg: Leg): string => {
+	if (!leg.error) return ""
+	const friendly = friendlyPayoutLegError(leg.error.message)
+	if (friendly) return friendly
+	return `${leg.error.code}: ${leg.error.message}`
+}
 
 const KIND_LABELS: Record<Leg["kind"], string> = {
 	collect: "Collect",
@@ -132,8 +140,8 @@ export function LegTimeline({
 								</p>
 							) : null}
 							{leg.error ? (
-								<Notice tone="warning">
-									{leg.error.code}: {leg.error.message}
+								<Notice tone="warning" data-testid="leg-error">
+									{legErrorText(leg)}
 								</Notice>
 							) : null}
 						</div>

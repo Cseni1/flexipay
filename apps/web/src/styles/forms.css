@@ -106,6 +106,30 @@
 	gap: 1rem;
 }
 
+.bank-details {
+	margin: 0;
+	padding: 0.85rem 0 0;
+	border: 0;
+	border-top: 1px solid var(--fp-line);
+	min-width: 0;
+	grid-column: 1 / -1;
+}
+
+.bank-details__legend {
+	padding: 0;
+	margin: 0 0 0.75rem;
+	font-size: 0.82rem;
+	font-weight: 700;
+	letter-spacing: 0.01em;
+}
+
+.bank-details__more {
+	display: grid;
+	gap: 0.75rem;
+	margin-top: 0.75rem;
+	justify-items: start;
+}
+
 .form-actions {
 	display: flex;
 	flex-wrap: wrap;

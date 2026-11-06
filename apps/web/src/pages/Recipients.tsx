@@ -28,6 +28,7 @@ import {
 	summarizeCorridor,
 	type CorridorSummary,
 } from "../api/corridors"
+import { BankDetailsFields } from "../components/payments/BankDetailsFields"
 import {
 	Button,
 	EmptyState,
@@ -40,6 +41,12 @@ import {
 	SimulatedLabel,
 	TextField,
 } from "../components/ui"
+import {
+	EMPTY_BANK_DETAILS,
+	bankDetailsPayload,
+	bankEndpointLabel,
+	type BankDetailsForm,
+} from "../payments/bankDetails"
 
 const RECIPIENT_KIND_OPTIONS: { value: RecipientKind; label: string }[] = [
 	{ value: "individual", label: "Individual" },
@@ -78,10 +85,15 @@ const detailLabelFor = (type: EndpointType): string => {
 const typeLabel = (type: EndpointType): string =>
 	ENDPOINT_TYPE_OPTIONS.find((option) => option.value === type)?.label ?? type
 
-const formatDetail = (details: Record<string, string>): string =>
-	Object.entries(details)
+const formatDetail = (
+	type: EndpointType,
+	details: Record<string, string>,
+): string => {
+	if (type === "bank_account") return bankEndpointLabel(details)
+	return Object.entries(details)
 		.map(([key, value]) => `${key}: ${value}`)
 		.join(" · ")
+}
 
 export default function Recipients() {
 	const recipientFormId = useId()
@@ -106,6 +118,8 @@ export default function Recipients() {
 		"solana",
 	)
 	const [endpointDetail, setEndpointDetail] = useState("")
+	const [bankDetails, setBankDetails] =
+		useState<BankDetailsForm>(EMPTY_BANK_DETAILS)
 	const [creatingEndpoint, setCreatingEndpoint] = useState(false)
 	const [endpointError, setEndpointError] = useState<string | null>(null)
 
@@ -240,8 +254,13 @@ export default function Recipients() {
 			setEndpointError("Select a recipient first.")
 			return
 		}
+		const isBank = endpointType === "bank_account"
 		const detail = endpointDetail.trim()
-		if (!detail) {
+		if (isBank && !bankDetails.accountNumber.trim()) {
+			setEndpointError("Account number is required.")
+			return
+		}
+		if (!isBank && !detail) {
 			setEndpointError(`${detailLabelFor(endpointType)} is required.`)
 			return
 		}
@@ -263,7 +282,9 @@ export default function Recipients() {
 					country: isCrypto ? "" : endpointCountry,
 					currency: isCrypto ? "USDC" : endpointCurrency,
 					network: isCrypto ? endpointNetwork : null,
-					details: { [detailKeyFor(endpointType)]: detail },
+					details: isBank
+						? bankDetailsPayload(bankDetails)
+						: { [detailKeyFor(endpointType)]: detail },
 					simulated: true,
 				},
 				`endpoint-${globalThis.crypto.randomUUID()}`,
@@ -272,6 +293,7 @@ export default function Recipients() {
 			if (controller.signal.aborted) return
 			setEndpoints((current) => [created, ...current])
 			setEndpointDetail("")
+			setBankDetails(EMPTY_BANK_DETAILS)
 		} catch (cause) {
 			if (controller.signal.aborted) return
 			setEndpointError(
@@ -451,8 +473,11 @@ export default function Recipients() {
 														: endpoint.country || "—"}
 												</td>
 												<td>{endpoint.currency}</td>
-												<td className="mono">
-													{formatDetail(endpoint.details)}
+												<td
+													className="mono"
+													data-testid={`endpoint-details-${endpoint.id}`}
+												>
+													{formatDetail(endpoint.type, endpoint.details)}
 												</td>
 												<td>
 													{endpoint.simulated ? <SimulatedLabel /> : null}
@@ -483,6 +508,7 @@ export default function Recipients() {
 									if (!isEndpointType(next)) return
 									setEndpointType(next)
 									setEndpointDetail("")
+									setBankDetails(EMPTY_BANK_DETAILS)
 								}}
 							/>
 							{CRYPTO_TYPES.has(endpointType) ? (
@@ -518,13 +544,21 @@ export default function Recipients() {
 							) : (
 								<TextField label="Currency" value="USDC" readOnly />
 							)}
-							<TextField
-								label={detailLabelFor(endpointType)}
-								value={endpointDetail}
-								onChange={(event) => setEndpointDetail(event.target.value)}
-								required
-								autoComplete="off"
-							/>
+							{endpointType === "bank_account" ? (
+								<BankDetailsFields
+									value={bankDetails}
+									onChange={setBankDetails}
+									data-testid="recipient-bank-details"
+								/>
+							) : (
+								<TextField
+									label={detailLabelFor(endpointType)}
+									value={endpointDetail}
+									onChange={(event) => setEndpointDetail(event.target.value)}
+									required
+									autoComplete="off"
+								/>
+							)}
 							{endpointError ? (
 								<Notice tone="warning">{endpointError}</Notice>
 							) : null}
