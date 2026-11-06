@@ -15,6 +15,7 @@ import { AuthBlockedNotice } from "../components/AuthBlockedNotice"
 import { CopyableValue } from "../components/CopyableValue"
 import { EventLog } from "../components/payments/EventLog"
 import { LegTimeline } from "../components/payments/LegTimeline"
+import { PaymentFromToCard } from "../components/payments/PaymentFromToCard"
 import { PaymentReceipt } from "../components/payments/PaymentReceipt"
 import { PaymentTimestamp } from "../components/payments/PaymentTimestamp"
 import { SolanaPayPanel } from "../components/solana/SolanaPayPanel"
@@ -31,10 +32,16 @@ import {
 	StatusBadge,
 } from "../components/ui"
 import { usePaymentDetail } from "../hooks/usePaymentDetail"
+import {
+	primaryEndpoint,
+	recipientDisplayName,
+	useRecipientDirectory,
+} from "../hooks/useRecipientDirectory"
 import { useWakeUpRetry } from "../hooks/useWakeUpRetry"
 import { paymentMilestoneTimes } from "../payments/paymentEventTimes"
 import { displayMoney } from "../payments/quoteDisplay"
 import { clearSolanaTransfer } from "../payments/solanaTransferStorage"
+import { useSession } from "../providers/SessionProvider"
 
 const solanaExplorerUrl = (
 	template: string | undefined,
@@ -139,6 +146,8 @@ export default function PaymentDetail() {
 		hasData: payment !== null,
 		onRetry: refresh,
 	})
+	const { state: sessionState } = useSession()
+	const { names, endpointsByRecipient } = useRecipientDirectory()
 	const [funding, setFunding] = useState(false)
 	const [fundError, setFundError] = useState<string | null>(null)
 	const [fundAuthBlocked, setFundAuthBlocked] = useState(false)
@@ -208,6 +217,18 @@ export default function PaymentDetail() {
 	const canFund =
 		(status === "awaiting_funding" || status === "quoted") && !authBlocked
 	const polling = status ? POLLING_STATUSES.has(status) : false
+	const orgName =
+		sessionState.status === "signed_in"
+			? sessionState.session.organization.name
+			: null
+	const senderName =
+		orgName?.trim() || payment?.organizationId || "Sending organisation"
+	const recipientName = payment
+		? recipientDisplayName(names, payment.recipientId)
+		: "—"
+	const destinationEndpoint = payment
+		? primaryEndpoint(endpointsByRecipient, payment.recipientId)
+		: null
 
 	return (
 		<Page>
@@ -261,6 +282,12 @@ export default function PaymentDetail() {
 			{payment ? (
 				<Grid>
 					<div className="stack">
+						<PaymentFromToCard
+							senderName={senderName}
+							recipientName={recipientName}
+							events={payment.events}
+							endpoint={destinationEndpoint}
+						/>
 						<Panel
 							title="Payment"
 							description={

@@ -1,4 +1,47 @@
 /* Dashboard, payment history and developers pages. Tokens only. */
+
+.from-to {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+	gap: 1rem 1.25rem;
+	align-items: start;
+}
+.from-to__label {
+	margin: 0 0 0.25rem;
+	color: var(--muted, var(--color-text-muted));
+	font-size: 0.72rem;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+.from-to__name {
+	margin: 0;
+	font-size: 1.1rem;
+	font-weight: 700;
+	line-height: 1.3;
+	overflow-wrap: anywhere;
+}
+.from-to__meta {
+	margin: 0.4rem 0 0;
+	font-size: 0.9rem;
+	line-height: 1.4;
+	overflow-wrap: anywhere;
+}
+.from-to__arrow {
+	align-self: center;
+	color: var(--muted, var(--color-text-muted));
+	font-size: 1.35rem;
+	font-weight: 700;
+}
+@media (max-width: 640px) {
+	.from-to {
+		grid-template-columns: 1fr;
+	}
+	.from-to__arrow {
+		display: none;
+	}
+}
+
 .stat-row {
 	display: grid;
 	grid-template-columns: repeat(4, minmax(0, 1fr));
