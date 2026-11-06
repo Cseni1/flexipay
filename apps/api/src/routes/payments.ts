@@ -118,6 +118,7 @@ export const paymentRoutes: RouteDef<any, any>[] = [
 					claimSealKey: ctx.runtime.claimSealKey,
 					defaultClaimDestination:
 						process.env.FP_RECIPIENT_A_ADDRESS ?? ctx.runtime.vaultPayer,
+					partnerProviderIds: new Set(ctx.runtime.liveProviderIds ?? []),
 				});
 			} catch (e) {
 				const msg = e instanceof Error ? e.message : "fund failed";

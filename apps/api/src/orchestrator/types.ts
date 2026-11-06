@@ -16,6 +16,11 @@ export interface OrchestratorAdapters {
 	 * Claim-link accept supplies the recipient destination instead.
 	 */
 	defaultClaimDestination?: string;
+	/**
+	 * CCR-33: partner providers (BlindPay, Tazapay). A partner payout cannot be undone, so the
+	 * vault lock is released before money is handed to a partner, not after it finishes.
+	 */
+	partnerProviderIds?: ReadonlySet<string>;
 	/** CCR-11 seal key; defaults to `claimSealKeyFromEnv()`. */
 	claimSealKey?: Buffer;
 }

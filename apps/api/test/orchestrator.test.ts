@@ -992,3 +992,92 @@ describe("partner leg that stays processing (CCR-29)", () => {
 		expect(await paymentsWaitingOnProviders(db)).not.toContain(paymentId);
 	});
 });
+
+describe("partner legs and the vault lock (CCR-33)", () => {
+	async function partnerPayment(name: string) {
+		const { orgId } = await t.newOrg(name);
+		const { recipientId, quoteId } = await seedQuote(orgId, {
+			feeMode: "PayerPays",
+			route: phPayoutRoute,
+			fees: {
+				legs: [
+					{ kind: "collect", rail: "sim_bank_us_ach", fee: money("0", "USD") },
+					{ kind: "convert", rail: "sim_fx", fee: money("125", "USD") },
+					{ kind: "settle", rail: "stellar_usdc", fee: money("98268564", "USDC") },
+					{ kind: "convert", rail: "sim_fx", fee: money("0", "USDC") },
+					{ kind: "payout", rail: "sim_bank_ph_instapay", fee: money("2000", "PHP") },
+				],
+				flexiPayFee: money("98268564", "USDC"),
+				total: money("125", "USD"),
+				settleUnlockedRemainder: money("1", "USDC"),
+			},
+			destination: { type: "bank_account", currency: "PHP", country: "PH", recipientKind: "individual" },
+		});
+		const { paymentId } = await createPaymentFromQuote(db, {
+			organizationId: orgId,
+			recipientId,
+			quoteId,
+			delivery: "direct",
+			profile: "one_off",
+		});
+		return paymentId;
+	}
+
+	function slowPartner(base: OrchestratorAdapters, done: () => boolean): OrchestratorAdapters {
+		return {
+			...base,
+			partnerProviderIds: new Set(["sim_bank_ph_instapay"]),
+			getProvider: (id) => {
+				const p = sim.providers.get(id);
+				if (!p || id !== "sim_bank_ph_instapay") return p;
+				return {
+					id: p.id,
+					capabilities: () => p.capabilities(),
+					health: () => p.health(),
+					quote: (req) => p.quote(req),
+					execute: (req) => p.execute(req),
+					status: async (ref) =>
+						done() ? p.status(ref) : { status: "processing" as const, externalRef: ref },
+					reverse: (ref) => p.reverse(ref),
+				};
+			},
+		};
+	}
+
+	it("releases the lock before the partner leg, so a slow partner never meets an expired lock", async () => {
+		sim.controls.reset();
+		let partnerDone = false;
+		const a = slowPartner(adapters(), () => partnerDone);
+		const paymentId = await partnerPayment("Partner Release");
+		expect((await fundAndRun(db, paymentId, a)).status).toBe("processing");
+		const settle = await db.leg.findFirstOrThrow({ where: { paymentId, kind: "settle" } });
+		expect(settle.releaseTxRef).toBeTruthy();
+		expect((await a.settlement.status(settle.externalRef!)).state).toBe("claimed");
+
+		partnerDone = true;
+		const { pollProvidersOnce } = await import("../src/ops/provider-poller.ts");
+		await pollProvidersOnce(db, a);
+		expect((await db.payment.findUniqueOrThrow({ where: { id: paymentId } })).status).toBe("paid");
+	});
+
+	it("a lock that expired before release is refunded and the payment still completes; the poller finds it", async () => {
+		sim.controls.reset();
+		let partnerDone = false;
+		// No partner ids: the old order (release at the end) with a lock that has expired by then.
+		const base = slowPartner(adapters(), () => partnerDone);
+		const old: OrchestratorAdapters = { ...base, partnerProviderIds: undefined };
+		const paymentId = await partnerPayment("Partner Expired");
+		expect((await fundAndRun(db, paymentId, old)).status).toBe("processing");
+		const settle = await db.leg.findFirstOrThrow({ where: { paymentId, kind: "settle" } });
+		const lockExpiry = (await old.settlement.status(settle.externalRef!)).expiresAt;
+
+		partnerDone = true;
+		const later: OrchestratorAdapters = { ...old, now: () => new Date(lockExpiry.getTime() + 60_000) };
+		const { pollProvidersOnce, paymentsWaitingOnProviders } = await import("../src/ops/provider-poller.ts");
+		await pollProvidersOnce(db, later);
+		expect((await db.payment.findUniqueOrThrow({ where: { id: paymentId } })).status).toBe("paid");
+		expect((await later.settlement.status(settle.externalRef!)).state).toBe("refunded");
+		expect(await paymentsWaitingOnProviders(db)).not.toContain(paymentId);
+	});
+});
+

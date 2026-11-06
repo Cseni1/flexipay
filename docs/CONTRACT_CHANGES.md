@@ -749,3 +749,11 @@ Idempotency: same signature replay returns current paid state; a **different** s
 - **Rates:** placeholder `TGBP>XX` and `XX>GBP` rates from Tazapay's sandbox rate, needed by the config validator and for fee totals. They never price a route: these corridors have no simulated payout, so the only route is the Tazapay pair, priced live.
 - **Web:** `countryLabel` falls back to `Intl.DisplayNames`; destination countries are sorted by name.
 - **Not confirmed:** payouts outside PH (the single sandbox beneficiary is in PH; payouts to other countries need recipient bank details passed to Tazapay, next CCR); XOF/XAF at higher amounts.
+
+## CCR-33 (integrator, 6 Nov 2026): vault lock and partner legs
+
+- **Found live:** payment `pay_060e5d3a850398f3a36aafdc` ($200 US-PH): Tazapay paid ₱11,734.04 in about two minutes, but the final vault release failed with `settlement error #8 Expired` (the lock expires with the quote, 120 s) and the payment stayed `processing`; the poller never picked it up again because no leg was processing.
+- **Change 1:** before a pending partner leg runs (`OrchestratorAdapters.partnerProviderIds`, filled from `liveProviderIds`), the orchestrator releases the pending settle lock. A partner payout is not reversible, so holding the lock until it finishes protected nothing. Simulated routes keep the old order (release at the end, refund on payout failure).
+- **Change 2:** `releasePendingSettle` refunds a lock that expired before release (back to FlexiPay's vault payer) and emits `payment.onchain` `refund_after_expiry`, instead of throwing on every pass.
+- **Change 3:** the provider poller also resumes `processing` payments whose legs have all succeeded.
+- **Tests:** API 164 (2 new: release before the partner leg; expired lock refunded, payment paid, poller finds it).
