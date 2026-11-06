@@ -173,27 +173,27 @@ test.describe("Design shell recipients", () => {
 		await mockDirectory(page, { endpoints: [] })
 		await page.goto("/recipients")
 
-		await page.getByLabel("Name").fill("Worker B")
+		await page.getByRole("textbox", { name: "Name", exact: true }).fill("Worker B")
 		await page.getByLabel("Country").first().selectOption("PH")
 		await page.getByRole("button", { name: "Add recipient" }).click()
 		await expect(page.getByTestId("recipients-table")).toContainText("Worker B")
 		await expect(page.getByTestId("recipients-table")).toContainText("rcp_new")
 
-		await page.getByTestId("endpoint-form").getByLabel("Type").selectOption("bank_account")
-		await page.getByTestId("endpoint-form").getByLabel("Country").selectOption("PH")
-		await expect(
-			page.getByTestId("endpoint-form").getByLabel("Currency"),
-		).toHaveValue("PHP")
-		await page
-			.getByTestId("endpoint-form")
-			.getByLabel("Account number")
-			.fill("PH-DEMO-ACCOUNT-9")
+		const endpointForm = page.getByTestId("endpoint-form")
+		await endpointForm.getByLabel("Type").selectOption("bank_account")
+		await endpointForm.getByLabel("Country").selectOption("PH")
+		await expect(endpointForm.getByLabel("Currency")).toHaveValue("PHP")
+		await endpointForm.getByLabel("Account number").fill("PH-DEMO-ACCOUNT-9")
+		await endpointForm.getByLabel("Bank name").fill("BDO")
 		await page.getByRole("button", { name: "Add endpoint" }).click()
 		await expect(page.getByTestId("endpoints-table")).toContainText(
 			"Bank account",
 		)
 		await expect(page.getByTestId("endpoints-table")).toContainText(
-			"accountNumber: PH-DEMO-ACCOUNT-9",
+			"BDO ••NT-9",
+		)
+		await expect(page.getByTestId("endpoints-table")).not.toContainText(
+			"PH-DEMO-ACCOUNT-9",
 		)
 	})
 
