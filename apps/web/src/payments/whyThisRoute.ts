@@ -14,8 +14,16 @@ const KIND_LABELS = {
 
 export type ProviderBadge = "Simulated" | "Sandbox" | "Live"
 
-/** Today every partner path is Simulated or Sandbox — never present as Live. */
-export function providerBadge(simulated: boolean): ProviderBadge {
+/**
+ * Today every partner path is Simulated or Sandbox — never present as Live.
+ * A partner on its sandbox (CCR-29, e.g. blindpay_sandbox) reports simulated: true because no
+ * real money moves, but it is a real partner API, so it is labelled Sandbox, not Simulated.
+ */
+export function providerBadge(
+	simulated: boolean,
+	providerId = "",
+): ProviderBadge {
+	if (providerId.endsWith("_sandbox")) return "Sandbox"
 	return simulated ? "Simulated" : "Sandbox"
 }
 
@@ -57,7 +65,7 @@ export function buildWhyThisRoute(quote: Quote): WhyRouteLine[] {
 			others.push({
 				provider: providerLabel(alt.providerId),
 				amount: displayMoney(alt.amountOut.amount, alt.amountOut.currency),
-				badge: providerBadge(alt.simulated),
+				badge: providerBadge(alt.simulated, alt.providerId),
 			})
 		}
 		const chosenProvider = providerLabel(leg.providerId)
@@ -76,7 +84,7 @@ export function buildWhyThisRoute(quote: Quote): WhyRouteLine[] {
 			kind: leg.kind,
 			kindLabel,
 			chosenProvider,
-			chosenBadge: providerBadge(leg.simulated),
+			chosenBadge: providerBadge(leg.simulated, leg.providerId),
 			chosenAmount,
 			sentence: `${kindLabel}: ${chosenProvider} delivers ${chosenAmount}${othersText}`,
 			others,

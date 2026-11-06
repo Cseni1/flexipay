@@ -7643,6 +7643,18 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "payer": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 32,
+                          "maxLength": 44
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -7830,6 +7842,18 @@
                         {
                           "type": "string",
                           "format": "uri"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "payer": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 32,
+                          "maxLength": 44
                         },
                         {
                           "type": "null"

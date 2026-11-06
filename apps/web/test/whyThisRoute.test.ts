@@ -57,3 +57,11 @@ describe("whyThisRoute", () => {
 		assert.equal(lines[1]!.others[0]?.badge, "Sandbox")
 	})
 })
+
+describe("providerBadge (CCR-29)", () => {
+	test("labels a partner sandbox as Sandbox even though no real money moves", () => {
+		assert.equal(providerBadge(true, "blindpay_sandbox"), "Sandbox")
+		assert.equal(providerBadge(true, "sim_bank_br_pix"), "Simulated")
+		assert.equal(providerBadge(false, "solana_usdc"), "Sandbox")
+	})
+})
