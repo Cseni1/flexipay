@@ -48,9 +48,21 @@ const COUNTRY_LABELS: Record<string, string> = {
 	GB: "United Kingdom",
 }
 
-/** Display name for a destination country code (falls back to the code). */
-export const countryLabel = (country: string): string =>
-	COUNTRY_LABELS[country] ?? country
+const regionNames =
+	typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function"
+		? new Intl.DisplayNames(["en"], { type: "region" })
+		: null
+
+/** Display name for a destination country code (Intl name, then the code). */
+export const countryLabel = (country: string): string => {
+	const known = COUNTRY_LABELS[country]
+	if (known) return known
+	try {
+		return regionNames?.of(country) ?? country
+	} catch {
+		return country
+	}
+}
 
 const SETTLE_RAIL_ASSET: Readonly<Record<string, string>> = {
 	solana_tgbp: "TGBP",
@@ -135,7 +147,7 @@ export const countriesFromCorridors = (
 			label: countryLabel(corridor.toCountry),
 		})
 	}
-	return countries
+	return countries.sort((a, b) => a.label.localeCompare(b.label, "en"))
 }
 
 export const regulationNoteFor = (

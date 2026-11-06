@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { describe, test } from "vitest"
 import {
 	countriesFromCorridors,
+	countryLabel,
 	cryptoCurrencyForCorridor,
 	destinationsForCountry,
 	regulationNoteFor,
@@ -45,12 +46,17 @@ const SAMPLE: CorridorSummary[] = [
 ]
 
 describe("corridor destination mapping", () => {
-	test("lists unique destination countries including GB", () => {
+	test("lists unique destination countries including GB, sorted by name", () => {
 		assert.deepEqual(countriesFromCorridors(SAMPLE), [
 			{ value: "PH", label: "Philippines" },
-			{ value: "US", label: "United States" },
 			{ value: "GB", label: "United Kingdom" },
+			{ value: "US", label: "United States" },
 		])
+	})
+
+	test("names countries without a fixed label (CCR-31 Tazapay coverage)", () => {
+		assert.equal(countryLabel("KE"), "Kenya")
+		assert.equal(countryLabel("VN"), "Vietnam")
 	})
 
 	test("maps fiat currency from corridor and crypto from settle rails", () => {

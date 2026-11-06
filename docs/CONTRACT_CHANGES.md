@@ -740,3 +740,12 @@ Idempotency: same signature replay returns current paid state; a **different** s
 - **Environment:** `TAZAPAY_API_KEY`, `TAZAPAY_API_SECRET`; optional `TAZAPAY_BASE_URL`, `TAZAPAY_SANDBOX_BENEFICIARY_ID`, `TAZAPAY_PURPOSE_CODE` (default `PYR001`), `TAZAPAY_HOLDING_CURRENCY`. Production URL refused unless `FP_TAZAPAY_LIVE_APPROVED=1`.
 - **Tests:** adapters-live 25 (13 Tazapay, fake API built from real sandbox responses); domain 95; API 162; e2e-ui 102. Local check through the real router and sandbox: £100 GB-PH bank → ₱7,771.93 via Tazapay (simulated alternative ₱7,372.88); $100 US-PH → ₱5,699.72 via Tazapay; $100 US-BR still BlindPay.
 - **Not confirmed:** a completed sandbox payout (balance is 0 until the dashboard collect is simulated); real recipient beneficiaries (payouts go to one sandbox beneficiary until EndpointRef carries bank details).
+
+## CCR-31 (integrator, 6 Nov 2026): GBP to 62 more countries through Tazapay
+
+- **What:** 62 new corridors `GB-XX` (bank accounts, individual and company), each collect `sim_bank_gb_fps` → convert `sim_fx_gbp_tgbp` (GBP to tGBP) → settle `solana_tgbp` → Tazapay convert + payout from a GBP balance. With GB-PH that is 63 destination countries from pounds. `tazapay_sandbox` lists the countries and payout currencies; PH and PHP stay first (health check).
+- **How the list was made:** every country where Tazapay's sandbox reports a local payout rail (71) was quoted £100 from a GBP balance in its national currency on 6 Nov. Included: every country that quoted, except GB and US (US payout is USD, which Tazapay holds, not pays) and Costa Rica (the sandbox returned a negative fee). Left out: BF, BJ, SN, TG (XOF) and CM (XAF), which the sandbox refused at £100 for min/max limits.
+- **Currencies:** ISO minor units added to `CURRENCY_DECIMALS` (CLP, KRW, UGX, VND, ISK at 0; the rest 2). Tazapay itself counts every currency in hundredths; the adapter rescales.
+- **Rates:** placeholder `TGBP>XX` and `XX>GBP` rates from Tazapay's sandbox rate, needed by the config validator and for fee totals. They never price a route: these corridors have no simulated payout, so the only route is the Tazapay pair, priced live.
+- **Web:** `countryLabel` falls back to `Intl.DisplayNames`; destination countries are sorted by name.
+- **Not confirmed:** payouts outside PH (the single sandbox beneficiary is in PH; payouts to other countries need recipient bank details passed to Tazapay, next CCR); XOF/XAF at higher amounts.

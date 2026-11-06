@@ -161,6 +161,1680 @@
 			"regulationNote": "UK GBP to tGBP (Tokenised GBP) on Solana. Crypto-wallet destination only; no fiat payout. Simulated collect and 1:1 conversion; settlement is verified on-chain.",
 			"simulated": true,
 			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "AD", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "AE", "currency": "AED" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to AED over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "AR", "currency": "ARS" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to ARS over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "AT", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "AU", "currency": "AUD" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to AUD over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "BD", "currency": "BDT" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to BDT over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "BE", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "BG", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "BR", "currency": "BRL" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to BRL over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "CA", "currency": "CAD" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to CAD over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "CH", "currency": "CHF" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to CHF over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "CL", "currency": "CLP" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to CLP over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "CN", "currency": "CNY" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to CNY over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "CY", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "CZ", "currency": "CZK" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to CZK over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "DE", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "DK", "currency": "DKK" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to DKK over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "DZ", "currency": "DZD" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to DZD over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "EE", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "ES", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "FI", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "FR", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "GH", "currency": "GHS" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to GHS over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "GR", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "HK", "currency": "HKD" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to HKD over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "HR", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "HU", "currency": "HUF" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to HUF over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "ID", "currency": "IDR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to IDR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "IE", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "IN", "currency": "INR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to INR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "IS", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "IT", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "KE", "currency": "KES" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to KES over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "KR", "currency": "KRW" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to KRW over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "LI", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "LK", "currency": "LKR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to LKR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "LT", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "LU", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "LV", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "MA", "currency": "MAD" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to MAD over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "MT", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "MX", "currency": "MXN" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to MXN over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "MY", "currency": "MYR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to MYR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "NG", "currency": "NGN" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to NGN over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "NL", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "NO", "currency": "NOK" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to NOK over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "NP", "currency": "NPR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to NPR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "PE", "currency": "PEN" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to PEN over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "PK", "currency": "PKR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to PKR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "PL", "currency": "PLN" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to PLN over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "PT", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "RO", "currency": "RON" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to RON over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "SE", "currency": "SEK" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to SEK over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "SG", "currency": "SGD" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to SGD over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "SI", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "SK", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to EUR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "TH", "currency": "THB" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to THB over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "TR", "currency": "TRY" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to TRY over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "UG", "currency": "UGX" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to UGX over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "UY", "currency": "UYU" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to UYU over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "VN", "currency": "VND" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to VND over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "ZA", "currency": "ZAR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to ZAR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
 		}
 	]
 }

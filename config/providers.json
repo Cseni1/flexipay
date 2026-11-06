@@ -325,14 +325,115 @@
       "id": "tazapay_sandbox",
       "kind": "bank",
       "countries": [
-        "PH"
+        "PH",
+        "AD",
+        "AE",
+        "AR",
+        "AT",
+        "AU",
+        "BD",
+        "BE",
+        "BG",
+        "BR",
+        "CA",
+        "CH",
+        "CL",
+        "CN",
+        "CY",
+        "CZ",
+        "DE",
+        "DK",
+        "DZ",
+        "EE",
+        "ES",
+        "FI",
+        "FR",
+        "GH",
+        "GR",
+        "HK",
+        "HR",
+        "HU",
+        "ID",
+        "IE",
+        "IN",
+        "IS",
+        "IT",
+        "KE",
+        "KR",
+        "LI",
+        "LK",
+        "LT",
+        "LU",
+        "LV",
+        "MA",
+        "MT",
+        "MX",
+        "MY",
+        "NG",
+        "NL",
+        "NO",
+        "NP",
+        "PE",
+        "PK",
+        "PL",
+        "PT",
+        "RO",
+        "SE",
+        "SG",
+        "SI",
+        "SK",
+        "TH",
+        "TR",
+        "UG",
+        "UY",
+        "VN",
+        "ZA"
       ],
       "currencies": [
         "GBP",
         "TGBP",
         "USD",
         "USDC",
-        "PHP"
+        "PHP",
+        "AED",
+        "ARS",
+        "AUD",
+        "BDT",
+        "BRL",
+        "CAD",
+        "CHF",
+        "CLP",
+        "CNY",
+        "CZK",
+        "DKK",
+        "DZD",
+        "EUR",
+        "GHS",
+        "HKD",
+        "HUF",
+        "IDR",
+        "INR",
+        "KES",
+        "KRW",
+        "LKR",
+        "MAD",
+        "MXN",
+        "MYR",
+        "NGN",
+        "NOK",
+        "NPR",
+        "PEN",
+        "PKR",
+        "PLN",
+        "RON",
+        "SEK",
+        "SGD",
+        "THB",
+        "TRY",
+        "UGX",
+        "UYU",
+        "VND",
+        "ZAR"
       ],
       "endpointTypes": [
         "bank_account"
@@ -453,6 +554,474 @@
       "from": "PHP",
       "to": "GBP",
       "rate": "0.0133333",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "AED",
+      "rate": "4.6982571",
+      "placeholder": true
+    },
+    {
+      "from": "AED",
+      "to": "GBP",
+      "rate": "0.2128448",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "ARS",
+      "rate": "1804.6464989",
+      "placeholder": true
+    },
+    {
+      "from": "ARS",
+      "to": "GBP",
+      "rate": "0.0005541",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "AUD",
+      "rate": "1.8219846",
+      "placeholder": true
+    },
+    {
+      "from": "AUD",
+      "to": "GBP",
+      "rate": "0.5488520",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "BDT",
+      "rate": "154.2726726",
+      "placeholder": true
+    },
+    {
+      "from": "BDT",
+      "to": "GBP",
+      "rate": "0.0064820",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "BRL",
+      "rate": "6.7357375",
+      "placeholder": true
+    },
+    {
+      "from": "BRL",
+      "to": "GBP",
+      "rate": "0.1484618",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "CAD",
+      "rate": "1.7978948",
+      "placeholder": true
+    },
+    {
+      "from": "CAD",
+      "to": "GBP",
+      "rate": "0.5562060",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "CHF",
+      "rate": "1.0593036",
+      "placeholder": true
+    },
+    {
+      "from": "CHF",
+      "to": "GBP",
+      "rate": "0.9440163",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "CLP",
+      "rate": "1225.3819887",
+      "placeholder": true
+    },
+    {
+      "from": "CLP",
+      "to": "GBP",
+      "rate": "0.0008160",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "CNY",
+      "rate": "8.5329251",
+      "placeholder": true
+    },
+    {
+      "from": "CNY",
+      "to": "GBP",
+      "rate": "0.1171931",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "CZK",
+      "rate": "27.9035687",
+      "placeholder": true
+    },
+    {
+      "from": "CZK",
+      "to": "GBP",
+      "rate": "0.0358377",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "DKK",
+      "rate": "8.5651015",
+      "placeholder": true
+    },
+    {
+      "from": "DKK",
+      "to": "GBP",
+      "rate": "0.1167528",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "DZD",
+      "rate": "175.0500647",
+      "placeholder": true
+    },
+    {
+      "from": "DZD",
+      "to": "GBP",
+      "rate": "0.0057126",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "EUR",
+      "rate": "1.1458557",
+      "placeholder": true
+    },
+    {
+      "from": "EUR",
+      "to": "GBP",
+      "rate": "0.8727102",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "GHS",
+      "rate": "14.3788549",
+      "placeholder": true
+    },
+    {
+      "from": "GHS",
+      "to": "GBP",
+      "rate": "0.0695465",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "HKD",
+      "rate": "10.0826955",
+      "placeholder": true
+    },
+    {
+      "from": "HKD",
+      "to": "GBP",
+      "rate": "0.0991798",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "HUF",
+      "rate": "420.9318987",
+      "placeholder": true
+    },
+    {
+      "from": "HUF",
+      "to": "GBP",
+      "rate": "0.0023756",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "IDR",
+      "rate": "23212.4606356",
+      "placeholder": true
+    },
+    {
+      "from": "IDR",
+      "to": "GBP",
+      "rate": "0.0000430",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "INR",
+      "rate": "121.7550184",
+      "placeholder": true
+    },
+    {
+      "from": "INR",
+      "to": "GBP",
+      "rate": "0.0082132",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "KES",
+      "rate": "166.2310410",
+      "placeholder": true
+    },
+    {
+      "from": "KES",
+      "to": "GBP",
+      "rate": "0.0060157",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "KRW",
+      "rate": "1638.4746638",
+      "placeholder": true
+    },
+    {
+      "from": "KRW",
+      "to": "GBP",
+      "rate": "0.0006103",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "LKR",
+      "rate": "421.3248445",
+      "placeholder": true
+    },
+    {
+      "from": "LKR",
+      "to": "GBP",
+      "rate": "0.0023734",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "MAD",
+      "rate": "12.1845503",
+      "placeholder": true
+    },
+    {
+      "from": "MAD",
+      "to": "GBP",
+      "rate": "0.0820711",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "MXN",
+      "rate": "23.7629367",
+      "placeholder": true
+    },
+    {
+      "from": "MXN",
+      "to": "GBP",
+      "rate": "0.0420823",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "MYR",
+      "rate": "5.2294385",
+      "placeholder": true
+    },
+    {
+      "from": "MYR",
+      "to": "GBP",
+      "rate": "0.1912251",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "NGN",
+      "rate": "1750.0279765",
+      "placeholder": true
+    },
+    {
+      "from": "NGN",
+      "to": "GBP",
+      "rate": "0.0005714",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "NOK",
+      "rate": "11.9236695",
+      "placeholder": true
+    },
+    {
+      "from": "NOK",
+      "to": "GBP",
+      "rate": "0.0838667",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "NPR",
+      "rate": "193.0178356",
+      "placeholder": true
+    },
+    {
+      "from": "NPR",
+      "to": "GBP",
+      "rate": "0.0051808",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "PEN",
+      "rate": "4.2707012",
+      "placeholder": true
+    },
+    {
+      "from": "PEN",
+      "to": "GBP",
+      "rate": "0.2341535",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "PKR",
+      "rate": "342.9772473",
+      "placeholder": true
+    },
+    {
+      "from": "PKR",
+      "to": "GBP",
+      "rate": "0.0029156",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "PLN",
+      "rate": "5.0478778",
+      "placeholder": true
+    },
+    {
+      "from": "PLN",
+      "to": "GBP",
+      "rate": "0.1981030",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "RON",
+      "rate": "6.1291284",
+      "placeholder": true
+    },
+    {
+      "from": "RON",
+      "to": "GBP",
+      "rate": "0.1631553",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "SEK",
+      "rate": "12.7393976",
+      "placeholder": true
+    },
+    {
+      "from": "SEK",
+      "to": "GBP",
+      "rate": "0.0784966",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "SGD",
+      "rate": "1.6467973",
+      "placeholder": true
+    },
+    {
+      "from": "SGD",
+      "to": "GBP",
+      "rate": "0.6072392",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "THB",
+      "rate": "42.9864746",
+      "placeholder": true
+    },
+    {
+      "from": "THB",
+      "to": "GBP",
+      "rate": "0.0232631",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "TRY",
+      "rate": "63.3928430",
+      "placeholder": true
+    },
+    {
+      "from": "TRY",
+      "to": "GBP",
+      "rate": "0.0157746",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "UGX",
+      "rate": "5671.8559865",
+      "placeholder": true
+    },
+    {
+      "from": "UGX",
+      "to": "GBP",
+      "rate": "0.0001763",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "UYU",
+      "rate": "52.0146566",
+      "placeholder": true
+    },
+    {
+      "from": "UYU",
+      "to": "GBP",
+      "rate": "0.0192253",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "VND",
+      "rate": "33054.2003347",
+      "placeholder": true
+    },
+    {
+      "from": "VND",
+      "to": "GBP",
+      "rate": "0.0000302",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "ZAR",
+      "rate": "20.4248770",
+      "placeholder": true
+    },
+    {
+      "from": "ZAR",
+      "to": "GBP",
+      "rate": "0.0489599",
       "placeholder": true
     }
   ]
