@@ -25,9 +25,15 @@ import {
 import {
 	countriesFromCorridors,
 	countryLabel,
+	defaultSourceForCountry,
 	destinationsForCountry,
 	regulationNoteFor,
-	sourceForCountry,
+	sendFromLabel,
+	sourceFromKey,
+	sourceKey,
+	sourceStaticLabel,
+	sourcesForCountry,
+	summarizeCorridor,
 	type CorridorSummary,
 	type DestinationOption,
 	type SourceEndpoint,
@@ -107,20 +113,23 @@ const isFallbackCountry = (country: string): country is FallbackCountry =>
 const sourceForForm = (
 	corridors: CorridorSummary[] | null,
 	country: string,
+	selectedKey: string,
 ): SourceEndpoint => {
 	if (corridors && country) {
-		const fromApi = sourceForCountry(corridors, country)
+		const selected = sourceFromKey(selectedKey)
+		if (
+			selected &&
+			sourcesForCountry(corridors, country).some(
+				(entry) => sourceKey(entry) === selectedKey,
+			)
+		) {
+			return selected
+		}
+		const fromApi = defaultSourceForCountry(corridors, country)
 		if (fromApi) return fromApi
 	}
 	if (isFallbackCountry(country)) return FALLBACK_SOURCES[country]
 	return DEFAULT_SOURCE
-}
-
-const sourceFieldCopy = (source: SourceEndpoint): { value: string } => {
-	if (source.currency === "GBP" && source.country === "GB") {
-		return { value: "GBP bank account" }
-	}
-	return { value: "USD operating account" }
 }
 
 const amountFieldCopy = (
@@ -157,6 +166,7 @@ const FEE_MODE_OPTIONS: { value: FeeMode; label: string }[] = FEE_MODES.map(
 
 interface FormState {
 	country: string
+	sourceKey: string
 	destinationType: DestinationType | ""
 	recipientKind: RecipientKind
 	feeMode: FeeMode | ""
@@ -167,6 +177,7 @@ interface FormState {
 
 const INITIAL_FORM: FormState = {
 	country: "",
+	sourceKey: "",
 	destinationType: "",
 	recipientKind: "individual",
 	feeMode: "",
@@ -178,33 +189,28 @@ const INITIAL_FORM: FormState = {
 const destinationsForForm = (
 	corridors: CorridorSummary[] | null,
 	country: string,
+	source: SourceEndpoint | null,
 ): DestinationOption[] => {
 	if (!country) return []
-	if (corridors) return destinationsForCountry(corridors, country)
+	if (corridors) {
+		return destinationsForCountry(corridors, country, source ?? undefined)
+	}
 	if (isFallbackCountry(country)) return FALLBACK_DESTINATIONS[country]
 	return []
 }
 
-const toCorridorSummaries = (
-	rows: Awaited<ReturnType<typeof listCorridors>>["corridors"],
-): CorridorSummary[] =>
-	rows.map((row) => ({
-		fromCountry: row.from.country,
-		fromCurrency: row.from.currency,
-		toCountry: row.to.country,
-		toCurrency: row.to.currency,
-		allowedDestinationTypes: row.allowedDestinationTypes.filter(
-			(type): type is EndpointType =>
-				type === "bank_account" ||
-				type === "ewallet" ||
-				type === "crypto_wallet" ||
-				type === "crypto_custodial",
-		),
-		recipientKinds: row.recipientKinds,
-		regulationNote: row.regulationNote,
-		simulated: row.simulated,
-		...(row.settleRails ? { settleRails: row.settleRails } : {}),
-	}))
+const resolveSourceKey = (
+	corridors: CorridorSummary[] | null,
+	country: string,
+): string => {
+	if (!country) return ""
+	if (corridors) {
+		const preferred = defaultSourceForCountry(corridors, country)
+		return preferred ? sourceKey(preferred) : ""
+	}
+	if (isFallbackCountry(country)) return sourceKey(FALLBACK_SOURCES[country])
+	return sourceKey(DEFAULT_SOURCE)
+}
 
 export default function SendPayment() {
 	const navigate = useNavigate()
@@ -239,7 +245,7 @@ export default function SendPayment() {
 		listCorridors(controller.signal)
 			.then((response) => {
 				if (!active) return
-				setCorridors(toCorridorSummaries(response.corridors))
+				setCorridors(response.corridors.map(summarizeCorridor))
 				setCorridorsError(null)
 			})
 			.catch((cause: unknown) => {
@@ -290,21 +296,28 @@ export default function SendPayment() {
 		return [{ value: "", label: "Select destination country" }, ...fromApi]
 	}, [corridors])
 
+	const source = useMemo(
+		() => sourceForForm(corridors, form.country, form.sourceKey),
+		[corridors, form.country, form.sourceKey],
+	)
+
+	const sendFromOptions = useMemo(() => {
+		if (!corridors || !form.country) return []
+		return sourcesForCountry(corridors, form.country)
+	}, [corridors, form.country])
+
+	const showSendFrom = sendFromOptions.length > 1
+
 	const destinationOptions: DestinationOption[] = useMemo(
-		() => destinationsForForm(corridors, form.country),
-		[corridors, form.country],
+		() => destinationsForForm(corridors, form.country, source),
+		[corridors, form.country, source],
 	)
 
 	const corridorNote = useMemo(() => {
 		if (!corridors || !form.country) return null
-		return regulationNoteFor(corridors, form.country)
-	}, [corridors, form.country])
+		return regulationNoteFor(corridors, form.country, source)
+	}, [corridors, form.country, source])
 
-	const source = useMemo(
-		() => sourceForForm(corridors, form.country),
-		[corridors, form.country],
-	)
-	const sourceCopy = sourceFieldCopy(source)
 	const amountCopy = amountFieldCopy(source.currency)
 
 	const update = (patch: Partial<FormState>) => {
@@ -318,14 +331,31 @@ export default function SendPayment() {
 	const changeCountry = (country: string) => {
 		setRecipientCountryNote(null)
 		if (country === "") {
-			update({ country, destinationType: "", existingRecipientId: "" })
+			update({
+				country,
+				sourceKey: "",
+				destinationType: "",
+				existingRecipientId: "",
+			})
 			return
 		}
-		const options = destinationsForForm(corridors, country)
+		const nextSourceKey = resolveSourceKey(corridors, country)
+		const nextSource = sourceForForm(corridors, country, nextSourceKey)
+		const options = destinationsForForm(corridors, country, nextSource)
 		update({
 			country,
+			sourceKey: nextSourceKey,
 			destinationType: options[0]?.value ?? "",
 			existingRecipientId: "",
+		})
+	}
+
+	const changeSendFrom = (nextKey: string) => {
+		const nextSource = sourceForForm(corridors, form.country, nextKey)
+		const options = destinationsForForm(corridors, form.country, nextSource)
+		update({
+			sourceKey: nextKey,
+			destinationType: options[0]?.value ?? "",
 		})
 	}
 
@@ -342,12 +372,15 @@ export default function SendPayment() {
 			return
 		}
 		const previousCountry = form.country
-		const options = destinationsForForm(corridors, saved.country)
+		const nextSourceKey = resolveSourceKey(corridors, saved.country)
+		const nextSource = sourceForForm(corridors, saved.country, nextSourceKey)
+		const options = destinationsForForm(corridors, saved.country, nextSource)
 		update({
 			existingRecipientId: saved.id,
 			recipientName: saved.name,
 			recipientKind: saved.kind,
 			country: saved.country,
+			sourceKey: nextSourceKey,
 			destinationType: options[0]?.value ?? "",
 		})
 		setRecipientCountryNote(
@@ -536,15 +569,31 @@ export default function SendPayment() {
 			<Grid>
 				<Panel
 					title="Payment details"
-					description="Source follows the selected corridor. Countries and destinations prefer GET /v1/corridors when available."
+					description="When a country can be paid from more than one account, choose Send from. Countries and destinations prefer GET /v1/corridors when available."
 				>
 					<form onSubmit={handleQuote}>
 						<div className="form-grid">
-							<StaticField
-								label="Source"
-								value={sourceCopy.value}
-								hint="Set by destination country"
-							/>
+							{showSendFrom ? (
+								<SelectField
+									id="send-from"
+									label="Send from"
+									value={form.sourceKey || sourceKey(source)}
+									disabled={authBlocked}
+									options={sendFromOptions.map((entry) => ({
+										value: sourceKey(entry),
+										label: sendFromLabel(entry),
+									}))}
+									hint="Defaults to GBP when a UK corridor exists"
+									data-testid="send-from"
+									onChange={(event) => changeSendFrom(event.target.value)}
+								/>
+							) : (
+								<StaticField
+									label="Source"
+									value={sourceStaticLabel(source)}
+									hint="Set by destination country"
+								/>
+							)}
 							<SelectField
 								id="saved-recipient"
 								label="Saved recipient"
