@@ -1093,7 +1093,7 @@ describe("CCR-26: GBP to tGBP corridor (solana_tgbp)", () => {
 	});
 
 	it("keeps GB crypto-only: bank_account destinations and US->crypto are unchanged", async () => {
-		const gb = config.corridors.find((c) => c.from.country === "GB")!;
+		const gb = config.corridors.find((c) => c.from.country === "GB" && c.to.country === "GB")!;
 		expect(routeTemplate(gb, "crypto_wallet")).toEqual(["collect", "convert", "settle"]);
 		expect(routeTemplate(gb, "bank_account")).toEqual(["collect", "payout"]);
 		const bank = checkEligibility(
@@ -1103,6 +1103,10 @@ describe("CCR-26: GBP to tGBP corridor (solana_tgbp)", () => {
 		expect(bank.ok).toBe(false);
 		const us = config.corridors.find((c) => c.to.country === "US")!;
 		expect(routeTemplate(us, "crypto_wallet")).toBeNull();
+		// GB-PH (CCR-30) is fiat only: wallets stay on GB-GB, so a country-less tGBP wallet is not ambiguous.
+		const gbph = config.corridors.find((c) => c.from.country === "GB" && c.to.country === "PH")!;
+		expect(gbph.allowedDestinationTypes).not.toContain("crypto_wallet");
+		expect(routeTemplate(gbph, "bank_account")).toEqual(["collect", "convert", "settle", "convert", "payout"]);
 	});
 
 	it("floorMinorForSolanaMint handles USDC and TGBP the same way", async () => {
