@@ -1,24 +1,35 @@
 import assert from "node:assert/strict"
 import { describe, test } from "vitest"
+import {
+	isWaitingOnLeg,
+	shouldPollPayment,
+} from "../src/hooks/usePaymentDetail"
 
-/**
- * Mirrors the poll decision in usePaymentDetail so we can unit-test the rules
- * without mounting React.
- */
-const TERMINAL = new Set(["paid", "failed", "refunded", "cancelled", "expired"])
-
-const shouldPoll = (status: string, legStatuses: string[]): boolean => {
-	if (TERMINAL.has(status)) return false
-	if (status !== "processing") return false
-	return legStatuses.some((s) => s === "processing")
-}
+const p = (status: string, legStatuses: string[]) =>
+	({ status, legs: legStatuses.map((s) => ({ status: s })) }) as never
 
 describe("payment detail poll rules", () => {
-	test("polls only while payment and a leg are processing", () => {
-		assert.equal(shouldPoll("processing", ["succeeded", "processing"]), true)
-		assert.equal(shouldPoll("processing", ["succeeded", "succeeded"]), false)
-		assert.equal(shouldPoll("paid", ["succeeded"]), false)
-		assert.equal(shouldPoll("failed", ["failed"]), false)
-		assert.equal(shouldPoll("funded", ["pending"]), false)
+	test("keeps refreshing while the payment is moving, including between legs and after funding", () => {
+		assert.equal(shouldPollPayment(p("funded", ["pending"])), true)
+		assert.equal(
+			shouldPollPayment(p("processing", ["succeeded", "pending"])),
+			true,
+		)
+		assert.equal(shouldPollPayment(p("refunding", ["failed"])), true)
+		assert.equal(shouldPollPayment(p("paid", ["succeeded"])), false)
+		assert.equal(shouldPollPayment(p("failed", ["failed"])), false)
+		assert.equal(shouldPollPayment(p("refunded", ["failed"])), false)
+	})
+
+	test("waits (10 s, 'Waiting for …') only while a leg is with the partner", () => {
+		assert.equal(
+			isWaitingOnLeg(p("processing", ["succeeded", "processing"])),
+			true,
+		)
+		assert.equal(
+			isWaitingOnLeg(p("processing", ["succeeded", "pending"])),
+			false,
+		)
+		assert.equal(isWaitingOnLeg(p("funded", ["pending"])), false)
 	})
 })

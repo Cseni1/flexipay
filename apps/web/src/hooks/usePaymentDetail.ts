@@ -2,24 +2,26 @@ import { type PaymentDetail } from "@flexipay/web-lib/contract"
 import { useCallback, useEffect, useState } from "react"
 import { ApiError, getPayment } from "../api/client"
 
-/** Re-fetch while a partner payout (or other leg) is still in flight. */
+/** While the payment is moving between legs (sim legs finish in seconds). */
+const FAST_POLL_MS = 2000
+/** While a leg is with a partner (processing, seconds to days). */
 const POLL_INTERVAL_MS = 10_000
 /** Never leave the detail screen polling forever. */
 const POLL_BUDGET_MS = 15 * 60_000
 
-const TERMINAL_STATUSES = new Set([
-	"paid",
-	"failed",
-	"refunded",
-	"cancelled",
-	"expired",
-])
+const MOVING_STATUSES = new Set(["funded", "processing", "refunding"])
 
-const shouldPollPayment = (payment: PaymentDetail): boolean => {
-	if (TERMINAL_STATUSES.has(payment.status)) return false
-	if (payment.status !== "processing") return false
-	return payment.legs.some((leg) => leg.status === "processing")
-}
+/** Poll while the payment is moving: funded, processing (also between legs) or refunding. */
+export const shouldPollPayment = (
+	payment: Pick<PaymentDetail, "status">,
+): boolean => MOVING_STATUSES.has(payment.status)
+
+/** A leg is waiting on a partner: show "Waiting for …" and slow down to every 10 s. */
+export const isWaitingOnLeg = (
+	payment: Pick<PaymentDetail, "status" | "legs">,
+): boolean =>
+	payment.status === "processing" &&
+	payment.legs.some((leg) => leg.status === "processing")
 
 interface PaymentDetailState {
 	payment: PaymentDetail | null
@@ -71,9 +73,13 @@ export function usePaymentDetail(
 
 				const withinBudget = Date.now() - startedAt < POLL_BUDGET_MS
 				const keepGoing = shouldPollPayment(next) && withinBudget
-				setPolling(keepGoing)
+				const waiting = keepGoing && isWaitingOnLeg(next)
+				setPolling(waiting)
 				if (keepGoing) {
-					timer = window.setTimeout(() => void load(true), POLL_INTERVAL_MS)
+					timer = window.setTimeout(
+						() => void load(true),
+						waiting ? POLL_INTERVAL_MS : FAST_POLL_MS,
+					)
 				}
 			} catch (cause) {
 				if (stopped || controller.signal.aborted) return
