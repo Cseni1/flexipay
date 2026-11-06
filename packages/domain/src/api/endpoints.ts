@@ -18,8 +18,17 @@ export function endpointDetailsSchemaFor(
 	type: z.infer<typeof EndpointTypeSchema>,
 ): z.ZodType<Record<string, string>> {
 	if (type === "bank_account") {
+		// CCR-32: accountNumber stays required; these aid partner beneficiary creation.
 		return z
-			.object({ accountNumber: detailString })
+			.object({
+				accountNumber: detailString,
+				accountHolderName: detailString.optional(),
+				bankName: detailString.optional(),
+				swiftCode: detailString.optional(),
+				iban: detailString.optional(),
+				bankCode: detailString.optional(),
+				branchCode: detailString.optional(),
+			})
 			.strict() as unknown as z.ZodType<Record<string, string>>;
 	}
 	if (type === "ewallet") {

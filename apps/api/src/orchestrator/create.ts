@@ -55,6 +55,31 @@ export async function createPaymentFromQuote(
 		throw new Error("recipient does not belong to organization");
 	}
 
+	// CCR-32: keep the chosen endpoint so a batch payout can load its bank details later.
+	let endpointId: string | null = null;
+	if (input.endpointId) {
+		const endpoint = await db.endpoint.findFirst({
+			where: { id: input.endpointId, organizationId: input.organizationId },
+		});
+		if (!endpoint) throw new Error("endpoint does not belong to organization");
+		if (endpoint.recipientId !== input.recipientId) {
+			throw new Error("endpoint belongs to a different recipient");
+		}
+		const dest = quote.destination as {
+			type: string;
+			country: string;
+			currency: string;
+		};
+		if (
+			endpoint.type !== dest.type ||
+			(endpoint.country ?? "") !== dest.country ||
+			endpoint.currency !== dest.currency
+		) {
+			throw new Error("endpoint does not match the quote destination");
+		}
+		endpointId = endpoint.id;
+	}
+
 	if (input.externalId) {
 		const dup = await db.payment.findUnique({
 			where: {
@@ -76,6 +101,7 @@ export async function createPaymentFromQuote(
 			organizationId: input.organizationId,
 			quoteId: input.quoteId,
 			recipientId: input.recipientId,
+			endpointId,
 			externalId: input.externalId ?? null,
 			batchId: input.batchId ?? null,
 			delivery: input.delivery,

@@ -17,12 +17,22 @@ export interface ProviderCapabilities {
   simulated: boolean;
 }
 
-/** The destination of a payout leg, masked details never leave the adapter. */
+/**
+ * The destination of a payout leg. `details` are the endpoint's unmasked values and are
+ * server-side only: adapters must never return them in API responses or write them to logs.
+ */
 export interface EndpointRef {
   endpointId: string;
   type: EndpointType;
   country: string;
   currency: string;
+  /** Unmasked endpoint details, filled by the orchestrator from the DB (CCR-32). */
+  details?: Record<string, string>;
+  /** Recipient name and kind, filled by the orchestrator from the DB (CCR-32). */
+  recipientName?: string;
+  recipientKind?: "individual" | "company";
+  /** Partner references persisted on the endpoint, e.g. a Tazapay beneficiary id. */
+  partnerRefs?: Record<string, string>;
 }
 
 export interface LegQuoteRequest {
@@ -118,7 +128,11 @@ export interface ProviderAdapter {
    * the same call returns the same reference and never changes the leg's state, including after
    * a failure or a reversal. A retry uses attempt + 1 and gets a new reference.
    */
-  execute(leg: LegExecution): Promise<{ externalRef: string }>;
+  execute(leg: LegExecution): Promise<{
+    externalRef: string;
+    /** Partner references to persist on the payout endpoint (CCR-32); never API output. */
+    partnerRefs?: Record<string, string>;
+  }>;
   status(externalRef: string): Promise<ProviderLegState>;
   /**
    * Reverses a succeeded `collect` or `convert` leg and returns the reversal's reference.
