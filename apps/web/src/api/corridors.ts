@@ -1,4 +1,5 @@
 import { type EndpointType } from "@flexipay/web-lib/contract"
+import { providerLabel } from "../payments/providerNames"
 import { assetLabel } from "../solana/assets"
 
 /** Browser-safe corridor row used to drive the send form (not the full config schema). */
@@ -13,6 +14,8 @@ export interface CorridorSummary {
 	simulated: boolean
 	/** Settlement rail ids from the API corridor (`legsAvailable.settle`), when present. */
 	settleRails?: readonly string[]
+	/** Payout provider ids from the API corridor (`legsAvailable.payout`), when present. */
+	payoutProviders?: readonly string[]
 }
 
 export interface DestinationOption {
@@ -25,6 +28,13 @@ export interface SourceEndpoint {
 	type: "bank_account"
 	currency: string
 	country: string
+}
+
+export interface SandboxPayoutRow {
+	code: string
+	name: string
+	providerId: string
+	providerName: string
 }
 
 const DESTINATION_LABELS: Readonly<Record<DestinationOption["value"], string>> =
@@ -98,18 +108,102 @@ const cryptoDestinationLabel = (currency: string): string => {
 const matchingCorridors = (
 	corridors: readonly CorridorSummary[],
 	country: string,
+	source?: Pick<SourceEndpoint, "country" | "currency">,
 ): CorridorSummary[] =>
-	corridors.filter((corridor) => corridor.toCountry === country)
+	corridors.filter((corridor) => {
+		if (corridor.toCountry !== country) return false
+		if (!source) return true
+		return (
+			corridor.fromCountry === source.country &&
+			corridor.fromCurrency === source.currency
+		)
+	})
+
+/** Stable key for a bank source endpoint (country + currency). */
+export const sourceKey = (
+	source: Pick<SourceEndpoint, "country" | "currency">,
+): string => `${source.country}:${source.currency}`
+
+/** Parse a source key back into a bank endpoint, or null when malformed. */
+export const sourceFromKey = (key: string): SourceEndpoint | null => {
+	const [country, currency] = key.split(":")
+	if (!country || !currency) return null
+	return { type: "bank_account", country, currency }
+}
+
+/**
+ * Distinct send sources that can pay out to `country`.
+ * GBP (UK) is listed before USD (US) when both exist.
+ */
+export const sourcesForCountry = (
+	corridors: readonly CorridorSummary[],
+	country: string,
+): SourceEndpoint[] => {
+	const seen = new Set<string>()
+	const sources: SourceEndpoint[] = []
+	for (const corridor of matchingCorridors(corridors, country)) {
+		const key = sourceKey({
+			country: corridor.fromCountry,
+			currency: corridor.fromCurrency,
+		})
+		if (seen.has(key)) continue
+		seen.add(key)
+		sources.push({
+			type: "bank_account",
+			currency: corridor.fromCurrency,
+			country: corridor.fromCountry,
+		})
+	}
+	return sources.sort((a, b) => {
+		const rank = (source: SourceEndpoint) =>
+			source.country === "GB" && source.currency === "GBP"
+				? 0
+				: source.country === "US" && source.currency === "USD"
+					? 1
+					: 2
+		return rank(a) - rank(b) || a.country.localeCompare(b.country)
+	})
+}
+
+/** Prefer a GB/GBP corridor when the destination has more than one source. */
+export const defaultSourceForCountry = (
+	corridors: readonly CorridorSummary[],
+	country: string,
+): SourceEndpoint | null => {
+	const sources = sourcesForCountry(corridors, country)
+	return sources[0] ?? null
+}
+
+/** Label for the multi-source "Send from" select. */
+export const sendFromLabel = (source: SourceEndpoint): string => {
+	if (source.currency === "GBP" && source.country === "GB") {
+		return "GBP bank account (UK)"
+	}
+	if (source.currency === "USD" && source.country === "US") {
+		return "USD operating account (US)"
+	}
+	return `${source.currency} bank account (${source.country})`
+}
+
+/** Short label for the static single-source Source field. */
+export const sourceStaticLabel = (source: SourceEndpoint): string => {
+	if (source.currency === "GBP" && source.country === "GB") {
+		return "GBP bank account"
+	}
+	return "USD operating account"
+}
 
 /**
  * Map API corridors into destination options for a country.
  * Fiat uses the corridor `to` currency; crypto uses the settle asset from corridor data.
+ * When `source` is set, only that corridor's destinations are used.
  */
 export const destinationsForCountry = (
 	corridors: readonly CorridorSummary[],
 	country: string,
+	source?: Pick<SourceEndpoint, "country" | "currency">,
 ): DestinationOption[] => {
-	const matching = matchingCorridors(corridors, country)
+	const matching = matchingCorridors(corridors, country, source)
 	const byType = new Map<DestinationOption["value"], DestinationOption>()
 	for (const corridor of matching) {
 		for (const type of corridor.allowedDestinationTypes) {
@@ -153,21 +247,89 @@ export const countriesFromCorridors = (
 export const regulationNoteFor = (
 	corridors: readonly CorridorSummary[],
 	country: string,
+	source?: Pick<SourceEndpoint, "country" | "currency">,
 ): string | null => {
-	const match = matchingCorridors(corridors, country)[0]
+	const match = matchingCorridors(corridors, country, source)[0]
 	return match?.regulationNote ?? null
 }
 
-/** Source bank endpoint for the corridor that pays out to `country`. */
+/**
+ * Source bank endpoint for the corridor that pays out to `country`.
+ * Prefers GBP/GB when that corridor exists (pounds-first product).
+ */
 export const sourceForCountry = (
 	corridors: readonly CorridorSummary[],
 	country: string,
-): SourceEndpoint | null => {
-	const match = matchingCorridors(corridors, country)[0]
-	if (!match) return null
+): SourceEndpoint | null => defaultSourceForCountry(corridors, country)
+
+const firstSandboxProvider = (
+	providers: readonly string[] | undefined,
+): string | null => providers?.find((id) => id.endsWith("_sandbox")) ?? null
+
+/**
+ * Destination countries priced by a partner sandbox payout, grouped by send currency.
+ * One row per destination country per source currency (first *_sandbox payout id wins).
+ */
+export const sandboxPayoutsBySource = (
+	corridors: readonly CorridorSummary[],
+): { GBP: SandboxPayoutRow[]; USD: SandboxPayoutRow[] } => {
+	const byCurrency = {
+		GBP: new Map<string, SandboxPayoutRow>(),
+		USD: new Map<string, SandboxPayoutRow>(),
+	}
+
+	for (const corridor of corridors) {
+		const providerId = firstSandboxProvider(corridor.payoutProviders)
+		if (!providerId) continue
+		const group =
+			corridor.fromCurrency === "GBP"
+				? byCurrency.GBP
+				: corridor.fromCurrency === "USD"
+					? byCurrency.USD
+					: null
+		if (!group || group.has(corridor.toCountry)) continue
+		group.set(corridor.toCountry, {
+			code: corridor.toCountry,
+			name: countryLabel(corridor.toCountry),
+			providerId,
+			providerName: providerLabel(providerId),
+		})
+	}
+
+	const sortRows = (rows: SandboxPayoutRow[]) =>
+		[...rows].sort((a, b) => a.name.localeCompare(b.name, "en"))
+
 	return {
-		type: "bank_account",
-		currency: match.fromCurrency,
-		country: match.fromCountry,
+		GBP: sortRows([...byCurrency.GBP.values()]),
+		USD: sortRows([...byCurrency.USD.values()]),
 	}
 }
+
+/** Map a listCorridors row into the browser-safe summary used by Send / Where we pay. */
+export const summarizeCorridor = (row: {
+	from: { country: string; currency: string }
+	to: { country: string; currency: string }
+	allowedDestinationTypes: readonly string[]
+	recipientKinds: readonly string[]
+	regulationNote: string
+	simulated: boolean
+	settleRails?: readonly string[]
+	payoutProviders?: readonly string[]
+}): CorridorSummary => ({
+	fromCountry: row.from.country,
+	fromCurrency: row.from.currency,
+	toCountry: row.to.country,
+	toCurrency: row.to.currency,
+	allowedDestinationTypes: row.allowedDestinationTypes.filter(
+		(type): type is EndpointType =>
+			type === "bank_account" ||
+			type === "ewallet" ||
+			type === "crypto_wallet" ||
+			type === "crypto_custodial",
+	),
+	recipientKinds: [...row.recipientKinds],
+	regulationNote: row.regulationNote,
+	simulated: row.simulated,
+	...(row.settleRails ? { settleRails: row.settleRails } : {}),
+	...(row.payoutProviders ? { payoutProviders: row.payoutProviders } : {}),
+})

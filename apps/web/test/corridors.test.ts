@@ -4,9 +4,13 @@ import {
 	countriesFromCorridors,
 	countryLabel,
 	cryptoCurrencyForCorridor,
+	defaultSourceForCountry,
 	destinationsForCountry,
 	regulationNoteFor,
+	sandboxPayoutsBySource,
+	sendFromLabel,
 	sourceForCountry,
+	sourcesForCountry,
 	type CorridorSummary,
 } from "../src/api/corridors.ts"
 
@@ -18,9 +22,22 @@ const SAMPLE: CorridorSummary[] = [
 		toCurrency: "PHP",
 		allowedDestinationTypes: ["bank_account", "ewallet", "crypto_wallet"],
 		recipientKinds: ["individual", "company"],
-		regulationNote: "PH note",
+		regulationNote: "PH USD note",
 		simulated: true,
 		settleRails: ["stellar_usdc"],
+		payoutProviders: ["sim_ewallet_ph", "tazapay_sandbox"],
+	},
+	{
+		fromCountry: "GB",
+		fromCurrency: "GBP",
+		toCountry: "PH",
+		toCurrency: "PHP",
+		allowedDestinationTypes: ["bank_account", "ewallet", "crypto_wallet"],
+		recipientKinds: ["individual", "company"],
+		regulationNote: "PH GBP note",
+		simulated: true,
+		settleRails: ["solana_tgbp"],
+		payoutProviders: ["tazapay_sandbox"],
 	},
 	{
 		fromCountry: "US",
@@ -43,11 +60,23 @@ const SAMPLE: CorridorSummary[] = [
 		simulated: true,
 		settleRails: ["solana_tgbp"],
 	},
+	{
+		fromCountry: "GB",
+		fromCurrency: "GBP",
+		toCountry: "KE",
+		toCurrency: "KES",
+		allowedDestinationTypes: ["bank_account"],
+		recipientKinds: ["individual", "company"],
+		regulationNote: "KE GBP note",
+		simulated: true,
+		payoutProviders: ["tazapay_sandbox"],
+	},
 ]
 
 describe("corridor destination mapping", () => {
 	test("lists unique destination countries including GB, sorted by name", () => {
 		assert.deepEqual(countriesFromCorridors(SAMPLE), [
+			{ value: "KE", label: "Kenya" },
 			{ value: "PH", label: "Philippines" },
 			{ value: "GB", label: "United Kingdom" },
 			{ value: "US", label: "United States" },
@@ -60,11 +89,32 @@ describe("corridor destination mapping", () => {
 	})
 
 	test("maps fiat currency from corridor and crypto from settle rails", () => {
-		assert.deepEqual(destinationsForCountry(SAMPLE, "PH"), [
-			{ value: "bank_account", label: "Bank account", currency: "PHP" },
-			{ value: "ewallet", label: "E-wallet", currency: "PHP" },
-			{ value: "crypto_wallet", label: "Crypto wallet", currency: "USDC" },
-		])
+		assert.deepEqual(
+			destinationsForCountry(SAMPLE, "PH", {
+				country: "US",
+				currency: "USD",
+			}),
+			[
+				{ value: "bank_account", label: "Bank account", currency: "PHP" },
+				{ value: "ewallet", label: "E-wallet", currency: "PHP" },
+				{ value: "crypto_wallet", label: "Crypto wallet", currency: "USDC" },
+			],
+		)
+		assert.deepEqual(
+			destinationsForCountry(SAMPLE, "PH", {
+				country: "GB",
+				currency: "GBP",
+			}),
+			[
+				{ value: "bank_account", label: "Bank account", currency: "PHP" },
+				{ value: "ewallet", label: "E-wallet", currency: "PHP" },
+				{
+					value: "crypto_wallet",
+					label: "Crypto wallet (tGBP (£))",
+					currency: "TGBP",
+				},
+			],
+		)
 		assert.deepEqual(destinationsForCountry(SAMPLE, "GB"), [
 			{
 				value: "crypto_wallet",
@@ -74,10 +124,14 @@ describe("corridor destination mapping", () => {
 		])
 	})
 
-	test("returns regulation notes and source from the matching corridor", () => {
+	test("returns regulation notes and prefers GBP source when available", () => {
 		assert.equal(regulationNoteFor(SAMPLE, "US"), "US note")
 		assert.equal(regulationNoteFor(SAMPLE, "ZA"), null)
 		assert.equal(regulationNoteFor(SAMPLE, "GB"), "UK GBP to tGBP")
+		assert.equal(
+			regulationNoteFor(SAMPLE, "PH", { country: "GB", currency: "GBP" }),
+			"PH GBP note",
+		)
 		assert.deepEqual(sourceForCountry(SAMPLE, "GB"), {
 			type: "bank_account",
 			currency: "GBP",
@@ -85,8 +139,55 @@ describe("corridor destination mapping", () => {
 		})
 		assert.deepEqual(sourceForCountry(SAMPLE, "PH"), {
 			type: "bank_account",
-			currency: "USD",
-			country: "US",
+			currency: "GBP",
+			country: "GB",
+		})
+		assert.deepEqual(sourcesForCountry(SAMPLE, "PH"), [
+			{ type: "bank_account", currency: "GBP", country: "GB" },
+			{ type: "bank_account", currency: "USD", country: "US" },
+		])
+		assert.deepEqual(sourcesForCountry(SAMPLE, "KE"), [
+			{ type: "bank_account", currency: "GBP", country: "GB" },
+		])
+		assert.deepEqual(defaultSourceForCountry(SAMPLE, "PH"), {
+			type: "bank_account",
+			currency: "GBP",
+			country: "GB",
+		})
+		assert.equal(
+			sendFromLabel({ type: "bank_account", currency: "GBP", country: "GB" }),
+			"GBP bank account (UK)",
+		)
+		assert.equal(
+			sendFromLabel({ type: "bank_account", currency: "USD", country: "US" }),
+			"USD operating account (US)",
+		)
+	})
+
+	test("groups sandbox payout countries by send currency", () => {
+		assert.deepEqual(sandboxPayoutsBySource(SAMPLE), {
+			GBP: [
+				{
+					code: "KE",
+					name: "Kenya",
+					providerId: "tazapay_sandbox",
+					providerName: "Tazapay",
+				},
+				{
+					code: "PH",
+					name: "Philippines",
+					providerId: "tazapay_sandbox",
+					providerName: "Tazapay",
+				},
+			],
+			USD: [
+				{
+					code: "PH",
+					name: "Philippines",
+					providerId: "tazapay_sandbox",
+					providerName: "Tazapay",
+				},
+			],
 		})
 	})
 

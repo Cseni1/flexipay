@@ -25,6 +25,7 @@ import {
 import {
 	countriesFromCorridors,
 	destinationsForCountry,
+	summarizeCorridor,
 	type CorridorSummary,
 } from "../api/corridors"
 import {
@@ -76,20 +77,6 @@ const detailLabelFor = (type: EndpointType): string => {
 
 const typeLabel = (type: EndpointType): string =>
 	ENDPOINT_TYPE_OPTIONS.find((option) => option.value === type)?.label ?? type
-
-const toCorridorSummaries = (
-	rows: Awaited<ReturnType<typeof listCorridors>>["corridors"],
-): CorridorSummary[] =>
-	rows.map((row) => ({
-		fromCountry: row.from.country,
-		fromCurrency: row.from.currency,
-		toCountry: row.to.country,
-		toCurrency: row.to.currency,
-		allowedDestinationTypes: row.allowedDestinationTypes.filter(isEndpointType),
-		recipientKinds: row.recipientKinds,
-		regulationNote: row.regulationNote,
-		simulated: row.simulated,
-	}))
 
 const formatDetail = (details: Record<string, string>): string =>
 	Object.entries(details)
@@ -162,7 +149,7 @@ export default function Recipients() {
 				if (controller.signal.aborted) return
 				setRecipients(recipientList.recipients)
 				setEndpoints(endpointList.endpoints)
-				setCorridors(toCorridorSummaries(corridorList.corridors))
+				setCorridors(corridorList.corridors.map(summarizeCorridor))
 				setSelectedId((current) => {
 					if (
 						current &&
