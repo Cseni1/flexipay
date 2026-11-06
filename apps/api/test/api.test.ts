@@ -31,11 +31,17 @@ describe("API skeleton", () => {
     }
   });
 
-  it("serves the baseline corridors from config (CCR-26 adds GB-GB for tGBP, CCR-30 GB-PH)", async () => {
+  it("serves the baseline corridors from config (CCR-26 GB-GB, CCR-30 GB-PH, CCR-31 GB to Tazapay countries)", async () => {
     const res = await fetch(`${t.base}/v1/corridors`, { headers: auth(key) });
     expect(res.status).toBe(200);
     const { corridors } = await res.json();
-    expect(corridors.map((c: any) => `${c.from.country}-${c.to.country}`)).toEqual(["US-US", "US-PH", "GB-PH", "US-BR", "US-ZA", "GB-GB"]);
+    const ids = corridors.map((c: any) => `${c.from.country}-${c.to.country}`);
+    expect(ids.slice(0, 6)).toEqual(["US-US", "US-PH", "GB-PH", "US-BR", "US-ZA", "GB-GB"]);
+    // CCR-31: GBP to 62 more countries through Tazapay's sandbox (bank accounts, tGBP settle).
+    const tazapay = corridors.filter((c: any) => c.from.country === "GB" && c.legsAvailable.payout.join() === "tazapay_sandbox");
+    expect(tazapay).toHaveLength(62);
+    expect(ids).toContain("GB-KE");
+    expect(new Set(ids).size).toBe(ids.length);
     const za = corridors.find((c: any) => c.to.country === "ZA");
     expect(za.cryptoLegAllowed).toEqual({ individual: false, company: false });
     expect(za.simulated).toBe(true);

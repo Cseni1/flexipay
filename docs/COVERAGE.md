@@ -30,3 +30,7 @@ Solana is coming). Listed in docs, not tested: GHS, ZAR, UGX, TZS, USD, EUR, GBP
 - SWIFT-only countries have an option, but it is slower and costs more than a local rail. Africa,
   the Gulf, Central Asia and most of Latin America outside Brazil, Mexico, Argentina, Chile, Peru,
   Uruguay, Costa Rica and Colombia (BlindPay) are mostly SWIFT-only.
+
+## Live in the sandbox (6 Nov 2026, CCR-30/31)
+
+From pounds (GBP, settled as tGBP on Solana), Tazapay's sandbox quotes and the router prices bank payouts to 63 countries: AD AE AR AT AU BD BE BG BR CA CH CL CN CY CZ DE DK DZ EE ES FI FR GH GR HK HR HU ID IE IN IS IT KE KR LI LK LT LU LV MA MT MX MY NG NL NO NP PE PH PK PL PT RO SE SG SI SK TH TR UG UY VN ZA. Example £100: Kenya KSh 15,778.86, India ₹11,557.11, Vietnam ₫3,137,537, France €108.76 (Tazapay fee £4.08 plus FlexiPay 1%). From dollars, BlindPay (Brazil) and Tazapay (Philippines) compete with the simulated rails.
