@@ -15,18 +15,19 @@ export function findEventTime(
 }
 
 /**
- * Time for a timeline leg: leg.succeeded / leg.failed matched on snapshot.legId.
- * Settle uses payment.onchain, then payment.paid.
+ * Time for a timeline leg. Always matched on snapshot.legId so a settle step
+ * never inherits payment.onchain / payment.paid (or another leg's) timestamp.
  */
 export function legEventTime(
 	events: readonly Event[],
 	leg: Leg,
 ): string | null {
 	if (leg.kind === "settle") {
-		return (
-			findEventTime(events, "payment.onchain") ??
-			findEventTime(events, "payment.paid")
+		const onchain = events.find(
+			(event) =>
+				event.type === "payment.onchain" && snapshotLegId(event) === leg.id,
 		)
+		if (onchain) return onchain.createdAt
 	}
 	const match = events.find((event) => {
 		if (event.type !== "leg.succeeded" && event.type !== "leg.failed") {

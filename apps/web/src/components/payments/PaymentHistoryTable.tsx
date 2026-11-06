@@ -1,5 +1,9 @@
 import { type Payment } from "@flexipay/web-lib/contract"
 import { Link } from "react-router-dom"
+import {
+	recipientDisplayName,
+	useRecipientDirectory,
+} from "../../hooks/useRecipientDirectory"
 import { displayMoney } from "../../payments/quoteDisplay"
 import { StatusBadge } from "../ui"
 import { PaymentTimestamp } from "./PaymentTimestamp"
@@ -15,6 +19,8 @@ const lastLeg = (payment: Payment): string => {
 }
 
 export function PaymentHistoryTable({ payments }: { payments: Payment[] }) {
+	const { names } = useRecipientDirectory()
+
 	return (
 		<div className="table-scroll">
 			<table className="history-table" data-testid="payment-history">
@@ -22,6 +28,7 @@ export function PaymentHistoryTable({ payments }: { payments: Payment[] }) {
 					<tr>
 						<th>Payment</th>
 						<th>Created</th>
+						<th>To</th>
 						<th>Delivery</th>
 						<th>Route ends at</th>
 						<th>Status</th>
@@ -38,6 +45,9 @@ export function PaymentHistoryTable({ payments }: { payments: Payment[] }) {
 							</td>
 							<td>
 								<PaymentTimestamp iso={payment.createdAt} />
+							</td>
+							<td data-testid="payment-history-to">
+								{recipientDisplayName(names, payment.recipientId)}
 							</td>
 							<td>
 								{payment.delivery === "claim_link" ? "Claim link" : "Direct"}
