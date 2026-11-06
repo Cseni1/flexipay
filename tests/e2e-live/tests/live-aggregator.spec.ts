@@ -17,7 +17,9 @@ test.describe("Live aggregator (read-only)", () => {
 	test("Where we pay lists coverage on paper", async ({ page }) => {
 		await signInLive(page)
 		await page.goto("/where-we-pay")
-		await expect(page.getByRole("heading", { name: /Where we pay/i })).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /Where we pay/i }),
+		).toBeVisible({
 			timeout: 90_000,
 		})
 		await expect(page.getByText(/not live payments/i).first()).toBeVisible()
@@ -29,26 +31,80 @@ test.describe("Live aggregator (read-only)", () => {
 	}) => {
 		await signInLive(page)
 		await page.goto("/")
-		await expect(page.getByRole("heading", { name: "Send a payment" })).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: "Send a payment" }),
+		).toBeVisible({
 			timeout: 90_000,
 		})
 		const country = page.getByLabel("Destination country")
-		await expect(country.locator('option[value="BR"]')).toHaveCount(1, { timeout: 90_000 })
+		await expect(country.locator('option[value="BR"]')).toHaveCount(1, {
+			timeout: 90_000,
+		})
 		await country.selectOption("BR")
-		await page.getByLabel("Destination", { exact: true }).selectOption("bank_account")
+		await page
+			.getByLabel("Destination", { exact: true })
+			.selectOption("bank_account")
 		await page.getByLabel("Recipient kind").selectOption("individual")
 		const feePayer = page.getByLabel("Vault fee payer")
 		if (await feePayer.count()) await feePayer.selectOption("RecipientPays")
 		await page.getByLabel(/^Amount/).fill("100.00")
-		await page.getByLabel("Recipient", { exact: true }).fill("Live QA Brazil quote")
+		await page
+			.getByLabel("Recipient", { exact: true })
+			.fill("Live QA Brazil quote")
 		await page.getByRole("button", { name: "Get quote" }).click()
 
 		const why = page.getByTestId("why-this-route")
 		await expect(why).toBeVisible({ timeout: 120_000 })
 		await expect(why.getByText(/Blindpay/i).first()).toBeVisible()
-		await expect(why.getByTestId("provider-badge").filter({ hasText: "Sandbox" }).first()).toBeVisible()
+		await expect(
+			why.getByTestId("provider-badge").filter({ hasText: "Sandbox" }).first(),
+		).toBeVisible()
 		await expect(why.getByText(/Best payout route/i).first()).toBeVisible()
-		await expect(page.getByRole("heading", { name: "Other eligible routes" })).toBeVisible()
-		await expect(page.getByRole("button", { name: "Create payment" })).toBeVisible()
+		await expect(
+			page.getByRole("heading", { name: "Other eligible routes" }),
+		).toBeVisible()
+		await expect(
+			page.getByRole("button", { name: "Create payment" }),
+		).toBeVisible()
+	})
+
+	test("UK to Kenya bank quote prices pounds through Tazapay (CCR-31)", async ({
+		page,
+	}) => {
+		await signInLive(page)
+		await page.goto("/")
+		await expect(
+			page.getByRole("heading", { name: "Send a payment" }),
+		).toBeVisible({
+			timeout: 90_000,
+		})
+		const country = page.getByLabel("Destination country")
+		await expect(country.locator('option[value="KE"]')).toHaveText("Kenya", {
+			timeout: 90_000,
+		})
+		await country.selectOption("KE")
+		await expect(page.getByText("GBP bank account").first()).toBeVisible()
+		await page
+			.getByLabel("Destination", { exact: true })
+			.selectOption("bank_account")
+		await page.getByLabel("Recipient kind").selectOption("individual")
+		const feePayer = page.getByLabel("Vault fee payer")
+		if (await feePayer.count()) await feePayer.selectOption("RecipientPays")
+		await page.getByLabel(/^Amount/).fill("100.00")
+		await page
+			.getByLabel("Recipient", { exact: true })
+			.fill("Live QA Kenya quote")
+		await page.getByRole("button", { name: "Get quote" }).click()
+
+		const why = page.getByTestId("why-this-route")
+		await expect(why).toBeVisible({ timeout: 120_000 })
+		await expect(why.getByText(/Tazapay/i).first()).toBeVisible()
+		await expect(
+			why.getByTestId("provider-badge").filter({ hasText: "Sandbox" }).first(),
+		).toBeVisible()
+		await expect(page.getByText(/KES/).first()).toBeVisible()
+		await expect(
+			page.getByRole("button", { name: "Create payment" }),
+		).toBeVisible()
 	})
 })
