@@ -3,7 +3,18 @@ import {
 	type PlannedLeg,
 	type Quote,
 } from "@flexipay/web-lib/contract"
+import {
+	providerBadge,
+	providerLabel,
+	type ProviderBadgeKind,
+} from "./providerNames"
 import { displayMoney } from "./quoteDisplay"
+
+export {
+	providerBadge,
+	providerLabel,
+	type ProviderBadgeKind as ProviderBadge,
+} from "./providerNames"
 
 const KIND_LABELS = {
 	collect: "Collect",
@@ -12,36 +23,14 @@ const KIND_LABELS = {
 	payout: "Payout",
 } as const
 
-export type ProviderBadge = "Simulated" | "Sandbox" | "Live"
-
-/**
- * Today every partner path is Simulated or Sandbox — never present as Live.
- * A partner on its sandbox (CCR-29, e.g. blindpay_sandbox) reports simulated: true because no
- * real money moves, but it is a real partner API, so it is labelled Sandbox, not Simulated.
- */
-export function providerBadge(
-	simulated: boolean,
-	providerId = "",
-): ProviderBadge {
-	if (providerId.endsWith("_sandbox")) return "Sandbox"
-	return simulated ? "Simulated" : "Sandbox"
-}
-
-/** Short provider label from a rail / provider id. */
-export function providerLabel(providerId: string): string {
-	const cleaned = providerId.replace(/^sim_/, "").replace(/_/g, " ").trim()
-	if (!cleaned) return providerId
-	return cleaned.replace(/\b\w/g, (ch) => ch.toUpperCase())
-}
-
 export type WhyRouteLine = {
 	kind: PlannedLeg["kind"]
 	kindLabel: string
 	chosenProvider: string
-	chosenBadge: ProviderBadge
+	chosenBadge: ProviderBadgeKind
 	chosenAmount: string
 	sentence: string
-	others: { provider: string; amount: string; badge: ProviderBadge }[]
+	others: { provider: string; amount: string; badge: ProviderBadgeKind }[]
 }
 
 const legForKind = (

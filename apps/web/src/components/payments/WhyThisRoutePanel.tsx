@@ -22,9 +22,9 @@ export function WhyThisRoutePanel({ quote }: Props) {
 				Why this route
 			</h4>
 			<ul className="why-route__list">
-				{lines.map((line) => (
+				{lines.map((line, index) => (
 					<li
-						key={`${line.kind}-${line.chosenProvider}`}
+						key={`${line.kind}-${line.chosenProvider}-${index}`}
 						className="why-route__row"
 					>
 						<p className="why-route__sentence">{line.sentence}</p>

@@ -363,7 +363,8 @@ test.describe("CF1 payments", () => {
 		await expect(settleItem.getByText("Simulated", { exact: true })).toHaveCount(
 			0,
 		)
-		await expect(settleItem.getByText("solana_usdc")).toBeVisible()
+		await expect(settleItem.getByText("Solana USDC")).toBeVisible()
+		await expect(settleItem.getByText("Sandbox", { exact: true })).toBeVisible()
 	})
 
 	test("a failed leg shows its error and retry event", async ({ page }) => {
@@ -379,18 +380,21 @@ test.describe("CF1 payments", () => {
 	})
 
 	test("polling stops when the detail page is left", async ({ page }) => {
+		await page.clock.install()
 		const counts = await mockApi(page, { startProcessing: true })
 		await page.goto("/payments/pay_1")
 		await expect(
 			page.getByText("Processing", { exact: true }).first(),
 		).toBeVisible()
-		await page.waitForTimeout(2_300)
-		expect(counts.details).toBeGreaterThanOrEqual(2)
+		// Strict Mode may fetch twice on mount.
+		const afterLoad = counts.details
+		expect(afterLoad).toBeGreaterThanOrEqual(1)
+		await page.clock.runFor(10_000)
+		await expect.poll(() => counts.details).toBeGreaterThan(afterLoad)
 
 		await page.goto("/")
-		await page.waitForTimeout(500)
 		const afterNavigation = counts.details
-		await page.waitForTimeout(2_300)
+		await page.clock.runFor(10_000)
 		expect(counts.details).toBe(afterNavigation)
 	})
 })

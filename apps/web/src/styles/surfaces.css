@@ -608,6 +608,14 @@
 	color: var(--ink-muted, var(--ink));
 }
 
+.timeline__waiting {
+	margin: 0.25rem 0 0;
+	font-size: 0.92rem;
+	font-weight: 700;
+	color: var(--ink);
+	overflow-wrap: anywhere;
+}
+
 .timeline__meta,
 .timeline__reference,
 .timeline__note {

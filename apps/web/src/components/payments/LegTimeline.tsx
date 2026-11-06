@@ -1,8 +1,10 @@
 import { type Event, type Leg } from "@flexipay/web-lib/contract"
 import { legEventTime } from "../../payments/paymentEventTimes"
+import { providerLabel } from "../../payments/providerNames"
 import { displayMoney } from "../../payments/quoteDisplay"
-import { Notice, SimulatedLabel, StatusBadge, Timeline } from "../ui"
+import { Notice, StatusBadge, Timeline } from "../ui"
 import { PaymentTimestamp } from "./PaymentTimestamp"
+import { ProviderBadge } from "./ProviderBadge"
 
 const KIND_LABELS: Record<Leg["kind"], string> = {
 	collect: "Collect",
@@ -12,17 +14,19 @@ const KIND_LABELS: Record<Leg["kind"], string> = {
 }
 
 /**
- * Payment-detail journey. Simulated collect / convert / fiat payout legs always
- * carry SimulatedLabel; a live Solana settle leg (simulated=false) must not.
- * Times come from events matched on snapshot.legId (settle: onchain then
- * succeeded/failed for that leg only).
+ * Payment-detail journey. Provider labels and Simulated/Sandbox badges come from
+ * the shared helper. Processing legs show "Waiting for …" while the detail poller
+ * is active.
  */
 export function LegTimeline({
 	legs,
 	events = [],
+	polling = false,
 }: {
 	legs: Leg[]
 	events?: Event[]
+	/** Detail screen is auto-refreshing every 10s for a processing leg. */
+	polling?: boolean
 }) {
 	if (legs.length === 0) {
 		return (
@@ -39,6 +43,8 @@ export function LegTimeline({
 		<Timeline>
 			{legs.map((leg) => {
 				const when = legEventTime(events, leg)
+				const waiting = polling && leg.status === "processing"
+				const label = providerLabel(leg.providerId)
 				return (
 					<li
 						key={leg.id}
@@ -54,20 +60,37 @@ export function LegTimeline({
 									{KIND_LABELS[leg.kind]}
 								</strong>
 								<StatusBadge status={leg.status} />
-								{leg.simulated ? <SimulatedLabel /> : null}
+								<ProviderBadge
+									simulated={leg.simulated}
+									providerId={leg.providerId}
+								/>
 							</div>
-							<p
-								className="timeline__when"
-								data-testid={`payment-leg-time-${leg.kind}`}
-							>
-								<PaymentTimestamp iso={when} />
-							</p>
+							{waiting ? (
+								<>
+									<p
+										className="timeline__waiting"
+										data-testid={`leg-waiting-${leg.kind}`}
+									>
+										Waiting for {label}
+									</p>
+									<p className="timeline__note" data-testid="leg-polling-note">
+										Checking every 10 s
+									</p>
+								</>
+							) : (
+								<p
+									className="timeline__when"
+									data-testid={`payment-leg-time-${leg.kind}`}
+								>
+									<PaymentTimestamp iso={when} />
+								</p>
+							)}
 							<p className="timeline__meta">
-								<code className="code-text">{leg.rail}</code>
+								<span>{label}</span>
 								{leg.rail !== leg.providerId ? (
 									<>
 										<span aria-hidden="true"> · </span>
-										{leg.providerId}
+										<code className="code-text">{leg.rail}</code>
 									</>
 								) : null}
 							</p>

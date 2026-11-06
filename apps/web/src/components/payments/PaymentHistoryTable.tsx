@@ -4,6 +4,7 @@ import {
 	recipientDisplayName,
 	useRecipientDirectory,
 } from "../../hooks/useRecipientDirectory"
+import { providerLabel } from "../../payments/providerNames"
 import { displayMoney } from "../../payments/quoteDisplay"
 import { StatusBadge } from "../ui"
 import { PaymentTimestamp } from "./PaymentTimestamp"
@@ -13,9 +14,9 @@ const firstAmount = (payment: Payment): string => {
 	return leg ? displayMoney(leg.amountIn.amount, leg.amountIn.currency) : "-"
 }
 
-const lastLeg = (payment: Payment): string => {
+const routeEndsAt = (payment: Payment): string => {
 	const leg = payment.legs.at(-1)
-	return leg ? leg.rail : "-"
+	return leg ? providerLabel(leg.providerId || leg.rail) : "-"
 }
 
 export function PaymentHistoryTable({ payments }: { payments: Payment[] }) {
@@ -53,7 +54,7 @@ export function PaymentHistoryTable({ payments }: { payments: Payment[] }) {
 								<td>
 									{payment.delivery === "claim_link" ? "Claim link" : "Direct"}
 								</td>
-								<td>{lastLeg(payment)}</td>
+								<td>{routeEndsAt(payment)}</td>
 								<td>
 									<StatusBadge status={payment.status} />
 								</td>
