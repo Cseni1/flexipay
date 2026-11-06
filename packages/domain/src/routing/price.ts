@@ -194,7 +194,7 @@ function outCurrenciesFor(
 	return outs;
 }
 
-async function firstHealthyProvider(
+async function healthyProviders(
 	ids: readonly string[],
 	kind: LegKind,
 	getProvider: (id: string) => ProviderAdapter | undefined,
@@ -202,7 +202,8 @@ async function firstHealthyProvider(
 	/** When set, the provider must serve this endpoint type (payout / collect). */
 	endpointType?: EndpointType,
 	endpointCountry?: string,
-): Promise<ProviderAdapter | null> {
+): Promise<ProviderAdapter[]> {
+	const healthy: ProviderAdapter[] = [];
 	for (const id of ids) {
 		const adapter = getProvider(id);
 		if (!adapter) {
@@ -235,9 +236,58 @@ async function firstHealthyProvider(
 			exclusionReasons.push(`Provider ${id} is down`);
 			continue;
 		}
-		return adapter;
+		healthy.push(adapter);
 	}
-	return null;
+	return healthy;
+}
+
+/**
+ * Aggregator selection: quote every healthy provider on a leg and keep the one that
+ * delivers the most out (that already nets its fee and FX spread). A tie keeps the earlier
+ * provider in config order, so a corridor with one provider behaves exactly as before.
+ * A provider whose quote throws is skipped with a reason; if every quote throws, the first
+ * error is returned unchanged.
+ */
+async function bestQuote(
+	candidates: readonly ProviderAdapter[],
+	kind: LegKind,
+	request: { kind: LegKind; amountIn: Money; outCurrency: string; endpoint?: EndpointRef },
+	exclusionReasons: string[],
+): Promise<
+	| { ok: true; adapter: ProviderAdapter; quoted: LegQuote }
+	| { ok: false; reasons: string[] }
+> {
+	const results: Array<{ adapter: ProviderAdapter; quoted: LegQuote }> = [];
+	let firstError: string | null = null;
+	for (const adapter of candidates) {
+		try {
+			results.push({ adapter, quoted: await adapter.quote(request) });
+		} catch (e) {
+			const msg =
+				e instanceof Error ? e.message : `Provider ${adapter.id} quote failed`;
+			if (firstError === null) firstError = msg;
+			if (candidates.length > 1) {
+				exclusionReasons.push(`Provider ${adapter.id} could not quote ${kind}: ${msg}`);
+			}
+		}
+	}
+	if (results.length === 0) {
+		return { ok: false, reasons: [firstError ?? `No ${kind} provider could quote`] };
+	}
+	let best = results[0]!;
+	for (const r of results.slice(1)) {
+		if (toMinor(r.quoted.amountOut) > toMinor(best.quoted.amountOut)) best = r;
+	}
+	if (results.length > 1) {
+		const others = results
+			.filter((r) => r !== best)
+			.map((r) => `${r.adapter.id} ${r.quoted.amountOut.amount} ${r.quoted.amountOut.currency}`)
+			.join(", ");
+		exclusionReasons.push(
+			`Best ${kind} quote: ${best.adapter.id} delivers ${best.quoted.amountOut.amount} ${best.quoted.amountOut.currency} (others: ${others})`,
+		);
+	}
+	return { ok: true, adapter: best.adapter, quoted: best.quoted };
 }
 
 /**
@@ -412,6 +462,199 @@ function priceSettle(
 	};
 }
 
+/** CCR-29: a provider that converts and pays out in one step (it serves both leg kinds). */
+function isOfframp(adapter: ProviderAdapter): boolean {
+	const kinds = adapter.capabilities().legKinds;
+	return kinds.includes("convert") && kinds.includes("payout");
+}
+
+function pricedLeg(
+	kind: LegKind,
+	amountIn: Money,
+	adapter: ProviderAdapter,
+	quoted: LegQuote,
+): PricedLeg {
+	return {
+		kind,
+		rail: adapter.id,
+		providerId: adapter.id,
+		// CCR-10: pass through the provider quote flag (sim adapters are true).
+		simulated: quoted.simulated === true,
+		fee: quoted.fee,
+		fxRate: quoted.fxRate,
+		amountIn,
+		amountOut: quoted.amountOut,
+		estimatedTimeSeconds: quoted.estimatedTimeSeconds,
+	};
+}
+
+type Destination = { type: EndpointType; currency: string; country: string };
+
+/** Healthy candidates for one non-settle leg, plus the payout endpoint to quote against. */
+async function legCandidates(
+	deps: PriceDeps,
+	corridor: Corridor,
+	kind: LegKind,
+	destination: Destination,
+	exclusionReasons: string[],
+): Promise<
+	{ ok: true; candidates: ProviderAdapter[]; endpoint: EndpointRef | undefined } | PriceFail
+> {
+	// CCR-29: a partner row whose keys are not set is simply absent, not an error to report.
+	let candidateIds = corridor.legsAvailable[kind].filter((id) => {
+		const row = deps.config.providers.find((p) => p.id === id);
+		const partner = row?.implementation && row.implementation !== "sim";
+		return !partner || deps.getProvider(id) !== undefined;
+	});
+	const domestic = corridor.domesticRail && corridor.from.country === corridor.to.country;
+	if ((kind === "collect" || kind === "payout") && domestic) {
+		candidateIds = [corridor.domesticRail!];
+	}
+
+	// Payout: keep only providers that match the destination type (CCR-3 decision 5 lives in routing).
+	if (kind === "payout") {
+		candidateIds = candidateIds.filter((id) => {
+			const p = deps.getProvider(id);
+			if (!p) return false;
+			const caps = p.capabilities();
+			return (
+				caps.endpointTypes.includes(destination.type) &&
+				(destination.country === "" || caps.countries.includes(destination.country))
+			);
+		});
+		if (candidateIds.length === 0) {
+			return {
+				ok: false,
+				reasons: [`No payout provider for ${destination.type} in corridor`, ...exclusionReasons],
+			};
+		}
+	}
+
+	const endpointCountry = destination.country !== "" ? destination.country : corridor.to.country;
+	const candidates = await healthyProviders(
+		candidateIds,
+		kind,
+		deps.getProvider,
+		exclusionReasons,
+		kind === "payout" ? destination.type : undefined,
+		kind === "payout" ? endpointCountry : undefined,
+	);
+	if (candidates.length === 0) {
+		return {
+			ok: false,
+			reasons: [`No healthy ${kind} provider in config order`, ...exclusionReasons],
+		};
+	}
+	const endpoint: EndpointRef | undefined =
+		kind === "payout"
+			? {
+					endpointId: "quote_dest",
+					type: destination.type,
+					country: endpointCountry,
+					currency: destination.currency,
+				}
+			: undefined;
+	return { ok: true, candidates, endpoint };
+}
+
+type PairOption = {
+	label: string;
+	legs: [PricedLeg, PricedLeg];
+};
+
+/**
+ * CCR-29: prices the convert + payout tail. Two kinds of option compete on what the recipient
+ * receives: (a) an off-ramp partner doing both legs itself, and (b) the best plain convert
+ * followed by the best plain payout (the CCR-28 per-leg choice). A tie keeps the plain route,
+ * so corridors without a partner behave exactly as before.
+ */
+async function pricePayoutPair(
+	deps: PriceDeps,
+	corridor: Corridor,
+	destination: Destination,
+	amountIn: Money,
+	convertOut: string,
+	payoutOut: string,
+	exclusionReasons: string[],
+): Promise<{ ok: true; legs: [PricedLeg, PricedLeg] } | PriceFail> {
+	const conv = await legCandidates(deps, corridor, "convert", destination, exclusionReasons);
+	if (!conv.ok) return conv;
+	const pay = await legCandidates(deps, corridor, "payout", destination, exclusionReasons);
+	if (!pay.ok) return pay;
+
+	const options: PairOption[] = [];
+	let firstError: string | null = null;
+
+	const plainConv = conv.candidates.filter((a) => !isOfframp(a));
+	const plainPay = pay.candidates.filter((a) => !isOfframp(a));
+	if (plainConv.length > 0 && plainPay.length > 0) {
+		const c = await bestQuote(
+			plainConv,
+			"convert",
+			{ kind: "convert", amountIn, outCurrency: convertOut },
+			exclusionReasons,
+		);
+		if (c.ok) {
+			const convertLeg = pricedLeg("convert", amountIn, c.adapter, c.quoted);
+			const p = await bestQuote(
+				plainPay,
+				"payout",
+				{ kind: "payout", amountIn: convertLeg.amountOut, outCurrency: payoutOut, endpoint: pay.endpoint },
+				exclusionReasons,
+			);
+			if (p.ok) {
+				options.push({
+					label: `${c.adapter.id} + ${p.adapter.id}`,
+					legs: [convertLeg, pricedLeg("payout", convertLeg.amountOut, p.adapter, p.quoted)],
+				});
+			} else firstError ??= p.reasons[0] ?? null;
+		} else firstError ??= c.reasons[0] ?? null;
+	}
+
+	const payIds = new Set(pay.candidates.map((a) => a.id));
+	for (const partner of conv.candidates.filter((a) => isOfframp(a) && payIds.has(a.id))) {
+		try {
+			const cq = await partner.quote({ kind: "convert", amountIn, outCurrency: convertOut });
+			const convertLeg = pricedLeg("convert", amountIn, partner, cq);
+			const pq = await partner.quote({
+				kind: "payout",
+				amountIn: convertLeg.amountOut,
+				outCurrency: payoutOut,
+				endpoint: pay.endpoint,
+			});
+			options.push({
+				label: partner.id,
+				legs: [convertLeg, pricedLeg("payout", convertLeg.amountOut, partner, pq)],
+			});
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : `Provider ${partner.id} quote failed`;
+			firstError ??= msg;
+			exclusionReasons.push(`Provider ${partner.id} could not quote convert + payout: ${msg}`);
+		}
+	}
+
+	if (options.length === 0) {
+		return {
+			ok: false,
+			reasons: [firstError ?? "No convert + payout route could quote", ...exclusionReasons],
+		};
+	}
+	let best = options[0]!;
+	for (const o of options.slice(1)) {
+		if (toMinor(o.legs[1].amountOut) > toMinor(best.legs[1].amountOut)) best = o;
+	}
+	if (options.length > 1) {
+		const others = options
+			.filter((o) => o !== best)
+			.map((o) => `${o.label} ${o.legs[1].amountOut.amount} ${o.legs[1].amountOut.currency}`)
+			.join(", ");
+		exclusionReasons.push(
+			`Best payout route: ${best.label} delivers ${best.legs[1].amountOut.amount} ${best.legs[1].amountOut.currency} (others: ${others})`,
+		);
+	}
+	return { ok: true, legs: best.legs };
+}
+
 export async function priceRoute(
 	deps: PriceDeps,
 	corridor: Corridor,
@@ -477,114 +720,56 @@ export async function priceRoute(
 			continue;
 		}
 
-		let candidateIds = [...corridor.legsAvailable[kind]];
-		if (
-			kind === "collect" &&
-			corridor.domesticRail &&
-			corridor.from.country === corridor.to.country
-		) {
-			candidateIds = [corridor.domesticRail];
-		}
-		if (
-			kind === "payout" &&
-			corridor.domesticRail &&
-			corridor.from.country === corridor.to.country
-		) {
-			candidateIds = [corridor.domesticRail];
-		}
-
-		// Payout: keep only providers that match the destination type (CCR-3 decision 5 lives in routing).
-		if (kind === "payout") {
-			candidateIds = candidateIds.filter((id) => {
-				const p = deps.getProvider(id);
-				if (!p) return false;
-				const caps = p.capabilities();
-				return (
-					caps.endpointTypes.includes(destination.type) &&
-					(destination.country === "" ||
-						caps.countries.includes(destination.country))
-				);
-			});
-			if (candidateIds.length === 0) {
-				return {
-					ok: false,
-					reasons: [
-						`No payout provider for ${destination.type} in corridor`,
-						...exclusionReasons,
-					],
-				};
-			}
-		}
-
-		const endpointCountry =
-			destination.country !== ""
-				? destination.country
-				: corridor.to.country;
-
-		const adapter = await firstHealthyProvider(
-			candidateIds,
-			kind,
-			deps.getProvider,
-			exclusionReasons,
-			kind === "payout" || kind === "collect"
-				? kind === "payout"
-					? destination.type
-					: undefined
-				: undefined,
-			kind === "payout" ? endpointCountry : undefined,
-		);
-
-		if (!adapter) {
-			return {
-				ok: false,
-				reasons: [
-					`No healthy ${kind} provider in config order`,
-					...exclusionReasons,
-				],
-			};
-		}
-
-		const endpoint: EndpointRef | undefined =
-			kind === "payout"
-				? {
-						endpointId: "quote_dest",
-						type: destination.type,
-						country: endpointCountry,
-						currency: destination.currency,
-					}
-				: undefined;
-
-		let quoted: LegQuote;
-		try {
-			quoted = await adapter.quote({
-				kind,
+		const nextKind = template[i + 1];
+		if (kind === "convert" && nextKind === "payout") {
+			// CCR-29: price convert + payout together so an off-ramp partner (one that converts and
+			// pays out in a single step, like BlindPay) is compared on what the recipient receives.
+			const pair = await pricePayoutPair(
+				deps,
+				corridor,
+				destination,
 				amountIn,
 				outCurrency,
-				endpoint,
-			});
-		} catch (e) {
-			const msg =
-				e instanceof Error ? e.message : `Provider ${adapter.id} quote failed`;
+				outs[i + 1]!,
+				exclusionReasons,
+			);
+			if (!pair.ok) return pair;
+			for (const leg of pair.legs) {
+				legs.push(leg);
+				totalTime += leg.estimatedTimeSeconds;
+			}
+			amountIn = pair.legs[pair.legs.length - 1]!.amountOut;
+			i++;
+			continue;
+		}
+
+		const found = await legCandidates(deps, corridor, kind, destination, exclusionReasons);
+		if (!found.ok) return found;
+		// CCR-29: an off-ramp partner only serves the convert + payout pair, never a lone leg.
+		const candidates = found.candidates.filter((a) => !isOfframp(a));
+		if (candidates.length === 0) {
 			return {
 				ok: false,
-				reasons: [msg, ...exclusionReasons],
+				reasons: [`No healthy ${kind} provider in config order`, ...exclusionReasons],
 			};
 		}
 
-		legs.push({
+		const chosen = await bestQuote(
+			candidates,
 			kind,
-			rail: adapter.id,
-			providerId: adapter.id,
-			// CCR-10: pass through the provider quote flag (sim adapters are true).
-			simulated: quoted.simulated === true,
-			fee: quoted.fee,
-			fxRate: quoted.fxRate,
-			amountIn,
-			amountOut: quoted.amountOut,
-			estimatedTimeSeconds: quoted.estimatedTimeSeconds,
-		});
-		totalTime += quoted.estimatedTimeSeconds;
-		amountIn = quoted.amountOut;
+			{ kind, amountIn, outCurrency, endpoint: found.endpoint },
+			exclusionReasons,
+		);
+		if (!chosen.ok) {
+			return {
+				ok: false,
+				reasons: [...chosen.reasons, ...exclusionReasons],
+			};
+		}
+		const leg = pricedLeg(kind, amountIn, chosen.adapter, chosen.quoted);
+		legs.push(leg);
+		totalTime += leg.estimatedTimeSeconds;
+		amountIn = leg.amountOut;
 	}
 
 	const expectedReceive = amountIn;

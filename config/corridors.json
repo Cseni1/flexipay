@@ -72,9 +72,9 @@
 			},
 			"legsAvailable": {
 				"collect": ["sim_bank_us_ach"],
-				"convert": ["sim_fx"],
+				"convert": ["sim_fx", "blindpay_sandbox"],
 				"settle": ["stellar_usdc"],
-				"payout": ["sim_bank_br_pix"]
+				"payout": ["sim_bank_br_pix", "blindpay_sandbox"]
 			},
 			"domesticRail": null,
 			"regulationNote": "Cross-border USD to BRL. Bank account and crypto-wallet destinations. Brazil is the baseline Latin American country; Mexico is added after the event.",
