@@ -19,6 +19,11 @@ export const CreatePaymentRequestSchema = z
     delivery: DeliverySchema,
     profile: ProfileSchema,
     reference: z.string().min(1).max(200).optional(),
+    /**
+     * CCR-32: the recipient's saved endpoint to pay. Its bank details reach the partner (for
+     * example a Tazapay beneficiary); it must belong to the recipient and match the quote destination.
+     */
+    endpointId: z.string().min(1).optional(),
   })
   .strict();
 

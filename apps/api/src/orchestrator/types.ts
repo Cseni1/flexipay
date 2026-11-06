@@ -37,6 +37,8 @@ export interface CreatePaymentFromQuoteInput {
 	now?: Date;
 	/** Set by POST /v1/batches (CCR-18): the batch this payment belongs to. */
 	batchId?: string;
+	/** Destination endpoint chosen for this payment (CCR-32); its details reach the payout adapter. */
+	endpointId?: string;
 }
 
 export type { FeeMode, EndpointType };

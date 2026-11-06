@@ -67,12 +67,15 @@ model Endpoint {
   organization   Organization @relation(fields: [organizationId], references: [id])
   recipientId    String?
   recipient      Recipient?   @relation(fields: [recipientId], references: [id])
+  payments       Payment[]
   type           String // bank_account | ewallet | crypto_wallet | crypto_custodial
   country        String? // empty for crypto endpoints
   currency       String
   network        String? // stellar, only for crypto endpoints
   /// Account number, wallet id or address. Masked whenever it is returned or logged.
   details        Json
+  /// Partner ids for this endpoint (CCR-32), e.g. { tazapay_beneficiary_id: "bnf_..." }.
+  partnerRefs    Json?
   simulated      Boolean      @default(true)
   createdAt      DateTime     @default(now())
 
@@ -118,6 +121,9 @@ model Payment {
   quote          Quote        @relation(fields: [quoteId], references: [id])
   recipientId    String
   recipient      Recipient    @relation(fields: [recipientId], references: [id])
+  /// Destination endpoint chosen at create (batch rows); the payout adapter needs its details.
+  endpointId     String?
+  endpoint       Endpoint?    @relation(fields: [endpointId], references: [id])
   /// The client's own id; unique per organization. It never goes on-chain (RULES.md).
   externalId     String?
   delivery       String // direct | claim_link
@@ -140,6 +146,7 @@ model Payment {
   @@unique([organizationId, externalId])
   @@index([organizationId, status])
   @@index([batchId])
+  @@index([endpointId])
 }
 
 model Leg {

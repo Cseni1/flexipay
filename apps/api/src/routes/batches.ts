@@ -148,6 +148,7 @@ export const batchRoutes: RouteDef<any, any>[] = [
 						profile: row.profile,
 						externalId: row.externalId,
 						batchId,
+						endpointId: row.endpointId,
 						now: ctx.runtime.now(),
 					});
 				} catch (e) {

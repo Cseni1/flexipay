@@ -76,6 +76,7 @@ export function createLiveProviders(
 					baseUrl: value(env, "TAZAPAY_BASE_URL"),
 					sandboxBeneficiaryId:
 						value(env, "TAZAPAY_SANDBOX_BENEFICIARY_ID") ?? null,
+					beneficiaryEmail: value(env, "TAZAPAY_BENEFICIARY_EMAIL"),
 					purposeCode: value(env, "TAZAPAY_PURPOSE_CODE"),
 					defaultHoldingCurrency: value(env, "TAZAPAY_HOLDING_CURRENCY"),
 					liveApproved: env.FP_TAZAPAY_LIVE_APPROVED === "1",

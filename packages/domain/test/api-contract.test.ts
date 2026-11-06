@@ -277,9 +277,34 @@ describe("A0 claim and event schemas", () => {
         },
       }).endpoint.type,
     ).toBe("crypto_wallet");
-  });
+  });	it("accepts optional bank details for partners and still rejects unknown keys (CCR-32)", () => {
+		const parsed = CreateEndpointRequestSchema.parse({
+			recipientId: "rcp_1",
+			type: "bank_account",
+			country: "PH",
+			currency: "PHP",
+			network: null,
+			details: {
+				accountNumber: "1234567890",
+				accountHolderName: "Worker A",
+				bankName: "BPI",
+				swiftCode: "BOPIPHMM",
+				iban: "PH00DEMO",
+				bankCode: "001",
+				branchCode: "0001",
+			},
+			simulated: true,
+		});
+		expect(parsed.details.bankName).toBe("BPI");
+		expect(() =>
+			CreateEndpointRequestSchema.parse({
+				...parsed,
+				details: { ...parsed.details, syntheticRef: "nope" },
+			}),
+		).toThrow();
+	});
 
-  it("accepts fiat claim details under CCR-17 and rejects empty country / wrong keys", () => {
+	it("accepts fiat claim details under CCR-17 and rejects empty country / wrong keys", () => {
     expect(
       ClaimAcceptRequestSchema.parse({
         endpoint: {

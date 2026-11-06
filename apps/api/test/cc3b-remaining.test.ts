@@ -46,7 +46,14 @@ const ENDPOINTS = {
 		country: "BR",
 		currency: "BRL",
 		network: null,
-		details: { accountNumber: "synthetic-bank-b-5678" },
+		details: {
+			accountNumber: "synthetic-bank-b-5678",
+			accountHolderName: "Worker B",
+			bankName: "Banco Demo",
+			swiftCode: "BRBADEMM",
+			bankCode: "001",
+			branchCode: "0001",
+		},
 		simulated: true,
 	},
 	usBank: {
@@ -188,7 +195,16 @@ describe("CCR-16 endpoints", () => {
 		);
 		expect(list.endpoints.map((e) => e.id).sort()).toEqual([created.id, crypto.id].sort());
 		const other = await recipient(a.key, "Worker B", "individual", "BR");
-		await endpoint(a.key, other.id, ENDPOINTS.brBank);
+		const br = await endpoint(a.key, other.id, ENDPOINTS.brBank);
+		for (const value of Object.values(ENDPOINTS.brBank.details)) {
+			expect(JSON.stringify(br)).not.toContain(value);
+		}
+		expect(br.details.accountNumber).toMatch(/^\*+5678$/);
+		expect(br.details.accountHolderName).toMatch(/^\*+/);
+		expect(br.details.bankName).toMatch(/^\*+/);
+		expect(br.details.swiftCode).toMatch(/^\*+/);
+		expect(br.details.bankCode).toMatch(/^\*+$/);
+		expect(br.details.branchCode).toMatch(/^\*+$/);
 		const filtered = await json<{ endpoints: { recipientId: string }[] }>(
 			await get(a.key, `/v1/endpoints?recipientId=${workerA.id}`),
 		);
@@ -252,6 +268,12 @@ describe("CCR-18 batches (existing payment engine, no second orchestrator)", () 
 		expect(batch.status).toBe("open");
 		expect(batch.paymentIds).toHaveLength(3);
 		expect(batch.totals).toEqual({ count: 3 });
+		const batchPayments = await t.db.payment.findMany({
+			where: { batchId: batch.id },
+			select: { endpointId: true },
+		});
+		expect(batchPayments).toHaveLength(3);
+		for (const row of batchPayments) expect(row.endpointId).toBeTruthy();
 
 		const fetched = await json<{ status: string; paymentIds: string[] }>(await get(key, `/v1/batches/${batch.id}`));
 		expect(fetched.paymentIds).toEqual(batch.paymentIds);
@@ -342,6 +364,109 @@ describe("claim links: fiat accept (CCR-17) and lazy expiry", () => {
 		country: "PH",
 		recipientKind: "individual",
 	};
+
+	it("passes the endpoint's unmasked details and recipient identity to the payout adapter", async () => {
+		const { key } = await t.newOrg("Demo Platform");
+		const r = await recipient(key, "Worker A", "individual", "PH");
+		const { paymentId, token } = await claimPayment(key, r.id, {
+			type: "bank_account",
+			currency: "PHP",
+			country: "PH",
+			recipientKind: "individual",
+		});
+		expect((await post(key, `/v1/payments/${paymentId}/fund`, {})).status).toBe(200);
+		const payout = await t.db.leg.findFirstOrThrow({
+			where: { paymentId, kind: "payout" },
+		});
+		const provider = t.runtime.getProvider(payout.providerId)!;
+		let seen: any;
+		const original = t.runtime.getProvider;
+		t.runtime.getProvider = (id) => {
+			const p = original(id);
+			if (!p || id !== payout.providerId) return p;
+			return new Proxy(p, {
+				get(target, prop, receiver) {
+					if (prop === "execute") {
+						return async (req: Parameters<typeof target.execute>[0]) => {
+							seen = req.endpoint;
+							const result = await target.execute(req);
+							return {
+								...result,
+								partnerRefs: { tazapay_beneficiary_id: "bnf_test" },
+							};
+						};
+					}
+					return Reflect.get(target, prop, receiver);
+				},
+			});
+		};
+		let accepted: Response;
+		try {
+			accepted = await publishAccept(token, {
+				type: "bank_account",
+				country: "PH",
+				currency: "PHP",
+				network: null,
+				details: {
+					accountNumber: "synthetic-bank-ph-1234",
+					accountHolderName: "Worker A",
+					bankName: "BPI",
+					swiftCode: "BOPIPHMM",
+				},
+				simulated: true,
+			});
+		} finally {
+			t.runtime.getProvider = original;
+		}
+		const acceptedText = await accepted.clone().text();
+		expect(accepted.status, `${payout.providerId}: ${acceptedText}`).toBe(200);
+		expect(acceptedText).not.toContain("synthetic-bank-ph-1234");
+		expect(seen).toMatchObject({
+			endpointId: expect.any(String),
+			details: { accountNumber: "synthetic-bank-ph-1234" },
+			recipientName: "Worker A",
+			recipientKind: "individual",
+		});
+		const endpointRow = await t.db.endpoint.findFirstOrThrow({
+			where: { id: seen.endpointId },
+		});
+		expect(endpointRow.partnerRefs).toEqual({
+			tazapay_beneficiary_id: "bnf_test",
+		});
+		const listed = await json<{ endpoints: { details: Record<string, string> }[] }>(
+			await get(key, `/v1/endpoints?recipientId=${r.id}`),
+		);
+		expect(JSON.stringify(listed)).not.toContain("synthetic-bank-ph-1234");
+		expect(listed.endpoints[0]!.details.accountNumber).toBe("************1234");
+	});
+
+	it("a direct payment can name the recipient's saved endpoint (CCR-32); a mismatched one is 422", async () => {
+		const { key } = await t.newOrg("Direct Endpoint");
+		const r = await recipient(key, "Worker A", "individual", "PH");
+		const ep = await endpoint(key, r.id, ENDPOINTS.phEwallet);
+		const dest = { type: "ewallet", currency: "PHP", country: "PH", recipientKind: "individual" };
+		const ok = await post(key, "/v1/payments", {
+			quoteId: (await quote(key, dest)).id,
+			recipientId: r.id,
+			delivery: "direct",
+			profile: "one_off",
+			endpointId: ep.id,
+		});
+		expect(ok.status).toBe(201);
+		const created = await json<{ id: string }>(ok);
+		expect((await t.db.payment.findUniqueOrThrow({ where: { id: created.id } })).endpointId).toBe(ep.id);
+
+		const other = await recipient(key, "Worker C", "individual", "PH");
+		const wrong = await post(key, "/v1/payments", {
+			quoteId: (await quote(key, dest)).id,
+			recipientId: other.id,
+			delivery: "direct",
+			profile: "one_off",
+			endpointId: ep.id,
+		});
+		expect(wrong.status).toBe(422);
+		expect((await json<{ code: string }>(wrong)).code).toBe("invalid_endpoint");
+	});
 
 	it("fiat claim: fund holds the payout; accept creates the endpoint and pays; replay does not pay twice", async () => {
 		const { key } = await t.newOrg("Demo Platform");

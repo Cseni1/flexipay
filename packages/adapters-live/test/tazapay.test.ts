@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import {
 	ProviderError,
 	money,
@@ -43,6 +43,9 @@ function fakeApi(
 		payoutStatus?: string
 		metadataFails?: boolean
 		payoutAmount?: number
+		beneficiaryId?: string
+		requiredBankFields?: string[]
+		requiredBankCodes?: string[]
 	} = {},
 ) {
 	const calls: Call[] = []
@@ -100,10 +103,14 @@ function fakeApi(
 						currency: "PHP",
 						payout_type: "local",
 						fund_transfer_networks: [{ name: "instapay" }, { name: "pesonet" }],
+						required_bank_fields: opts.requiredBankFields ?? ["account_number"],
+						required_bank_codes: opts.requiredBankCodes ?? [],
 					},
 				],
 			})
 		}
+		if (path === "/v3/beneficiary" && init.method === "POST")
+			return ok({ id: opts.beneficiaryId ?? "bnf_created" })
 		if (path === "/v3/payout" && init.method === "POST")
 			return ok({ id: "pot_1", object: "payout", status: "processing" })
 		if (path === "/v3/payout/pot_1")
@@ -140,24 +147,49 @@ function adapter(
 	})
 }
 
-const PH_BANK = {
+type TestEndpoint = {
+	endpointId: string
+	type: "bank_account"
+	country: string
+	currency: string
+	details?: Record<string, string>
+	recipientName?: string
+	recipientKind?: "individual" | "company"
+	partnerRefs?: Record<string, string>
+}
+
+const PH_BANK: TestEndpoint = {
 	endpointId: "ep_1",
-	type: "bank_account" as const,
+	type: "bank_account",
 	country: "PH",
 	currency: "PHP",
+}
+
+const PH_BANK_DETAILS: TestEndpoint = {
+	...PH_BANK,
+	details: {
+		accountNumber: "synthetic-bank-ph-1234",
+		accountHolderName: "Worker A",
+		bankName: "BPI",
+		swiftCode: "BOPIPHMM",
+	},
+	recipientName: "Worker A",
+	recipientKind: "individual",
 }
 
 const leg = (
 	kind: "convert" | "payout",
 	amountIn = money("785381", "PHP"),
 	paymentId = "pay_1",
+	endpoint: TestEndpoint = PH_BANK,
+	legId = `leg_${kind}`,
 ) => ({
 	kind,
 	amountIn,
 	outCurrency: "PHP",
-	endpoint: PH_BANK,
+	endpoint,
 	paymentId,
-	legId: `leg_${kind}`,
+	legId,
 	attempt: 1,
 })
 
@@ -268,6 +300,147 @@ describe("Tazapay adapter", () => {
 		const before = api.calls.length
 		expect((await a.execute(leg("payout"))).externalRef).toBe("pot_1")
 		expect(api.calls.length).toBe(before)
+	})
+
+	it("creates a beneficiary from endpoint details once and reuses its id", async () => {
+		const api = fakeApi({
+			requiredBankFields: [
+				"account_number",
+				"account_holder_name",
+				"bank_name",
+			],
+			requiredBankCodes: ["swift_code"],
+		})
+		const a = adapter(api, { beneficiary: null })
+		const first = await a.execute(
+			leg(
+				"payout",
+				money("785381", "PHP"),
+				"pay_1",
+				PH_BANK_DETAILS,
+				"leg_a",
+			),
+		)
+		expect(first.partnerRefs).toEqual({
+			tazapay_beneficiary_id: "bnf_created",
+		})
+		expect(
+			api.calls.find((c) => c.path === "/v3/beneficiary")!.body,
+		).toEqual({
+			name: "Worker A",
+			type: "individual",
+			email: "sandbox@flexipay.test",
+			destination_details: {
+				type: "bank",
+				bank: {
+					account_number: "synthetic-bank-ph-1234",
+					country: "PH",
+					currency: "PHP",
+					account_holder_name: "Worker A",
+					bank_name: "BPI",
+					bank_codes: { swift_code: "BOPIPHMM" },
+				},
+			},
+		})
+		const payout = api.calls.find((c) => c.path === "/v3/payout")!
+		expect(payout.body).toMatchObject({ beneficiary: "bnf_created" })
+		expect(payout.body).not.toHaveProperty("quote")
+		expect(payout.body).not.toHaveProperty("local")
+
+		// A fresh adapter has no in-memory cache; the persisted partner ref must be enough.
+		const second = await adapter(api, { beneficiary: null }).execute(
+			leg(
+				"payout",
+				money("785381", "PHP"),
+				"pay_2",
+				{ ...PH_BANK_DETAILS, partnerRefs: first.partnerRefs },
+				"leg_b",
+			),
+		)
+		expect(second.partnerRefs).toBeUndefined()
+		expect(
+			api.calls.filter((c) => c.path === "/v3/beneficiary"),
+		).toHaveLength(1)
+		expect(
+			api.calls.filter((c) => c.path === "/v3/metadata/payout/bank"),
+		).toHaveLength(1)
+	})
+
+	it("refuses beneficiary creation when metadata-required fields are missing", async () => {
+		const api = fakeApi({
+			requiredBankFields: [
+				"account_number",
+				"account_holder_name",
+				"bank_name",
+			],
+			requiredBankCodes: ["swift_code"],
+		})
+		const error = (await adapter(api, { beneficiary: null })
+			.execute(
+				leg(
+					"payout",
+					money("785381", "PHP"),
+					"pay_1",
+					{
+						...PH_BANK_DETAILS,
+						details: { accountNumber: "synthetic-bank-ph-1234" },
+					},
+					"leg_missing",
+				),
+			)
+			.catch((e) => e)) as ProviderError
+		expect(error).toBeInstanceOf(ProviderError)
+		expect(error.code).toBe("unsupported")
+		// The holder name falls back to the recipient's name, so it is not reported missing.
+		expect(error.message).not.toContain("accountHolderName")
+		expect(error.message).toContain("bankName")
+		expect(error.message).toContain("swiftCode")
+		expect(error.message).toContain("required_bank_fields")
+		expect(error.message).toContain("required_bank_codes")
+		expect(error.message).not.toContain("synthetic-bank-ph")
+		expect(api.calls.some((c) => c.path === "/v3/beneficiary")).toBe(false)
+	})
+
+	it("uses the sandbox beneficiary only on the sandbox URL when details are absent", async () => {
+		const sandboxApi = fakeApi()
+		await adapter(sandboxApi, { beneficiary: "bnf_sandbox" }).execute(
+			leg("payout", money("785381", "PHP"), "pay_s", PH_BANK, "leg_s"),
+		)
+		expect(
+			sandboxApi.calls.find((c) => c.path === "/v3/payout")!.body,
+		).toMatchObject({ beneficiary: "bnf_sandbox" })
+
+		const prodApi = fakeApi()
+		await expect(
+			adapter(prodApi, {
+				beneficiary: "bnf_sandbox",
+				baseUrl: "https://service.tazapay.com",
+				liveApproved: true,
+			}).execute(
+				leg("payout", money("785381", "PHP"), "pay_p", PH_BANK, "leg_p"),
+			),
+		).rejects.toMatchObject({ code: "unsupported" })
+		expect(prodApi.calls).toHaveLength(0)
+	})
+
+	it("never writes endpoint details to the console", async () => {
+		const spies = ["log", "info", "warn", "error"].map((method) =>
+			vi.spyOn(console, method as "log").mockImplementation(() => {}),
+		)
+		try {
+			await adapter(fakeApi(), { beneficiary: null }).execute(
+				leg(
+					"payout",
+					money("785381", "PHP"),
+					"pay_1",
+					PH_BANK_DETAILS,
+					"leg_log",
+				),
+			)
+		} finally {
+			for (const spy of spies) spy.mockRestore()
+		}
+		for (const spy of spies) expect(spy).not.toHaveBeenCalled()
 	})
 
 	it("falls back to USD holding when the convert step ran elsewhere", async () => {

@@ -6,6 +6,7 @@ import {
 	isPaid,
 	isSolanaSettleRail,
 	nextLegIndex,
+	type EndpointRef,
 	type FeeMode,
 	type LegKind,
 	type LegStatus,
@@ -55,6 +56,7 @@ async function loadRuntime(
 		status: string;
 		lockAttempt: number;
 		delivery: string;
+		endpointId: string | null;
 	};
 	legs: Array<{
 		id: string;
@@ -87,14 +89,7 @@ async function loadRuntime(
 	/** ClaimLink status, null when the payment has no claim link row. */
 	claimStatus: string | null;
 	lockExpiresAt: Date;
-	payoutEndpoint:
-		| {
-				endpointId: string;
-				type: "bank_account" | "ewallet" | "crypto_wallet" | "crypto_custodial";
-				country: string;
-				currency: string;
-		  }
-		| undefined;
+	payoutEndpoint: EndpointRef | undefined;
 }> {
 	const payment = await db.payment.findUniqueOrThrow({
 		where: { id: paymentId },
@@ -111,6 +106,8 @@ async function loadRuntime(
 	};
 	const feeMode = (payment.quote.feeMode as FeeMode | null) ?? null;
 	const claimWaitSettle = isClaimWaitRoute(payment.legs);
+	// CCR-32: a claim supplies its accepted endpoint at accept time; a batch stores it at create.
+	const linkedEndpointId = claimEndpointId ?? payment.endpointId;
 	if (payment.legs.some((l) => l.kind === "settle") && feeMode === null) {
 		throw new Error("quote.feeMode missing for settle route (CCR-13)");
 	}
@@ -121,15 +118,36 @@ async function loadRuntime(
 		fees.flexiPayFee?.amount !== undefined
 			? moneyOf(fees.flexiPayFee.amount, fees.flexiPayFee.currency)
 			: null;
-	const payoutEndpoint =
+	let payoutEndpoint: EndpointRef | undefined =
 		dest.type === "bank_account" || dest.type === "ewallet"
 			? {
-					endpointId: claimEndpointId ?? "quote_dest",
+					endpointId: linkedEndpointId ?? "quote_dest",
 					type: dest.type as "bank_account" | "ewallet",
 					country: dest.country,
 					currency: dest.currency,
 				}
 			: undefined;
+	// CCR-32: the adapter gets the endpoint's unmasked details and recipient identity. They stay
+	// server-side; nothing here is serialized into a payment or event snapshot.
+	if (linkedEndpointId) {
+		const endpoint = await db.endpoint.findFirst({
+			where: { id: linkedEndpointId, organizationId: payment.organizationId },
+			include: { recipient: true },
+		});
+		if (endpoint) {
+			payoutEndpoint = {
+				endpointId: endpoint.id,
+				type: endpoint.type as EndpointRef["type"],
+				country: endpoint.country ?? dest.country,
+				currency: endpoint.currency,
+				details: endpoint.details as Record<string, string>,
+				recipientName: endpoint.recipient?.name,
+				recipientKind: endpoint.recipient?.kind as EndpointRef["recipientKind"],
+				partnerRefs:
+					(endpoint.partnerRefs as Record<string, string> | null) ?? undefined,
+			};
+		}
+	}
 	return {
 		payment,
 		legs: payment.legs,
@@ -350,7 +368,7 @@ async function executeLeg(
 	}
 
 	const amountIn = moneyOf(leg.amountInValue, leg.amountInCurrency);
-	const { externalRef } = await provider.execute({
+	const started = await provider.execute({
 		kind: leg.kind as LegKind,
 		amountIn,
 		outCurrency: leg.amountOutCurrency,
@@ -362,11 +380,35 @@ async function executeLeg(
 		legId: leg.id,
 		attempt: leg.attempt,
 	});
+	const { externalRef } = started;
 
 	await db.leg.update({
 		where: { id: leg.id },
 		data: { externalRef },
 	});
+
+	// CCR-32: persist a partner-created id (Tazapay beneficiary) on the endpoint for reuse.
+	if (
+		started.partnerRefs &&
+		leg.kind === "payout" &&
+		rt.payoutEndpoint &&
+		rt.payoutEndpoint.endpointId !== "quote_dest"
+	) {
+		const endpointId = rt.payoutEndpoint.endpointId;
+		const current = await db.endpoint.findUnique({
+			where: { id: endpointId },
+			select: { partnerRefs: true },
+		});
+		await db.endpoint.update({
+			where: { id: endpointId },
+			data: {
+				partnerRefs: {
+					...((current?.partnerRefs as Record<string, string> | null) ?? {}),
+					...started.partnerRefs,
+				},
+			},
+		});
+	}
 
 	const state = await provider.status(externalRef);
 	if (state.status === "succeeded") {

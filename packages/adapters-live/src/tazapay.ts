@@ -8,6 +8,7 @@ import {
 	type LegQuoteRequest,
 	type Provider,
 	type ProviderAdapter,
+	type EndpointRef,
 	type ProviderCapabilities,
 	type ProviderLegState,
 } from "@flexipay/domain"
@@ -29,6 +30,30 @@ const PRODUCTION_BASE_URL = "https://service.tazapay.com"
 const HEALTH_TTL_MS = 60_000
 /** Documented Tazapay purpose code: "Payment for Services". */
 const DEFAULT_PURPOSE_CODE = "PYR001"
+/** Non-routable sandbox contact when the endpoint carries no recipient email. */
+const DEFAULT_BENEFICIARY_EMAIL = "sandbox@flexipay.test"
+const BENEFICIARY_REF = "tazapay_beneficiary_id"
+
+/** Tazapay metadata bank field -> CCR-32 endpoint detail key. */
+const BANK_FIELD_KEYS: Record<string, string> = {
+	account_number: "accountNumber",
+	account_holder_name: "accountHolderName",
+	bank_name: "bankName",
+	iban: "iban",
+}
+
+/** Tazapay metadata bank code -> CCR-32 endpoint detail key. */
+const BANK_CODE_KEYS: Record<string, string> = {
+	swift_code: "swiftCode",
+	bic_code: "swiftCode",
+	branch_code: "branchCode",
+	bank_code: "bankCode",
+	ifsc_code: "bankCode",
+	aba_code: "bankCode",
+	sort_code: "bankCode",
+	bsb_code: "bankCode",
+	cnaps: "bankCode",
+}
 /** Tazapay amounts are integers in hundredths of every currency (sandbox: 1000000 VND = 10,000 VND). */
 const TAZAPAY_DECIMALS = 2
 const CONVERT_REF = "tazapay-convert:"
@@ -44,8 +69,10 @@ const HOLDING: Record<string, string> = {
 export interface TazapayOptions {
 	apiKey: string
 	apiSecret: string
-	/** Sandbox beneficiary to pay; real recipient bank details are not in the adapter contract yet. */
+	/** Sandbox beneficiary, used only on the sandbox URL when the endpoint has no bank details. */
 	sandboxBeneficiaryId: string | null
+	/** Contact email sent to Tazapay when creating a beneficiary; sandbox placeholder by default. */
+	beneficiaryEmail?: string
 	liveApproved: boolean
 	/** Holding currency for a payout whose convert step this process did not see; default USD. */
 	defaultHoldingCurrency?: string
@@ -76,6 +103,12 @@ function objectOf(value: unknown): Record<string, unknown> | null {
 	return value !== null && typeof value === "object"
 		? (value as Record<string, unknown>)
 		: null
+}
+
+function stringList(value: unknown): string[] {
+	return Array.isArray(value)
+		? value.filter((v): v is string => typeof v === "string")
+		: []
 }
 
 function intOf(value: unknown): bigint {
@@ -118,6 +151,8 @@ export class TazapayAdapter implements ProviderAdapter {
 	private readonly baseUrl: string
 	private readonly purposeCode: string
 	private readonly issued = new Map<string, string>()
+	/** endpointId -> Tazapay beneficiary id, so a second leg does not create another. */
+	private readonly beneficiaries = new Map<string, string>()
 	/** paymentId -> holding currency, set when the convert step runs. */
 	private readonly holdingByPayment = new Map<string, string>()
 	private healthCache: { at: number; value: "up" | "down" } | null = null
@@ -220,7 +255,10 @@ export class TazapayAdapter implements ProviderAdapter {
 		}
 	}
 
-	async execute(leg: LegExecution): Promise<{ externalRef: string }> {
+	async execute(leg: LegExecution): Promise<{
+		externalRef: string
+		partnerRefs?: Record<string, string>
+	}> {
 		this.assertEnvironment()
 		this.assertServes(leg.kind)
 		const key = `${leg.legId}:${leg.attempt}`
@@ -240,13 +278,7 @@ export class TazapayAdapter implements ProviderAdapter {
 		const known = this.issued.get(key)
 		if (known) return { externalRef: known }
 
-		const beneficiary = this.opts.sandboxBeneficiaryId
-		if (!beneficiary) {
-			throw new ProviderError(
-				"unsupported",
-				"Tazapay payout needs a sandbox beneficiary; real recipient bank details are not in the adapter contract yet",
-			)
-		}
+		const beneficiary = await this.beneficiaryFor(leg.endpoint)
 		const holding =
 			this.holdingByPayment.get(leg.paymentId) ??
 			this.opts.defaultHoldingCurrency ??
@@ -267,7 +299,7 @@ export class TazapayAdapter implements ProviderAdapter {
 					holding_currency: holding,
 					type: "local",
 					purpose: this.purposeCode,
-					beneficiary,
+					beneficiary: beneficiary.id,
 					reference_id: reference,
 					transaction_description: "FlexiPay payout",
 				},
@@ -278,7 +310,160 @@ export class TazapayAdapter implements ProviderAdapter {
 		if (typeof data.id !== "string")
 			throw new Error("Tazapay create payout returned no id")
 		this.issued.set(key, data.id)
-		return { externalRef: data.id }
+		return {
+			externalRef: data.id,
+			...(beneficiary.created
+				? { partnerRefs: { [BENEFICIARY_REF]: beneficiary.id } }
+				: {}),
+		}
+	}
+
+	/**
+	 * CCR-32: reuse the beneficiary persisted on the endpoint, else create one from the recipient's
+	 * bank details. The sandbox fallback is allowed only on the sandbox URL and only when details
+	 * are absent.
+	 */
+	private async beneficiaryFor(
+		endpoint: EndpointRef | undefined,
+	): Promise<{ id: string; created: boolean }> {
+		if (!endpoint) {
+			const fallback = this.sandboxFallback()
+			if (fallback) return { id: fallback, created: false }
+			throw new ProviderError(
+				"unsupported",
+				"Tazapay payout needs the recipient's bank details",
+			)
+		}
+		const known =
+			endpoint.partnerRefs?.[BENEFICIARY_REF] ??
+			this.beneficiaries.get(endpoint.endpointId)
+		if (known) return { id: known, created: false }
+		const accountNumber = endpoint.details?.accountNumber
+		if (!accountNumber) {
+			const fallback = this.sandboxFallback()
+			if (fallback) return { id: fallback, created: false }
+			throw new ProviderError(
+				"unsupported",
+				`Tazapay payout for endpoint ${endpoint.endpointId} needs its bank details`,
+			)
+		}
+		const id = await this.createBeneficiary(endpoint)
+		this.beneficiaries.set(endpoint.endpointId, id)
+		return { id, created: true }
+	}
+
+	private sandboxFallback(): string | null {
+		return this.baseUrl === SANDBOX_BASE_URL
+			? this.opts.sandboxBeneficiaryId
+			: null
+	}
+
+	/** Reads required_bank_fields/required_bank_codes, then creates the named beneficiary. */
+	private async createBeneficiary(endpoint: EndpointRef): Promise<string> {
+		if (!endpoint.recipientName) {
+			throw new ProviderError(
+				"unsupported",
+				`Tazapay beneficiary for endpoint ${endpoint.endpointId} needs the recipient name`,
+			)
+		}
+		const details = endpoint.details ?? {}
+		const required = await this.requiredBankFields(endpoint)
+		const missing: string[] = []
+		for (const field of required.fields) {
+			const key = BANK_FIELD_KEYS[field]
+			if (!key) missing.push(`${field} (no FlexiPay detail key)`)
+			else if (
+				!details[key] &&
+				!(key === "accountHolderName" && endpoint.recipientName)
+			)
+				missing.push(`${key} (required_bank_fields: ${field})`)
+		}
+		for (const code of required.codes) {
+			const key = BANK_CODE_KEYS[code]
+			if (!key) missing.push(`${code} (no FlexiPay bank code)`)
+			else if (!details[key])
+				missing.push(`${key} (required_bank_codes: ${code})`)
+		}
+		if (missing.length > 0) {
+			throw new ProviderError(
+				"unsupported",
+				`Tazapay beneficiary for endpoint ${endpoint.endpointId} is missing ${missing.join(", ")}; required_bank_fields: ${required.fields.join(", ") || "none"}; required_bank_codes: ${required.codes.join(", ") || "none"}`,
+			)
+		}
+
+		const bank: Record<string, unknown> = {
+			account_number: details.accountNumber,
+			country: endpoint.country,
+			currency: endpoint.currency,
+		}
+		// The holder name defaults to the recipient's name when the details leave it out.
+		bank.account_holder_name = details.accountHolderName ?? endpoint.recipientName
+		if (details.bankName) bank.bank_name = details.bankName
+		if (details.iban) bank.iban = details.iban
+		const codes: Record<string, string> = {}
+		for (const code of required.codes) {
+			const value = details[BANK_CODE_KEYS[code]!]
+			if (value) codes[code] = value
+		}
+		if (details.swiftCode && !codes.swift_code) codes.swift_code = details.swiftCode
+		if (details.bankCode && !codes.bank_code) codes.bank_code = details.bankCode
+		if (details.branchCode && !codes.branch_code)
+			codes.branch_code = details.branchCode
+		if (Object.keys(codes).length > 0) bank.bank_codes = codes
+
+		const data = this.ok(
+			await this.call("POST", "/v3/beneficiary", {
+				name: endpoint.recipientName,
+				type:
+					endpoint.recipientKind === "company" ? "business" : "individual",
+				email: this.opts.beneficiaryEmail ?? DEFAULT_BENEFICIARY_EMAIL,
+				destination_details: { type: "bank", bank },
+			}),
+			"beneficiary",
+		)
+		if (typeof data.id !== "string" || data.id.length === 0) {
+			throw new Error("Tazapay create beneficiary returned no id")
+		}
+		return data.id
+	}
+
+	private async requiredBankFields(
+		endpoint: EndpointRef,
+	): Promise<{ fields: string[]; codes: string[] }> {
+		const data = this.ok(
+			await this.call(
+				"GET",
+				`/v3/metadata/payout/bank?country=${encodeURIComponent(endpoint.country)}&currency=${encodeURIComponent(endpoint.currency)}`,
+			),
+			"payout bank metadata",
+		)
+		const methods = Array.isArray(data.payout_methods)
+			? data.payout_methods
+					.map((m) => objectOf(m))
+					.filter((m): m is Record<string, unknown> => m !== null)
+			: []
+		const method =
+			methods.find(
+				(m) =>
+					m.payout_type === "local" &&
+					m.country === endpoint.country &&
+					m.currency === endpoint.currency,
+			) ??
+			methods.find(
+				(m) =>
+					m.country === endpoint.country && m.currency === endpoint.currency,
+			) ??
+			methods.find((m) => m.payout_type === "local")
+		if (!method) {
+			throw new ProviderError(
+				"unsupported",
+				`Tazapay has no local bank payout method for ${endpoint.country}/${endpoint.currency}`,
+			)
+		}
+		return {
+			fields: stringList(method.required_bank_fields),
+			codes: stringList(method.required_bank_codes),
+		}
 	}
 
 	async status(externalRef: string): Promise<ProviderLegState> {
