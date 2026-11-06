@@ -95,6 +95,31 @@ async function fillQuoteBasics(page: Page) {
 }
 
 test.describe("TASK 20 Send from and sandbox coverage", () => {
+	test("a country picked before corridors load still defaults to GBP once they arrive", async ({
+		page,
+	}) => {
+		let release: () => void = () => {}
+		const gate = new Promise<void>((resolve) => {
+			release = resolve
+		})
+		await page.route(/\/v1\/corridors$/, async (route) => {
+			if (route.request().method() !== "GET") return route.fallback()
+			await gate
+			await route.fulfill({ json: CORRIDORS })
+		})
+		await page.route(/\/v1\/recipients$/, async (route) => {
+			if (route.request().method() !== "GET") return route.fallback()
+			await route.fulfill({ json: { recipients: [] } })
+		})
+		await page.goto("/")
+		// PH is in the built-in fallback list, so it can be chosen while corridors are still loading.
+		await page.getByLabel("Destination country").selectOption("PH")
+		release()
+		const sendFrom = page.getByLabel("Send from")
+		await expect(sendFrom).toHaveValue("GB:GBP")
+		await expect(page.getByLabel("Amount (£)")).toBeVisible()
+	})
+
 	test("PH shows Send from, defaults to GBP, USD switch updates the quote", async ({
 		page,
 	}) => {
@@ -106,14 +131,14 @@ test.describe("TASK 20 Send from and sandbox coverage", () => {
 		await expect(sendFrom).toBeVisible()
 		await expect(sendFrom).toHaveValue("GB:GBP")
 		await expect(page.getByLabel("Amount (£)")).toBeVisible()
-		await expect(page.getByText("Cross-border GBP to PHP over tGBP.")).toBeVisible()
+		await expect(
+			page.getByText("Cross-border GBP to PHP over tGBP."),
+		).toBeVisible()
 
 		await fillQuoteBasics(page)
 		await page.getByLabel("Amount (£)").fill("10.00")
 		await page.getByRole("button", { name: "Get quote" }).click()
-		await expect
-			.poll(() => state.quoteBodies.length)
-			.toBeGreaterThanOrEqual(1)
+		await expect.poll(() => state.quoteBodies.length).toBeGreaterThanOrEqual(1)
 		expect(state.quoteBodies[0]?.source).toEqual({
 			type: "bank_account",
 			currency: "GBP",
@@ -125,9 +150,7 @@ test.describe("TASK 20 Send from and sandbox coverage", () => {
 		await expect(page.getByText("Cross-border USD to PHP.")).toBeVisible()
 		await page.getByLabel("Amount (USD)").fill("12.50")
 		await page.getByRole("button", { name: "Get quote" }).click()
-		await expect
-			.poll(() => state.quoteBodies.length)
-			.toBeGreaterThanOrEqual(2)
+		await expect.poll(() => state.quoteBodies.length).toBeGreaterThanOrEqual(2)
 		expect(state.quoteBodies.at(-1)?.source).toEqual({
 			type: "bank_account",
 			currency: "USD",
@@ -148,9 +171,7 @@ test.describe("TASK 20 Send from and sandbox coverage", () => {
 		await fillQuoteBasics(page)
 		await page.getByLabel("Amount (£)").fill("10.00")
 		await page.getByRole("button", { name: "Get quote" }).click()
-		await expect
-			.poll(() => state.quoteBodies.length)
-			.toBeGreaterThanOrEqual(1)
+		await expect.poll(() => state.quoteBodies.length).toBeGreaterThanOrEqual(1)
 		expect(state.quoteBodies[0]?.source).toEqual({
 			type: "bank_account",
 			currency: "GBP",
