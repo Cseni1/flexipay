@@ -31,11 +31,11 @@ describe("API skeleton", () => {
     }
   });
 
-  it("serves the baseline corridors from config (CCR-26 adds GB-GB for tGBP)", async () => {
+  it("serves the baseline corridors from config (CCR-26 adds GB-GB for tGBP, CCR-30 GB-PH)", async () => {
     const res = await fetch(`${t.base}/v1/corridors`, { headers: auth(key) });
     expect(res.status).toBe(200);
     const { corridors } = await res.json();
-    expect(corridors.map((c: any) => `${c.from.country}-${c.to.country}`)).toEqual(["US-US", "US-PH", "US-BR", "US-ZA", "GB-GB"]);
+    expect(corridors.map((c: any) => `${c.from.country}-${c.to.country}`)).toEqual(["US-US", "US-PH", "GB-PH", "US-BR", "US-ZA", "GB-GB"]);
     const za = corridors.find((c: any) => c.to.country === "ZA");
     expect(za.cryptoLegAllowed).toEqual({ individual: false, company: false });
     expect(za.simulated).toBe(true);

@@ -1,4 +1,5 @@
 import {
+	CURRENCY_DECIMALS,
 	ProviderError,
 	money,
 	toMinor,
@@ -12,19 +13,33 @@ import {
 } from "@flexipay/domain"
 import { jsonRequest, type FetchLike, type HttpResult } from "./http.ts"
 
-// Tazapay payout adapter (CCR-30). Tazapay pays out local currency from a pre-funded balance;
-// its stablecoin collections are a separate primitive that credits a fiat balance, so it does
-// not serve our USDC convert leg. This adapter is therefore a plain `payout` provider: the
-// amount in is already the beneficiary's currency (for example PHP). Pricing comes from
-// Tazapay's own payout quote, with the payout currency as the holding currency so the quote
-// does not hide a second FX conversion. A production base URL is refused unless
-// FP_TAZAPAY_LIVE_APPROVED=1 (written approval only).
+// Tazapay off-ramp adapter (CCR-30). Tazapay holds a GBP or USD balance and, in one payout call,
+// converts it to local currency and pays the bank. It cannot hold the payout currency itself
+// (sandbox error 20168 for PHP), so like BlindPay it serves the convert + payout pair:
+// - convert: priced from Tazapay's payout quote for the exact holding amount (the quote's payout
+//   amount is already net of Tazapay's fee); executing it records the step, because the conversion
+//   happens inside the payout.
+// - payout: pays the quoted local amount from the holding balance.
+// The convert input maps to a holding currency: GBP and tGBP to GBP, USD and USDC to USD
+// (FlexiPay funds the balance by off-ramping the stablecoin; that funding is outside this adapter).
+// The production base URL is refused unless FP_TAZAPAY_LIVE_APPROVED=1 (written approval only).
 
 const SANDBOX_BASE_URL = "https://service-sandbox.tazapay.com"
 const PRODUCTION_BASE_URL = "https://service.tazapay.com"
 const HEALTH_TTL_MS = 60_000
 /** Documented Tazapay purpose code: "Payment for Services". */
 const DEFAULT_PURPOSE_CODE = "PYR001"
+/** Tazapay amounts are integers in hundredths of every currency (sandbox: 1000000 VND = 10,000 VND). */
+const TAZAPAY_DECIMALS = 2
+const CONVERT_REF = "tazapay-convert:"
+
+/** Convert input currency -> Tazapay holding currency. */
+const HOLDING: Record<string, string> = {
+	GBP: "GBP",
+	TGBP: "GBP",
+	USD: "USD",
+	USDC: "USD",
+}
 
 export interface TazapayOptions {
 	apiKey: string
@@ -32,6 +47,8 @@ export interface TazapayOptions {
 	/** Sandbox beneficiary to pay; real recipient bank details are not in the adapter contract yet. */
 	sandboxBeneficiaryId: string | null
 	liveApproved: boolean
+	/** Holding currency for a payout whose convert step this process did not see; default USD. */
+	defaultHoldingCurrency?: string
 	/** Tazapay purpose code (PYR001..PYR036); defaults to PYR001. */
 	purposeCode?: string
 	baseUrl?: string
@@ -61,8 +78,35 @@ function objectOf(value: unknown): Record<string, unknown> | null {
 		: null
 }
 
-function minorFee(value: unknown): number {
-	return typeof value === "number" && Number.isFinite(value) ? value : 0
+function intOf(value: unknown): bigint {
+	return typeof value === "number" && Number.isFinite(value)
+		? BigInt(Math.floor(value))
+		: 0n
+}
+
+function rescale(
+	minor: bigint,
+	fromDecimals: number,
+	toDecimals: number,
+): bigint {
+	if (toDecimals >= fromDecimals)
+		return minor * 10n ** BigInt(toDecimals - fromDecimals)
+	return minor / 10n ** BigInt(fromDecimals - toDecimals)
+}
+
+function decimalsOf(currency: string): number {
+	const d = CURRENCY_DECIMALS[currency]
+	if (d === undefined)
+		throw new ProviderError(
+			"unsupported",
+			`Tazapay: unknown currency ${currency}`,
+		)
+	return d
+}
+
+function rateText(rate: number): string {
+	const scaled = BigInt(Math.round(rate * 10_000))
+	return `${scaled / 10_000n}.${(scaled % 10_000n).toString().padStart(4, "0")}`
 }
 
 export class TazapayAdapter implements ProviderAdapter {
@@ -74,6 +118,8 @@ export class TazapayAdapter implements ProviderAdapter {
 	private readonly baseUrl: string
 	private readonly purposeCode: string
 	private readonly issued = new Map<string, string>()
+	/** paymentId -> holding currency, set when the convert step runs. */
+	private readonly holdingByPayment = new Map<string, string>()
 	private healthCache: { at: number; value: "up" | "down" } | null = null
 
 	constructor(row: Provider, opts: TazapayOptions) {
@@ -101,28 +147,74 @@ export class TazapayAdapter implements ProviderAdapter {
 	async quote(req: LegQuoteRequest): Promise<LegQuote> {
 		this.assertEnvironment()
 		this.assertServes(req.kind)
+		if (req.kind === "convert") return this.quoteConvert(req)
+		// payout: the conversion and Tazapay's fee are on the convert leg; nothing more is charged.
 		if (req.amountIn.currency !== req.outCurrency) {
 			throw new ProviderError(
 				"currency_mismatch",
-				"Tazapay pays out in the beneficiary currency; a convert leg must run first",
+				"Tazapay payout must be in the local currency; the convert leg runs first",
 			)
 		}
 		this.assertCurrency(req.outCurrency)
-		const country = req.endpoint?.country || this.row.countries[0]!
-		const quoted = await this.payoutQuote(req.amountIn, country)
-		const amount = toMinor(req.amountIn)
-		const fee = BigInt(quoted.feeMinor)
-		if (fee >= amount) {
-			throw new ProviderError(
-				"fee_exceeds_amount",
-				"Tazapay quote fee exceeds the payout amount",
-			)
-		}
 		return {
 			providerId: this.id,
-			fee: money(fee, req.outCurrency),
+			fee: money(0n, req.outCurrency),
 			fxRate: null,
-			amountOut: money(amount - fee, req.outCurrency),
+			amountOut: req.amountIn,
+			estimatedTimeSeconds: this.row.estimatedTimeSeconds,
+			simulated: this.row.simulated,
+		}
+	}
+
+	private async quoteConvert(req: LegQuoteRequest): Promise<LegQuote> {
+		const holding = this.holdingFor(req.amountIn.currency)
+		this.assertCurrency(req.outCurrency)
+		const inMinor = toMinor(req.amountIn)
+		const inDecimals = decimalsOf(req.amountIn.currency)
+		const holdAmount = rescale(inMinor, inDecimals, TAZAPAY_DECIMALS)
+		if (holdAmount <= 0n)
+			throw new ProviderError("below_min", "Amount too small for Tazapay")
+		const country = this.countryFor(req)
+		const data = this.ok(
+			await this.call("POST", "/v3/payout/quote", {
+				payout_type: "local",
+				holding_info: { currency: holding, amount: Number(holdAmount) },
+				payout_info: { currency: req.outCurrency },
+				destination_info: { currency: req.outCurrency, country },
+			}),
+			"payout quote",
+		)
+		const payoutInfo = objectOf(data.payout_info)
+		const feeInfo = objectOf(data.fee_info)
+		const rates = objectOf(data.exchange_rates)
+		const rate = rates?.holding_to_payout
+		if (
+			!payoutInfo ||
+			typeof payoutInfo.amount !== "number" ||
+			!feeInfo ||
+			typeof rate !== "number" ||
+			rate <= 0
+		)
+			throw new Error("Tazapay payout quote returned no amount, fee or rate")
+		const outMinor = rescale(
+			intOf(payoutInfo.amount),
+			TAZAPAY_DECIMALS,
+			decimalsOf(req.outCurrency),
+		)
+		if (outMinor <= 0n)
+			throw new ProviderError(
+				"fee_exceeds_amount",
+				"Tazapay fee exceeds the amount",
+			)
+		const feeHolding =
+			intOf(objectOf(feeInfo.fixed)?.in_holding_currency) +
+			intOf(objectOf(feeInfo.variable)?.in_holding_currency)
+		const fee = rescale(feeHolding, TAZAPAY_DECIMALS, inDecimals)
+		return {
+			providerId: this.id,
+			fee: money(fee < inMinor ? fee : inMinor, req.amountIn.currency),
+			fxRate: rateText(rate),
+			amountOut: money(outMinor, req.outCurrency),
 			estimatedTimeSeconds: this.row.estimatedTimeSeconds,
 			simulated: this.row.simulated,
 		}
@@ -131,15 +223,20 @@ export class TazapayAdapter implements ProviderAdapter {
 	async execute(leg: LegExecution): Promise<{ externalRef: string }> {
 		this.assertEnvironment()
 		this.assertServes(leg.kind)
+		const key = `${leg.legId}:${leg.attempt}`
+		if (leg.kind === "convert") {
+			const holding = this.holdingFor(leg.amountIn.currency)
+			this.holdingByPayment.set(leg.paymentId, holding)
+			return { externalRef: `${CONVERT_REF}${holding}:${key}` }
+		}
 		if (leg.amountIn.currency !== leg.outCurrency) {
 			throw new ProviderError(
 				"currency_mismatch",
-				"Tazapay pays out in the beneficiary currency; a convert leg must run first",
+				"Tazapay payout must be in the local currency; the convert leg runs first",
 			)
 		}
 		this.assertCurrency(leg.amountIn.currency)
 
-		const key = `${leg.legId}:${leg.attempt}`
 		const known = this.issued.get(key)
 		if (known) return { externalRef: known }
 
@@ -150,39 +247,43 @@ export class TazapayAdapter implements ProviderAdapter {
 				"Tazapay payout needs a sandbox beneficiary; real recipient bank details are not in the adapter contract yet",
 			)
 		}
-		const country = leg.endpoint?.country || this.row.countries[0]!
-		const quote = await this.payoutQuote(leg.amountIn, country)
-		const network = await this.fundTransferNetwork(country, leg.amountIn.currency)
+		const holding =
+			this.holdingByPayment.get(leg.paymentId) ??
+			this.opts.defaultHoldingCurrency ??
+			"USD"
 		const reference = `flexipay-${key}`
-
-		const body = this.ok(
+		const amount = rescale(
+			toMinor(leg.amountIn),
+			decimalsOf(leg.amountIn.currency),
+			TAZAPAY_DECIMALS,
+		)
+		const data = this.ok(
 			await this.call(
 				"POST",
 				"/v3/payout",
 				{
-					amount: Number(toMinor(leg.amountIn)),
+					amount: Number(amount),
 					currency: leg.amountIn.currency,
-					holding_currency: leg.amountIn.currency,
+					holding_currency: holding,
 					type: "local",
 					purpose: this.purposeCode,
 					beneficiary,
-					quote: quote.id,
 					reference_id: reference,
 					transaction_description: "FlexiPay payout",
-					local: { fund_transfer_network: network },
 				},
 				reference,
 			),
 			"payout",
 		)
-		const data = objectOf(body.data)
-		if (typeof data?.id !== "string")
+		if (typeof data.id !== "string")
 			throw new Error("Tazapay create payout returned no id")
 		this.issued.set(key, data.id)
 		return { externalRef: data.id }
 	}
 
 	async status(externalRef: string): Promise<ProviderLegState> {
+		if (externalRef.startsWith(CONVERT_REF))
+			return { status: "succeeded", externalRef }
 		this.assertEnvironment()
 		const res = await this.call(
 			"GET",
@@ -193,16 +294,15 @@ export class TazapayAdapter implements ProviderAdapter {
 				"unknown_reference",
 				`Tazapay has no payout ${externalRef}`,
 			)
-		const body = this.ok(res, "payout status")
-		const data = objectOf(body.data)
-		const raw = typeof data?.status === "string" ? data.status : ""
+		const data = this.ok(res, "payout status")
+		const raw = typeof data.status === "string" ? data.status : ""
 		const status = PAYOUT_STATUS[raw] ?? "processing"
 		if (status === "failed") {
-			const failure = objectOf(data?.failure)
+			const failure = objectOf(data.failure)
 			const detail =
 				typeof failure?.code === "string"
 					? failure.code
-					: typeof data?.status_description === "string"
+					: typeof data.status_description === "string"
 						? data.status_description
 						: raw
 			return {
@@ -217,7 +317,11 @@ export class TazapayAdapter implements ProviderAdapter {
 		return { status, externalRef }
 	}
 
-	async reverse(_externalRef: string): Promise<{ externalRef: string }> {
+	async reverse(externalRef: string): Promise<{ externalRef: string }> {
+		// The convert step is only a record (the money converts inside the payout), so undoing it
+		// moves nothing.
+		if (externalRef.startsWith(CONVERT_REF))
+			return { externalRef: `${externalRef}:reversed` }
 		throw new ProviderError(
 			"not_reversible",
 			"A Tazapay payout cannot be reversed",
@@ -231,8 +335,18 @@ export class TazapayAdapter implements ProviderAdapter {
 		let value: "up" | "down" = "down"
 		if (this.baseUrl !== PRODUCTION_BASE_URL || this.opts.liveApproved) {
 			try {
-				await this.metadata(this.row.countries[0]!, this.row.currencies[0]!)
-				value = "up"
+				const payout = this.payoutCurrencies()[0]
+				const country = this.row.countries[0]
+				if (payout && country) {
+					this.ok(
+						await this.call(
+							"GET",
+							`/v3/metadata/payout/bank?country=${encodeURIComponent(country)}&currency=${encodeURIComponent(payout)}`,
+						),
+						"payout bank metadata",
+					)
+					value = "up"
+				}
 			} catch {
 				value = "down"
 			}
@@ -241,75 +355,28 @@ export class TazapayAdapter implements ProviderAdapter {
 		return value
 	}
 
-	/** Tazapay payout quote, in the payout currency. Never invents a fee or rate. */
-	private async payoutQuote(
-		amount: { amount: string; currency: string },
-		country: string,
-	): Promise<{ id: string; feeMinor: number }> {
-		const body = this.ok(
-			await this.call("POST", "/v3/payout/quote", {
-				payout_type: "local",
-				holding_info: { currency: amount.currency },
-				payout_info: {
-					amount: Number(toMinor(amount)),
-					currency: amount.currency,
-				},
-				destination_info: { currency: amount.currency, country },
-			}),
-			"payout quote",
-		)
-		if (typeof body.id !== "string")
-			throw new Error("Tazapay payout quote returned no id")
-		const feeInfo = objectOf(body.fee_info)
-		if (!feeInfo)
-			throw new Error("Tazapay payout quote returned no fee_info")
-		const fixed = objectOf(feeInfo.fixed)
-		const variable = objectOf(feeInfo.variable)
-		const feeMinor =
-			minorFee(fixed?.in_payout_currency) +
-			minorFee(variable?.in_payout_currency)
-		if (!Number.isInteger(feeMinor) || feeMinor < 0)
-			throw new Error("Tazapay payout quote returned an invalid fee")
-		return { id: body.id, feeMinor }
+	/** Row currencies that are payout currencies (not holding inputs). */
+	private payoutCurrencies(): string[] {
+		return this.row.currencies.filter((c) => !(c in HOLDING))
 	}
 
-	/** First local fund transfer network Tazapay reports for this corridor. */
-	private async fundTransferNetwork(
-		country: string,
-		currency: string,
-	): Promise<string> {
-		const body = await this.metadata(country, currency)
-		const data = objectOf(body.data)
-		const methods = Array.isArray(data?.payout_methods)
-			? data.payout_methods
-			: []
-		for (const method of methods) {
-			const m = objectOf(method)
-			if (
-				m?.currency !== currency ||
-				m?.payout_type !== "local" ||
-				!Array.isArray(m.fund_transfer_networks)
+	private holdingFor(currency: string): string {
+		const holding = HOLDING[currency]
+		if (!holding || !this.row.currencies.includes(currency)) {
+			throw new ProviderError(
+				"unsupported",
+				`Tazapay does not convert from ${currency}`,
 			)
-				continue
-			for (const network of m.fund_transfer_networks) {
-				const n = objectOf(network)
-				if (typeof n?.name === "string" && n.name) return n.name
-			}
 		}
+		return holding
+	}
+
+	private countryFor(req: LegQuoteRequest): string {
+		if (req.endpoint?.country) return req.endpoint.country
+		if (this.row.countries.length === 1) return this.row.countries[0]!
 		throw new ProviderError(
 			"unsupported",
-			`Tazapay reports no local payout network for ${currency} in ${country}`,
-		)
-	}
-
-	private async metadata(
-		country: string,
-		currency: string,
-	): Promise<Record<string, unknown>> {
-		const query = `?country=${encodeURIComponent(country)}&currency=${encodeURIComponent(currency)}`
-		return this.ok(
-			await this.call("GET", `/v3/metadata/payout/bank${query}`),
-			"payout bank metadata",
+			"Tazapay needs the destination country to quote",
 		)
 	}
 
@@ -329,7 +396,7 @@ export class TazapayAdapter implements ProviderAdapter {
 	}
 
 	private assertCurrency(currency: string) {
-		if (!this.row.currencies.includes(currency)) {
+		if (!this.payoutCurrencies().includes(currency)) {
 			throw new ProviderError(
 				"unsupported",
 				`Tazapay does not pay out ${currency}`,
@@ -357,19 +424,21 @@ export class TazapayAdapter implements ProviderAdapter {
 		})
 	}
 
+	/** Tazapay wraps every success in `{ status, message, data }`; returns `data`. */
 	private ok(res: HttpResult, what: string): Record<string, unknown> {
-		if (
-			res.status >= 200 &&
-			res.status < 300 &&
-			res.json &&
-			typeof res.json === "object"
-		) {
-			return res.json as Record<string, unknown>
-		}
-		const message =
-			res.json && typeof res.json === "object" && "message" in res.json
-				? String((res.json as { message: unknown }).message).slice(0, 200)
-				: "no detail"
-		throw new Error(`Tazapay ${what} failed (HTTP ${res.status}: ${message})`)
+		const json = objectOf(res.json)
+		const data = objectOf(json?.data)
+		if (res.status >= 200 && res.status < 300 && data) return data
+		const errors = Array.isArray(json?.errors) ? json.errors : []
+		const first = objectOf(errors[0])
+		const detail =
+			typeof first?.message === "string"
+				? first.message
+				: typeof json?.message === "string"
+					? json.message
+					: "no detail"
+		throw new Error(
+			`Tazapay ${what} failed (HTTP ${res.status}: ${detail.slice(0, 200)})`,
+		)
 	}
 }

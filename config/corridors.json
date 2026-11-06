@@ -45,12 +45,39 @@
 			},
 			"legsAvailable": {
 				"collect": ["sim_bank_us_ach"],
-				"convert": ["sim_fx"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
 				"settle": ["stellar_usdc"],
 				"payout": ["sim_bank_ph_instapay", "sim_ewallet_ph", "tazapay_sandbox"]
 			},
 			"domesticRail": null,
 			"regulationNote": "Cross-border USD to PHP. Bank account, e-wallet and crypto-wallet destinations; simulated rails only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "PH", "currency": "PHP" },
+			"allowedDestinationTypes": ["bank_account", "ewallet"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "sim_fx", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["sim_bank_ph_instapay", "sim_ewallet_ph", "tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to PHP over tGBP on Solana. Tazapay sandbox pays bank accounts from a GBP balance; other rails simulated.",
 			"simulated": true,
 			"placeholder": true
 		},
