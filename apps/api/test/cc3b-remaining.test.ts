@@ -440,6 +440,34 @@ describe("claim links: fiat accept (CCR-17) and lazy expiry", () => {
 		expect(listed.endpoints[0]!.details.accountNumber).toBe("************1234");
 	});
 
+	it("a direct payment can name the recipient's saved endpoint (CCR-32); a mismatched one is 422", async () => {
+		const { key } = await t.newOrg("Direct Endpoint");
+		const r = await recipient(key, "Worker A", "individual", "PH");
+		const ep = await endpoint(key, r.id, ENDPOINTS.phEwallet);
+		const dest = { type: "ewallet", currency: "PHP", country: "PH", recipientKind: "individual" };
+		const ok = await post(key, "/v1/payments", {
+			quoteId: (await quote(key, dest)).id,
+			recipientId: r.id,
+			delivery: "direct",
+			profile: "one_off",
+			endpointId: ep.id,
+		});
+		expect(ok.status).toBe(201);
+		const created = await json<{ id: string }>(ok);
+		expect((await t.db.payment.findUniqueOrThrow({ where: { id: created.id } })).endpointId).toBe(ep.id);
+
+		const other = await recipient(key, "Worker C", "individual", "PH");
+		const wrong = await post(key, "/v1/payments", {
+			quoteId: (await quote(key, dest)).id,
+			recipientId: other.id,
+			delivery: "direct",
+			profile: "one_off",
+			endpointId: ep.id,
+		});
+		expect(wrong.status).toBe(422);
+		expect((await json<{ code: string }>(wrong)).code).toBe("invalid_endpoint");
+	});
+
 	it("fiat claim: fund holds the payout; accept creates the endpoint and pays; replay does not pay twice", async () => {
 		const { key } = await t.newOrg("Demo Platform");
 		const r = await recipient(key, "Worker A", "individual", "PH");

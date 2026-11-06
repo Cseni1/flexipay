@@ -27,6 +27,7 @@ function mapCreateError(e: unknown): never {
 		throw new ApiError(409, "duplicate_external_id", msg);
 	}
 	if (/feeMode/i.test(msg)) throw new ApiError(422, "invalid_quote", msg);
+	if (/^endpoint /i.test(msg)) throw new ApiError(422, "invalid_endpoint", msg);
 	throw new ApiError(400, "bad_request", msg);
 }
 
@@ -50,6 +51,7 @@ export const paymentRoutes: RouteDef<any, any>[] = [
 					profile: body.profile,
 					externalId: body.externalId,
 					reference: body.reference,
+					endpointId: body.endpointId,
 					now: ctx.runtime?.now(),
 				});
 			} catch (e) {

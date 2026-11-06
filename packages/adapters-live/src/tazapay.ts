@@ -372,7 +372,10 @@ export class TazapayAdapter implements ProviderAdapter {
 		for (const field of required.fields) {
 			const key = BANK_FIELD_KEYS[field]
 			if (!key) missing.push(`${field} (no FlexiPay detail key)`)
-			else if (!details[key])
+			else if (
+				!details[key] &&
+				!(key === "accountHolderName" && endpoint.recipientName)
+			)
 				missing.push(`${key} (required_bank_fields: ${field})`)
 		}
 		for (const code of required.codes) {
@@ -393,8 +396,8 @@ export class TazapayAdapter implements ProviderAdapter {
 			country: endpoint.country,
 			currency: endpoint.currency,
 		}
-		if (details.accountHolderName)
-			bank.account_holder_name = details.accountHolderName
+		// The holder name defaults to the recipient's name when the details leave it out.
+		bank.account_holder_name = details.accountHolderName ?? endpoint.recipientName
 		if (details.bankName) bank.bank_name = details.bankName
 		if (details.iban) bank.iban = details.iban
 		const codes: Record<string, string> = {}

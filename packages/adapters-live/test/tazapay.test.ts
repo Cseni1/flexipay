@@ -391,7 +391,8 @@ describe("Tazapay adapter", () => {
 			.catch((e) => e)) as ProviderError
 		expect(error).toBeInstanceOf(ProviderError)
 		expect(error.code).toBe("unsupported")
-		expect(error.message).toContain("accountHolderName")
+		// The holder name falls back to the recipient's name, so it is not reported missing.
+		expect(error.message).not.toContain("accountHolderName")
 		expect(error.message).toContain("bankName")
 		expect(error.message).toContain("swiftCode")
 		expect(error.message).toContain("required_bank_fields")
