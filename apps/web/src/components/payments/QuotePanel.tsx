@@ -12,6 +12,7 @@ import {
 	SimulatedLabel,
 	StaticField,
 } from "../ui"
+import { WhyThisRoutePanel } from "./WhyThisRoutePanel"
 
 interface QuotePanelProps {
 	quote: Quote | null
@@ -169,20 +170,7 @@ export function QuotePanel({
 						</ul>
 					</section>
 
-					<section className="quote-section" aria-labelledby="quote-reasons">
-						<h4 className="quote-section__title" id="quote-reasons">
-							Why this route?
-						</h4>
-						{quote.reasons.length === 0 ? (
-							<p className="muted">No additional reasons were returned.</p>
-						) : (
-							<ul className="reason-list reason-list--text">
-								{quote.reasons.map((reason) => (
-									<li key={reason}>{formatQuoteReason(reason)}</li>
-								))}
-							</ul>
-						)}
-					</section>
+					<WhyThisRoutePanel quote={quote} />
 
 					<section
 						className="quote-section"

@@ -101,7 +101,9 @@ test.describe("Take payment (CCR-27 till QR)", () => {
 		await expect(page.getByText("Waiting for payment…").first()).toBeVisible()
 
 		await expect(page.getByTestId("till-paid")).toBeVisible({ timeout: 8_000 })
-		await expect(page.getByTestId("till-paid-confirm")).toHaveText("Paid £10.00")
+		await expect(page.getByTestId("till-paid-confirm")).toHaveText(
+			"£10.00 received",
+		)
 		await expect(page.getByTestId("till-explorer")).toHaveAttribute(
 			"href",
 			paidBody.explorerUrl,
@@ -112,7 +114,7 @@ test.describe("Take payment (CCR-27 till QR)", () => {
 		await page.waitForTimeout(4_500)
 		expect(getGets()).toBe(getsAtPaid)
 
-		await page.getByRole("button", { name: "New request" }).click()
+		await page.getByRole("button", { name: "Done" }).click()
 		await expect(page.getByTestId("till-paid")).toHaveCount(0)
 		await expect(page.getByLabel("Amount (£)")).toHaveValue("")
 	})

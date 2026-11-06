@@ -20,6 +20,8 @@ export type PaymentRequest = {
 	/** Present when status is paid. */
 	signature?: string
 	explorerUrl?: string
+	/** Paying wallet from the verified transfer, when the API reports it. */
+	payer?: string
 }
 
 export type CreatePaymentRequestBody = {
@@ -90,6 +92,10 @@ export function parsePaymentRequest(payload: unknown): PaymentRequest {
 		typeof raw.explorerUrl === "string" && raw.explorerUrl.trim()
 			? raw.explorerUrl.trim()
 			: undefined
+	const payer =
+		typeof raw.payer === "string" && raw.payer.trim()
+			? raw.payer.trim()
+			: undefined
 	return {
 		id,
 		status,
@@ -100,6 +106,7 @@ export function parsePaymentRequest(payload: unknown): PaymentRequest {
 		expiresAt,
 		...(signature ? { signature } : {}),
 		...(explorerUrl ? { explorerUrl } : {}),
+		...(payer ? { payer } : {}),
 	}
 }
 

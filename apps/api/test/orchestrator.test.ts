@@ -921,3 +921,74 @@ describe("CC2 orchestrator (CCR-11–14)", () => {
 		expect(result.status).not.toBe("refunded");
 	});
 });
+
+// CCR-29: a partner payout can stay processing. The leg runner stops (no tight loop) and the
+// provider poller finishes the payment once the partner reports success.
+describe("partner leg that stays processing (CCR-29)", () => {
+	it("waits without spinning, then the poller completes the payment", async () => {
+		sim.controls.reset();
+		let partnerDone = false;
+		let statusCalls = 0;
+		const slow: OrchestratorAdapters = {
+			...adapters(),
+			getProvider: (id) => {
+				const p = sim.providers.get(id);
+				if (!p || id !== "sim_bank_ph_instapay") return p;
+				return {
+					id: p.id,
+					capabilities: () => p.capabilities(),
+					health: () => p.health(),
+					quote: (req) => p.quote(req),
+					execute: (req) => p.execute(req),
+					status: async (ref) => {
+						statusCalls += 1;
+						const real = await p.status(ref);
+						return partnerDone ? real : { status: "processing" as const, externalRef: ref };
+					},
+					reverse: (ref) => p.reverse(ref),
+				};
+			},
+		};
+
+		const { orgId } = await t.newOrg("Partner Platform");
+		const { recipientId, quoteId } = await seedQuote(orgId, {
+			feeMode: "PayerPays",
+			route: phPayoutRoute,
+			fees: {
+				legs: [
+					{ kind: "collect", rail: "sim_bank_us_ach", fee: money("0", "USD") },
+					{ kind: "convert", rail: "sim_fx", fee: money("125", "USD") },
+					{ kind: "settle", rail: "stellar_usdc", fee: money("98268564", "USDC") },
+					{ kind: "convert", rail: "sim_fx", fee: money("0", "USDC") },
+					{ kind: "payout", rail: "sim_bank_ph_instapay", fee: money("2000", "PHP") },
+				],
+				flexiPayFee: money("98268564", "USDC"),
+				total: money("125", "USD"),
+				settleUnlockedRemainder: money("1", "USDC"),
+			},
+			destination: { type: "bank_account", currency: "PHP", country: "PH", recipientKind: "individual" },
+		});
+		const { paymentId } = await createPaymentFromQuote(db, {
+			organizationId: orgId,
+			recipientId,
+			quoteId,
+			delivery: "direct",
+			profile: "one_off",
+		});
+
+		const first = await fundAndRun(db, paymentId, slow);
+		expect(first.status).toBe("processing");
+		expect(statusCalls).toBeLessThanOrEqual(2);
+		const { paymentsWaitingOnProviders, pollProvidersOnce } = await import("../src/ops/provider-poller.ts");
+		expect(await paymentsWaitingOnProviders(db)).toContain(paymentId);
+
+		// Still processing at the partner: a poll changes nothing.
+		await pollProvidersOnce(db, slow);
+		expect((await db.payment.findUniqueOrThrow({ where: { id: paymentId } })).status).toBe("processing");
+
+		partnerDone = true;
+		await pollProvidersOnce(db, slow);
+		expect((await db.payment.findUniqueOrThrow({ where: { id: paymentId } })).status).toBe("paid");
+		expect(await paymentsWaitingOnProviders(db)).not.toContain(paymentId);
+	});
+});

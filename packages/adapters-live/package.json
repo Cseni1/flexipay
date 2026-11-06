@@ -1,0 +1,22 @@
+{
+  "name": "@flexipay/adapters-live",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Partner provider adapters (BlindPay, Tazapay). Sandbox only until the integrator enables live keys (CCR-29).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@flexipay/domain": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^6.0.2",
+    "vitest": "^5.0.5"
+  }
+}

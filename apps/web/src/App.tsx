@@ -17,6 +17,7 @@ import PaymentsHistory from "./pages/PaymentsHistory"
 import Recipients from "./pages/Recipients"
 import SendPayment from "./pages/SendPayment"
 import TakePayment from "./pages/TakePayment"
+import WhereWePay from "./pages/WhereWePay"
 import { RequireSession } from "./providers/SessionProvider"
 
 function App() {
@@ -41,6 +42,7 @@ function App() {
 				<Route path="pay-from" element={<PayFrom />} />
 				<Route path="wallet" element={<FlexiPayWallet />} />
 				<Route path="developers" element={<Developers />} />
+				<Route path="where-we-pay" element={<WhereWePay />} />
 				<Route path="account" element={<Account />} />
 				<Route path="payments/:paymentId" element={<PaymentDetail />} />
 			</Route>

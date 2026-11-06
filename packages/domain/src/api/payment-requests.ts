@@ -46,6 +46,8 @@ export const PaymentRequestSchema = z
 		/** Set once paid. */
 		signature: z.string().nullable(),
 		explorerUrl: z.string().url().nullable(),
+		/** Paying wallet from the verified transfer, when known. */
+		payer: SolanaAddressSchema.nullable().optional(),
 	})
 	.strict();
 

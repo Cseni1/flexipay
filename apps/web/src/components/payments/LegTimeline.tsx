@@ -14,7 +14,8 @@ const KIND_LABELS: Record<Leg["kind"], string> = {
 /**
  * Payment-detail journey. Simulated collect / convert / fiat payout legs always
  * carry SimulatedLabel; a live Solana settle leg (simulated=false) must not.
- * Times come from events (leg.succeeded/failed by legId; settle → onchain/paid).
+ * Times come from events matched on snapshot.legId (settle: onchain then
+ * succeeded/failed for that leg only).
  */
 export function LegTimeline({
 	legs,

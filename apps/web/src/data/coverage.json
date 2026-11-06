@@ -1,0 +1,1129 @@
+{
+	"asOf": "2026-11-06",
+	"source": "docs/COVERAGE.md on claude/aggregator-best-quote (Tazapay sandbox metadata, 6 Nov 2026)",
+	"disclaimer": "coverage on paper, not live payments",
+	"countries": [
+		{
+			"code": "AD",
+			"name": "Andorra",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "AE",
+			"name": "United Arab Emirates",
+			"status": "local_bank",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "AF",
+			"name": "Afghanistan",
+			"status": "not_covered",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "AG",
+			"name": "Antigua and Barbuda",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "AL",
+			"name": "Albania",
+			"status": "not_covered",
+			"region": "Europe"
+		},
+		{
+			"code": "AM",
+			"name": "Armenia",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "AO",
+			"name": "Angola",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "AR",
+			"name": "Argentina",
+			"status": "local_bank",
+			"region": "Americas"
+		},
+		{
+			"code": "AT",
+			"name": "Austria",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "AU",
+			"name": "Australia",
+			"status": "local_bank",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "AZ",
+			"name": "Azerbaijan",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "BA",
+			"name": "Bosnia and Herzegovina",
+			"status": "not_covered",
+			"region": "Europe"
+		},
+		{
+			"code": "BB",
+			"name": "Barbados",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "BD",
+			"name": "Bangladesh",
+			"status": "local_bank",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "BE",
+			"name": "Belgium",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "BF",
+			"name": "Burkina Faso",
+			"status": "local_bank",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "BG",
+			"name": "Bulgaria",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "BH",
+			"name": "Bahrain",
+			"status": "swift_only",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "BI",
+			"name": "Burundi",
+			"status": "not_covered",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "BJ",
+			"name": "Benin",
+			"status": "local_bank",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "BN",
+			"name": "Brunei",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "BO",
+			"name": "Bolivia",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "BR",
+			"name": "Brazil",
+			"status": "local_bank",
+			"region": "Americas"
+		},
+		{
+			"code": "BS",
+			"name": "Bahamas",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "BT",
+			"name": "Bhutan",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "BW",
+			"name": "Botswana",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "BY",
+			"name": "Belarus",
+			"status": "not_covered",
+			"region": "Europe"
+		},
+		{
+			"code": "BZ",
+			"name": "Belize",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "CA",
+			"name": "Canada",
+			"status": "local_bank",
+			"region": "Americas"
+		},
+		{
+			"code": "CD",
+			"name": "DR Congo",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "CF",
+			"name": "Central African Republic",
+			"status": "not_covered",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "CG",
+			"name": "Congo",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "CH",
+			"name": "Switzerland",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "CI",
+			"name": "Côte d'Ivoire",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "CL",
+			"name": "Chile",
+			"status": "local_bank",
+			"region": "Americas"
+		},
+		{
+			"code": "CM",
+			"name": "Cameroon",
+			"status": "local_bank",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "CN",
+			"name": "China",
+			"status": "local_bank",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "CO",
+			"name": "Colombia",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "CR",
+			"name": "Costa Rica",
+			"status": "local_bank",
+			"region": "Americas"
+		},
+		{
+			"code": "CU",
+			"name": "Cuba",
+			"status": "not_covered",
+			"region": "Americas"
+		},
+		{
+			"code": "CV",
+			"name": "Cabo Verde",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "CY",
+			"name": "Cyprus",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "CZ",
+			"name": "Czechia",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "DE",
+			"name": "Germany",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "DJ",
+			"name": "Djibouti",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "DK",
+			"name": "Denmark",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "DM",
+			"name": "Dominica",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "DO",
+			"name": "Dominican Republic",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "DZ",
+			"name": "Algeria",
+			"status": "local_bank",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "EC",
+			"name": "Ecuador",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "EE",
+			"name": "Estonia",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "EG",
+			"name": "Egypt",
+			"status": "swift_only",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "ER",
+			"name": "Eritrea",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "ES",
+			"name": "Spain",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "ET",
+			"name": "Ethiopia",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "FI",
+			"name": "Finland",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "FJ",
+			"name": "Fiji",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "FR",
+			"name": "France",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "GA",
+			"name": "Gabon",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "GB",
+			"name": "United Kingdom",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "GD",
+			"name": "Grenada",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "GE",
+			"name": "Georgia",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "GH",
+			"name": "Ghana",
+			"status": "local_bank",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "GM",
+			"name": "Gambia",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "GN",
+			"name": "Guinea",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "GQ",
+			"name": "Equatorial Guinea",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "GR",
+			"name": "Greece",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "GT",
+			"name": "Guatemala",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "GW",
+			"name": "Guinea-Bissau",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "GY",
+			"name": "Guyana",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "HK",
+			"name": "Hong Kong",
+			"status": "local_bank",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "HN",
+			"name": "Honduras",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "HR",
+			"name": "Croatia",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "HT",
+			"name": "Haiti",
+			"status": "not_covered",
+			"region": "Americas"
+		},
+		{
+			"code": "HU",
+			"name": "Hungary",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "ID",
+			"name": "Indonesia",
+			"status": "local_bank",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "IE",
+			"name": "Ireland",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "IL",
+			"name": "Israel",
+			"status": "swift_only",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "IN",
+			"name": "India",
+			"status": "local_bank",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "IQ",
+			"name": "Iraq",
+			"status": "not_covered",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "IR",
+			"name": "Iran",
+			"status": "not_covered",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "IS",
+			"name": "Iceland",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "IT",
+			"name": "Italy",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "JM",
+			"name": "Jamaica",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "JO",
+			"name": "Jordan",
+			"status": "swift_only",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "JP",
+			"name": "Japan",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "KE",
+			"name": "Kenya",
+			"status": "local_bank",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "KG",
+			"name": "Kyrgyzstan",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "KH",
+			"name": "Cambodia",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "KM",
+			"name": "Comoros",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "KR",
+			"name": "South Korea",
+			"status": "local_bank",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "KW",
+			"name": "Kuwait",
+			"status": "swift_only",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "KZ",
+			"name": "Kazakhstan",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "LA",
+			"name": "Laos",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "LB",
+			"name": "Lebanon",
+			"status": "not_covered",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "LC",
+			"name": "Saint Lucia",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "LI",
+			"name": "Liechtenstein",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "LK",
+			"name": "Sri Lanka",
+			"status": "local_bank",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "LR",
+			"name": "Liberia",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "LS",
+			"name": "Lesotho",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "LT",
+			"name": "Lithuania",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "LU",
+			"name": "Luxembourg",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "LV",
+			"name": "Latvia",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "LY",
+			"name": "Libya",
+			"status": "not_covered",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "MA",
+			"name": "Morocco",
+			"status": "local_bank",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "MD",
+			"name": "Moldova",
+			"status": "swift_only",
+			"region": "Europe"
+		},
+		{
+			"code": "ME",
+			"name": "Montenegro",
+			"status": "not_covered",
+			"region": "Europe"
+		},
+		{
+			"code": "MG",
+			"name": "Madagascar",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "MK",
+			"name": "North Macedonia",
+			"status": "not_covered",
+			"region": "Europe"
+		},
+		{
+			"code": "ML",
+			"name": "Mali",
+			"status": "not_covered",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "MM",
+			"name": "Myanmar",
+			"status": "not_covered",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "MN",
+			"name": "Mongolia",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "MO",
+			"name": "Macao",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "MR",
+			"name": "Mauritania",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "MT",
+			"name": "Malta",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "MU",
+			"name": "Mauritius",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "MV",
+			"name": "Maldives",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "MW",
+			"name": "Malawi",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "MX",
+			"name": "Mexico",
+			"status": "local_bank",
+			"region": "Americas"
+		},
+		{
+			"code": "MY",
+			"name": "Malaysia",
+			"status": "local_bank",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "MZ",
+			"name": "Mozambique",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "NA",
+			"name": "Namibia",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "NE",
+			"name": "Niger",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "NG",
+			"name": "Nigeria",
+			"status": "local_bank",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "NI",
+			"name": "Nicaragua",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "NL",
+			"name": "Netherlands",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "NO",
+			"name": "Norway",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "NP",
+			"name": "Nepal",
+			"status": "local_bank",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "NZ",
+			"name": "New Zealand",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "OM",
+			"name": "Oman",
+			"status": "swift_only",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "PA",
+			"name": "Panama",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "PE",
+			"name": "Peru",
+			"status": "local_bank",
+			"region": "Americas"
+		},
+		{
+			"code": "PG",
+			"name": "Papua New Guinea",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "PH",
+			"name": "Philippines",
+			"status": "local_bank",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "PK",
+			"name": "Pakistan",
+			"status": "local_bank",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "PL",
+			"name": "Poland",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "PS",
+			"name": "Palestine",
+			"status": "not_covered",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "PT",
+			"name": "Portugal",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "PY",
+			"name": "Paraguay",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "QA",
+			"name": "Qatar",
+			"status": "swift_only",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "RO",
+			"name": "Romania",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "RS",
+			"name": "Serbia",
+			"status": "not_covered",
+			"region": "Europe"
+		},
+		{
+			"code": "RU",
+			"name": "Russia",
+			"status": "not_covered",
+			"region": "Europe"
+		},
+		{
+			"code": "RW",
+			"name": "Rwanda",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "SA",
+			"name": "Saudi Arabia",
+			"status": "swift_only",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "SB",
+			"name": "Solomon Islands",
+			"status": "swift_only",
+			"region": "Other"
+		},
+		{
+			"code": "SC",
+			"name": "Seychelles",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "SD",
+			"name": "Sudan",
+			"status": "not_covered",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "SE",
+			"name": "Sweden",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "SG",
+			"name": "Singapore",
+			"status": "local_bank",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "SI",
+			"name": "Slovenia",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "SK",
+			"name": "Slovakia",
+			"status": "local_bank",
+			"region": "Europe"
+		},
+		{
+			"code": "SL",
+			"name": "Sierra Leone",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "SN",
+			"name": "Senegal",
+			"status": "local_bank",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "SO",
+			"name": "Somalia",
+			"status": "not_covered",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "SR",
+			"name": "Suriname",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "SS",
+			"name": "South Sudan",
+			"status": "not_covered",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "ST",
+			"name": "São Tomé and Príncipe",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "SV",
+			"name": "El Salvador",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "SY",
+			"name": "Syria",
+			"status": "not_covered",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "SZ",
+			"name": "Eswatini",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "TD",
+			"name": "Chad",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "TG",
+			"name": "Togo",
+			"status": "local_bank",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "TH",
+			"name": "Thailand",
+			"status": "local_bank",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "TJ",
+			"name": "Tajikistan",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "TL",
+			"name": "Timor-Leste",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "TM",
+			"name": "Turkmenistan",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "TN",
+			"name": "Tunisia",
+			"status": "swift_only",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "TO",
+			"name": "Tonga",
+			"status": "swift_only",
+			"region": "Other"
+		},
+		{
+			"code": "TR",
+			"name": "Türkiye",
+			"status": "local_bank",
+			"region": "Other"
+		},
+		{
+			"code": "TT",
+			"name": "Trinidad and Tobago",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "TW",
+			"name": "Taiwan",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "TZ",
+			"name": "Tanzania",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "UA",
+			"name": "Ukraine",
+			"status": "not_covered",
+			"region": "Europe"
+		},
+		{
+			"code": "UG",
+			"name": "Uganda",
+			"status": "local_bank",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "US",
+			"name": "United States",
+			"status": "local_bank",
+			"region": "Americas"
+		},
+		{
+			"code": "UY",
+			"name": "Uruguay",
+			"status": "local_bank",
+			"region": "Americas"
+		},
+		{
+			"code": "UZ",
+			"name": "Uzbekistan",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "VC",
+			"name": "Saint Vincent and the Grenadines",
+			"status": "swift_only",
+			"region": "Americas"
+		},
+		{
+			"code": "VE",
+			"name": "Venezuela",
+			"status": "not_covered",
+			"region": "Americas"
+		},
+		{
+			"code": "VN",
+			"name": "Vietnam",
+			"status": "local_bank",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "VU",
+			"name": "Vanuatu",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "WS",
+			"name": "Samoa",
+			"status": "swift_only",
+			"region": "Asia & Pacific"
+		},
+		{
+			"code": "YE",
+			"name": "Yemen",
+			"status": "not_covered",
+			"region": "Middle East & North Africa"
+		},
+		{
+			"code": "ZA",
+			"name": "South Africa",
+			"status": "local_bank",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "ZM",
+			"name": "Zambia",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		},
+		{
+			"code": "ZW",
+			"name": "Zimbabwe",
+			"status": "swift_only",
+			"region": "Sub-Saharan Africa"
+		}
+	]
+}

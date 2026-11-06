@@ -67,29 +67,71 @@
 	min-width: 0;
 }
 
-.till-paid {
-	padding: 2rem 1.25rem;
-	border-radius: 16px;
-	background: color-mix(in srgb, #1a7f4b 18%, var(--surface));
-	border: 1px solid color-mix(in srgb, #1a7f4b 40%, var(--line));
+.till-paid-screen {
+	position: fixed;
+	inset: 0;
+	z-index: 40;
+	display: grid;
+	place-items: center;
+	padding: max(16px, env(safe-area-inset-top, 0px))
+		max(16px, env(safe-area-inset-right, 0px))
+		max(16px, env(safe-area-inset-bottom, 0px))
+		max(16px, env(safe-area-inset-left, 0px));
+	background: #14653a;
+	color: #f4fff8;
+	overflow: auto;
+}
+
+.till-paid-screen__card {
+	width: min(100%, 420px);
+	display: grid;
+	gap: 0.85rem;
+	justify-items: center;
 	text-align: center;
-	max-width: 100%;
-	overflow-x: hidden;
 }
 
-.till-paid__title {
-	margin: 0 0 0.5rem;
+.till-paid-screen__eyebrow {
+	margin: 0;
+	font-size: 0.9rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	opacity: 0.85;
+}
+
+.till-paid-screen__amount {
+	margin: 0;
 	font-family: var(--display);
-	font-size: clamp(1.6rem, 3vw, 2.2rem);
+	font-size: clamp(2.2rem, 9vw, 3.4rem);
 	font-weight: 800;
-	letter-spacing: -0.02em;
-	color: #14653a;
+	letter-spacing: -0.03em;
+	line-height: 1.05;
+	overflow-wrap: anywhere;
 }
 
-.till-paid__confirm {
-	margin: 0 0 1rem;
-	color: #14653a;
+.till-paid-screen__meta {
+	margin: 0;
 	font-size: 1rem;
+	line-height: 1.4;
+	overflow-wrap: anywhere;
+}
+
+.till-paid-screen .form-actions {
+	width: 100%;
+	justify-content: center;
+	margin-top: 0.5rem;
+}
+
+.till-paid-screen .button {
+	min-width: min(100%, 220px);
+	min-height: 48px;
+	background: #f4fff8;
+	color: #14653a;
+	border-color: #f4fff8;
+}
+
+.till-paid-screen a {
+	color: #f4fff8;
 }
 
 .till-expired {

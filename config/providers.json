@@ -281,6 +281,43 @@
       "limits": null,
       "simulated": true,
       "placeholder": true
+    },
+    {
+      "id": "blindpay_sandbox",
+      "kind": "bank",
+      "countries": [
+        "BR",
+        "MX",
+        "CO",
+        "AR"
+      ],
+      "currencies": [
+        "USDC",
+        "BRL",
+        "MXN",
+        "COP",
+        "ARS"
+      ],
+      "endpointTypes": [
+        "bank_account"
+      ],
+      "legKinds": [
+        "convert",
+        "payout"
+      ],
+      "fee": {
+        "fixed": {
+          "amount": "0",
+          "currency": "USDC"
+        },
+        "bps": 0
+      },
+      "fxSpreadBps": 0,
+      "estimatedTimeSeconds": 600,
+      "limits": null,
+      "simulated": true,
+      "placeholder": false,
+      "implementation": "blindpay"
     }
   ],
   "settlementRails": [

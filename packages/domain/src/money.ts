@@ -56,6 +56,11 @@ export const CURRENCY_DECIMALS: Readonly<Record<string, number>> = {
   BRL: 2,
   ZAR: 2,
   GBP: 2,
+  /** CCR-29: partner payout currencies (BlindPay sandbox). */
+  EUR: 2,
+  MXN: 2,
+  COP: 2,
+  ARS: 2,
   USDC: 7,
   /** tGBP (Tokenised GBP, CCR-26): same convention as USDC, 7 domain decimals floored to the mint's. */
   TGBP: 7,

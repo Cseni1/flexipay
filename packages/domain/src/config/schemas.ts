@@ -70,6 +70,13 @@ export const ProviderSchema = z
     limits: LimitSchema.nullable(),
     simulated: z.boolean(),
     placeholder: z.boolean(),
+    /**
+     * CCR-29: which adapter serves this row. Omitted or "sim": the simulated adapter built from
+     * this row. "blindpay" / "tazapay": a partner adapter in @flexipay/adapters-live, registered
+     * only when its keys are set; its fee, spread and rate come from the partner's own quote, so
+     * this row's fee and fxSpreadBps are not used.
+     */
+    implementation: z.enum(["sim", "blindpay", "tazapay"]).optional(),
   })
   .strict();
 export type Provider = z.infer<typeof ProviderSchema>;

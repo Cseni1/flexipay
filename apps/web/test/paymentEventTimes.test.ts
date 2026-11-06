@@ -13,7 +13,7 @@ const event = (
 	snapshot: Record<string, unknown> = {},
 ): Event =>
 	({
-		id: `evt_${type}`,
+		id: `evt_${type}_${createdAt}`,
 		type,
 		createdAt,
 		paymentId: "pay_1",
@@ -40,10 +40,13 @@ const leg = (id: string, kind: Leg["kind"]): Leg =>
 	}) as Leg
 
 describe("paymentEventTimes", () => {
-	test("matches leg times by snapshot.legId; settle uses onchain/paid", () => {
+	test("matches leg times by snapshot.legId", () => {
 		const events = [
 			event("leg.succeeded", "2026-11-05T12:00:00.000Z", { legId: "leg_1" }),
-			event("payment.onchain", "2026-11-05T12:05:00.000Z"),
+			event("payment.onchain", "2026-11-05T12:05:00.000Z", {
+				legId: "leg_3",
+			}),
+			event("leg.succeeded", "2026-11-05T12:05:01.000Z", { legId: "leg_3" }),
 			event("payment.paid", "2026-11-05T12:06:00.000Z"),
 		]
 		assert.equal(
@@ -54,6 +57,36 @@ describe("paymentEventTimes", () => {
 		assert.equal(
 			legEventTime(events, leg("leg_3", "settle")),
 			"2026-11-05T12:05:00.000Z",
+		)
+	})
+
+	test("settle never takes a time from another leg or bare payment.paid", () => {
+		// Old matching used the first payment.onchain / payment.paid with no legId
+		// filter, so settle would show WRONG_ONCHAIN or PAID_TIME here.
+		const events = [
+			event("payment.onchain", "2026-11-05T12:01:00.000Z", {
+				legId: "leg_other",
+			}),
+			event("payment.paid", "2026-11-05T12:09:00.000Z"),
+			event("leg.succeeded", "2026-11-05T12:04:00.000Z", {
+				legId: "leg_settle",
+			}),
+		]
+		assert.equal(
+			legEventTime(events, leg("leg_settle", "settle")),
+			"2026-11-05T12:04:00.000Z",
+		)
+		assert.equal(
+			legEventTime(
+				[
+					event("payment.onchain", "2026-11-05T12:01:00.000Z", {
+						legId: "leg_other",
+					}),
+					event("payment.paid", "2026-11-05T12:09:00.000Z"),
+				],
+				leg("leg_settle", "settle"),
+			),
+			null,
 		)
 	})
 

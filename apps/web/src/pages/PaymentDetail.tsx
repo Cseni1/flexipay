@@ -12,8 +12,10 @@ import { getSolanaConfig } from "../api/solanaClient"
 import { aboutDaysLeft, formatClaimValidUntil } from "../claim/expiry"
 import { ApiWakeUpNotice } from "../components/ApiWakeUpNotice"
 import { AuthBlockedNotice } from "../components/AuthBlockedNotice"
+import { CopyableValue } from "../components/CopyableValue"
 import { EventLog } from "../components/payments/EventLog"
 import { LegTimeline } from "../components/payments/LegTimeline"
+import { PaymentFromToCard } from "../components/payments/PaymentFromToCard"
 import { PaymentReceipt } from "../components/payments/PaymentReceipt"
 import { PaymentTimestamp } from "../components/payments/PaymentTimestamp"
 import { SolanaPayPanel } from "../components/solana/SolanaPayPanel"
@@ -30,10 +32,16 @@ import {
 	StatusBadge,
 } from "../components/ui"
 import { usePaymentDetail } from "../hooks/usePaymentDetail"
+import {
+	primaryEndpoint,
+	recipientDisplayName,
+	useRecipientDirectory,
+} from "../hooks/useRecipientDirectory"
 import { useWakeUpRetry } from "../hooks/useWakeUpRetry"
 import { paymentMilestoneTimes } from "../payments/paymentEventTimes"
 import { displayMoney } from "../payments/quoteDisplay"
 import { clearSolanaTransfer } from "../payments/solanaTransferStorage"
+import { useSession } from "../providers/SessionProvider"
 
 const solanaExplorerUrl = (
 	template: string | undefined,
@@ -138,6 +146,8 @@ export default function PaymentDetail() {
 		hasData: payment !== null,
 		onRetry: refresh,
 	})
+	const { state: sessionState } = useSession()
+	const { names, endpointsByRecipient } = useRecipientDirectory()
 	const [funding, setFunding] = useState(false)
 	const [fundError, setFundError] = useState<string | null>(null)
 	const [fundAuthBlocked, setFundAuthBlocked] = useState(false)
@@ -207,6 +217,18 @@ export default function PaymentDetail() {
 	const canFund =
 		(status === "awaiting_funding" || status === "quoted") && !authBlocked
 	const polling = status ? POLLING_STATUSES.has(status) : false
+	const orgName =
+		sessionState.status === "signed_in"
+			? sessionState.session.organization.name
+			: null
+	const senderName =
+		orgName?.trim() || payment?.organizationId || "Sending organisation"
+	const recipientName = payment
+		? recipientDisplayName(names, payment.recipientId)
+		: "—"
+	const destinationEndpoint = payment
+		? primaryEndpoint(endpointsByRecipient, payment.recipientId)
+		: null
 
 	return (
 		<Page>
@@ -260,6 +282,12 @@ export default function PaymentDetail() {
 			{payment ? (
 				<Grid>
 					<div className="stack">
+						<PaymentFromToCard
+							senderName={senderName}
+							recipientName={recipientName}
+							events={payment.events}
+							endpoint={destinationEndpoint}
+						/>
 						<Panel
 							title="Payment"
 							description={
@@ -306,7 +334,14 @@ export default function PaymentDetail() {
 								<StaticField
 									label="Recipient"
 									value={
-										<code className="code-text">{payment.recipientId}</code>
+										payment.recipientId ? (
+											<CopyableValue
+												value={payment.recipientId}
+												label="Copy recipient id"
+											/>
+										) : (
+											"—"
+										)
 									}
 								/>
 								<StaticField
@@ -352,7 +387,12 @@ export default function PaymentDetail() {
 								) : null}
 								<StaticField
 									label="Quote"
-									value={<code className="code-text">{payment.quoteId}</code>}
+									value={
+										<CopyableValue
+											value={payment.quoteId}
+											label="Copy quote id"
+										/>
+									}
 								/>
 								<StaticField
 									label="Route ends at"
@@ -425,7 +465,10 @@ export default function PaymentDetail() {
 									label="Payout id"
 									value={
 										settleLeg?.externalRef ? (
-											<code className="code-text">{settleLeg.externalRef}</code>
+											<CopyableValue
+												value={settleLeg.externalRef}
+												label="Copy payout id"
+											/>
 										) : (
 											"—"
 										)
@@ -436,7 +479,10 @@ export default function PaymentDetail() {
 									label="Lock transaction"
 									value={
 										settleLeg?.lockTxRef ? (
-											<code className="code-text">{settleLeg.lockTxRef}</code>
+											<CopyableValue
+												value={settleLeg.lockTxRef}
+												label="Copy lock transaction"
+											/>
 										) : (
 											"—"
 										)
@@ -447,9 +493,10 @@ export default function PaymentDetail() {
 									label="Release transaction"
 									value={
 										settleLeg?.releaseTxRef ? (
-											<code className="code-text">
-												{settleLeg.releaseTxRef}
-											</code>
+											<CopyableValue
+												value={settleLeg.releaseTxRef}
+												label="Copy release transaction"
+											/>
 										) : (
 											"—"
 										)
