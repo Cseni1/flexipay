@@ -193,13 +193,15 @@
         "US",
         "PH",
         "BR",
-        "ZA"
+        "ZA",
+        "GB"
       ],
       "currencies": [
         "USD",
         "PHP",
         "BRL",
-        "ZAR"
+        "ZAR",
+        "TGBP"
       ],
       "endpointTypes": [],
       "legKinds": [
@@ -318,6 +320,40 @@
       "simulated": true,
       "placeholder": false,
       "implementation": "blindpay"
+    },
+    {
+      "id": "tazapay_sandbox",
+      "kind": "bank",
+      "countries": [
+        "PH"
+      ],
+      "currencies": [
+        "GBP",
+        "TGBP",
+        "USD",
+        "USDC",
+        "PHP"
+      ],
+      "endpointTypes": [
+        "bank_account"
+      ],
+      "legKinds": [
+        "convert",
+        "payout"
+      ],
+      "fee": {
+        "fixed": {
+          "amount": "0",
+          "currency": "GBP"
+        },
+        "bps": 0
+      },
+      "fxSpreadBps": 0,
+      "estimatedTimeSeconds": 300,
+      "limits": null,
+      "simulated": true,
+      "placeholder": false,
+      "implementation": "tazapay"
     }
   ],
   "settlementRails": [
@@ -405,6 +441,18 @@
       "from": "TGBP",
       "to": "GBP",
       "rate": "1.0000000",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "PHP",
+      "rate": "75.0000000",
+      "placeholder": true
+    },
+    {
+      "from": "PHP",
+      "to": "GBP",
+      "rate": "0.0133333",
       "placeholder": true
     }
   ]

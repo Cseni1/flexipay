@@ -614,7 +614,13 @@ async function pricePayoutPair(
 	const payIds = new Set(pay.candidates.map((a) => a.id));
 	for (const partner of conv.candidates.filter((a) => isOfframp(a) && payIds.has(a.id))) {
 		try {
-			const cq = await partner.quote({ kind: "convert", amountIn, outCurrency: convertOut });
+			// The off-ramp prices the whole pair, so it also needs the payout endpoint (country).
+			const cq = await partner.quote({
+				kind: "convert",
+				amountIn,
+				outCurrency: convertOut,
+				endpoint: pay.endpoint,
+			});
 			const convertLeg = pricedLeg("convert", amountIn, partner, cq);
 			const pq = await partner.quote({
 				kind: "payout",
