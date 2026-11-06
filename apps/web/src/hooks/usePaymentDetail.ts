@@ -1,6 +1,7 @@
 import { type PaymentDetail } from "@flexipay/web-lib/contract"
 import { useCallback, useEffect, useState } from "react"
 import { ApiError, getPayment } from "../api/client"
+import { isWaitingOnLeg, shouldPollPayment } from "../payments/pollRules"
 
 /** While the payment is moving between legs (sim legs finish in seconds). */
 const FAST_POLL_MS = 2000
@@ -8,20 +9,6 @@ const FAST_POLL_MS = 2000
 const POLL_INTERVAL_MS = 10_000
 /** Never leave the detail screen polling forever. */
 const POLL_BUDGET_MS = 15 * 60_000
-
-const MOVING_STATUSES = new Set(["funded", "processing", "refunding"])
-
-/** Poll while the payment is moving: funded, processing (also between legs) or refunding. */
-export const shouldPollPayment = (
-	payment: Pick<PaymentDetail, "status">,
-): boolean => MOVING_STATUSES.has(payment.status)
-
-/** A leg is waiting on a partner: show "Waiting for …" and slow down to every 10 s. */
-export const isWaitingOnLeg = (
-	payment: Pick<PaymentDetail, "status" | "legs">,
-): boolean =>
-	payment.status === "processing" &&
-	payment.legs.some((leg) => leg.status === "processing")
 
 interface PaymentDetailState {
 	payment: PaymentDetail | null

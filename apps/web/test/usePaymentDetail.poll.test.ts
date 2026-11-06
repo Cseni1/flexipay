@@ -1,9 +1,6 @@
 import assert from "node:assert/strict"
 import { describe, test } from "vitest"
-import {
-	isWaitingOnLeg,
-	shouldPollPayment,
-} from "../src/hooks/usePaymentDetail"
+import { isWaitingOnLeg, shouldPollPayment } from "../src/payments/pollRules"
 
 const p = (status: string, legStatuses: string[]) =>
 	({ status, legs: legStatuses.map((s) => ({ status: s })) }) as never
