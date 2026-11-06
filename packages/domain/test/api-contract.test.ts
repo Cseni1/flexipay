@@ -304,6 +304,60 @@ describe("A0 claim and event schemas", () => {
 		).toThrow();
 	});
 
+	it("accepts the CCR-34 BlindPay bank detail keys", () => {
+		const cases = [
+			{
+				country: "BR",
+				currency: "BRL",
+				details: {
+					accountNumber: "synthetic-br-1234",
+					pixKey: "worker-b@example.test",
+				},
+			},
+			{
+				country: "MX",
+				currency: "MXN",
+				details: {
+					accountNumber: "synthetic-mx-1234",
+					clabe: "012345678901234567",
+					speiProtocol: "clabe",
+					speiInstitutionCode: "646180110400000007",
+				},
+			},
+			{
+				country: "CO",
+				currency: "COP",
+				details: {
+					accountNumber: "synthetic-co-1234",
+					firstName: "Worker",
+					lastName: "CO",
+					documentId: "1234567890",
+					documentType: "CC",
+					email: "worker-co@example.test",
+					accountType: "saving",
+				},
+			},
+			{
+				country: "AR",
+				currency: "ARS",
+				details: {
+					accountNumber: "synthetic-ar-1234",
+					transfersType: "CVU",
+				},
+			},
+		] as const;
+		for (const c of cases) {
+			const parsed = CreateEndpointRequestSchema.parse({
+				recipientId: "rcp_1",
+				type: "bank_account",
+				network: null,
+				simulated: true,
+				...c,
+			});
+			expect(parsed.details).toMatchObject(c.details);
+		}
+	});
+
 	it("accepts fiat claim details under CCR-17 and rejects empty country / wrong keys", () => {
     expect(
       ClaimAcceptRequestSchema.parse({

@@ -28,6 +28,18 @@ export function endpointDetailsSchemaFor(
 				iban: detailString.optional(),
 				bankCode: detailString.optional(),
 				branchCode: detailString.optional(),
+				// CCR-34: BlindPay bank-account fields for BR, MX, CO and AR.
+				pixKey: detailString.optional(),
+				clabe: detailString.optional(),
+				speiProtocol: detailString.optional(),
+				speiInstitutionCode: detailString.optional(),
+				firstName: detailString.optional(),
+				lastName: detailString.optional(),
+				documentId: detailString.optional(),
+				documentType: detailString.optional(),
+				email: detailString.optional(),
+				accountType: detailString.optional(),
+				transfersType: detailString.optional(),
 			})
 			.strict() as unknown as z.ZodType<Record<string, string>>;
 	}

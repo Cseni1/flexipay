@@ -31,7 +31,7 @@ export interface EndpointRef {
   /** Recipient name and kind, filled by the orchestrator from the DB (CCR-32). */
   recipientName?: string;
   recipientKind?: "individual" | "company";
-  /** Partner references persisted on the endpoint, e.g. a Tazapay beneficiary id. */
+  /** Partner references persisted on the endpoint, e.g. Tazapay or BlindPay ids. */
   partnerRefs?: Record<string, string>;
 }
 
