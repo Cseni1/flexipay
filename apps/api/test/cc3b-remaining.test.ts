@@ -53,6 +53,7 @@ const ENDPOINTS = {
 			swiftCode: "BRBADEMM",
 			bankCode: "001",
 			branchCode: "0001",
+			pixKey: "worker-b@example.test",
 		},
 		simulated: true,
 	},
@@ -205,6 +206,7 @@ describe("CCR-16 endpoints", () => {
 		expect(br.details.swiftCode).toMatch(/^\*+/);
 		expect(br.details.bankCode).toMatch(/^\*+$/);
 		expect(br.details.branchCode).toMatch(/^\*+$/);
+		expect(br.details.pixKey).toMatch(/^\*+test$/);
 		const filtered = await json<{ endpoints: { recipientId: string }[] }>(
 			await get(a.key, `/v1/endpoints?recipientId=${workerA.id}`),
 		);

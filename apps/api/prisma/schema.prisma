@@ -74,7 +74,7 @@ model Endpoint {
   network        String? // stellar, only for crypto endpoints
   /// Account number, wallet id or address. Masked whenever it is returned or logged.
   details        Json
-  /// Partner ids for this endpoint (CCR-32), e.g. { tazapay_beneficiary_id: "bnf_..." }.
+  /// Partner ids for this endpoint (CCR-32/CCR-34), e.g. { tazapay_beneficiary_id: "bnf_...", blindpay_bank_account_id: "ba_..." }.
   partnerRefs    Json?
   simulated      Boolean      @default(true)
   createdAt      DateTime     @default(now())

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import {
 	ProviderError,
 	money,
@@ -30,6 +30,17 @@ const ROW: Provider = {
 }
 
 const SANDBOX = { customerId: "cu_1", bankAccountId: "ba_1", walletId: "wa_1" }
+
+type TestEndpoint = {
+	endpointId: string
+	type: "bank_account"
+	country: string
+	currency: string
+	details?: Record<string, string>
+	recipientName?: string
+	recipientKind?: "individual" | "company"
+	partnerRefs?: Record<string, string>
+}
 
 type Call = {
 	method: string
@@ -65,6 +76,8 @@ function fakeApi(opts: { instanceType?: string; payoutStatus?: string } = {}) {
 				sender_amount: 1000,
 				receiver_amount: 5443,
 			})
+		if (path === "/v1/instances/in_1/customers/re_1/bank-accounts")
+			return reply(200, { id: "ba_2", type: body?.type ?? "pix" })
 		if (path === "/v1/instances/in_1/customers/cu_1/wallets/wa_1")
 			return reply(200, { id: "wa_1", address: "So1anaAddr" })
 		if (path === "/v1/instances/in_1/mint-usdb-solana")
@@ -99,14 +112,33 @@ function adapter(
 	})
 }
 
-const leg = (kind: "convert" | "payout", amountIn = money("5443", "BRL")) => ({
+const leg = (
+	kind: "convert" | "payout",
+	amountIn = money("5443", "BRL"),
+	endpoint?: TestEndpoint,
+) => ({
 	kind,
 	amountIn,
 	outCurrency: amountIn.currency,
+	endpoint,
 	paymentId: "pay_1",
 	legId: `leg_${kind}`,
 	attempt: 1,
 })
+
+const BR_ENDPOINT: TestEndpoint = {
+	endpointId: "ep_br",
+	type: "bank_account",
+	country: "BR",
+	currency: "BRL",
+	details: {
+		accountNumber: "synthetic-br-1234",
+		pixKey: "worker-b@example.test",
+	},
+	recipientName: "Worker B",
+	recipientKind: "individual",
+	partnerRefs: { blindpay_receiver_id: "re_1" },
+}
 
 describe("BlindPay adapter", () => {
 	it("prices convert from BlindPay's own FX quote, fee in USDC", async () => {
@@ -191,6 +223,188 @@ describe("BlindPay adapter", () => {
 		const before = api.calls.length
 		expect((await a.execute(leg("payout"))).externalRef).toBe("pa_1")
 		expect(api.calls.length).toBe(before)
+	})
+
+	it("creates one bank account per endpoint, returns both partner refs and reuses them", async () => {
+		const api = fakeApi()
+		const first = await adapter(api).execute(
+			leg("payout", money("5443", "BRL"), BR_ENDPOINT),
+		)
+		expect(first.partnerRefs).toEqual({
+			blindpay_receiver_id: "re_1",
+			blindpay_bank_account_id: "ba_2",
+		})
+		const created = api.calls.filter((c) =>
+			c.path.endsWith("/customers/re_1/bank-accounts"),
+		)
+		expect(created).toHaveLength(1)
+		expect(created[0]!.body).toEqual({
+			type: "pix",
+			name: "Worker B",
+			pix_key: "worker-b@example.test",
+		})
+		expect(created[0]!.headers["Idempotency-Key"]).toBe(
+			"flexipay-bank-account-ep_br",
+		)
+		const quote = api.calls.find((c) => c.path.endsWith("/quotes"))!
+		expect(quote.body).toMatchObject({ bank_account_id: "ba_2" })
+
+		// A new process reuses the refs persisted on the endpoint; it does not create another account.
+		const second = await adapter(api).execute(
+			leg("payout", money("5443", "BRL"), {
+				...BR_ENDPOINT,
+				partnerRefs: first.partnerRefs!,
+			}),
+		)
+		expect(second.partnerRefs).toBeUndefined()
+		expect(
+			api.calls.filter((c) => c.path.endsWith("/bank-accounts")),
+		).toHaveLength(1)
+	})
+
+	it("refuses without a KYC-approved receiver instead of inventing KYC data", async () => {
+		const api = fakeApi()
+		const error = await adapter(api)
+			.execute(
+				leg("payout", money("5443", "BRL"), {
+					...BR_ENDPOINT,
+					partnerRefs: undefined,
+				}),
+			)
+			.catch((e: unknown) => e)
+		expect(error).toBeInstanceOf(ProviderError)
+		expect((error as Error).message).toContain("blindpay_receiver_id")
+		expect((error as Error).message).toContain("first_name")
+		expect(api.calls.some((c) => c.path.endsWith("/bank-accounts"))).toBe(false)
+	})
+
+	it("refuses with the missing BlindPay bank field names", async () => {
+		const api = fakeApi()
+		const error = await adapter(api)
+			.execute(
+				leg("payout", money("5443", "BRL"), {
+					...BR_ENDPOINT,
+					details: { accountNumber: "synthetic-br-1234" },
+				}),
+			)
+			.catch((e: unknown) => e)
+		expect(error).toBeInstanceOf(ProviderError)
+		expect((error as Error).message).toContain("pixKey")
+		expect((error as Error).message).toContain("pix_key")
+		expect(api.calls.some((c) => c.path.endsWith("/bank-accounts"))).toBe(false)
+	})
+
+	it("builds the documented bank-account body for Mexico, Colombia and Argentina", async () => {
+		const cases: Array<{ endpoint: TestEndpoint; body: unknown }> = [
+			{
+				endpoint: {
+					endpointId: "ep_mx",
+					type: "bank_account",
+					country: "MX",
+					currency: "MXN",
+					details: {
+						accountNumber: "synthetic-mx-1234",
+						clabe: "012345678901234567",
+						speiProtocol: "clabe",
+						accountHolderName: "Worker MX",
+					},
+					recipientName: "Worker MX",
+					partnerRefs: { blindpay_receiver_id: "re_1" },
+				},
+				body: {
+					type: "spei_bitso",
+					name: "Worker MX",
+					beneficiary_name: "Worker MX",
+					spei_protocol: "clabe",
+					spei_clabe: "012345678901234567",
+				},
+			},
+			{
+				endpoint: {
+					endpointId: "ep_co",
+					type: "bank_account",
+					country: "CO",
+					currency: "COP",
+					details: {
+						accountNumber: "synthetic-co-1234",
+						firstName: "Worker",
+						lastName: "CO",
+						documentId: "1234567890",
+						documentType: "CC",
+						email: "worker-co@example.test",
+						bankCode: "001",
+						accountType: "saving",
+					},
+					recipientName: "Worker CO",
+					partnerRefs: { blindpay_receiver_id: "re_1" },
+				},
+				body: {
+					type: "ach_cop_bitso",
+					name: "Worker CO",
+					account_type: "saving",
+					ach_cop_beneficiary_first_name: "Worker",
+					ach_cop_beneficiary_last_name: "CO",
+					ach_cop_document_id: "1234567890",
+					ach_cop_document_type: "CC",
+					ach_cop_email: "worker-co@example.test",
+					ach_cop_bank_code: "001",
+					ach_cop_bank_account: "synthetic-co-1234",
+				},
+			},
+			{
+				endpoint: {
+					endpointId: "ep_ar",
+					type: "bank_account",
+					country: "AR",
+					currency: "ARS",
+					details: {
+						accountNumber: "0000000000000000000000",
+						transfersType: "CVU",
+						accountHolderName: "Worker AR",
+					},
+					recipientName: "Worker AR",
+					partnerRefs: { blindpay_receiver_id: "re_1" },
+				},
+				body: {
+					type: "transfers_bitso",
+					name: "Worker AR",
+					beneficiary_name: "Worker AR",
+					transfers_type: "CVU",
+					transfers_account: "0000000000000000000000",
+				},
+			},
+		]
+
+		for (const { endpoint, body } of cases) {
+			const api = fakeApi()
+			await adapter(api).execute(
+				leg("payout", money("10000", endpoint.currency), endpoint),
+			)
+			const created = api.calls.find((c) => c.path.endsWith("/bank-accounts"))
+			expect(created?.body).toEqual(body)
+		}
+	})
+
+	it("uses the sandbox bank account only on a development instance", async () => {
+		const api = fakeApi({ instanceType: "production" })
+		const error = await adapter(api, { liveApproved: true })
+			.execute(leg("payout"))
+			.catch((e: unknown) => e)
+		expect(error).toBeInstanceOf(ProviderError)
+		expect((error as Error).message).toContain("development-only")
+		expect(api.calls.some((c) => c.path.endsWith("/quotes"))).toBe(false)
+	})
+
+	it("never logs endpoint bank details", async () => {
+		const spies = (["log", "info", "warn", "error"] as const).map((method) =>
+			vi.spyOn(console, method).mockImplementation(() => {}),
+		)
+		try {
+			await adapter().execute(leg("payout", money("5443", "BRL"), BR_ENDPOINT))
+			for (const spy of spies) expect(spy).not.toHaveBeenCalled()
+		} finally {
+			for (const spy of spies) spy.mockRestore()
+		}
 	})
 
 	it("maps BlindPay payout statuses", async () => {
