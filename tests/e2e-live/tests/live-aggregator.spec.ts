@@ -41,6 +41,10 @@ test.describe("Live aggregator (read-only)", () => {
 			timeout: 90_000,
 		})
 		await country.selectOption("BR")
+		// TASK 20: Brazil is reachable from GBP (Tazapay) and USD (BlindPay); BlindPay needs USD.
+		const sendFrom = page.getByLabel("Send from")
+		await expect(sendFrom).toHaveValue("GB:GBP")
+		await sendFrom.selectOption("US:USD")
 		await page
 			.getByLabel("Destination", { exact: true })
 			.selectOption("bank_account")

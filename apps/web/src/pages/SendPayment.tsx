@@ -320,6 +320,29 @@ export default function SendPayment() {
 
 	const amountCopy = amountFieldCopy(source.currency)
 
+	// TASK 20 fix: a country picked before GET /v1/corridors answers (fallback list, cold API)
+	// got the fallback source. Re-resolve the default once corridors arrive, unless the user
+	// chose "Send from" themselves.
+	const sendFromChosen = useRef(false)
+	useEffect(() => {
+		if (!corridors || sendFromChosen.current) return
+		setForm((current) => {
+			if (!current.country) return current
+			const key = resolveSourceKey(corridors, current.country)
+			if (!key || key === current.sourceKey) return current
+			const source = sourceForForm(corridors, current.country, key)
+			const options = destinationsForForm(corridors, current.country, source)
+			const keepType = options.some((o) => o.value === current.destinationType)
+			return {
+				...current,
+				sourceKey: key,
+				destinationType: keepType
+					? current.destinationType
+					: (options[0]?.value ?? ""),
+			}
+		})
+	}, [corridors])
+
 	const update = (patch: Partial<FormState>) => {
 		setForm((current) => ({ ...current, ...patch }))
 		setQuote(null)
@@ -329,6 +352,7 @@ export default function SendPayment() {
 	}
 
 	const changeCountry = (country: string) => {
+		sendFromChosen.current = false
 		setRecipientCountryNote(null)
 		if (country === "") {
 			update({
@@ -351,6 +375,7 @@ export default function SendPayment() {
 	}
 
 	const changeSendFrom = (nextKey: string) => {
+		sendFromChosen.current = true
 		const nextSource = sourceForForm(corridors, form.country, nextKey)
 		const options = destinationsForForm(corridors, form.country, nextSource)
 		update({
