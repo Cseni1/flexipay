@@ -94,7 +94,8 @@ test.describe("Send form polish", () => {
 		await mockSendPolish(page)
 		await page.goto("/")
 
-		await expect(page.getByText("Set by destination country")).toBeVisible()
+		// Before a country is chosen the sender picks Send from; pounds are the default.
+		await expect(page.getByLabel("Send from")).toHaveValue("GB:GBP")
 
 		await page.getByLabel("Destination country").selectOption("GB")
 		await page.getByLabel("Saved recipient").selectOption("rcp_ph")

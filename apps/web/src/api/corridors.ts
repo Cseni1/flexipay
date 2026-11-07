@@ -165,6 +165,26 @@ export const sourcesForCountry = (
 	})
 }
 
+/** Every source across all corridors, pounds first (Send from before a country is picked). */
+export const allSources = (
+	corridors: readonly CorridorSummary[],
+): SourceEndpoint[] => {
+	const countries = [...new Set(corridors.map((c) => c.toCountry))]
+	const seen = new Set<string>()
+	const out: SourceEndpoint[] = []
+	for (const country of countries) {
+		for (const source of sourcesForCountry(corridors, country)) {
+			const key = sourceKey(source)
+			if (seen.has(key)) continue
+			seen.add(key)
+			out.push(source)
+		}
+	}
+	const rank = (s: SourceEndpoint) =>
+		s.currency === "GBP" ? 0 : s.currency === "USD" ? 1 : 2
+	return out.sort((a, b) => rank(a) - rank(b))
+}
+
 /** Prefer a GB/GBP corridor when the destination has more than one source. */
 export const defaultSourceForCountry = (
 	corridors: readonly CorridorSummary[],
@@ -177,10 +197,10 @@ export const defaultSourceForCountry = (
 /** Label for the multi-source "Send from" select. */
 export const sendFromLabel = (source: SourceEndpoint): string => {
 	if (source.currency === "GBP" && source.country === "GB") {
-		return "GBP bank account (UK)"
+		return "Pounds: GBP bank account, moves as tGBP (UK)"
 	}
 	if (source.currency === "USD" && source.country === "US") {
-		return "USD operating account (US)"
+		return "Dollars: USD operating account (US)"
 	}
 	return `${source.currency} bank account (${source.country})`
 }
