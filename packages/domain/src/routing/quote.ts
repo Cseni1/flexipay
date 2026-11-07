@@ -125,7 +125,12 @@ function assembleQuote(
 		policy: "cheapest",
 		feeMode: hasSettle ? feeMode : null,
 		validUntil,
-		alternatives: [],
+		alternatives: (priced.alternatives ?? []).map((a) => ({
+			route: toPlannedLegs(a.legs),
+			totalCost: a.totalCost,
+			estimatedTimeSeconds: a.estimatedTimeSeconds,
+			reasons: a.reasons,
+		})),
 		reasons,
 		simulated: true,
 	};

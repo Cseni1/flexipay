@@ -828,3 +828,9 @@ secrets. Verification: domain 98, adapters-live 40, API 169, web 107, e2e-ui 114
 typecheck, lint, the production build and OpenAPI regeneration passed. `apps/api/openapi.json` is
 generated from the route table.
 - **Integrator addition (7 Nov):** `GET /v1/ops/partners` used `api_key` auth, which every customer organization has, so any API customer could read FlexiPay's partner balances. It now answers only for organizations listed in `FP_OPERATOR_ORG_IDS` (comma-separated) and is 404 for everyone else; unset means closed. Tazapay 4xx replies are `ProviderError` (20199 → `insufficient_partner_balance`) and an unreadable balance before a payout refuses cleanly (CCR-36).
+
+## CCR-38 (integrator, 7 Nov 2026): quote alternatives carry the losing payout options
+
+- **Found live:** `Quote.alternatives` was always `[]` (hard-coded in `assembleQuote`); the partner comparison lived only in the reasons text, so the Task 26 saving (#168) could never appear on a live quote.
+- **Change:** `pricePayoutPair` returns the losing convert + payout options; `priceRoute` turns each into a full alternative route (same legs before the pair, the losing pair after), totals its fees with the same `sumFeesTotal`, and returns them best first. Reasons read "Via <label>: delivers <amount> <currency>". Routes without a pair comparison keep `alternatives: []`. No API shape change.
+- **Tests:** domain 99 (1 new: the alternative equals the plain-route quote exactly), API 171, web 111, e2e-ui 118; live BR test now checks the saving line.
