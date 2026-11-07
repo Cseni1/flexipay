@@ -91,7 +91,8 @@ test.describe("Live aggregator (read-only)", () => {
 			timeout: 90_000,
 		})
 		await country.selectOption("KE")
-		await expect(page.getByText("GBP bank account").first()).toBeVisible()
+		// CCR-40: Kenya is reachable from pounds and dollars; Send from defaults to pounds.
+		await expect(page.getByLabel("Send from")).toHaveValue("GB:GBP")
 		await page
 			.getByLabel("Destination", { exact: true })
 			.selectOption("bank_account")
