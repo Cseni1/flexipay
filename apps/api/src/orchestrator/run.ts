@@ -469,7 +469,7 @@ async function onProviderLegFailed(
 	const attemptBefore = leg.attempt;
 	await emitPaymentEvent(db, payment.organizationId, payment.id, "leg.failed", {
 		legId: leg.id,
-		externalRef,
+		...(externalRef ? { externalRef } : {}),
 		errorCode,
 		errorMessage,
 		retry: action.action === "retry",
@@ -507,7 +507,9 @@ async function onProviderLegFailed(
 	await transitionLeg(db, payment.id, leg.id, "processing", "failed", "provider", {
 		errorCode,
 		errorMessage,
-		externalRef,
+		// CCR-36: a partner that refused before creating anything has no reference; store null,
+		// never "" (the API schema requires a non-empty externalRef or null).
+		externalRef: externalRef || null,
 	});
 }
 
