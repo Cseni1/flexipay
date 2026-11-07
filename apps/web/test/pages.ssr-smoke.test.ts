@@ -15,10 +15,9 @@ import { afterEach, beforeEach, describe, test, vi } from "vitest"
 // applies to test/ does not include, so they are imported by (untyped) path.
 const paths = vi.hoisted(() => ({
 	privyStub: "../src/flexipayWallet/privySdk.stub.tsx",
-	crossmintStub: "../src/components/payFrom/crossmintSdk.stub.tsx",
 }))
 
-// The Playwright SDK stubs stand in for Privy and Crossmint (no network, no keys).
+// The Playwright SDK stub stands in for Privy (no network, no keys).
 vi.mock(
 	"@privy-io/react-auth",
 	() => import(/* @vite-ignore */ paths.privyStub),
@@ -27,10 +26,6 @@ vi.mock(
 	"@privy-io/react-auth/solana",
 	() => import(/* @vite-ignore */ paths.privyStub),
 )
-vi.mock(
-	"@crossmint/client-sdk-react-ui",
-	() => import(/* @vite-ignore */ paths.crossmintStub),
-)
 
 const load = <T>(path: string): Promise<T> =>
 	import(/* @vite-ignore */ path) as Promise<T>
@@ -38,9 +33,6 @@ const load = <T>(path: string): Promise<T> =>
 type Provider = ComponentType<{ children?: ReactNode }>
 const { SessionProvider } = await load<{ SessionProvider: Provider }>(
 	"../src/providers/SessionProvider.tsx",
-)
-const { NotificationProvider } = await load<{ NotificationProvider: Provider }>(
-	"../src/providers/NotificationProvider.tsx",
 )
 
 beforeEach(() => {
@@ -69,13 +61,9 @@ const render = async (
 				SessionProvider,
 				null,
 				createElement(
-					NotificationProvider,
+					Routes,
 					null,
-					createElement(
-						Routes,
-						null,
-						createElement(Route, { path: pattern, element }),
-					),
+					createElement(Route, { path: pattern, element }),
 				),
 			),
 		),

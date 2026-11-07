@@ -23,14 +23,12 @@ import { paymentRequestRoutes } from "./routes/payment-requests.ts";
 import type { ApiRuntime } from "./runtime.ts";
 import type { AuthRuntime } from "./auth/auth.ts";
 import { createAuthRateLimiter } from "./auth/rate-limit.ts";
-import { onrampRoutes } from "./routes/onramp.ts";
 import { sessionRoutes } from "./routes/session.ts";
 
 export const ROUTES: RouteDef<any, any>[] = [
 	...coreRoutes,
 	...opsRoutes,
 	...sessionRoutes,
-	...onrampRoutes,
 	...endpointRoutes,
 	...batchRoutes,
 	...quoteRoutes,

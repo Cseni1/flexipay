@@ -613,36 +613,3 @@ export const revokeApiKey = (
 		idempotencyKey: newIdempotencyKey("api-key-revoke"),
 		signal,
 	})
-
-export interface OnrampOrder {
-	orderId: string
-	clientSecret: string
-}
-
-const onrampOrderSchema: Parser<OnrampOrder> = {
-	parse: (value) => {
-		if (
-			!isRecord(value) ||
-			typeof value.orderId !== "string" ||
-			!value.orderId ||
-			typeof value.clientSecret !== "string" ||
-			!value.clientSecret
-		) {
-			throw new Error("onramp order invalid")
-		}
-		return { orderId: value.orderId, clientSecret: value.clientSecret }
-	},
-}
-
-/** Session-auth: create a Crossmint onramp order for card checkout. */
-export const createOnrampOrder = (
-	body: { walletAddress: string; amountUsd: string },
-	signal?: AbortSignal,
-): Promise<OnrampOrder> =>
-	request("/v1/onramp/orders", {
-		method: "POST",
-		body,
-		schema: onrampOrderSchema,
-		idempotencyKey: newIdempotencyKey("onramp"),
-		signal,
-	})

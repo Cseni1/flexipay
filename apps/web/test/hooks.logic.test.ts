@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, test, vi } from "vitest"
 import type * as ClientModule from "../src/api/client.ts"
 import { type EndpointSummary } from "../src/api/client.ts"
 import { type AggregatorSaving } from "../src/payments/aggregatorSaving.ts"
-import { flush, provideContext, renderHook } from "./helpers/fakeReact.ts"
+import { flush, renderHook } from "./helpers/fakeReact.ts"
 
 vi.mock("react", () => import("./helpers/fakeReact.ts"))
 
@@ -85,12 +85,6 @@ const { useCountdown } = await load<{
 		label: string
 	}
 }>("../src/hooks/useCountdown.ts")
-const { useNotification } = await load<{ useNotification: () => unknown }>(
-	"../src/hooks/useNotification.ts",
-)
-const { NotificationContext } = await load<{ NotificationContext: unknown }>(
-	"../src/providers/NotificationProvider.tsx",
-)
 
 const memoryStorage = () => {
 	const data = new Map<string, string>()
@@ -571,18 +565,5 @@ describe("useCountdown", () => {
 		const bad = renderHook(() => useCountdown("not a date"))
 		assert.equal(bad.current.expired, true)
 		assert.equal(bad.current.label, "0:00")
-	})
-})
-
-describe("useNotification", () => {
-	test("throws outside the provider and returns the context inside it", () => {
-		assert.throws(
-			() => renderHook(() => useNotification()),
-			/must be used within a NotificationProvider/,
-		)
-		const value = { addNotification: () => undefined }
-		provideContext(NotificationContext, value)
-		assert.equal(renderHook(() => useNotification()).current, value)
-		provideContext(NotificationContext, undefined)
 	})
 })

@@ -9,7 +9,6 @@ import {
 	AUTH_NOT_CONFIGURED_MESSAGE,
 	createApiKey,
 	createEndpoint,
-	createOnrampOrder,
 	createPayment,
 	createQuote,
 	createRecipient,
@@ -404,27 +403,5 @@ describe("endpoint and request wiring", () => {
 		assert.equal((await rejection(listApiKeys())).code, "invalid_response")
 		stubFetch(200, { keys: null })
 		assert.equal((await rejection(listApiKeys())).code, "invalid_response")
-	})
-
-	test("onramp orders need an order id and client secret", async () => {
-		stubFetch(201, { orderId: "o1", clientSecret: "cs" })
-		const order = await createOnrampOrder({
-			walletAddress: "w",
-			amountUsd: "10",
-		})
-		assert.deepEqual(order, { orderId: "o1", clientSecret: "cs" })
-		assert.match(
-			(calls[0]?.init.headers as Headers).get("Idempotency-Key") ?? "",
-			/^onramp-/,
-		)
-		stubFetch(201, { orderId: "o1", clientSecret: "" })
-		assert.equal(
-			(
-				await rejection(
-					createOnrampOrder({ walletAddress: "w", amountUsd: "1" }),
-				)
-			).code,
-			"invalid_response",
-		)
 	})
 })

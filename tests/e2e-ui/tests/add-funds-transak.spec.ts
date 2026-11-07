@@ -17,11 +17,8 @@ test.describe("Pay-from Add funds (Transak staging)", () => {
 		)
 		await expect(page.getByTestId("add-funds-open")).toHaveCount(0)
 		await expect(page.getByTestId("add-funds-connect-first")).toHaveCount(0)
-		// Crossmint client key is set for e2e; without a wallet it asks to connect.
-		await expect(page.getByTestId("crossmint-test-badge")).toHaveText(/TEST/i)
-		await expect(page.getByTestId("crossmint-connect-first")).toHaveText(
-			"Connect a wallet first",
-		)
+		// Crossmint card checkout was removed (Crossmint declined, 7 Nov 2026).
+		await expect(page.getByTestId("add-funds-crossmint")).toHaveCount(0)
 	})
 
 	test("hides Add funds for GB and ZA", async ({ page }) => {
@@ -33,18 +30,16 @@ test.describe("Pay-from Add funds (Transak staging)", () => {
 		)
 		await expect(page.getByTestId("add-funds-open")).toHaveCount(0)
 		await expect(page.getByTestId("add-funds-transak")).toHaveCount(0)
-		await expect(page.getByTestId("add-funds-crossmint")).toHaveCount(0)
 
 		await country.selectOption("ZA")
 		await expect(page.getByTestId("add-funds-country-blocked")).toHaveText(
 			"Buying crypto isn't available in your country yet.",
 		)
-		await expect(page.getByTestId("add-funds-crossmint")).toHaveCount(0)
 
 		await country.selectOption("US")
 		await expect(page.getByTestId("add-funds-country-blocked")).toHaveCount(0)
 		await expect(page.getByTestId("add-funds-unconfigured")).toBeVisible()
-		await expect(page.getByTestId("add-funds-crossmint")).toBeVisible()
+		await expect(page.getByTestId("add-funds-transak")).toBeVisible()
 	})
 
 	test("Add funds panel remains usable at 390px", async ({ page }) => {

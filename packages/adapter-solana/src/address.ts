@@ -3,7 +3,7 @@ import { PublicKey } from "@solana/web3.js";
 /**
  * True for any well-formed 32-byte Solana public key.
  *
- * Off-curve keys are accepted on purpose: smart wallets (for example the Crossmint embedded
+ * Off-curve keys are accepted on purpose: smart wallets (for example an embedded
  * FlexiPay wallet) are program-derived addresses that sit off the ed25519 curve but can hold
  * and receive SPL tokens. The old on-curve rule gave no real protection (a mistyped address is
  * as likely to be on the curve as off it), and it blocked paying to or from smart wallets.
