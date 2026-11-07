@@ -177,6 +177,11 @@ test.describe("TASK 26 aggregator saving", () => {
 		await expect(
 			page.getByTestId("dashboard-saved-for-recipients"),
 		).toBeVisible()
+		// Demo roadmap: what works today vs coming soon, readable on a phone.
+		const roadmap = page.getByTestId("dashboard-roadmap")
+		await expect(roadmap).toContainText("Quotes from pounds to 63 countries")
+		await expect(roadmap.getByText("Working (sandbox)").first()).toBeVisible()
+		await expect(roadmap.getByText("Coming soon").first()).toBeVisible()
 		await noSideways(page)
 	})
 })
