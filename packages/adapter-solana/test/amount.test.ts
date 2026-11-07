@@ -30,4 +30,18 @@ describe("flexipayUsdcToSolanaMinor", () => {
 	test("accepts floored quote example 9851480 at 6 decimals", () => {
 		assert.equal(flexipayUsdcToSolanaMinor(9851480n, 6), 985148n);
 	});
+
+	test("scales up for mints with more than 7 decimals", () => {
+		assert.equal(flexipayUsdcToSolanaMinor(12n, 9), 1200n);
+	});
+
+	test("scales down to 2 decimals (tGBP-style) when exact", () => {
+		assert.equal(flexipayUsdcToSolanaMinor(10_500_000n, 2), 105n);
+		assert.throws(() => flexipayUsdcToSolanaMinor(10_500_001n, 2), AmountNotRepresentableError);
+	});
+
+	test("rejects decimals outside 0–9", () => {
+		assert.throws(() => flexipayUsdcToSolanaMinor(1n, 10), /invalid Solana USDC decimals/);
+		assert.throws(() => flexipayUsdcToSolanaMinor(1n, -1), /invalid Solana USDC decimals/);
+	});
 });
