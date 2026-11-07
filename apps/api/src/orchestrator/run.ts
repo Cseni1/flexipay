@@ -263,15 +263,18 @@ async function runPendingLegs(
 		if (idx === undefined) {
 			const processing = rt.legs.find((l) => l.status === "processing");
 			const failed = rt.legs.find((l) => l.status === "failed");
-			if (
-				processing?.kind === "settle" &&
-				rt.claimWaitSettle &&
-				(processing.externalRef ||
-					// Lane B / F9: solana_usdc / solana_tgbp wait for verified transfer (no vault lock).
+			if (processing?.kind === "settle") {
+				// Lane B / F9 / CCR-39: solana_* waits for verified transfer (claim or direct treasury).
+				if (
 					isSolanaSettleRail(processing.rail) ||
-					processing.fundNetwork === "solana")
-			) {
-				return;
+					processing.fundNetwork === "solana"
+				) {
+					return;
+				}
+				// Claim-wait vault lock: settle stays processing until claim release.
+				if (rt.claimWaitSettle && processing.externalRef) {
+					return;
+				}
 			}
 			if (processing) {
 				idx = processing.position;

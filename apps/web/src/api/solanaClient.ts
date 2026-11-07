@@ -37,7 +37,8 @@ export type SolanaIntent = {
 
 export type SolanaConfirmOk = {
 	paymentId: string
-	paymentStatus: "paid"
+	/** CCR-39: processing when partner legs continue after treasury settle. */
+	paymentStatus: "paid" | "processing"
 	signature: string
 	explorerUrl: string
 	verifiedAt: string
@@ -223,8 +224,13 @@ export const confirmSolanaTransfer = async (
 		)
 	}
 	const body = payload as SolanaConfirmOk
-	if (body.paymentStatus !== "paid") {
-		throw new ApiError(502, "internal_error", "Confirm response was not paid")
+	// CCR-39: direct GB→abroad may stay processing while Tazapay runs.
+	if (body.paymentStatus !== "paid" && body.paymentStatus !== "processing") {
+		throw new ApiError(
+			502,
+			"internal_error",
+			"Confirm response was not paid or processing",
+		)
 	}
 	return body
 }

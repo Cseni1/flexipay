@@ -479,12 +479,12 @@ async function mockPoundsAbroadFlow(
 		new RegExp(`/v1/payments/${PAYMENT_ID}/solana/confirm$`),
 		async (route) => {
 			if (route.request().method() !== "POST") return route.fallback()
-			// Client requires paymentStatus "paid"; detail refresh then shows payout wait.
+			// CCR-39: confirm may return processing while Tazapay still runs.
 			state.phase = "tazapay_wait"
 			await route.fulfill({
 				json: {
 					paymentId: PAYMENT_ID,
-					paymentStatus: "paid",
+					paymentStatus: "processing",
 					signature: SIGNATURE,
 					explorerUrl: `https://explorer.solana.com/tx/${SIGNATURE}?cluster=devnet`,
 					verifiedAt: new Date().toISOString(),
@@ -531,6 +531,10 @@ async function walkToSolanaPanel(page: Page, country: "KE" | "PH") {
 		"Pay £99.00 tGBP from your wallet to send this payment",
 	)
 	await expect(page.getByTestId("solana-pay-amount")).toHaveText("£99.00")
+	await expect(page.getByText("FlexiPay settlement account")).toBeVisible()
+	await expect(page.getByTestId("solana-pay-recipient")).toHaveText(
+		tgbpIntent.recipient,
+	)
 }
 
 async function confirmAndReachPaid(
