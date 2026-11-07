@@ -339,6 +339,21 @@ describe("aggregator: off-ramp partner on the convert + payout pair", () => {
 		expect(legOf(q, "convert").every((l) => l.providerId !== OFFRAMP)).toBe(true);
 	});
 
+	it("excludes a partner that refuses on partner balance and keeps the plain route", async () => {
+		const short = {
+			...offramp("6.0000000"),
+			async quote() {
+				throw new ProviderError(
+					"insufficient_partner_balance",
+					"Tazapay GBP balance too low for this payout",
+				);
+			},
+		};
+		const q = await brQuote(short);
+		expect(legOf(q, "payout")[0]!.providerId).toBe("sim_bank_br_pix");
+		expect(q.reasons.join(" ")).toContain("Tazapay GBP balance too low for this payout");
+	});
+
 	it("an unregistered partner (no keys) leaves the plain route working", async () => {
 		const q = await brQuote(null);
 		expect(legOf(q, "payout")[0]!.providerId).toBe("sim_bank_br_pix");

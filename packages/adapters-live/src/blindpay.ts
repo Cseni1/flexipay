@@ -128,7 +128,7 @@ export class BlindPayAdapter implements ProviderAdapter {
 	private readonly issued = new Map<string, string>()
 	/** endpointId -> BlindPay bank account id created by this process. */
 	private readonly bankAccounts = new Map<string, string>()
-	private instanceType: InstanceType | null = null
+	private instanceKind: InstanceType | null = null
 	private healthCache: { at: number; value: "up" | "down" } | null = null
 
 	constructor(row: Provider, opts: BlindPayOptions) {
@@ -137,6 +137,11 @@ export class BlindPayAdapter implements ProviderAdapter {
 		this.opts = opts
 		this.fetchImpl = opts.fetch ?? (globalThis.fetch as FetchLike)
 		this.now = opts.now ?? (() => Date.now())
+	}
+
+	/** BlindPay instance type, for the operator partner-status route. */
+	async instanceType(): Promise<InstanceType> {
+		return this.instance()
 	}
 
 	capabilities(): ProviderCapabilities {
@@ -578,14 +583,14 @@ export class BlindPayAdapter implements ProviderAdapter {
 	}
 
 	private async instance(refresh = false): Promise<InstanceType> {
-		if (this.instanceType && !refresh) return this.instanceType
+		if (this.instanceKind && !refresh) return this.instanceKind
 		const body = this.ok(
 			await this.call("GET", `/v1/instances/${this.opts.instanceId}`),
 			"instance",
 		)
 		const type: InstanceType =
 			body.type === "development" ? "development" : "production"
-		this.instanceType = type
+		this.instanceKind = type
 		return type
 	}
 

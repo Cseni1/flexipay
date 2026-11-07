@@ -80,6 +80,7 @@ export const PROVIDER_ERROR_CODES = [
   "below_min",
   "above_max",
   "fee_exceeds_amount",
+  "insufficient_partner_balance",
   "no_fx_rate",
   "unknown_reference",
   "not_succeeded",

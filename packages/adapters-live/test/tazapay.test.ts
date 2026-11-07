@@ -46,6 +46,8 @@ function fakeApi(
 		beneficiaryId?: string
 		requiredBankFields?: string[]
 		requiredBankCodes?: string[]
+		available?: Array<{ currency: string; amount: number | string }>
+		balanceFails?: boolean
 	} = {},
 ) {
 	const calls: Call[] = []
@@ -66,6 +68,16 @@ function fakeApi(
 		})
 		const ok = (data: unknown) =>
 			reply(200, { status: "success", message: "", data })
+		if (path === "/v3/balance" && init.method === "GET") {
+			if (opts.balanceFails)
+				return reply(500, { status: "error", message: "balance unavailable" })
+			return ok({
+				available: opts.available ?? [
+					{ currency: "GBP", amount: "1000000" },
+					{ currency: "USD", amount: "1000000" },
+				],
+			})
+		}
 		if (path === "/v3/payout/quote") {
 			const hold = (
 				body as { holding_info: { currency: string; amount: number } }
@@ -134,6 +146,8 @@ function adapter(
 		baseUrl: string
 		liveApproved: boolean
 		beneficiary: string | null
+		now: () => number
+		lowBalanceAlert: bigint
 	}> = {},
 ) {
 	return new TazapayAdapter(ROW, {
@@ -143,6 +157,8 @@ function adapter(
 			extra.beneficiary === undefined ? "bnf_1" : extra.beneficiary,
 		liveApproved: extra.liveApproved ?? false,
 		baseUrl: extra.baseUrl,
+		now: extra.now,
+		lowBalanceAlert: extra.lowBalanceAlert,
 		fetch: api.fetch,
 	})
 }
@@ -230,6 +246,75 @@ describe("Tazapay adapter", () => {
 		expect(api.calls[0]!.body).toMatchObject({
 			holding_info: { currency: "USD", amount: 10000 },
 		})
+	})
+
+	it("refuses a convert quote when the holding balance is below the quoted amount plus fee", async () => {
+		const api = fakeApi({ available: [{ currency: "GBP", amount: 10_407 }] })
+		const error = (await adapter(api)
+			.quote({
+				kind: "convert",
+				amountIn: money("1000000000", "TGBP"),
+				outCurrency: "PHP",
+				endpoint: PH_BANK,
+			})
+			.catch((e) => e)) as ProviderError
+		expect(error).toBeInstanceOf(ProviderError)
+		expect(error.code).toBe("insufficient_partner_balance")
+		expect(error.message).toBe("Tazapay GBP balance too low for this payout")
+		expect(api.calls.some((c) => c.path === "/v3/payout")).toBe(false)
+	})
+
+	it("caches the balance for 60 s and alerts once per low-balance crossing", async () => {
+		let now = 1_000
+		const api = fakeApi({ available: [{ currency: "GBP", amount: "40000" }] })
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+		try {
+			const a = adapter(api, {
+				now: () => now,
+				lowBalanceAlert: 50_000n,
+			})
+			const quote = () =>
+				a.quote({
+					kind: "convert",
+					amountIn: money("1000000000", "TGBP"),
+					outCurrency: "PHP",
+					endpoint: PH_BANK,
+				})
+			await quote()
+			await quote()
+			expect(api.calls.filter((c) => c.path === "/v3/balance")).toHaveLength(1)
+			expect(warn).toHaveBeenCalledTimes(1)
+			expect(String(warn.mock.calls[0]![0])).toContain("Tazapay low balance: GBP")
+			now += 60_001
+			await quote()
+			expect(api.calls.filter((c) => c.path === "/v3/balance")).toHaveLength(2)
+			expect(warn).toHaveBeenCalledTimes(1)
+		} finally {
+			warn.mockRestore()
+		}
+	})
+
+	it("rechecks fresh balance before payout and refuses without calling Tazapay", async () => {
+		const gbp = { currency: "GBP", amount: "20000" as string | number }
+		const api = fakeApi({ available: [gbp] })
+		const a = adapter(api, { lowBalanceAlert: 0n })
+		await a.quote({
+			kind: "convert",
+			amountIn: money("1000000000", "TGBP"),
+			outCurrency: "PHP",
+			endpoint: PH_BANK,
+		})
+		await a.execute(leg("convert", money("1000000000", "TGBP")))
+		gbp.amount = "10407"
+		const error = (await a
+			.execute(leg("payout", money("785381", "PHP"), "pay_1"))
+			.catch((e) => e)) as ProviderError
+		expect(error).toBeInstanceOf(ProviderError)
+		expect(error.code).toBe("insufficient_partner_balance")
+		expect(error.message).toBe("Tazapay GBP balance too low for this payout")
+		expect(api.calls.some((c) => c.path === "/v3/payout")).toBe(false)
+		expect(api.calls.some((c) => c.path === "/v3/beneficiary")).toBe(false)
+		expect(api.calls.filter((c) => c.path === "/v3/balance")).toHaveLength(2)
 	})
 
 	it("payout is a pass-through in local currency", async () => {
@@ -534,29 +619,46 @@ describe("Tazapay adapter", () => {
 	})
 
 	it("surfaces Tazapay's own error message", async () => {
-		const fetch: FetchLike = async () => ({
-			status: 400,
-			text: async () =>
-				JSON.stringify({
-					status: "error",
-					message: "Bad Request : Your request is invalid",
-					errors: [
-						{
-							code: 20199,
-							message: "There is insufficient balance in your account",
-						},
-					],
-				}),
+		const fetch: FetchLike = async (url) => {
+			if (new URL(url).pathname === "/v3/balance")
+				return {
+					status: 200,
+					text: async () =>
+						JSON.stringify({
+							status: "success",
+							message: "",
+							data: { available: [{ currency: "USD", amount: "1000000" }] },
+						}),
+				}
+			return {
+				status: 400,
+				text: async () =>
+					JSON.stringify({
+						status: "error",
+						message: "Bad Request : Your request is invalid",
+						errors: [
+							{
+								code: 20199,
+								message: "There is insufficient balance in your account",
+							},
+						],
+					}),
+			}
+		}
+		const error = await new TazapayAdapter(ROW, {
+			apiKey: "k",
+			apiSecret: "s",
+			sandboxBeneficiaryId: "bnf_1",
+			liveApproved: false,
+			fetch,
 		})
-		await expect(
-			new TazapayAdapter(ROW, {
-				apiKey: "k",
-				apiSecret: "s",
-				sandboxBeneficiaryId: "bnf_1",
-				liveApproved: false,
-				fetch,
-			}).execute(leg("payout")),
-		).rejects.toThrow(/insufficient balance/)
+			.execute(leg("payout"))
+			.catch((e: unknown) => e)
+		// CCR-36: a 4xx is a refusal (nothing moved), so it is a ProviderError the orchestrator can
+		// fail cleanly; Tazapay's 20199 maps to insufficient_partner_balance.
+		expect(error).toBeInstanceOf(ProviderError)
+		expect((error as ProviderError).code).toBe("insufficient_partner_balance")
+		expect((error as Error).message).toMatch(/insufficient balance/)
 	})
 
 	it("refuses the production base URL without written approval", async () => {

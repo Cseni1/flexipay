@@ -801,3 +801,29 @@ Idempotency: same signature replay returns current paid state; a **different** s
 - **Tests:** API 167 (1 new), adapters-live 37 (1 new), web 107, e2e-ui 114.
 - **Follow-up (same day):** the first version stored `externalRef: ""` on the refused leg; `PaymentDetailSchema` needs a non-empty string or null, so `GET /v1/payments/{id}` threw and answered 404 (found on the live QA payment `pay_5057866cc0a9d27973bf72ab`). A refused leg now stores null and its `leg.failed` event leaves `externalRef` out; the serializer maps any stored "" to null, which also repairs that row without a manual DB write.
 - **Known gap:** when a partner leg fails after CCR-33 released the vault lock, the settle refund cannot come from the vault (`refund_failed` on the live QA payment). Refunding a partner-route failure needs a FlexiPay treasury refund path (follow-up).
+
+
+## CCR-35 — never route money to a partner that cannot pay it
+
+*Status:* implemented on branch `feat/ccr35-partner-balance-guard`, PR against `main`, not merged. Tazapay's live payout balance is now part of quoting and execution.
+
+- `TazapayAdapter.quote` (convert) reads `GET /v3/balance` and caches the available balances for
+  60 s. If the holding currency cannot cover the quoted holding amount plus Tazapay's fee, it
+  throws `ProviderError("insufficient_partner_balance", "Tazapay GBP balance too low for this
+  payout")`. The router records that reason and tries the other eligible routes.
+- `TazapayAdapter.execute` re-reads the balance immediately before `POST /v3/payout` (bypassing
+  the cache). A short balance fails the leg with the same code before Tazapay can answer 20199.
+- `GET /v1/ops/partners` (same `api_key` auth as the operator routes) returns each registered
+  partner's `id`, `label`, `mode` (`sandbox`/`live`), `health`, Tazapay's `balances` by currency,
+  and BlindPay's `instanceType`. It does not expose keys, account numbers or recipient data.
+- `TAZAPAY_LOW_BALANCE_ALERT` (default `50000` hundredths) logs one line when a Tazapay currency
+  crosses below the threshold; it contains no customer amounts or secrets.
+- The shared CCR-36 `ProviderError` path treats `insufficient_partner_balance` as a failed leg and
+  emits `leg.failed` with the stable code, so the existing retry/refund policy can run.
+
+*Tests:* `packages/adapters-live/test/tazapay.test.ts` covers a short quote, the 60 s cache and
+single low-balance warning, and the pre-payout refusal against the fake API;
+`apps/api/test/ccr35-partners.test.ts` covers the route shape, API-key auth, and absence of
+secrets. Verification: domain 98, adapters-live 40, API 169, web 107, e2e-ui 114; workspace
+typecheck, lint, the production build and OpenAPI regeneration passed. `apps/api/openapi.json` is
+generated from the route table.

@@ -14,6 +14,7 @@ import { passkeyClaimRoutes, type CtxWithRequest } from "./routes/passkey-claims
 import { coreRoutes } from "./routes/core.ts";
 import { endpointRoutes } from "./routes/endpoints.ts";
 import { eventRoutes } from "./routes/events.ts";
+import { opsRoutes } from "./routes/ops.ts";
 import { paymentRoutes } from "./routes/payments.ts";
 import { quoteRoutes } from "./routes/quotes.ts";
 import { sandboxRoutes } from "./routes/sandbox.ts";
@@ -27,6 +28,7 @@ import { sessionRoutes } from "./routes/session.ts";
 
 export const ROUTES: RouteDef<any, any>[] = [
 	...coreRoutes,
+	...opsRoutes,
 	...sessionRoutes,
 	...onrampRoutes,
 	...endpointRoutes,
