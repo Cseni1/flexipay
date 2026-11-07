@@ -266,6 +266,9 @@ model ClaimLink {
   @@index([passkeyDeployPendingTxHash])
   @@index([passkeyDeployTxHash])
   @@index([anchorPayPendingTxHash])
+
+  /// Created by migration 20261101153000_lane_b_solana_security; declared here so schema and DB match.
+  @@index([acceptedEndpointId])
 }
 
 /// CCR-21 (ELFOGADÁSRA VÁR): durable passkey prepare + submit reservation for M2.
