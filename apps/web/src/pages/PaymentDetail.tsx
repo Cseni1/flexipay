@@ -43,6 +43,7 @@ import { formatPaymentSavingLine } from "../payments/aggregatorSaving"
 import { paymentMilestoneTimes } from "../payments/paymentEventTimes"
 import { providerLabel } from "../payments/providerNames"
 import { displayMoney } from "../payments/quoteDisplay"
+import { isSolanaSettleRail } from "../payments/solanaRails"
 import { clearSolanaTransfer } from "../payments/solanaTransferStorage"
 import { useSession } from "../providers/SessionProvider"
 
@@ -429,10 +430,18 @@ export default function PaymentDetail() {
 
 							{payment.status === "processing" &&
 							settleLeg &&
+							isSolanaSettleRail(settleLeg.rail) &&
 							settleLeg.status === "processing" &&
 							!settleLeg.releaseTxRef ? (
 								<SolanaPayPanel
 									paymentId={payment.id}
+									settleRail={settleLeg.rail}
+									settleAmount={settleLeg.amountOut}
+									recipientFieldLabel={
+										payment.delivery === "direct"
+											? "FlexiPay settlement account"
+											: "Recipient"
+									}
 									onPaid={() => refresh()}
 								/>
 							) : null}

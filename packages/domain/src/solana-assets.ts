@@ -14,3 +14,12 @@ export const isSolanaSettleRail = (railId: string | null | undefined): boolean =
 /** The Solana rail for a settlement asset code (receive currency), or undefined when unsupported. */
 export const solanaRailForAsset = (asset: string): string | undefined =>
   SOLANA_SETTLE_RAIL_BY_ASSET[asset];
+
+/** CCR-39: settlement asset for a Solana settle rail (not quote.receiveCurrency). */
+export const assetForSolanaSettleRail = (
+  railId: string | null | undefined,
+): "USDC" | "TGBP" | undefined => {
+  if (railId === "solana_usdc") return "USDC";
+  if (railId === "solana_tgbp") return "TGBP";
+  return undefined;
+};

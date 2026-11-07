@@ -163,7 +163,7 @@ export async function loadSolanaClaimDestination(
 	};
 }
 
-/** First intent issuance stamps solanaIntentAt (F4 age bound). */
+/** First intent issuance stamps ClaimLink.solanaIntentAt (F4 age bound). */
 export async function ensureSolanaIntentIssuedAt(
 	db: Db,
 	paymentId: string,
@@ -176,6 +176,58 @@ export async function ensureSolanaIntentIssuedAt(
 		data: { solanaIntentAt: now },
 	});
 	return now;
+}
+
+type OrderedLeg = {
+	kind: string;
+	rail: string;
+	status: string;
+	releaseTxRef: string | null;
+	position: number;
+};
+
+/**
+ * CCR-39: direct delivery with a Solana settle still processing and at least one leg after it.
+ */
+export function isDirectSolanaSettleWaiting(payment: {
+	delivery: string;
+	legs: OrderedLeg[];
+}): boolean {
+	if (payment.delivery !== "direct") return false;
+	const legs = [...payment.legs].sort((a, b) => a.position - b.position);
+	const settleIdx = legs.findIndex((l) => l.kind === "settle");
+	if (settleIdx < 0 || settleIdx >= legs.length - 1) return false;
+	const settle = legs[settleIdx]!;
+	return (
+		isSolanaSettleRail(settle.rail) &&
+		settle.status === "processing" &&
+		!settle.releaseTxRef
+	);
+}
+
+/**
+ * CCR-39: generate once + stamp intent time on Payment (not ClaimLink).
+ * Conditional writes (only while still null) so concurrent intent calls agree on one
+ * reference and one intent time; the stored row is always what is returned.
+ */
+export async function ensureDirectSolanaIntentBinding(
+	db: Db,
+	paymentId: string,
+	now: Date = new Date(),
+): Promise<{ reference: string; intentAt: Date }> {
+	await db.payment.updateMany({
+		where: { id: paymentId, solanaPayReference: null },
+		data: { solanaPayReference: Keypair.generate().publicKey.toBase58() },
+	});
+	await db.payment.updateMany({
+		where: { id: paymentId, solanaIntentAt: null },
+		data: { solanaIntentAt: now },
+	});
+	const row = await db.payment.findUniqueOrThrow({
+		where: { id: paymentId },
+		select: { solanaPayReference: true, solanaIntentAt: true },
+	});
+	return { reference: row.solanaPayReference!, intentAt: row.solanaIntentAt! };
 }
 
 export class ReusedSolanaSignatureError extends Error {
@@ -219,7 +271,18 @@ export async function completeSolanaTransferSettle(
 	if (payment.status !== "processing" || settle.status !== "processing") {
 		throw new Error("settle leg is not waiting for Solana confirmation");
 	}
-	if (payment.claimLink?.status !== "accepted") {
+	const directSettle = isDirectSolanaSettleWaiting({
+		delivery: payment.delivery,
+		legs: payment.legs.map((l) => ({
+			kind: l.kind,
+			rail: l.rail,
+			status: l.status,
+			releaseTxRef: l.releaseTxRef,
+			position: l.position,
+		})),
+	});
+	// CCR-39: direct treasury settle has no claim destination; claim-link path unchanged.
+	if (!directSettle && payment.claimLink?.status !== "accepted") {
 		throw new Error("Solana destination must be accepted on the claim first");
 	}
 
