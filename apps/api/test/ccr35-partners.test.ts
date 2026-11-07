@@ -55,8 +55,9 @@ const fakePartnerApi: FetchLike = async (url) => {
 
 beforeAll(async () => {
 	s = await startTestServer();
-	const { key: apiKey } = await s.newOrg("ops-partners");
+	const { key: apiKey, orgId } = await s.newOrg("ops-partners");
 	key = apiKey;
+	process.env.FP_OPERATOR_ORG_IDS = orgId;
 	const loaded = await loadConfig(
 		resolve(fileURLToPath(new URL("../../../config", import.meta.url))),
 	);
@@ -93,6 +94,7 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
+	delete process.env.FP_OPERATOR_ORG_IDS;
 	await s?.stop();
 });
 
@@ -106,6 +108,13 @@ describe("GET /v1/ops/partners", () => {
 				})
 			).status,
 		).toBe(401);
+	});
+
+	it("is 404 for a customer org that is not an operator (FlexiPay balances stay private)", async () => {
+		const { key: customerKey } = await s.newOrg("ordinary-customer");
+		const r = await fetch(`${s.base}/v1/ops/partners`, { headers: auth(customerKey) });
+		expect(r.status).toBe(404);
+		expect(await r.text()).not.toContain("balances");
 	});
 
 	it("returns partner mode, health, Tazapay balances and BlindPay instance type", async () => {
