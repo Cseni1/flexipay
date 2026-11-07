@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
-/* Layout concept: left rail console (Dashboard, Payments, New payment, Recipients, Pay from, Developers) + working area; a phone frame previews the recipient's claim page. */
+/* Layout concept: left rail console (Dashboard, Payments, New payment, Recipients, Where we pay, Take payment, Pay from, Wallet, Developers) + working area. Pounds first (tGBP on Solana), USDC as the dollar fallback. */
 :root{
   --bg:#f4f6f9; --surface:#ffffff; --surface2:#eceff5; --ink:#111a2b; --muted:#5a6579; --line:#dde2ea;
   --brand:#2850d9; --brand-ink:#ffffff; --brand-soft:#e5ebff; --accent:#ff6a3d;
@@ -172,6 +172,20 @@ pre.code{background:#0d1526;color:#d8e2ff;border-radius:12px;padding:15px;overfl
 .tg[aria-pressed="true"]{background:var(--brand)}.tg[aria-pressed="true"]::after{transform:translateX(18px)}
 .avatar{width:34px;height:34px;border-radius:50%;background:var(--brand-soft);color:var(--brand);display:grid;place-items:center;font-weight:700;flex:none}
 .who{display:flex;gap:10px;align-items:center}
+.pv{background:var(--brand);color:var(--brand-ink);font-size:13px;font-weight:600;text-align:center;padding:6px 16px;line-height:1.35;margin:0}
+.opt.sel{border-color:var(--brand);background:var(--brand-soft)}
+.opt.sel .ic{background:var(--surface)}
+.save{margin:10px 0 0;font-weight:700;color:var(--ok)}
+.bigtap{width:100%;justify-content:center;padding:22px 18px;font-size:20px;border-radius:14px}
+.tillqr{background:#fff;padding:14px;border-radius:14px;width:min(100%,268px);aspect-ratio:1;display:grid;place-items:center;margin:0 auto}
+.tillqr img,.tillqr canvas{max-width:100%;height:auto}
+.till-amt{font-family:var(--display);font-size:44px;font-weight:800;letter-spacing:-.03em;text-align:center;font-variant-numeric:tabular-nums;line-height:1.1}
+.paidbox{text-align:center;padding:26px 0 10px}
+.paidbox .dot{width:96px;height:96px;font-size:46px;margin:0 auto 14px}
+.card.paid{border-color:var(--ok);box-shadow:0 0 0 3px var(--ok-soft)}
+.ctry{display:flex;justify-content:space-between;gap:6px 12px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.ctry:last-child{border:0}
+.ctry>span:last-child{text-align:right;margin-left:auto}
 @media (max-width:900px){
   .hero{grid-template-columns:minmax(0,1fr)}
   .app{grid-template-columns:minmax(0,1fr)}
@@ -188,6 +202,7 @@ pre.code{background:#0d1526;color:#d8e2ff;border-radius:12px;padding:15px;overfl
 @media (prefers-reduced-motion:no-preference){.view{animation:in .25s ease}@keyframes in{from{opacity:.4;transform:translateY(5px)}}}
 </style>
 
+<p class="pv">Preview: how FlexiPay will look. Sample data, nothing moves.</p>
 <div class="app">
   <aside class="rail">
     <div class="brand"><span class="mark"></span>FlexiPay</div>
@@ -204,47 +219,56 @@ pre.code{background:#0d1526;color:#d8e2ff;border-radius:12px;padding:15px;overfl
 
 <script>
 /* ---------- data ---------- */
-const FX = {PHP:56.4, BRL:5.1, ZAR:18.2, USD:1, USDC:1};
-const SYM = {USD:'$', PHP:'₱', BRL:'R$', ZAR:'R', USDC:''};
+const SYM = {GBP:'£', USD:'$', PHP:'₱', BRL:'R$', KES:'KSh ', INR:'₹', VND:'₫', EUR:'€'};
+const DEC = {VND:0};
+const TOKEN = {GBP:'tGBP', USD:'USDC'};
+const COUNTRY = {PH:'Philippines', KE:'Kenya', IN:'India', VN:'Vietnam', FR:'France', BR:'Brazil', MX:'Mexico', CO:'Colombia', AR:'Argentina'};
+const CCY = {PH:'PHP', KE:'KES', IN:'INR', VN:'VND', FR:'EUR', BR:'BRL', MX:'MXN', CO:'COP', AR:'ARS'};
+const PARTNERS = {Tazapay:'Bank payouts in many countries', BlindPay:'Latin America: Brazil, Mexico, Colombia, Argentina'};
+/* Real sandbox quotes: what the recipient gets for 100 of the sending currency. p:null = another eligible route */
+const ROUTES = {
+  'GBP:KE':[{p:'Tazapay', per100:15778.86}],
+  'GBP:IN':[{p:'Tazapay', per100:11557.11}],
+  'GBP:VN':[{p:'Tazapay', per100:3137537}],
+  'GBP:FR':[{p:'Tazapay', per100:108.76}],
+  'GBP:PH':[{p:'Tazapay', per100:7771.93},{p:null, per100:7372.88}],
+  'USD:BR':[{p:'BlindPay', per100:539.63},{p:null, per100:534.37}],
+  'USD:PH':[{p:'Tazapay', per100:5699.72},{p:null, per100:5418.98}]
+};
 const accounts = [
-  {id:'acc_bank', type:'bank', name:'Operating account', detail:'US bank · ACH · ••• 4821', balance:48250.00, rail:'ACH debit', fee:0.0025, eta:'1 business day', def:true},
-  {id:'acc_flexi', type:'flexi', name:'FlexiPay wallet', detail:'Solana · USDC · email or passkey login', balance:3480.00, rail:'FlexiPay wallet', fee:0, eta:'Instant', def:false},
-  {id:'acc_wallet', type:'ewallet', name:'Balance wallet', detail:'E-wallet · ••• 0193', balance:6120.40, rail:'Wallet balance', fee:0.009, eta:'Instant', def:false},
-  {id:'acc_crypto', type:'crypto', name:'Treasury wallet', detail:'Solana · USDC · 7xKX…9fQa', balance:21900.00, rail:'USDC on Solana', fee:0.001, eta:'~5 seconds', def:false}
+  {id:'acc_bank', type:'bank', cur:'GBP', name:'Operating account', detail:'UK bank account · ••• 4821', balance:48250.00, rail:'Bank transfer, sent on as tGBP', def:true},
+  {id:'acc_tgbp', type:'tgbp', cur:'GBP', name:'Treasury wallet', detail:'Solana · tGBP · 7xKX…9fQa', balance:21900.00, rail:'tGBP on Solana', def:false},
+  {id:'acc_flexi', type:'flexi', cur:'GBP', name:'FlexiPay wallet', detail:'Embedded wallet · tGBP', balance:3480.00, rail:'tGBP on Solana', def:false},
+  {id:'acc_usdc', type:'usdc', cur:'USD', name:'Dollar wallet', detail:'Solana · USDC · 4Hq2…Lm7T', balance:12400.00, rail:'USDC on Solana (dollar fallback)', def:false}
 ];
 const recipients = [
-  {id:'r1', name:'Worker A', kind:'Individual', country:'PH', cur:'PHP', method:'ewallet', detail:'E-wallet ••• 7730'},
-  {id:'r2', name:'Worker B', kind:'Individual', country:'PH', cur:'PHP', method:'bank', detail:'InstaPay ••• 1188'},
-  {id:'r3', name:'Worker C', kind:'Individual', country:'BR', cur:'BRL', method:'bank', detail:'PIX ••• 9042'},
-  {id:'r4', name:'Studio D', kind:'Company', country:'ZA', cur:'ZAR', method:'bank', detail:'EFT ••• 5507'},
-  {id:'r5', name:'Contractor E', kind:'Individual', country:'US', cur:'USDC', method:'crypto', detail:'Solana · 4Nd1…mYq8'}
+  {id:'r1', name:'Maria Santos', kind:'Individual', country:'PH', cur:'PHP', detail:'BDO ••3210'},
+  {id:'r2', name:'Wanjiru Kamau', kind:'Individual', country:'KE', cur:'KES', detail:'Equity Bank ••4417'},
+  {id:'r3', name:'Priya Sharma', kind:'Individual', country:'IN', cur:'INR', detail:'HDFC Bank ••7731'},
+  {id:'r4', name:'Camille Laurent', kind:'Individual', country:'FR', cur:'EUR', detail:'BNP Paribas ••0912'},
+  {id:'r5', name:'Lucas Oliveira', kind:'Individual', country:'BR', cur:'BRL', detail:'Itaú ••9042'},
+  {id:'r6', name:'Linh Nguyen', kind:'Individual', country:'VN', cur:'VND', detail:'Vietcombank ••5582'},
+  {id:'r7', name:'Jose Reyes', kind:'Individual', country:'PH', cur:'PHP', detail:'BPI ••6604'}
 ];
-const METHODS = {
-  bank:{label:'Bank transfer', d:'Local bank rails', eta:'~1 minute', fee:0.004, fixed:0.45},
-  ewallet:{label:'E-wallet', d:'Paid into the wallet app', eta:'~30 seconds', fee:0.01, fixed:0.2},
-  crypto:{label:'Crypto wallet', d:'USDC to any Solana wallet', eta:'~5 seconds', fee:0, fixed:0},
-  passkey:{label:'FlexiPay wallet', d:'Email or passkey login, no seed phrase', eta:'Instant', fee:0, fixed:0},
-  flexi:{label:'FlexiPay wallet', d:'USDC in their FlexiPay wallet, no seed phrase', eta:'Instant', fee:0, fixed:0}
-};
-const VAULT = 0.01;
+/* Sample payments use the real sandbox amounts: £100 or $100 each */
 let payments = [
-  {id:'pay_7Q2KX', rid:'r1', amount:1250, from:'acc_bank', method:'ewallet', status:'completed', when:'Today, 09:41', claim:false},
-  {id:'pay_4MD8V', rid:'r2', amount:420, from:'acc_bank', method:'bank', status:'processing', when:'Today, 09:12', claim:false},
-  {id:'pay_9ZT3B', rid:'r3', amount:2800, from:'acc_crypto', method:'bank', status:'completed', when:'Yesterday', claim:false},
-  {id:'pay_1HC6N', rid:'r5', amount:600, from:'acc_wallet', method:'crypto', status:'awaiting_claim', when:'Yesterday', claim:true},
-  {id:'pay_5LP0R', rid:'r1', amount:310, from:'acc_bank', method:'ewallet', status:'refunded', when:'Mon 21 Oct', claim:false},
-  {id:'pay_8WA2E', rid:'r4', amount:5200, from:'acc_bank', method:'bank', status:'completed', when:'Mon 21 Oct', claim:false},
-  {id:'pay_3FB7Y', rid:'r2', amount:150, from:'acc_wallet', method:'bank', status:'completed', when:'Sun 20 Oct', claim:false},
-  {id:'pay_6TJ9S', rid:'r3', amount:980, from:'acc_bank', method:'bank', status:'completed', when:'Sat 19 Oct', claim:false}
+  {id:'pay_7Q2KX', rid:'r2', amount:100, from:'acc_bank', status:'completed', when:'Today, 09:41'},
+  {id:'pay_4MD8V', rid:'r3', amount:100, from:'acc_tgbp', status:'processing', when:'Today, 09:12'},
+  {id:'pay_9ZT3B', rid:'r1', amount:100, from:'acc_bank', status:'completed', when:'Today, 08:30'},
+  {id:'pay_1HC6N', rid:'r4', amount:100, from:'acc_flexi', status:'completed', when:'Yesterday'},
+  {id:'pay_5LP0R', rid:'r5', amount:100, from:'acc_usdc', status:'completed', when:'Yesterday'},
+  {id:'pay_8WA2E', rid:'r6', amount:100, from:'acc_bank', status:'completed', when:'Mon 2 Nov'},
+  {id:'pay_3FB7Y', rid:'r7', amount:100, from:'acc_usdc', status:'completed', when:'Sun 1 Nov'},
+  {id:'pay_6TJ9S', rid:'r1', amount:100, from:'acc_bank', status:'refunded', when:'Sat 31 Oct'}
 ];
-const STATUS = {completed:['ok','Paid out'], processing:['info','Processing'], awaiting_claim:['warn','Waiting for recipient'], refunded:['bad','Refunded to sender'], awaiting_funding:['warn','Awaiting funding']};
+const STATUS = {completed:['ok','Paid out'], processing:['info','Processing'], refunded:['bad','Refunded to sender']};
 const vol = [18,22,19,31,27,35,29,41,38,33,44,52,47,39,55,61,58,49,66,72,64,57,69,78,74,68,81,90,85,96];
 
 /* ---------- helpers ---------- */
 const $ = (s,el=document)=>el.querySelector(s);
 const $$ = (s,el=document)=>[...el.querySelectorAll(s)];
-const usd = n => '$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-const fmt = (n,c) => (SYM[c]??'')+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+(c==='USDC'?' USDC':'');
+const fmt = (n,c) => {const d=DEC[c]??2, v=Number(n)||0; return (v<0?'−':'')+(SYM[c]??'')+Math.abs(v).toLocaleString('en-GB',{minimumFractionDigits:d,maximumFractionDigits:d})+(c in SYM?'':' '+c)};
+const gbp = n => fmt(n,'GBP');
 const rec = id => recipients.find(r=>r.id===id);
 const acct = id => accounts.find(a=>a.id===id);
 const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -265,110 +289,113 @@ const ICON = {
   lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 018 0v2.5"/></svg>',
   down:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v12M6.5 10.5L12 16l5.5-5.5M5 20h14"/></svg>',
   qr:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1"/><path d="M14 14h3v3h-3zM20.5 14v6.5H17M14 20.5h.01"/></svg>',
-  card:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19M6 15h4"/></svg>',
   cash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2.5" y="6.5" width="19" height="11" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9.5v.01M18 14.5v.01"/></svg>',
   fp:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1.6" fill="currentColor"/></svg>',
-  finger:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 12a6 6 0 1112 0v3M9 20c-.6-2-1-4-1-6a4 4 0 118 0c0 2 .4 4 1.2 6M12 12v3c0 2 .3 3.5.8 5"/></svg>'
+  globe:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.7 5.4 3.7 8.5s-1.2 5.9-3.7 8.5c-2.5-2.6-3.7-5.4-3.7-8.5s1.2-5.9 3.7-8.5z"/></svg>'
 };
-const typeIcon = t => ({bank:ICON.bank, ewallet:ICON.phone, crypto:ICON.coin, passkey:ICON.fp, flexi:ICON.fp}[t]||ICON.wallet);
-const simTag = '<span class="sim">Simulated</span>';
+const typeIcon = t => ({bank:ICON.bank, tgbp:ICON.coin, usdc:ICON.coin, flexi:ICON.fp}[t]||ICON.wallet);
+const sim = t => `<span class="sim">${t}</span>`;
+const simTag = sim('Simulated'), sbx = sim('Sandbox');
+const pname = p => p ? esc(p) : 'Other eligible route';
 function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,2200)}
 async function copy(text){try{await navigator.clipboard.writeText(text);toast('Copied')}catch{toast('Copy blocked: select the text and copy it')}}
 
-/* ---------- quote engine (prototype maths, any amount works) ---------- */
-function quote({amount,from,rid,method,feePayer='sender'}){
-  const r = rec(rid), a = acct(from), m = METHODS[method];
-  const amt = Number(amount)||0;
-  const collect = amt*a.fee;
-  const vault = amt*VAULT;
-  const payout = amt*m.fee + (['crypto','passkey','flexi'].includes(method)?0:m.fixed);
-  const rp = feePayer==='recipient';
-  const fees = collect+vault+payout;
-  const total = rp ? amt : amt+fees;
-  const rate = FX[r.cur]??1;
-  const recv = (rp ? Math.max(amt-fees,0) : amt)*rate;
-  return {amt, collect, vault, payout, fees, total, rate, recv, cur:r.cur, eta:m.eta, feePayer};
+/* ---------- quote engine: compares every eligible route, best for the recipient first ---------- */
+function quote({amount,from,rid}){
+  const r = rec(rid), a = acct(from), amt = Number(amount)||0, cur = a.cur;
+  const routes = (ROUTES[cur+':'+r.country]||[]).map(x=>({p:x.p, recv:x.per100*amt/100})).sort((x,y)=>y.recv-x.recv);
+  const best = routes[0]||null, next = routes[1]||null;
+  return {amt, cur, rcur:r.cur, routes, best, next, saving: best&&next ? best.recv-next.recv : 0, tok:TOKEN[cur], partner: best ? best.p : null};
 }
-const bestMethod = (rid,from,amount) => ['bank','ewallet','crypto'].map(k=>({k,q:quote({amount,from,rid,method:k})})).sort((x,y)=>x.q.total-y.q.total);
+const qp = p => quote({amount:p.amount, from:p.from, rid:p.rid});
+const curFor = country => ['GBP','USD'].filter(c=>ROUTES[c+':'+country]);
+function whyRoute(q,r){
+  if(!q.best){const alt=curFor(r.country)[0];return `<div class="note"><b>No route in this preview.</b> There is no sandbox quote from ${q.cur} to ${COUNTRY[r.country]}.${alt?` Pay from a ${alt==='USD'?'dollar':'pounds'} account for this recipient.`:''}</div>`}
+  return q.routes.map((x,i)=>`<div class="row"><span><b>${pname(x.p)}</b> ${sbx}${i===0?' <span class="pill ok">Chosen</span>':''}</span><span>${fmt(x.recv,q.rcur)}</span></div>`).join('')
+    + (q.next ? `<p class="save">You get ${fmt(q.saving,q.rcur)} more than the next best route</p>` : `<p class="hint" style="margin:10px 0 0">${esc(q.partner)} is the only eligible route to ${COUNTRY[r.country]} in this preview.</p>`);
+}
 
 /* ---------- histories (generated from the sample payments) ---------- */
 const OFFS = ['0:00','0:02','0:09','0:12','0:41','0:44'];
 function eventsFor(p){
-  const r=rec(p.rid), m=METHODS[p.method].label.toLowerCase(), ev=[];
-  ev.push(['info','pay','Payment created','Quote accepted and route locked in']);
-  ev.push(['info','pay','Funding collected','From '+acct(p.from).name]);
-  ev.push(['info','lock','Sent as USDC on Solana','Confirmed on chain before success is shown']);
-  if(p.claim) ev.push(['warn','send','Claim link issued','Recipient chooses how to be paid']);
-  if(p.status==='awaiting_claim') ev.push(['warn','clock','Waiting for '+r.name,'Link expires in 30 minutes']);
-  if(p.status==='processing') ev.push(['info','clock','Payout in progress','With the '+m+' partner']);
-  if(p.status==='completed'){ if(p.claim) ev.push(['ok','check',r.name+' chose '+m,'Claim accepted']); ev.push(['ok','check','Released to payout partner','Transfer verified on Solana']); ev.push(['ok','check','Paid out',fmt(quote({amount:p.amount,from:p.from,rid:p.rid,feePayer:p.feePayer,method:p.method}).recv,r.cur)+' to '+r.name]); }
-  if(p.status==='refunded'){ ev.push(['bad','undo','Payout failed, retried once','Partner could not complete']); ev.push(['bad','undo','Refunded to your account','Locked funds returned in full']); }
+  const r=rec(p.rid), a=acct(p.from), q=qp(p), ev=[];
+  ev.push(['info','pay','Payment created','Routes compared, '+(q.partner||'route')+' chosen: delivers the most']);
+  ev.push(['info','pay','Funding collected','From '+a.name]);
+  ev.push(['info','lock','Sent as '+q.tok+' on Solana','To '+(q.partner||'the payout partner')+', confirmed on chain']);
+  if(p.status==='processing') ev.push(['info','clock','Payout in progress','With '+(q.partner||'the payout partner')]);
+  if(p.status==='completed') ev.push(['ok','check','Paid out',fmt(q.best.recv,r.cur)+' to '+r.name+' · '+r.detail]);
+  if(p.status==='refunded'){ ev.push(['bad','undo','Payout failed, retried once',(q.partner||'The partner')+' could not complete']); ev.push(['bad','undo','Refunded to your account','Returned in full as '+q.tok]); }
   return ev.map((e,i)=>({tone:e[0],icon:e[1],title:e[2],text:e[3],t:'+'+OFFS[Math.min(i,OFFS.length-1)]}));
 }
 function txFor(accId){
-  const out=[];
-  payments.filter(p=>p.from===accId).forEach(p=>{const q=quote({amount:p.amount,from:p.from,rid:p.rid,feePayer:p.feePayer,method:p.method});out.push({when:p.when,label:'Payment '+p.id+' to '+rec(p.rid).name,amt:-q.total,kind:'debit',pid:p.id});if(p.status==='refunded')out.push({when:p.when,label:'Refund for '+p.id,amt:q.total,kind:'credit',pid:p.id})});
-  out.push({when:'Fri 18 Oct',label:'Top-up',amt:accId==='acc_crypto'?10000:accId==='acc_bank'?20000:2500,kind:'credit'});
-  out.push({when:'Mon 14 Oct',label:'Account linked',amt:0,kind:'info'});
-  return out;
+  const out=[], c=acct(accId).cur;
+  payments.filter(p=>p.from===accId).forEach(p=>{out.push({when:p.when,label:'Payment '+p.id+' to '+rec(p.rid).name,amt:-p.amount,pid:p.id});if(p.status==='refunded')out.push({when:p.when,label:'Refund for '+p.id,amt:p.amount,pid:p.id})});
+  out.push({when:'Fri 30 Oct',label:'Top-up',amt:accId==='acc_tgbp'?10000:accId==='acc_bank'?20000:2500});
+  out.push({when:'Mon 26 Oct',label:'Account linked',amt:0});
+  return out.map(t=>({...t,cur:c}));
 }
 function activityAll(){
   const out=[];
   payments.forEach((p,pi)=>eventsFor(p).forEach((e,i)=>out.push({...e,pid:p.id,day:p.when,order:pi*10+i})));
   return out;
 }
-const REQLOG=[['POST','/v1/quotes',201,142,'just now'],['POST','/v1/payments',201,188,'just now'],['POST','/v1/payments/pay_7Q2KX/fund',200,611,'9 min ago'],['GET','/v1/payments/pay_7Q2KX',200,34,'9 min ago'],['GET','/v1/claims/{token}',200,29,'1 hour ago'],['POST','/v1/claims/{token}/accept',200,402,'1 hour ago'],['POST','/v1/quotes',422,51,'Yesterday'],['GET','/v1/payments',200,47,'Yesterday']];
+const REQLOG=[['POST','/v1/quotes',201,142,'just now'],['POST','/v1/payments',201,188,'just now'],['POST','/v1/payments/pay_7Q2KX/fund',200,611,'9 min ago'],['GET','/v1/payments/pay_7Q2KX',200,34,'9 min ago'],['GET','/v1/recipients',200,29,'1 hour ago'],['POST','/v1/recipients',201,96,'1 hour ago'],['POST','/v1/quotes',422,51,'Yesterday'],['GET','/v1/payments',200,47,'Yesterday']];
 
 /* ---------- state + routing ---------- */
 const W_ADDR = '7xKXp2bQ8mN4vR6tY1zW3cD5fG9hJ2kL4nP6qS8uV9fQa';
-const S = {wallet:{act:'receive',tx:[{t:'Today, 09:41',label:'Received from Demo Platform (claim link)',amt:600},{t:'Yesterday',label:'Paid Café Lisboa by QR',amt:-4.5},{t:'Mon 21 Oct',label:'Sent to 4Nd1…mYq8',amt:-150},{t:'Sun 20 Oct',label:'Received from Demo Platform',amt:310}],qrStep:0},view:'dashboard', payId:null, recId:null, accId:null, actFilter:'all', toggles:{claim:true,payout:true,refund:true,weekly:false}, filter:'all', q:'', claim:{step:0,choice:null,amount:600},
-  wiz:{from:'acc_bank', rid:'r1', amount:'1250', mode:'direct', method:'ewallet', feePayer:'sender', newRec:false, sent:null}, keyShown:null, linking:null};
-const NAV = [['dashboard','Dashboard','grid'],['payments','Payments','pay'],['new','New payment','send'],['recipients','Recipients','people'],['accounts','Pay from','wallet'],['wallet','FlexiPay wallet','fp'],['activity','Activity','clock'],['dev','Developers','code'],['settings','Settings','gear']];
+const M_ADDR = '9pQrT4kW2nB7xV5cZ8mL1hJ3gF6dS4aY2eR8uI0oLm3T';
+const S = {wallet:{act:'receive',tx:[{t:'Today, 08:05',label:'Paid Sample Café by QR',amt:-4.5},{t:'Yesterday',label:'Sent to Camille Laurent, France',amt:-100},{t:'Thu 5 Nov',label:'Received from Demo Platform',amt:600},{t:'Mon 2 Nov',label:'Received tGBP',amt:250}],qrStep:0},
+  till:{amount:'4.50', paid:false, sales:[{t:'Today, 08:52',amt:3.20},{t:'Today, 08:15',amt:12.00},{t:'Today, 07:58',amt:6.40}]},
+  view:'dashboard', payId:null, recId:null, accId:null, actFilter:'all', whereF:'all', toggles:{payout:true,refund:true,till:true,weekly:false}, filter:'all', q:'',
+  wiz:{from:'acc_bank', rid:'r1', amount:'100', newRec:false, sent:null}, keyShown:null, linking:null};
+const NAV = [['dashboard','Dashboard','grid'],['payments','Payments','pay'],['new','New payment','send'],['recipients','Recipients','people'],['where','Where we pay','globe'],['till','Take payment','qr'],['accounts','Pay from','wallet'],['wallet','FlexiPay wallet','fp'],['activity','Activity','clock'],['dev','Developers','code'],['settings','Settings','gear']];
 function go(v,opts={}){S.view=v;Object.assign(S,opts);draw();window.scrollTo({top:0})}
 
 /* ---------- views ---------- */
 function vDashboard(){
-  const done = payments.filter(p=>p.status==='completed'), inflight = payments.filter(p=>['processing','awaiting_claim'].includes(p.status));
-  const sent = payments.reduce((s,p)=>s+p.amount,0);
-  const max = Math.max(...vol);
+  const inflight = payments.filter(p=>p.status==='processing');
+  const max = Math.max(...vol), sent30 = vol.reduce((a,b)=>a+b,0)*100;
+  const gbpTotal = accounts.filter(a=>a.cur==='GBP').reduce((t,a)=>t+a.balance,0), usdTotal = accounts.filter(a=>a.cur==='USD').reduce((t,a)=>t+a.balance,0);
+  const countries = new Set(payments.map(p=>rec(p.rid).country)).size;
   const W=640,H=250,pad=8, pts = vol.map((v,i)=>[pad+i*(W-2*pad)/(vol.length-1), H-18-(v/max)*(H-40)]);
   const line = pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
   const area = line+` L${pts.at(-1)[0].toFixed(1)} ${H-18} L${pts[0][0].toFixed(1)} ${H-18} Z`;
   const last = pts.at(-1);
   return `<div class="view">
-  <div class="top"><div><h1>Good morning, Demo Platform</h1><p class="sub">Everything you have sent, and everything still on its way.</p></div>
-    <div class="two"><button class="btn" data-go="claimprev">Preview recipient page</button><button class="btn primary" data-go="new">New payment</button></div></div>
-  <div class="hero"><div style="position:relative;z-index:1"><h2>Available to send</h2><div class="big2">${usd(accounts.reduce((t,a)=>t+a.balance,0))}</div>
+  <div class="top"><div><h1>Good morning, Demo Platform</h1><p class="sub">Pounds out to 63 countries, each payment sent on the route that delivers the most.</p></div>
+    <div class="two"><button class="btn" data-go="till">Take payment</button><button class="btn primary" data-go="new">New payment</button></div></div>
+  <div class="hero"><div style="position:relative;z-index:1"><h2>Available to send</h2><div class="big2">${gbp(gbpTotal)}</div>
+      <p style="margin:-6px 0 14px;opacity:.85">Plus ${fmt(usdTotal,'USD')} in USDC, the dollar fallback</p>
       <div class="two"><button class="btn" data-go="new">Send a payment</button><button class="btn o" data-go="accounts">Manage accounts</button></div></div>
-    <div class="accs">${accounts.map(a=>`<div class="a"><span>${esc(a.name)}<br><small style="opacity:.75">${esc(a.detail)}</small></span><b>${usd(a.balance)}</b></div>`).join('')}</div></div>
+    <div class="accs">${accounts.map(a=>`<div class="a"><span>${esc(a.name)}<br><small style="opacity:.75">${esc(a.detail)}</small></span><b>${fmt(a.balance,a.cur)}</b></div>`).join('')}</div></div>
   <div class="grid g4" style="margin-top:16px">
-    <div class="card kpi"><small>Sent, last 30 days</small><b>${usd(sent*9.4)}</b><span class="delta">+12.4% vs previous</span></div>
-    <div class="card kpi"><small>In flight</small><b>${inflight.length}</b><span class="hint">${usd(inflight.reduce((s,p)=>s+p.amount,0))} on its way</span></div>
-    <div class="card kpi"><small>Median payout time</small><b>38 s</b><span class="delta">−6 s vs previous</span></div>
-    <div class="card kpi"><small>Paid out successfully</small><b>98.4%</b><span class="delta dn">1 refunded this week</span></div>
+    <div class="card kpi"><small>Sent, last 30 days</small><b>${gbp(sent30)}</b><span class="delta">+12.4% vs previous</span></div>
+    <div class="card kpi"><small>In flight</small><b>${inflight.length}</b><span class="hint">${gbp(inflight.filter(p=>acct(p.from).cur==='GBP').reduce((s,p)=>s+p.amount,0))} on its way</span></div>
+    <div class="card kpi"><small>Countries paid</small><b>${countries}</b><span class="hint">Of 63 reachable from pounds</span></div>
+    <div class="card kpi"><small>Partners routed through</small><b>2</b><span class="hint">Tazapay and BlindPay · sandbox</span></div>
   </div>
   <div class="grid g2" style="margin-top:16px">
-    <div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2>Payment volume</h2><span class="hint">Last 30 days, USD ${simTag}</span></div>
-      <svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Payment volume over 30 days" style="margin-top:10px;display:block">
+    <div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2>Payment volume</h2><span class="hint">Last 30 days, GBP ${simTag}</span></div>
+      <svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Payment volume in pounds over 30 days" style="margin-top:10px;display:block">
         <defs><linearGradient id="ga" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--brand)" stop-opacity=".28"/><stop offset="1" stop-color="var(--brand)" stop-opacity="0"/></linearGradient></defs>
         ${[0,1,2,3].map(i=>`<line x1="0" x2="${W}" y1="${22+i*(H-40)/3}" y2="${22+i*(H-40)/3}" stroke="var(--line)" stroke-dasharray="3 5"/>`).join('')}
         <path d="${area}" fill="url(#ga)"/><path d="${line}" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linejoin="round"/>
         <circle cx="${last[0]}" cy="${last[1]}" r="5" fill="var(--brand)" stroke="var(--surface)" stroke-width="2.5"/>
-        <text x="${W-6}" y="${last[1]-12}" text-anchor="end" fill="var(--ink)" font-size="12" font-weight="600">$${(vol.at(-1)*1000).toLocaleString()}</text>
+        <text x="${W-6}" y="${last[1]-12}" text-anchor="end" fill="var(--ink)" font-size="12" font-weight="600">£${(vol.at(-1)*100).toLocaleString('en-GB')}</text>
         <text x="${pad}" y="${H-2}" fill="var(--muted)" font-size="11">30 days ago</text><text x="${W-pad}" y="${H-2}" text-anchor="end" fill="var(--muted)" font-size="11">Today</text>
       </svg></div>
-    <div class="card"><h2>Where the money goes</h2>
+    <div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2>Where the money goes</h2><button class="btn ghost sm" data-go="where">Where we pay</button></div>
       <div style="display:flex;flex-direction:column;gap:12px;margin-top:14px">
-        ${[['Philippines','PHP · e-wallet and bank',46,'var(--brand)'],['Brazil','BRL · PIX',27,'var(--accent)'],['South Africa','ZAR · EFT',15,'var(--ok)'],['Direct to crypto','USDC · Solana',12,'var(--warn)']].map(c=>`<div><div class="row" style="border:0;padding:0 0 5px"><b>${c[0]}</b><span>${c[2]}%</span></div><div style="height:8px;background:var(--surface2);border-radius:6px;overflow:hidden"><div style="width:${c[2]}%;height:100%;background:${c[3]}"></div></div><span class="hint">${c[1]}</span></div>`).join('')}
+        ${[['Philippines','GBP → PHP · Tazapay',31,'var(--brand)'],['Kenya','GBP → KES · Tazapay',22,'var(--accent)'],['India','GBP → INR · Tazapay',19,'var(--ok)'],['France','GBP → EUR · Tazapay',12,'var(--warn)'],['Vietnam','GBP → VND · Tazapay',9,'var(--muted)'],['Brazil','USD → BRL · BlindPay',7,'var(--ink)']].map(c=>`<div><div class="row" style="border:0;padding:0 0 5px"><b>${c[0]}</b><span>${c[2]}%</span></div><div style="height:8px;background:var(--surface2);border-radius:6px;overflow:hidden"><div style="width:${c[2]}%;height:100%;background:${c[3]}"></div></div><span class="hint">${c[1]}</span></div>`).join('')}
       </div></div>
   </div>
-  <div class="grid g2" style="margin-top:16px"><div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2>Recent payments</h2><button class="btn ghost sm" data-go="payments">See all</button></div>${payTable(payments.slice(0,5),true)}</div>
-    <div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h2>Latest activity</h2><button class="btn ghost sm" data-go="activity">History</button></div>${feed(activityAll().filter(e=>!['Payment created','Funding collected','Sent as USDC on Solana'].includes(e.title)).sort((a,b)=>a.order-b.order).slice(0,6),false)}</div></div>
+  <div class="grid g2" style="margin-top:16px"><div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2>Recent payments</h2><button class="btn ghost sm" data-go="payments">See all</button></div>${payTable(payments.slice(0,5),true)}<p class="hint" style="margin:10px 0 0">Sample payments use real sandbox quotes for £100 and $100.</p></div>
+    <div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h2>Latest activity</h2><button class="btn ghost sm" data-go="activity">History</button></div>${feed(activityAll().filter(e=>!['Payment created','Funding collected'].includes(e.title)&&!e.title.startsWith('Sent as')).sort((a,b)=>a.order-b.order).slice(0,6),false)}</div></div>
   </div>`;
 }
 function payTable(list,compact=false){
   if(!list.length) return '<div class="empty">No payments match.</div>';
-  return `<div class="scroll"><table class="tbl"><thead><tr><th>Payment</th><th>Recipient</th>${compact?'':'<th>Paid out as</th><th>When</th>'}<th>Status</th><th class="num">Amount</th></tr></thead><tbody>${list.map(p=>{const r=rec(p.rid),st=STATUS[p.status];return `<tr data-pay="${p.id}"><td class="mono">${p.id}</td><td>${esc(r.name)}<div class="hint">${r.country} · ${r.cur}</div></td>${compact?'':`<td>${p.claim?'Recipient chooses':METHODS[p.method].label}</td><td class="hint">${p.when}</td>`}<td><span class="pill ${st[0]}">${st[1]}</span></td><td class="num"><b>${usd(p.amount)}</b></td></tr>`}).join('')}</tbody></table></div>`;
+  return `<div class="scroll"><table class="tbl"><thead><tr><th>Payment</th><th>Recipient</th>${compact?'':'<th>Route</th><th>When</th>'}<th>Status</th><th class="num">Amount</th></tr></thead><tbody>${list.map(p=>{const r=rec(p.rid),st=STATUS[p.status],q=qp(p);return `<tr data-pay="${p.id}"><td class="mono">${p.id}</td><td>${esc(r.name)}<div class="hint">${COUNTRY[r.country]} · ${r.cur}</div></td>${compact?'':`<td>${pname(q.partner)} ${sbx}<div class="hint">${q.tok} on Solana</div></td><td class="hint">${p.when}</td>`}<td><span class="pill ${st[0]}">${st[1]}</span></td><td class="num"><b>${fmt(p.amount,q.cur)}</b>${q.best?`<div class="hint">${fmt(q.best.recv,q.rcur)}</div>`:''}</td></tr>`}).join('')}</tbody></table></div>`;
 }
 function feed(list,showId=true){
   if(!list.length) return '<div class="empty">Nothing yet.</div>';
@@ -376,219 +403,252 @@ function feed(list,showId=true){
 }
 function vPayments(){
   const f=S.filter,q=S.q.toLowerCase();
-  const list = payments.filter(p=>(f==='all'||p.status===f)&&(!q||(p.id+rec(p.rid).name).toLowerCase().includes(q)));
-  const chips=[['all','All'],['processing','Processing'],['awaiting_claim','Waiting for recipient'],['completed','Paid out'],['refunded','Refunded']];
+  const list = payments.filter(p=>(f==='all'||p.status===f)&&(!q||(p.id+rec(p.rid).name+COUNTRY[rec(p.rid).country]).toLowerCase().includes(q)));
+  const chips=[['all','All'],['processing','Processing'],['completed','Paid out'],['refunded','Refunded']];
   return `<div class="view"><div class="top"><div><h1>Payments</h1><p class="sub">Every payment, with the route it took and why.</p></div><button class="btn primary" data-go="new">New payment</button></div>
-  <div class="card"><div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:14px"><div class="chips">${chips.map(c=>`<button class="chip" data-filter="${c[0]}" aria-pressed="${f===c[0]}">${c[1]}</button>`).join('')}</div><div style="margin-left:auto;min-width:200px;flex:1;max-width:280px"><input type="search" id="q" placeholder="Search payments or recipients" value="${esc(S.q)}" aria-label="Search payments"></div></div>${payTable(list)}</div></div>`;
+  <div class="card"><div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:14px"><div class="chips">${chips.map(c=>`<button class="chip" data-filter="${c[0]}" aria-pressed="${f===c[0]}">${c[1]}</button>`).join('')}</div><div style="margin-left:auto;min-width:200px;flex:1;max-width:280px"><input type="search" id="q" placeholder="Search payments, recipients, countries" value="${esc(S.q)}" aria-label="Search payments"></div></div>${payTable(list)}</div></div>`;
 }
 function vDetail(){
-  const p=payments.find(x=>x.id===S.payId)||payments[0], r=rec(p.rid), a=acct(p.from), st=STATUS[p.status];
-  const q=quote({amount:p.amount,from:p.from,rid:p.rid,feePayer:p.feePayer,method:p.method});
-  const stage = {completed:5, processing:3, awaiting_claim:3, refunded:-1, awaiting_funding:0}[p.status];
-  const legs=[['Collected from ' + a.name, a.rail+' · '+usd(p.amount), 'Money pulled from your account'],
-    ['Converted to USDC','Rate 1 USD = 1 USDC','Held for the payout'],
-    ['Sent as USDC on Solana','Solana · signature below','Success is shown only after FlexiPay verifies it on chain'],
-    [p.claim?'Recipient chooses how to be paid':'Released to the payout partner','Via '+(p.claim?'claim link':METHODS[p.method].label),'Funds released'],
-    ['Paid out in '+r.cur, fmt(q.recv,r.cur)+' · '+q.eta,'Arrives in the recipient’s '+(p.claim?'chosen account':METHODS[p.method].label.toLowerCase())]];
+  const p=payments.find(x=>x.id===S.payId)||payments[0], r=rec(p.rid), a=acct(p.from), st=STATUS[p.status], q=qp(p);
+  const partner = pname(q.partner);
+  const stage = {completed:5, processing:3, refunded:-1}[p.status];
+  const legs=[['Collected from '+a.name, a.rail+' · '+fmt(p.amount,a.cur), 'Money taken from your account'],
+    [q.cur==='GBP'?'Held as tGBP':'Held as USDC', q.cur==='GBP'?'Tokenised pounds':'Dollar fallback route', 'Ready for the payout partner'],
+    ['Sent as '+q.tok+' on Solana','To '+(q.partner||'payout partner'),'Success is shown only after FlexiPay verifies it on chain'],
+    ['Released to '+(q.partner||'payout partner'),'Sandbox partner','The partner pays out locally'],
+    ['Paid out in '+r.cur, (q.best?fmt(q.best.recv,r.cur):'')+' · '+r.detail,'Into '+r.name+'’s saved bank account']];
   const dotCls=i=> p.status==='refunded' ? (i<3?'done':i===3?'bad':'') : i<stage?'done':i===stage?'now':'';
-  const alt = bestMethod(p.rid,p.from,p.amount);
-  return `<div class="view"><div class="top"><div><button class="btn ghost sm" data-go="payments" style="padding-left:0">← Payments</button><h1 class="mono" style="font-family:var(--display)">${p.id}</h1><p class="sub">${usd(p.amount)} to ${esc(r.name)} · ${p.when} <span class="pill ${st[0]}" style="margin-left:6px">${st[1]}</span></p></div>
-    <div class="two">${p.claim?'<button class="btn" data-go="claimprev">Open claim page</button>':''}<button class="btn" data-act="dup" data-id="${p.id}">Send again</button></div></div>
+  return `<div class="view"><div class="top"><div><button class="btn ghost sm" data-go="payments" style="padding-left:0">← Payments</button><h1 class="mono" style="font-family:var(--display)">${p.id}</h1><p class="sub">${fmt(p.amount,a.cur)} to ${esc(r.name)}, ${COUNTRY[r.country]} · ${p.when} <span class="pill ${st[0]}" style="margin-left:6px">${st[1]}</span></p></div>
+    <div class="two"><button class="btn" data-act="dup" data-id="${p.id}">Send again</button></div></div>
   <div class="grid g2">
    <div class="card"><h2>Journey ${simTag}</h2><div class="route" style="margin-top:8px">${legs.map((l,i)=>`<div class="leg"><span class="dot ${dotCls(i)}">${p.status==='refunded'&&i===3?'!':dotCls(i)==='done'?'✓':i+1}</span><div><h3>${esc(l[0])}</h3><p>${esc(l[2])}</p></div><div style="text-align:right;font-size:13.5px;color:var(--muted);max-width:200px">${esc(l[1])}</div></div>`).join('')}</div>
-     ${p.status==='refunded'?'<div class="note" style="margin-top:12px"><b>What happened:</b> the payout partner could not complete the last step after one retry, so the locked funds went back to your account automatically. Nothing was lost and nothing was paid twice.</div>':''}</div>
+     ${p.status==='refunded'?'<div class="note" style="margin-top:12px"><b>What happened:</b> the payout partner could not complete the last step after one retry, so the funds went back to your account automatically. Nothing was lost and nothing was paid twice.</div>':''}</div>
    <div class="grid" style="align-content:start">
-    <div class="card"><h2>Cost breakdown</h2><div style="margin-top:8px">
-      <div class="row"><span>Amount sent</span><span>${usd(q.amt)}</span></div><div class="row"><span>Collection fee (${a.rail})</span><span>${usd(q.collect)}</span></div>
-      <div class="row"><span>FlexiPay fee (1%)</span><span>${usd(q.vault)}</span></div><div class="row"><span>Payout fee</span><span>${usd(q.payout)}</span></div>
-      <div class="row"><span>Fees paid by</span><span>${p.feePayer==='recipient'?'Recipient':'You'}</span></div>
-      <div class="row tot"><span>You paid</span><span>${usd(q.total)}</span></div></div></div>
-    <div class="card"><h2>Why this route</h2><p class="hint" style="margin:6px 0 10px">Ranked by total cost for this recipient. Reasons are kept with every payment.</p>
-      ${alt.map((x,i)=>`<div class="row"><span>${i===0?'✓ ':''}${METHODS[x.k].label}</span><span>${usd(x.q.total)} · ${x.q.eta}</span></div>`).join('')}</div>
+    <div class="card"><h2>Summary</h2><div style="margin-top:8px">
+      <div class="row"><span>You sent</span><span>${fmt(p.amount,a.cur)}</span></div><div class="row"><span>Paid from</span><span>${esc(a.name)}</span></div>
+      <div class="row"><span>Moves as</span><span>${q.tok} on Solana</span></div><div class="row"><span>Payout partner</span><span>${partner} ${sbx}</span></div>
+      <div class="row"><span>Paid into</span><span>${esc(r.detail)}</span></div>
+      <div class="row tot"><span>${p.status==='refunded'?'Quoted to receive':'Recipient got'}</span><span>${q.best?fmt(q.best.recv,q.rcur):'—'}</span></div></div></div>
+    <div class="card"><h2>Why this route</h2><p class="hint" style="margin:6px 0 10px">Every eligible route, ranked by what reaches ${esc(r.name)}. The reasons are kept with every payment.</p>${whyRoute(q,r)}</div>
     <div class="card"><h2>History</h2>${feed(eventsFor(p),false)}</div>
-    <div class="card"><h2>On-chain reference</h2><p class="hint" style="margin:6px 0 8px">Sample reference. Real transactions are verified on chain by FlexiPay; this one is a sample.</p><div class="mono" style="word-break:break-all">5Kx9…Q2vM · sample signature #${40+payments.indexOf(p)}</div></div>
+    <div class="card"><h2>On-chain reference</h2><p class="hint" style="margin:6px 0 8px">Sample reference. Real payments are verified on Solana by FlexiPay; this one is a sample.</p><div class="mono" style="word-break:break-all">5Kx9…Q2vM · sample signature #${40+payments.indexOf(p)}</div></div>
    </div></div></div>`;
 }
 function vNew(){
-  const w=S.wiz,q=quote({amount:w.amount,from:w.from,rid:w.rid,feePayer:w.feePayer,method:w.mode==='claim'?bestMethod(w.rid,w.from,w.amount)[0].k:w.method}),r=rec(w.rid);
-  if(w.sent){const link='https://flexipay.example/claim/'+w.sent.token;
-    return `<div class="view"><div class="top"><div><h1>Payment created</h1><p class="sub">${usd(w.sent.amount)} to ${esc(r.name)} · ${w.sent.id}</p></div></div>
-    <div class="grid g2e"><div class="card"><h2>${w.sent.claim?'Share this link with the recipient':'On its way'}</h2>
-      ${w.sent.claim?`<p class="hint" style="margin:8px 0 12px">The recipient opens it and chooses how to be paid: bank, e-wallet, crypto wallet or a FlexiPay wallet. It is shown once and expires in 30 minutes.</p><div class="copyrow"><input type="text" readonly value="${link}" aria-label="Claim link" id="linkfield"><button class="btn primary" data-copy="${link}">Copy link</button></div><div class="two" style="margin-top:14px"><button class="btn" data-go="claimprev">Preview what they see</button></div>`
-        :`<p class="hint" style="margin:8px 0 12px">Funds are collected from ${esc(acct(w.from).name)} and released to ${esc(r.name)} as ${METHODS[w.sent.method].label.toLowerCase()}. Expected in ${q.eta}.</p>`}
+  const w=S.wiz, a=acct(w.from), r=rec(w.rid), q=quote({amount:w.amount,from:w.from,rid:w.rid});
+  if(w.sent){const sa=acct(w.sent.from), sr=rec(w.sent.rid), sq=quote({amount:w.sent.amount,from:w.sent.from,rid:w.sent.rid});
+    return `<div class="view"><div class="top"><div><h1>Payment created</h1><p class="sub">${fmt(w.sent.amount,sa.cur)} to ${esc(sr.name)} · ${w.sent.id} ${simTag}</p></div></div>
+    <div class="grid g2e"><div class="card"><h2>On its way</h2>
+      <p class="hint" style="margin:8px 0 12px">Collected from ${esc(sa.name)}, sent as ${sq.tok} on Solana to ${pname(sq.partner)}, then paid into ${esc(sr.name)}’s ${esc(sr.detail)}.</p>
       <div class="two" style="margin-top:14px"><button class="btn primary" data-pay-open="${w.sent.id}">View payment</button><button class="btn" data-act="again">New payment</button></div></div>
-      <div class="card"><h2>Summary</h2><div style="margin-top:8px"><div class="row"><span>Paying from</span><span>${esc(acct(w.from).name)}</span></div><div class="row"><span>Recipient receives</span><span>${fmt(q.recv,q.cur)}</span></div><div class="row tot"><span>You pay</span><span>${usd(q.total)}</span></div></div></div></div></div>`}
-  const mopts = ['bank','ewallet','crypto','flexi'].map(k=>{const x=quote({amount:w.amount,from:w.from,rid:w.rid,feePayer:w.feePayer,method:k});return `<button class="opt" data-method="${k}" aria-pressed="${w.mode==='direct'&&w.method===k}"><span class="ic">${typeIcon(k)}</span><span><b>${METHODS[k].label}</b><span class="d">${METHODS[k].d} · ${METHODS[k].eta}</span></span><span class="r"><b>${usd(x.total)}</b><br><span class="d">total cost</span></span></button>`}).join('');
-  return `<div class="view"><div class="top"><div><h1>New payment</h1><p class="sub">Pay anyone, anywhere. They choose how to get paid, or you decide. ${simTag}</p></div></div>
+      <div class="card"><h2>Summary</h2><div style="margin-top:8px"><div class="row"><span>Paying from</span><span>${esc(sa.name)}</span></div><div class="row"><span>Route</span><span>${pname(sq.partner)} ${sbx}</span></div><div class="row"><span>You send</span><span>${fmt(sq.amt,sq.cur)}</span></div><div class="row tot"><span>Recipient gets</span><span>${fmt(sq.best.recv,sq.rcur)}</span></div></div></div></div></div>`}
+  const accOpt = x=>`<button class="opt" data-from="${x.id}" aria-pressed="${w.from===x.id}"><span class="ic">${typeIcon(x.type)}</span><span><b>${esc(x.name)}</b><span class="d">${esc(x.detail)}</span></span><span class="r"><b>${fmt(x.balance,x.cur)}</b><br><span class="d">${x.cur==='GBP'?'Pounds':'Dollar fallback'}</span></span></button>`;
+  const routeOpts = q.best ? q.routes.map((x,i)=>`<div class="opt${i===0?' sel':''}"><span class="ic">${ICON.globe}</span><span><b>${pname(x.p)} ${sbx}</b><span class="d">${x.p?esc(PARTNERS[x.p]):'Eligible, delivers less'}</span></span><span class="r"><b>${fmt(x.recv,q.rcur)}</b><br><span class="d">${i===0?'Best route':'Next best'}</span></span></div>`).join('') : whyRoute(q,r);
+  return `<div class="view"><div class="top"><div><h1>New payment</h1><p class="sub">Send pounds abroad. FlexiPay compares partner routes and picks the one that delivers the most. ${simTag}</p></div></div>
   <div class="grid g2"><div class="card"><div class="sec" style="gap:22px">
-    <div class="sec"><header><i>1</i><h2>Pay from</h2></header><div class="opts">${accounts.map(a=>`<button class="opt" data-from="${a.id}" aria-pressed="${w.from===a.id}"><span class="ic">${typeIcon(a.type)}</span><span><b>${esc(a.name)}</b><span class="d">${esc(a.detail)}</span></span><span class="r"><b>${usd(a.balance)}</b><br><span class="d">${a.rail}</span></span></button>`).join('')}</div></div>
-    <div class="sec"><header><i>2</i><h2>Recipient</h2></header><label class="f">Who are you paying?<select id="rsel">${recipients.map(x=>`<option value="${x.id}" ${x.id===w.rid?'selected':''}>${esc(x.name)} · ${x.country} · ${x.cur}</option>`).join('')}</select></label>
+    <div class="sec"><header><i>1</i><h2>Pay from</h2></header><div class="opts">${[...accounts].sort((x,y)=>(x.cur==='GBP'?0:1)-(y.cur==='GBP'?0:1)).map(accOpt).join('')}</div></div>
+    <div class="sec"><header><i>2</i><h2>Recipient</h2></header><label class="f">Who are you paying?<select id="rsel">${recipients.map(x=>`<option value="${x.id}" ${x.id===w.rid?'selected':''}>${esc(x.name)} · ${COUNTRY[x.country]} · ${esc(x.detail)}</option>`).join('')}</select></label>
       <div><button class="btn sm" type="button" data-act="togglerec">${w.newRec?'Cancel':'+ New recipient'}</button></div>
-      ${w.newRec?`<div class="note sec" style="gap:10px"><label class="f">Name<input type="text" id="nrn" placeholder="Worker F"></label><label class="f">Country<select id="nrc"><option value="PH|PHP">Philippines · PHP</option><option value="BR|BRL">Brazil · BRL</option><option value="ZA|ZAR">South Africa · ZAR</option><option value="US|USDC">Crypto · USDC</option></select></label><label class="f">Type<select id="nrk"><option>Individual</option><option>Company</option></select></label><div><button class="btn primary sm" type="button" data-act="saverec">Add and select</button></div></div>`:''}</div>
-    <div class="sec"><header><i>3</i><h2>Amount</h2></header><div class="amt"><span>USD</span><input id="amt" inputmode="decimal" value="${esc(w.amount)}" aria-label="Amount in USD"></div><span class="hint">Any amount. No limits in this prototype.</span></div>
-    <div class="sec"><header><i>4</i><h2>Who pays the fees?</h2></header><div class="opts">
-      <button class="opt" data-feepayer="sender" aria-pressed="${w.feePayer==='sender'}"><span class="ic">${ICON.wallet}</span><span><b>I pay the fees</b><span class="d">All fees are added on top. The recipient gets the full amount.</span></span><span class="r"><b>${usd(quote({amount:w.amount,from:w.from,rid:w.rid,feePayer:'sender',method:w.mode==='claim'?'bank':w.method}).total)}</b><br><span class="d">you pay</span></span></button>
-      <button class="opt" data-feepayer="recipient" aria-pressed="${w.feePayer==='recipient'}"><span class="ic">${ICON.people}</span><span><b>Recipient pays the fees</b><span class="d">All fees are taken from what they receive. You pay exactly the amount.</span></span><span class="r"><b>${usd(quote({amount:w.amount,from:w.from,rid:w.rid,feePayer:'recipient',method:w.mode==='claim'?'bank':w.method}).total)}</b><br><span class="d">you pay</span></span></button></div></div>
-    <div class="sec"><header><i>5</i><h2>How do they get paid?</h2></header><div class="opts">
-      <button class="opt" data-mode="claim" aria-pressed="${w.mode==='claim'}"><span class="ic">${ICON.send}</span><span><b>Let the recipient choose</b><span class="d">Send a claim link. They pick bank, e-wallet, crypto or a FlexiPay wallet.</span></span><span class="r"><span class="pill info">Most flexible</span></span></button>${mopts}</div></div>
-    <div><button class="btn primary" data-act="send" style="padding:12px 22px;font-size:16px">${w.mode==='claim'?'Create claim link':'Send '+usd(q.amt)}</button></div></div></div>
+      ${w.newRec?`<div class="note sec" style="gap:10px">${recForm('n')}<div><button class="btn primary sm" type="button" data-act="saverec">Add and select</button></div></div>`:''}</div>
+    <div class="sec"><header><i>3</i><h2>Amount</h2></header><div class="amt"><span>${a.cur}</span><input id="amt" inputmode="decimal" value="${esc(w.amount)}" aria-label="Amount in ${a.cur}"></div><span class="hint">${a.cur==='GBP'?'Sent as tGBP on Solana to the payout partner.':'Dollar fallback: sent as USDC on Solana.'}</span></div>
+    <div class="sec"><header><i>4</i><h2>Route</h2></header><span class="hint">Every eligible route for ${esc(r.name)}, ranked by what they receive.</span><div class="opts">${routeOpts}</div></div>
+    <div><button class="btn primary" data-act="send" style="padding:12px 22px;font-size:16px" ${q.best?'':'aria-disabled="true"'}>Send ${fmt(q.amt,q.cur)}</button></div></div></div>
    <div class="card" style="align-self:start;position:sticky;top:16px"><h2>Live quote</h2>
-     <div style="margin:12px 0"><span class="hint">${esc(r.name)} receives</span><div class="bal" style="font-size:30px">${w.mode==='claim'?'Their choice':fmt(q.recv,q.cur)}</div><span class="hint">${w.mode==='claim'?'Estimated '+fmt(q.recv,q.cur)+' as '+METHODS[bestMethod(w.rid,w.from,w.amount)[0].k].label.toLowerCase():'Rate 1 USD = '+(q.rate)+' '+q.cur+' · '+q.eta}${w.feePayer==='recipient'?' · after fees':''}</span></div>
-     <div class="row"><span>Amount</span><span>${usd(q.amt)}</span></div>${(()=>{const who=w.feePayer==='recipient'?'paid by recipient':'paid by you';return `<div class="row"><span>Collection (${acct(w.from).rail}) · ${who}</span><span>${usd(q.collect)}</span></div><div class="row"><span>FlexiPay fee (1%) · ${who}</span><span>${usd(q.vault)}</span></div><div class="row"><span>Payout · ${who}</span><span>${usd(q.payout)}</span></div>`})()}<div class="row tot"><span>You pay</span><span>${usd(q.total)}</span></div>
-     <div class="note" style="margin-top:12px"><b>Why this route:</b> ranked by total cost. Cheapest for ${esc(r.name)} is ${METHODS[bestMethod(w.rid,w.from,w.amount)[0].k].label.toLowerCase()}. Quote valid for 30 minutes.</div></div></div></div>`;
+     <div style="margin:12px 0"><span class="hint">${esc(r.name)} receives</span><div class="bal" style="font-size:30px">${q.best?fmt(q.best.recv,q.rcur):'No route yet'}</div><span class="hint">${q.best?`Via ${pname(q.partner)} into ${esc(r.detail)}`:''}</span></div>
+     <div class="row"><span>You send</span><span>${fmt(q.amt,q.cur)}</span></div>
+     <div class="row"><span>Moves as</span><span>${q.tok} on Solana</span></div>
+     ${q.best?`<div class="row"><span>Payout partner</span><span>${pname(q.partner)} ${sbx}</span></div><div class="row"><span>Rate</span><span>${fmt(1,q.cur)} = ${fmt(q.amt?q.best.recv/q.amt:0,q.rcur)}</span></div><div class="row tot"><span>Recipient gets</span><span>${fmt(q.best.recv,q.rcur)}</span></div>`:''}
+     <div class="note" style="margin-top:12px"><b>Why this route:</b> ${q.best?(q.next?`FlexiPay compared ${q.routes.length} eligible routes. ${pname(q.partner)} delivers the most to ${esc(r.name)}.<span class="save" style="display:block">You get ${fmt(q.saving,q.rcur)} more than the next best route</span>`:`${pname(q.partner)} is the only eligible route to ${COUNTRY[r.country]} in this preview.`):'there is no route for this pair in the preview yet.'}</div>
+     <p class="hint" style="margin:10px 0 0">Real sandbox quotes for ${fmt(100,q.cur)}. Other amounts are scaled in this preview.</p></div></div></div>`;
+}
+function recForm(p){
+  return `<label class="f">Name<input type="text" id="${p}rn" placeholder="First and last name"></label>
+    <label class="f">Country<select id="${p}rc">${['PH','KE','IN','VN','FR','BR'].map(c=>`<option value="${c}|${CCY[c]}">${COUNTRY[c]} · ${CCY[c]}</option>`).join('')}</select></label>
+    <label class="f">Bank account<input type="text" id="${p}rb" placeholder="Bank and last 4 digits, e.g. BDO 3210"></label>
+    <label class="f">Type<select id="${p}rk"><option>Individual</option><option>Company</option></select></label>`;
+}
+function readRecForm(p){
+  const n=$('#'+p+'rn').value.trim(); if(!n){toast('Enter a name');return null}
+  const [c,cur]=$('#'+p+'rc').value.split('|'), b=$('#'+p+'rb').value.trim(), m=b.match(/^(.*?)[\s•]*(\d{4})$/);
+  const id='r'+(recipients.length+1);
+  recipients.push({id,name:n,kind:$('#'+p+'rk').value,country:c,cur,detail:m?(m[1].trim()||'Bank')+' ••'+m[2]:(b||'Bank account to add')});
+  toast(n+' added'); return id;
 }
 function vRecipients(){
-  return `<div class="view"><div class="top"><div><h1>Recipients</h1><p class="sub">People and companies you pay, and how each prefers to be paid.</p></div></div>
-  <div class="grid g2"><div class="card scroll"><table class="tbl"><thead><tr><th>Name</th><th>Type</th><th>Country</th><th>Preferred payout</th><th></th></tr></thead><tbody>${recipients.map(r=>`<tr data-rec="${r.id}" style="cursor:pointer"><td><span class="who"><span class="avatar">${esc(r.name[0])}</span><b>${esc(r.name)}</b></span></td><td>${r.kind}</td><td>${r.country} · ${r.cur}</td><td>${METHODS[r.method].label}<div class="hint">${esc(r.detail)}</div></td><td class="num"><button class="btn sm" data-pay-to="${r.id}">Pay</button></td></tr>`).join('')}</tbody></table><p class="hint" style="margin:10px 8px 0">Select a recipient to see their payment history.</p></div>
-   <div class="card"><h2>Add a recipient</h2><div class="sec" style="margin-top:12px"><label class="f">Name<input type="text" id="rn" placeholder="Worker F"></label>
-    <label class="f">Country<select id="rc"><option value="PH|PHP">Philippines · PHP</option><option value="BR|BRL">Brazil · BRL</option><option value="ZA|ZAR">South Africa · ZAR</option><option value="US|USDC">Crypto · USDC</option></select></label>
-    <label class="f">Type<select id="rk"><option>Individual</option><option>Company</option></select></label>
-    <button class="btn primary" data-act="addrec">Add recipient</button><span class="hint">Leave the payout method open: they choose it when they claim.</span></div></div></div></div>`;
+  return `<div class="view"><div class="top"><div><h1>Recipients</h1><p class="sub">People and companies you pay, with their saved bank accounts.</p></div></div>
+  <div class="grid g2"><div class="card scroll"><table class="tbl"><thead><tr><th>Name</th><th>Country</th><th>Bank account</th><th>Paid from</th><th></th></tr></thead><tbody>${recipients.map(r=>`<tr data-rec="${r.id}" style="cursor:pointer"><td><span class="who"><span class="avatar">${esc(r.name[0])}</span><b>${esc(r.name)}</b></span><div class="hint">${r.kind}</div></td><td>${COUNTRY[r.country]}<div class="hint">${r.cur}</div></td><td class="mono">${esc(r.detail)}</td><td>${curFor(r.country).join(' or ')||'—'}</td><td class="num"><button class="btn sm" data-pay-to="${r.id}">Pay</button></td></tr>`).join('')}</tbody></table><p class="hint" style="margin:10px 8px 0">Select a recipient to see their payment history.</p></div>
+   <div class="card"><h2>Add a recipient</h2><div class="sec" style="margin-top:12px">${recForm('')}
+    <button class="btn primary" data-act="addrec">Add recipient</button><span class="hint">Bank accounts are saved and shown masked.</span></div></div></div></div>`;
+}
+function vWhere(){
+  const f=S.whereF;
+  const groups=[
+    {cur:'GBP',title:'From GBP',count:'63 countries',sub:'Pounds move as tGBP on Solana to the payout partner.',regions:[['Africa',['KE']],['Asia',['IN','PH','VN']],['Europe',['FR']]],more:'Showing the 5 countries with a sample quote. 63 countries in total from GBP through partners.'},
+    {cur:'USD',title:'From USD',count:'Dollar fallback',sub:'Dollars move as USDC on Solana.',regions:[['Latin America',['BR','MX','CO','AR']],['Asia',['PH']]],more:''}
+  ];
+  const partnerOf=(cur,c)=>ROUTES[cur+':'+c]?ROUTES[cur+':'+c][0].p:'BlindPay';
+  const sample=(cur,c)=>{const x=ROUTES[cur+':'+c];return x?`${fmt(100,cur)} → ${fmt(x[0].per100,CCY[c])}`:'Sample quote to come'};
+  return `<div class="view"><div class="top"><div><h1>Where we pay</h1><p class="sub">Countries you can pay through FlexiPay partners, by sending currency. ${simTag}</p></div><button class="btn primary" data-go="new">New payment</button></div>
+  <div class="chips" style="margin-bottom:14px">${[['all','All'],['GBP','From GBP'],['USD','From USD']].map(c=>`<button class="chip" data-wf="${c[0]}" aria-pressed="${f===c[0]}">${c[1]}</button>`).join('')}</div>
+  ${groups.filter(g=>f==='all'||f===g.cur).map(g=>`<section style="margin-bottom:22px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2>${g.title}</h2><span class="pill info">${g.count}</span></div><p class="sub" style="margin:4px 0 12px">${g.sub}</p>
+    <div class="grid g3">${g.regions.map(([reg,cs])=>`<div class="card"><h3 style="margin-bottom:4px">${reg}</h3>${cs.map(c=>`<div class="ctry"><span><b>${COUNTRY[c]}</b><div class="hint">${CCY[c]}</div></span><span><b>${partnerOf(g.cur,c)}</b> ${sbx}<div class="hint">${sample(g.cur,c)}</div></span></div>`).join('')}</div>`).join('')}</div>
+    ${g.more?`<p class="hint" style="margin:10px 0 0">${g.more}</p>`:''}</section>`).join('')}
+  <div class="grid g2e"><div class="card"><h2>Partners</h2><div style="margin-top:8px">${Object.entries(PARTNERS).map(([n,d])=>`<div class="row"><span><b>${n}</b><div class="hint">${d}</div></span><span>${sbx}</span></div>`).join('')}</div></div>
+   <div class="card"><h2>How routing works</h2><p class="hint" style="margin:8px 0 0">For every payment FlexiPay asks each eligible partner for a quote and sends the money on the route that delivers the most to the recipient. FlexiPay is a tech provider; the partners hold the licences.</p></div></div></div>`;
+}
+function vTill(){
+  const t=S.till, amt=Number(t.amount)||0, total=t.sales.reduce((s,x)=>s+x.amt,0);
+  const left = t.paid
+    ? `<div class="card paid" aria-live="polite"><div class="paidbox"><div class="dot done">✓</div><div class="till-amt">Paid</div><p style="margin:8px 0 0;font-size:18px;font-weight:600">${gbp(t.paid)} received in tGBP</p><p class="hint">Recorded in today’s takings, like a cash sale.</p></div><button class="btn primary bigtap" data-act="tillnew">New sale</button></div>`
+    : `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2>Till · Sample Café</h2>${simTag}</div>
+      <div class="amt" style="margin:14px 0"><span>£</span><input id="tillAmt" inputmode="decimal" value="${esc(t.amount)}" aria-label="Sale amount in pounds"></div>
+      <div class="till-amt" style="margin-bottom:12px">${gbp(amt)}</div>
+      <div id="tillqr" class="tillqr" role="img" aria-label="QR code for a payment of ${gbp(amt)} in tGBP"></div>
+      <p class="hint" style="text-align:center;margin:10px 0 16px">The customer scans with their FlexiPay wallet and pays in tGBP.</p>
+      <button class="btn primary bigtap" data-act="tillpaid">Confirm payment received</button>
+      <p class="hint" style="text-align:center;margin:10px 0 0">Tap once you see it on the customer’s screen.</p></div>`;
+  return `<div class="view"><div class="top"><div><h1>Take payment</h1><p class="sub">Show the code, the customer pays from their wallet, you tap to confirm. ${simTag}</p></div></div>
+  <div class="grid g2" style="align-items:start">${left}
+   <div class="grid" style="align-content:start">
+    <div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><h2>Today’s takings</h2><b class="bal" style="font-size:22px">${gbp(total)}</b></div>
+     <div class="feed" style="margin-top:6px">${t.sales.length?t.sales.map(s=>`<div class="ev"><span class="ic2 ok">${ICON.qr}</span><div><b style="font-size:14px">QR sale · tGBP</b><p>${s.t}</p></div><time class="plus">+${gbp(s.amt)}</time></div>`).join(''):'<div class="empty">No sales since the last cash out.</div>'}</div></div>
+    <div class="card"><h2>Cash out to your bank</h2><p class="hint" style="margin:6px 0 10px">Takings go to your bank through a virtual bank account from the tGBP partner.</p>
+     <div class="row"><span>Paid into</span><span>Virtual bank account ••• 7781</span></div><div class="row"><span>Fee</span><span class="plus">Free of charge</span></div>
+     <div style="margin-top:12px"><button class="btn" data-act="cashout" ${total?'':'aria-disabled="true"'}>Cash out ${gbp(total)}</button></div></div>
+   </div></div></div>`;
 }
 function vAccounts(){
   const L=S.linking;
-  return `<div class="view"><div class="top"><div><h1>Pay from</h1><p class="sub">Link the accounts you fund payments from. Choose one per payment. ${simTag}</p></div></div>
-  <div class="grid g3">${accounts.map(a=>`<div class="card acc"><div class="top2"><span class="ic">${typeIcon(a.type)}</span>${a.def?'<span class="pill ok">Default</span>':`<button class="btn sm" data-default="${a.id}">Make default</button>`}</div><div><h3>${esc(a.name)}</h3><span class="hint">${esc(a.detail)}</span></div><div class="bal">${usd(a.balance)}</div><button class="btn sm" data-acc="${a.id}" style="align-self:flex-start">View history</button><div class="row" style="border:0;padding:0"><span class="hint">Rail</span><span>${a.rail}</span></div><div class="row" style="border:0;padding:0"><span class="hint">Funds arrive</span><span>${a.eta}</span></div></div>`).join('')}</div>
+  return `<div class="view"><div class="top"><div><h1>Pay from</h1><p class="sub">The accounts you fund payments from. Pounds first; dollars as a fallback. ${simTag}</p></div></div>
+  <div class="grid g3">${accounts.map(a=>`<div class="card acc"><div class="top2"><span class="ic">${typeIcon(a.type)}</span>${a.def?'<span class="pill ok">Default</span>':`<button class="btn sm" data-default="${a.id}">Make default</button>`}</div><div><h3>${esc(a.name)}</h3><span class="hint">${esc(a.detail)}</span></div><div class="bal">${fmt(a.balance,a.cur)}</div><button class="btn sm" data-acc="${a.id}" style="align-self:flex-start">View history</button><div class="row" style="border:0;padding:0"><span class="hint">Currency</span><span>${a.cur} · ${TOKEN[a.cur]}</span></div><div class="row" style="border:0;padding:0"><span class="hint">Rail</span><span style="text-align:right">${a.rail}</span></div></div>`).join('')}</div>
   <div class="card" style="margin-top:16px"><h2>Link another account</h2><p class="hint" style="margin:6px 0 12px">Nothing is really connected in this prototype. Each option shows how the real link would work.</p>
-   <div class="grid g3">${[['flexi','FlexiPay wallet','Create a non-custodial USDC wallet with your email or passkey.'],['bank','Bank account','Connect with your bank. Pull by ACH or send by wire.'],['ewallet','E-wallet','Connect a wallet balance to fund payments instantly.'],['crypto','Crypto wallet','Connect a Solana wallet such as Phantom and pay from USDC.']].map(x=>`<button class="opt" data-link="${x[0]}"><span class="ic">${typeIcon(x[0])}</span><span><b>${x[1]}</b><span class="d">${x[2]}</span></span></button>`).join('')}</div>
-   ${L?`<div class="note" style="margin-top:12px"><b>${L==='done'?'Linked.':'Linking…'}</b> ${L==='done'?'The new account now shows in Pay from (simulated).':'Waiting for approval from your bank (simulated).'}</div>`:''}</div></div>`;
+   <div class="grid g3">${[['flexi','FlexiPay wallet','Hold tGBP in an embedded FlexiPay wallet.'],['bank','UK bank account','Fund in pounds. Sent on as tGBP on Solana.'],['tgbp','tGBP wallet','Connect a Solana wallet that holds tGBP.'],['usdc','USDC wallet','Dollar fallback: a Solana wallet that holds USDC.']].map(x=>`<button class="opt" data-link="${x[0]}"><span class="ic">${typeIcon(x[0])}</span><span><b>${x[1]}</b><span class="d">${x[2]}</span></span></button>`).join('')}</div>
+   ${L?`<div class="note" style="margin-top:12px"><b>${L==='done'?'Linked.':'Linking…'}</b> ${L==='done'?'The new account now shows in Pay from (simulated).':'Waiting for approval (simulated).'}</div>`:''}</div></div>`;
 }
 function vDev(){
   const key = S.keyShown;
-  return `<div class="view"><div class="top"><div><h1>Developers</h1><p class="sub">Everything in this console is an API call first. Same quote, same payment, same claim.</p></div></div>
-  <div class="grid g2"><div class="card sec"><h2>Quickstart</h2><span class="hint">1. Get a quote with a route and reasons</span><pre class="code">curl -X POST $FP_API_URL/v1/quotes \\
+  return `<div class="view"><div class="top"><div><h1>Developers</h1><p class="sub">Everything in this console is an API call first. Same quote, same route, same payment.</p></div></div>
+  <div class="grid g2"><div class="card sec"><h2>Quickstart</h2><span class="hint">1. Get a quote: the chosen route and every other eligible route</span><pre class="code">curl -X POST $FP_API_URL/v1/quotes \\
   -H "Authorization: Bearer $FP_API_KEY" \\
-  -d '{"destination":{"country":"PH","type":"ewallet"},
-       "amount":{"side":"send","value":{"amount":"125000","currency":"USD"}}}'</pre>
-   <span class="hint">2. Create the payment, optionally as a claim link</span><pre class="code">curl -X POST $FP_API_URL/v1/payments \\
+  -d '{"destination":{"country":"PH","type":"bank"},
+       "amount":{"side":"send","value":{"amount":"10000","currency":"GBP"}}}'</pre>
+   <span class="hint">2. Create the payment to a saved recipient</span><pre class="code">curl -X POST $FP_API_URL/v1/payments \\
   -H "Authorization: Bearer $FP_API_KEY" \\
   -H "Idempotency-Key: pay-001" \\
-  -d '{"quoteId":"quo_123","recipientId":"rcp_123","delivery":"claim_link"}'</pre>
-   <span class="hint">3. The recipient claims, you listen to events</span><pre class="code">GET /v1/payments/pay_123/events   # payment.onchain, claim.accepted, payment.completed</pre>
+  -d '{"quoteId":"quo_123","recipientId":"rcp_123"}'</pre>
+   <span class="hint">3. Listen to events</span><pre class="code">GET /v1/payments/pay_123/events   # payment.onchain, payment.completed</pre>
    <div class="two"><button class="btn sm" data-copy="curl -X POST $FP_API_URL/v1/quotes">Copy quote call</button></div></div>
   <div class="grid" style="align-content:start"><div class="card"><h2>API keys</h2>
     <div class="row"><span><b>Sandbox key</b><div class="hint">Created 25 Oct · last used today</div></span><span class="mono">fp_test_••••••••9a2c</span></div>
     ${key?`<div class="note" style="margin-top:12px"><b>New key (shown once, simulated):</b><div class="mono" style="word-break:break-all;margin-top:6px">${key}</div></div>`:''}
     <div style="margin-top:12px"><button class="btn" data-act="newkey">Create sandbox key</button></div></div>
    <div class="card"><h2>Request log</h2><div class="scroll"><table class="tbl"><tbody>${REQLOG.map(r=>`<tr><td class="mono">${r[0]}</td><td class="mono" style="word-break:break-all">${r[1]}</td><td><span class="pill ${r[2]<300?'ok':'bad'}">${r[2]}</span></td><td class="num hint">${r[3]} ms</td></tr>`).join('')}</tbody></table></div></div>
-   <div class="card"><h2>Webhook events</h2><div style="margin-top:8px">${['payment.created','payment.funded','payment.onchain','claim.opened','claim.accepted','payment.completed','payment.refunded'].map(e=>`<div class="row"><span class="mono">${e}</span><span class="pill ok">Subscribed</span></div>`).join('')}</div></div></div></div></div>`;
-}
-function vClaim(){
-  const c=S.claim, amt=c.amount;
-  const opts=[['bank','Bank account','Cash out through a reference anchor. Paid in your local currency.'],['ewallet','E-wallet','Straight into your wallet app.'],['crypto','Crypto wallet','Paste a Solana address and keep it as USDC.'],['passkey','FlexiPay wallet','Get a FlexiPay wallet with your email or passkey. No seed phrase, no app to install.']];
-  let body;
-  if(c.step===0) body=`<span class="hint">From Demo Platform</span><div class="big">${usd(amt)}</div><p style="margin:0;color:var(--muted)">is waiting for you. Choose how you want to be paid.</p><div class="opts">${opts.map(o=>`<button class="opt" data-choice="${o[0]}"><span class="ic">${typeIcon(o[0])}</span><span><b>${o[1]}</b><span class="d">${o[2]}</span></span></button>`).join('')}</div>`;
-  else if(c.step===1) body=`<span class="hint">${opts.find(o=>o[0]===c.choice)[1]}</span><div class="big">${usd(amt-6)}</div><p style="margin:0;color:var(--muted)">after fees. ${c.choice==='passkey'?'Sign in with your email or passkey. Your FlexiPay wallet is created and the money lands in it.':'Check the details and confirm.'}</p>
-      <div class="note"><b>${c.choice==='passkey'?'Email or passkey':'Confirm'}</b> approves the release. Nothing moves until you do.</div><button class="btn primary" data-act="claimgo" style="padding:13px">${c.choice==='passkey'?'Create my FlexiPay wallet':'Confirm and receive'}</button><button class="btn ghost" data-act="claimback">Choose another way</button>`;
-  else body=`<div style="text-align:center;padding:20px 0"><div class="dot done" style="width:64px;height:64px;font-size:30px;margin:0 auto 14px">✓</div><div class="big" style="font-size:28px">Paid</div><p style="color:var(--muted)">${usd(amt-6)} is on its way to your ${opts.find(o=>o[0]===c.choice)[1].toLowerCase()}.</p></div>${c.choice==='passkey'?`<div class="note"><b>Your FlexiPay wallet is ready.</b> Keep it as digital dollars, pay by QR, or move it on later.</div><button class="btn primary" data-go="wallet">Open my FlexiPay wallet</button>`:''}<button class="btn" data-act="claimreset">Start again</button>`;
-  return `<div class="view"><div class="top"><div><button class="btn ghost sm" data-go="payments" style="padding-left:0">← Console</button><h1>Recipient page</h1><p class="sub">What the person you pay sees on their phone. ${simTag}</p></div></div>
-  <div class="phonewrap"><div class="phone"><div class="bar"></div><div class="in">${body}</div></div></div></div>`;
+   <div class="card"><h2>Webhook events</h2><div style="margin-top:8px">${['payment.created','payment.funded','payment.onchain','payment.completed','payment.refunded'].map(e=>`<div class="row"><span class="mono">${e}</span><span class="pill ok">Subscribed</span></div>`).join('')}</div></div></div></div></div>`;
 }
 function vRecipient(){
   const r=rec(S.recId)||recipients[0], list=payments.filter(p=>p.rid===r.id);
-  const total=list.reduce((t,p)=>t+p.amount,0), ok=list.filter(p=>p.status==='completed').length;
-  return `<div class="view"><div class="top"><div><button class="btn ghost sm" data-go="recipients" style="padding-left:0">← Recipients</button><h1 class="who" style="gap:14px"><span class="avatar" style="width:46px;height:46px;font-size:20px">${esc(r.name[0])}</span>${esc(r.name)}</h1><p class="sub">${r.kind} · ${r.country} · ${r.cur}</p></div><button class="btn primary" data-pay-to="${r.id}">Pay ${esc(r.name)}</button></div>
-  <div class="grid g4"><div class="card stat"><small>Total paid</small><b>${usd(total)}</b></div><div class="card stat"><small>Payments</small><b>${list.length}</b></div><div class="card stat"><small>Paid out successfully</small><b>${list.length?Math.round(ok/list.length*100):0}%</b></div><div class="card stat"><small>Preferred payout</small><b style="font-size:17px">${METHODS[r.method].label}</b><span class="hint">${esc(r.detail)}</span></div></div>
+  const by={}; list.forEach(p=>{const c=acct(p.from).cur;by[c]=(by[c]||0)+p.amount});
+  const total=Object.entries(by).map(([c,v])=>fmt(v,c)).join(' + ')||gbp(0), ok=list.filter(p=>p.status==='completed').length;
+  return `<div class="view"><div class="top"><div><button class="btn ghost sm" data-go="recipients" style="padding-left:0">← Recipients</button><h1 class="who" style="gap:14px"><span class="avatar" style="width:46px;height:46px;font-size:20px">${esc(r.name[0])}</span>${esc(r.name)}</h1><p class="sub">${r.kind} · ${COUNTRY[r.country]} · ${r.cur}</p></div><button class="btn primary" data-pay-to="${r.id}">Pay ${esc(r.name)}</button></div>
+  <div class="grid g4"><div class="card stat"><small>Total paid</small><b>${total}</b></div><div class="card stat"><small>Payments</small><b>${list.length}</b></div><div class="card stat"><small>Paid out successfully</small><b>${list.length?Math.round(ok/list.length*100):0}%</b></div><div class="card stat"><small>Saved bank account</small><b style="font-size:17px">${esc(r.detail)}</b><span class="hint">Paid from ${curFor(r.country).join(' or ')||'—'}</span></div></div>
   <div class="card" style="margin-top:16px"><h2>Payment history</h2><div style="margin-top:6px">${payTable(list)}</div></div></div>`;
 }
 function vAccount(){
   const a=acct(S.accId)||accounts[0], tx=txFor(a.id);
   return `<div class="view"><div class="top"><div><button class="btn ghost sm" data-go="accounts" style="padding-left:0">← Pay from</button><h1>${esc(a.name)}</h1><p class="sub">${esc(a.detail)} ${simTag}</p></div><div class="two"><button class="btn" data-act="topup" data-id="${a.id}">Add funds</button><button class="btn primary" data-act="payfrom" data-id="${a.id}">Pay from this account</button></div></div>
-  <div class="grid g3"><div class="card stat"><small>Balance</small><b>${usd(a.balance)}</b></div><div class="card stat"><small>Rail</small><b style="font-size:18px">${a.rail}</b></div><div class="card stat"><small>Funds arrive</small><b style="font-size:18px">${a.eta}</b></div></div>
-  <div class="card scroll" style="margin-top:16px"><h2 style="margin-bottom:6px">Statement</h2><table class="tbl"><thead><tr><th>When</th><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${tx.map(t=>`<tr ${t.pid?`data-pay="${t.pid}"`:''}><td class="hint">${t.when}</td><td>${esc(t.label)}</td><td class="num ${t.amt>0?'plus':'minus'}">${t.amt>0?'+':''}${t.amt===0?'—':usd(t.amt)}</td></tr>`).join('')}</tbody></table></div></div>`;
+  <div class="grid g3"><div class="card stat"><small>Balance</small><b>${fmt(a.balance,a.cur)}</b></div><div class="card stat"><small>Rail</small><b style="font-size:18px">${a.rail}</b></div><div class="card stat"><small>Currency</small><b style="font-size:18px">${a.cur} · ${TOKEN[a.cur]}</b></div></div>
+  <div class="card scroll" style="margin-top:16px"><h2 style="margin-bottom:6px">Statement</h2><table class="tbl"><thead><tr><th>When</th><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${tx.map(t=>`<tr ${t.pid?`data-pay="${t.pid}"`:''}><td class="hint">${t.when}</td><td>${esc(t.label)}</td><td class="num ${t.amt>0?'plus':'minus'}">${t.amt>0?'+':''}${t.amt===0?'—':fmt(t.amt,t.cur)}</td></tr>`).join('')}</tbody></table></div></div>`;
 }
 function vActivity(){
   const f=S.actFilter, all=activityAll();
-  const keep=e=>f==='all'||(f==='claims'&&e.icon==='send')||(f==='payouts'&&['check'].includes(e.icon))||(f==='refunds'&&e.icon==='undo');
+  const keep=e=>f==='all'||(f==='onchain'&&e.icon==='lock')||(f==='payouts'&&e.icon==='check')||(f==='refunds'&&e.icon==='undo');
   const days=[...new Set(all.map(e=>e.day))];
   return `<div class="view"><div class="top"><div><h1>Activity</h1><p class="sub">An audit trail of everything that happened, newest first. ${simTag}</p></div><button class="btn" data-copy="activity-export">Export CSV</button></div>
-  <div class="chips" style="margin-bottom:14px">${[['all','Everything'],['claims','Claim links'],['payouts','Payouts'],['refunds','Refunds']].map(c=>`<button class="chip" data-afilter="${c[0]}" aria-pressed="${f===c[0]}">${c[1]}</button>`).join('')}</div>
+  <div class="chips" style="margin-bottom:14px">${[['all','Everything'],['onchain','On Solana'],['payouts','Payouts'],['refunds','Refunds']].map(c=>`<button class="chip" data-afilter="${c[0]}" aria-pressed="${f===c[0]}">${c[1]}</button>`).join('')}</div>
   <div class="card">${days.map(d=>{const evs=all.filter(e=>e.day===d&&keep(e)).sort((a,b)=>a.order-b.order);return evs.length?`<div class="dayh">${d}</div>${feed(evs,true)}`:''}).join('')||'<div class="empty">Nothing matches.</div>'}</div></div>`;
 }
 function vSettings(){
   const T=S.toggles;
   const sw=(k,t,d)=>`<div class="switch"><span><b>${t}</b><div class="hint">${d}</div></span><button class="tg" type="button" data-toggle="${k}" aria-pressed="${T[k]}" aria-label="${t}"></button></div>`;
   return `<div class="view"><div class="top"><div><h1>Settings</h1><p class="sub">Organization, team and notifications. ${simTag}</p></div></div>
-  <div class="grid g2e"><div class="card"><h2>Organization</h2><div style="margin-top:8px"><div class="row"><span>Name</span><b>Demo Platform</b></div><div class="row"><span>Environment</span><span class="pill warn">Sandbox</span></div><div class="row"><span>Default quote validity</span><b>30 minutes</b></div><div class="row"><span>Who pays the fees</span><b>Payer</b></div></div>
-    <h2 style="margin-top:20px">Team</h2>${[['Alex Morgan','Owner'],['Sam Rivera','Finance'],['Jo Chen','Developer']].map(m=>`<div class="row"><span class="who"><span class="avatar">${m[0][0]}</span>${m[0]}</span><span class="hint">${m[1]}</span></div>`).join('')}</div>
-  <div class="card"><h2>Notifications</h2>${sw('claim','Claim link opened','Tell me when a recipient opens a link')}${sw('payout','Payout completed','Tell me when money arrives')}${sw('refund','Refunds','Tell me when funds return to an account')}${sw('weekly','Weekly summary','A Monday email with last week’s totals')}</div></div></div>`;
+  <div class="grid g2e"><div class="card"><h2>Organization</h2><div style="margin-top:8px"><div class="row"><span>Name</span><b>Demo Platform</b></div><div class="row"><span>Environment</span><span class="pill warn">Sandbox</span></div><div class="row"><span>Default sending currency</span><b>GBP · tGBP</b></div><div class="row"><span>Fallback</span><b>USD · USDC</b></div><div class="row"><span>Routing</span><b>Best route for the recipient</b></div></div>
+    <h2 style="margin-top:20px">Team</h2>${[['O','owner@demo-platform.example','Owner'],['F','finance@demo-platform.example','Finance'],['D','dev@demo-platform.example','Developer']].map(m=>`<div class="row"><span class="who" style="min-width:0"><span class="avatar">${m[0]}</span><span style="word-break:break-all">${m[1]}</span></span><span class="hint">${m[2]}</span></div>`).join('')}</div>
+  <div class="card"><h2>Notifications</h2>${sw('payout','Payout completed','Tell me when money arrives')}${sw('refund','Refunds','Tell me when funds return to an account')}${sw('till','Till payments','Tell me when a QR sale is confirmed')}${sw('weekly','Weekly summary','A Monday email with last week’s totals')}</div></div></div>`;
 }
 function vWallet(){
   const a=acct('acc_flexi'), w=S.wallet, short=W_ADDR.slice(0,4)+'…'+W_ADDR.slice(-4);
-  const acts=[['receive','Receive','Your address and QR code','down',''],['send','Send','To any Solana wallet','send',''],['qr','Pay by QR','Scan a Solana Pay code in a shop','qr',''],
-    ['card','Pay by card','Spend your balance with a card','card','Coming soon'],['cash','Cash out','Collect cash or sell to your bank','cash','Coming soon'],['bank','Send to bank','Pay out to your own bank account','bank','Coming soon']];
+  const acts=[['receive','Receive','Your address and QR code','down'],['qr','Pay a shop','Scan the QR code at the till','qr'],['send','Send abroad','To a bank account in another country','globe']];
   let panel='';
-  if(w.act==='receive') panel=`<h2>Receive</h2><p class="hint" style="margin:6px 0 12px">Share this to get paid in USDC on Solana. Only send USDC on Solana to it.</p><div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center"><div id="qrbox" style="background:#fff;padding:10px;border-radius:12px;width:180px;height:180px;display:grid;place-items:center" aria-label="QR code of the wallet address"></div><div style="flex:1;min-width:200px" class="sec"><label class="f">Wallet address<input type="text" readonly value="${W_ADDR}" aria-label="Wallet address"></label><div><button class="btn primary sm" data-copy="${W_ADDR}">Copy address</button></div></div></div>`;
-  else if(w.act==='send') panel=`<h2>Send</h2><div class="sec" style="margin-top:12px"><label class="f">To (Solana address or FlexiPay email)<input type="text" id="wsTo" placeholder="4Nd1…mYq8 or name@example.com"></label><label class="f">Amount (USDC)<input type="text" id="wsAmt" inputmode="decimal" placeholder="25.00"></label><div><button class="btn primary" data-act="wsend">Send USDC</button></div><span class="hint">Network fee: a fraction of a cent. FlexiPay can cover it for you.</span></div>`;
-  else if(w.act==='qr') panel=w.qrStep===0?`<h2>Pay by QR</h2><div style="margin-top:12px;height:180px;border:2px dashed var(--line);border-radius:14px;display:grid;place-items:center;color:var(--muted)">Point your camera at a Solana Pay code</div><div style="margin-top:12px"><button class="btn primary" data-act="qrsample">Use a sample shop code</button></div>`
-    :`<h2>Pay Café Lisboa</h2><div class="bal" style="margin:10px 0">$4.50</div><p class="hint">USDC on Solana · arrives instantly</p><div class="two" style="margin-top:12px"><button class="btn primary" data-act="qrpay">Pay $4.50</button><button class="btn" data-act="qrcancel">Cancel</button></div>`;
-  else { const x=acts.find(q=>q[0]===w.act); panel=`<h2>${x[1]}</h2><div class="note" style="margin-top:12px"><b>Coming soon.</b> ${w.act==='bank'?'Bank payouts open country by country, once a licensed payout partner confirms the route.':w.act==='card'?'Card spending needs a card-issuing partner.':'Cash-out needs a cash or ramp partner.'} Until then, keep your balance as USDC or send it to any wallet.</div>`; }
-  return `<div class="view"><div class="top"><div><h1>FlexiPay wallet</h1><p class="sub">Digital dollars you control, opened with your email or passkey. No seed phrase. ${simTag}</p></div><button class="btn primary" data-go="new">Pay someone</button></div>
-  <div class="hero"><div style="position:relative;z-index:1"><h2>USDC balance</h2><div class="big2">${usd(a.balance)}</div>
-    <div class="two"><button class="btn" data-wact="receive">Receive</button><button class="btn o" data-wact="send">Send</button></div></div>
-    <div class="accs"><div class="a"><span>Address<br><small style="opacity:.75">Solana</small></span><b class="mono" style="font-size:14px">${short}</b></div><div class="a"><span>Login<br><small style="opacity:.75">Non-custodial</small></span><b>Email or passkey</b></div><div class="a"><span>Network fees<br><small style="opacity:.75">On Solana</small></span><b>Under 1¢</b></div></div></div>
-  <div class="grid g3" style="margin-top:16px">${acts.map(x=>`<button class="opt" data-wact="${x[0]}" aria-pressed="${w.act===x[0]}"><span class="ic">${ICON[x[3]]}</span><span><b>${x[1]}</b><span class="d">${x[2]}</span></span>${x[4]?`<span class="r"><span class="pill warn">${x[4]}</span></span>`:''}</button>`).join('')}</div>
+  if(w.act==='receive') panel=`<h2>Receive</h2><p class="hint" style="margin:6px 0 12px">Share this to get paid in tGBP on Solana.</p><div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center"><div id="qrbox" style="background:#fff;padding:10px;border-radius:12px;width:180px;height:180px;display:grid;place-items:center" role="img" aria-label="QR code of the wallet address"></div><div style="flex:1;min-width:200px" class="sec"><label class="f">Wallet address<input type="text" readonly value="${W_ADDR}" aria-label="Wallet address"></label><div><button class="btn primary sm" data-copy="${W_ADDR}">Copy address</button></div></div></div>`;
+  else if(w.act==='send') panel=`<h2>Send abroad</h2><p class="hint" style="margin:6px 0 12px">Pay a bank account in another country straight from your tGBP. FlexiPay picks the route that delivers the most.</p><div class="two"><button class="btn primary" data-act="payfrom" data-id="acc_flexi">Start a payment from this wallet</button><button class="btn" data-go="where">Where we pay</button></div>`;
+  else panel=w.qrStep===0?`<h2>Pay a shop</h2><div style="margin-top:12px;height:180px;border:2px dashed var(--line);border-radius:14px;display:grid;place-items:center;color:var(--muted);text-align:center;padding:10px">Point your camera at the QR code on the till</div><div style="margin-top:12px"><button class="btn primary" data-act="qrsample">Use a sample shop code</button></div>`
+    :`<h2>Pay Sample Café</h2><div class="bal" style="margin:10px 0">£4.50</div><p class="hint">Paid in tGBP · the shop confirms on their till</p><div class="two" style="margin-top:12px"><button class="btn primary" data-act="qrpay">Pay £4.50</button><button class="btn" data-act="qrcancel">Cancel</button></div>`;
+  return `<div class="view"><div class="top"><div><h1>FlexiPay wallet</h1><p class="sub">Hold tokenised pounds, pay shops by QR and send money abroad. ${simTag}</p></div><button class="btn primary" data-go="new">Pay someone</button></div>
+  <div class="hero"><div style="position:relative;z-index:1"><h2>tGBP balance</h2><div class="big2">${gbp(a.balance)}</div>
+    <div class="two"><button class="btn" data-wact="receive">Receive</button><button class="btn o" data-wact="qr">Pay a shop</button></div></div>
+    <div class="accs"><div class="a"><span>Address<br><small style="opacity:.75">Solana</small></span><b class="mono" style="font-size:14px">${short}</b></div><div class="a"><span>Holds<br><small style="opacity:.75">Tokenised pounds</small></span><b>tGBP</b></div><div class="a"><span>Wallet<br><small style="opacity:.75">Inside FlexiPay</small></span><b>Embedded</b></div></div></div>
+  <div class="grid g3" style="margin-top:16px">${acts.map(x=>`<button class="opt" data-wact="${x[0]}" aria-pressed="${w.act===x[0]}"><span class="ic">${ICON[x[3]]}</span><span><b>${x[1]}</b><span class="d">${x[2]}</span></span></button>`).join('')}</div>
   <div class="grid g2" style="margin-top:16px;align-items:start"><div class="card">${panel}</div>
-    <div class="card"><h2>Wallet activity</h2><div class="feed" style="margin-top:6px">${w.tx.map(t=>`<div class="ev"><span class="ic2 ${t.amt>0?'ok':'info'}">${t.amt>0?ICON.down:ICON.send}</span><div><b style="font-size:14px">${esc(t.label)}</b><p>${t.t}</p></div><time class="${t.amt>0?'plus':'minus'}" style="font-variant-numeric:tabular-nums">${t.amt>0?'+':'−'}${usd(Math.abs(t.amt))}</time></div>`).join('')}</div></div></div>
-  <p class="hint" style="margin-top:14px">Prototype: a simulated wallet. In the product, the wallet is created by a non-custodial embedded-wallet partner, only where production access is approved. Anyone can also connect their own Solana wallet instead.</p></div>`;
+    <div class="card"><h2>Wallet activity</h2><div class="feed" style="margin-top:6px">${w.tx.map(t=>`<div class="ev"><span class="ic2 ${t.amt>0?'ok':'info'}">${t.amt>0?ICON.down:ICON.send}</span><div><b style="font-size:14px">${esc(t.label)}</b><p>${t.t}</p></div><time class="${t.amt>0?'plus':'minus'}" style="font-variant-numeric:tabular-nums">${t.amt>0?'+':'−'}${gbp(Math.abs(t.amt))}</time></div>`).join('')}</div></div></div>
+  <p class="hint" style="margin-top:14px">Prototype: a simulated wallet. In the product, customers get an embedded FlexiPay wallet to hold tGBP, pay shops by QR and send money abroad.</p></div>`;
 }
-const VIEWS = {wallet:vWallet,recipient:vRecipient,account:vAccount,activity:vActivity,settings:vSettings,dashboard:vDashboard,payments:vPayments,detail:vDetail,new:vNew,recipients:vRecipients,accounts:vAccounts,dev:vDev,claimprev:vClaim};
+const VIEWS = {wallet:vWallet,recipient:vRecipient,account:vAccount,activity:vActivity,settings:vSettings,dashboard:vDashboard,payments:vPayments,detail:vDetail,new:vNew,recipients:vRecipients,accounts:vAccounts,dev:vDev,where:vWhere,till:vTill};
 
 /* ---------- render ---------- */
+function qrInto(el,text,size){ if(window.QRCode){ new QRCode(el,{text,width:size,height:size,colorDark:'#111a2b',colorLight:'#ffffff'}) } else { el.innerHTML='<span class="mono" style="color:#111a2b;font-size:12px;text-align:center">QR code unavailable offline</span>' } }
 function draw(){
-  const cur = ({detail:'payments',claimprev:'dashboard',recipient:'recipients',account:'accounts'})[S.view]||S.view;
+  const cur = ({detail:'payments',recipient:'recipients',account:'accounts'})[S.view]||S.view;
   $('#nav').innerHTML = NAV.map(n=>`<button type="button" data-go="${n[0]}" ${cur===n[0]?'aria-current="page"':''}>${ICON[n[2]]}${n[1]}</button>`).join('');
   $('#main').innerHTML = VIEWS[S.view]();
   const q=$('#q'); if(q) {q.focus();q.setSelectionRange(q.value.length,q.value.length)}
-  const qb=$('#qrbox'); if(qb){ if(window.QRCode){ new QRCode(qb,{text:'solana:'+W_ADDR,width:160,height:160,colorDark:'#111a2b',colorLight:'#ffffff'}) } else { qb.innerHTML='<span class="mono" style="color:#111a2b;font-size:12px;text-align:center">QR code unavailable offline</span>' } }
+  const qb=$('#qrbox'); if(qb) qrInto(qb,'solana:'+W_ADDR,160);
+  const tq=$('#tillqr'); if(tq) qrInto(tq,'solana:'+M_ADDR+'?amount='+(Number(S.till.amount)||0).toFixed(2)+'&label=Sample%20Caf%C3%A9&message=tGBP',240);
 }
 document.addEventListener('click',e=>{
-  const t=e.target.closest('[data-wact],[data-feepayer],[data-rec],[data-acc],[data-afilter],[data-toggle],[data-go],[data-pay],[data-filter],[data-from],[data-mode],[data-method],[data-act],[data-copy],[data-default],[data-link],[data-pay-to],[data-pay-open],[data-choice]');
+  const t=e.target.closest('[data-wact],[data-wf],[data-rec],[data-acc],[data-afilter],[data-toggle],[data-go],[data-pay],[data-filter],[data-from],[data-act],[data-copy],[data-default],[data-link],[data-pay-to],[data-pay-open]');
   if(!t) return;
   const d=t.dataset;
+  if(t.tagName==='A') e.preventDefault();
   if(d.wact){S.wallet.act=d.wact;S.wallet.qrStep=0;return draw()}
-  if(d.feepayer){S.wiz.feePayer=d.feepayer;return draw()}
+  if(d.wf){S.whereF=d.wf;return draw()}
   if(d.rec) return go('recipient',{recId:d.rec});
   if(d.acc) return go('account',{accId:d.acc});
   if(d.afilter){S.actFilter=d.afilter;return draw()}
   if(d.toggle){S.toggles[d.toggle]=!S.toggles[d.toggle];return draw()}
-  if(d.go) return go(d.go);
+  if(d.go){if(d.go==='new')S.wiz.sent=null;return go(d.go)}
   if(d.pay) return go('detail',{payId:d.pay});
   if(d.filter){S.filter=d.filter;return draw()}
   if(d.from){S.wiz.from=d.from;return draw()}
-  if(d.mode){S.wiz.mode='claim';return draw()}
-  if(d.method){S.wiz.mode='direct';S.wiz.method=d.method;return draw()}
   if(d.copy) return copy(d.copy);
   if(d.default){accounts.forEach(a=>a.def=a.id===d.default);toast('Default account updated');return draw()}
-  if(d.link){S.linking='wait';draw();setTimeout(()=>{if(S.view!=='accounts')return;const kinds={bank:['Savings account','US bank · ACH · ••• 7312',12400,'ACH debit','1 business day'],ewallet:['Second wallet','E-wallet · ••• 5521',2300,'Wallet balance','Instant'],crypto:['Hot wallet','Solana · USDC · 9pQr…Lm3T',5200,'USDC on Solana','~5 seconds'],flexi:['FlexiPay wallet 2','Solana · USDC · email or passkey login',0,'FlexiPay wallet','Instant']};const k=kinds[d.link];accounts.push({id:'acc_'+Date.now(),type:d.link,name:k[0],detail:k[1],balance:k[2],rail:k[3],fee:d.link==='ewallet'?.009:d.link==='bank'?.0025:d.link==='flexi'?0:.001,eta:k[4],def:false});S.linking='done';draw()},900);return}
+  if(d.link){S.linking='wait';draw();setTimeout(()=>{if(S.view!=='accounts')return;const kinds={bank:['Savings account','UK bank account · ••• 7312',12400,'Bank transfer, sent on as tGBP','GBP'],tgbp:['Second treasury wallet','Solana · tGBP · 9pQr…Lm3T',5200,'tGBP on Solana','GBP'],usdc:['Dollar wallet 2','Solana · USDC · 3Fk8…Wq2D',2300,'USDC on Solana (dollar fallback)','USD'],flexi:['FlexiPay wallet 2','Embedded wallet · tGBP',0,'tGBP on Solana','GBP']};const k=kinds[d.link];accounts.push({id:'acc_'+Date.now(),type:d.link,name:k[0],detail:k[1],balance:k[2],rail:k[3],cur:k[4],def:false});S.linking='done';draw()},900);return}
   if(d.payTo){S.wiz.rid=d.payTo;S.wiz.sent=null;return go('new')}
   if(d.payOpen) return go('detail',{payId:d.payOpen});
-  if(d.choice){S.claim.choice=d.choice;S.claim.step=1;return draw()}
   switch(d.act){
     case 'send':{const w=S.wiz,amt=Number(w.amount);if(!(amt>0)){toast('Enter an amount');return}
-      const claim=w.mode==='claim';const id='pay_'+Math.random().toString(36).slice(2,7).toUpperCase();
-      payments.unshift({id,feePayer:w.feePayer,rid:w.rid,amount:amt,from:w.from,method:claim?bestMethod(w.rid,w.from,amt)[0].k:w.method,status:claim?'awaiting_claim':'processing',when:'Just now',claim});
-      w.sent={id,amount:amt,claim,method:claim?'bank':w.method,token:Math.random().toString(36).slice(2,14)};S.claim.amount=amt;return draw()}
+      if(!quote({amount:amt,from:w.from,rid:w.rid}).best){toast('No route for this pair in the preview');return}
+      const id='pay_'+Math.random().toString(36).slice(2,7).toUpperCase();
+      payments.unshift({id,rid:w.rid,amount:amt,from:w.from,status:'processing',when:'Just now'});
+      w.sent={id,amount:amt,from:w.from,rid:w.rid};return draw()}
     case 'again':S.wiz.sent=null;return draw();
-    case 'wsend':{const to=$('#wsTo').value.trim(),amt=Number($('#wsAmt').value);if(!to||!(amt>0)){toast('Enter an address and an amount');return}const a=acct('acc_flexi');if(amt>a.balance){toast('Not enough USDC in the wallet');return}a.balance-=amt;S.wallet.tx.unshift({t:'Just now',label:'Sent to '+(to.length>12?to.slice(0,4)+'…'+to.slice(-4):to),amt:-amt});toast('Sent '+usd(amt)+' (simulated)');return draw()}
     case 'qrsample':S.wallet.qrStep=1;return draw();
     case 'qrcancel':S.wallet.qrStep=0;return draw();
-    case 'qrpay':{const a=acct('acc_flexi');a.balance-=4.5;S.wallet.tx.unshift({t:'Just now',label:'Paid Café Lisboa by QR',amt:-4.5});S.wallet.qrStep=0;toast('Paid $4.50 (simulated)');return draw()}
+    case 'qrpay':{const a=acct('acc_flexi');a.balance-=4.5;S.wallet.tx.unshift({t:'Just now',label:'Paid Sample Café by QR',amt:-4.5});S.wallet.qrStep=0;toast('Paid £4.50 in tGBP (simulated)');return draw()}
+    case 'tillpaid':{const amt=Number(S.till.amount);if(!(amt>0)){toast('Enter the sale amount');return}S.till.sales.unshift({t:'Just now',amt});S.till.paid=amt;return draw()}
+    case 'tillnew':S.till.paid=false;return draw();
+    case 'cashout':{const tot=S.till.sales.reduce((s,x)=>s+x.amt,0);if(!tot){toast('Nothing to cash out yet');return}S.till.sales=[];toast('Cash out of '+gbp(tot)+' started, free of charge (simulated)');return draw()}
     case 'togglerec':S.wiz.newRec=!S.wiz.newRec;return draw();
-    case 'saverec':{const n=$('#nrn').value.trim();if(!n){toast('Enter a name');return}const [c,cur]=$('#nrc').value.split('|');const id='r'+(recipients.length+1);recipients.push({id,name:n,kind:$('#nrk').value,country:c,cur,method:cur==='USDC'?'crypto':'bank',detail:'Chosen at claim'});S.wiz.rid=id;S.wiz.newRec=false;toast(n+' added');return draw()}
-    case 'topup':{const a=acct(d.id);a.balance+=2500;toast('Added $2,500.00 (simulated)');return draw()}
+    case 'saverec':{const id=readRecForm('n');if(!id)return;S.wiz.rid=id;S.wiz.newRec=false;return draw()}
+    case 'topup':{const a=acct(d.id);a.balance+=2500;toast('Added '+fmt(2500,a.cur)+' (simulated)');return draw()}
     case 'payfrom':S.wiz.from=d.id;S.wiz.sent=null;return go('new');
-    case 'dup':{const p=payments.find(x=>x.id===d.id);Object.assign(S.wiz,{from:p.from,rid:p.rid,amount:String(p.amount),mode:'direct',method:p.method,sent:null});return go('new')}
-    case 'addrec':{const n=$('#rn').value.trim();if(!n){toast('Enter a name');return}const [c,cur]=$('#rc').value.split('|');recipients.push({id:'r'+(recipients.length+1),name:n,kind:$('#rk').value,country:c,cur,method:cur==='USDC'?'crypto':'bank',detail:'Chosen at claim'});toast(n+' added');return draw()}
+    case 'dup':{const p=payments.find(x=>x.id===d.id);Object.assign(S.wiz,{from:p.from,rid:p.rid,amount:String(p.amount),sent:null});return go('new')}
+    case 'addrec':{if(readRecForm(''))draw();return}
     case 'newkey':S.keyShown='fp_test_'+Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,14);return draw();
-    case 'claimgo':S.claim.step=2;return draw();
-    case 'claimback':S.claim.step=0;return draw();
-    case 'claimreset':S.claim.step=0;S.claim.choice=null;return draw();
   }
 });
 document.addEventListener('input',e=>{
   if(e.target.id==='q'){S.q=e.target.value;draw()}
-  if(e.target.id==='amt'){S.wiz.amount=e.target.value.replace(/[^0-9.]/g,'');const pos=e.target.selectionStart;draw();const a=$('#amt');a.focus();a.setSelectionRange(pos,pos)}
+  if(e.target.id==='amt'||e.target.id==='tillAmt'){const id=e.target.id,v=e.target.value.replace(/[^0-9.]/g,'');if(id==='amt')S.wiz.amount=v;else S.till.amount=v;const pos=e.target.selectionStart;draw();const a=$('#'+id);a.focus();a.setSelectionRange(pos,pos)}
 });
 document.addEventListener('change',e=>{ if(e.target.id==='rsel'){S.wiz.rid=e.target.value;draw()} });
 $('#themeBtn').addEventListener('click',()=>{const r=document.documentElement;const dark=(r.dataset.theme==='dark')||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches);r.dataset.theme=dark?'light':'dark'});
