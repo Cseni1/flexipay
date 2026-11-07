@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "@flexipay/domain";
 import { createApp } from "../src/app.ts";
+import type { Rule } from "../src/auth/rate-limit.ts";
 import { createAuthRuntime } from "../src/auth/auth.ts";
 import { createMemoryMailer } from "../src/auth/mailer.ts";
 import { createDb, type Db } from "../src/db.ts";
@@ -27,7 +28,7 @@ export interface TestServer {
 }
 
 export async function startTestServer(
-	opts: { auth?: boolean; sandbox?: boolean } = {},
+	opts: { auth?: boolean; sandbox?: boolean; apiRateLimit?: Rule[] | false } = {},
 ): Promise<TestServer> {
 	process.env.FP_SETTLEMENT = process.env.FP_SETTLEMENT ?? "mock";
 	process.env.FP_CLAIM_SEAL_KEY =
@@ -66,6 +67,7 @@ export async function startTestServer(
 		trustProxy: 1,
 		// Local tests exercise the sandbox controls unless a test opts out.
 		sandboxEnabled: opts.sandbox ?? true,
+		apiRateLimit: opts.apiRateLimit,
 	}).listen(0, "127.0.0.1");
 	await new Promise((r) => server.once("listening", r));
 	const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

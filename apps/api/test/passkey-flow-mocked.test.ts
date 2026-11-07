@@ -421,7 +421,7 @@ describe("passkey submit", () => {
 	// `accepted`, so a client that lost the 200 and retries with the same Idempotency-Key gets
 	// 409 "claim already accepted" instead of the cached 200 (CCR-21 "Restart / lost HTTP":
 	// replay uses IdempotencyRecord after claim re-validation). Expected: the cached 200.
-	it.fails("BUG: a lost 200 replayed with the same Idempotency-Key returns the cached success", async () => {
+	it("a lost 200 replayed with the same Idempotency-Key returns the cached success (fixed)", async () => {
 		const { token, prepareId } = await prepared();
 		const h = idem();
 		const first = await submit(token, prepareId, h);
@@ -448,7 +448,7 @@ describe("passkey submit", () => {
 		expect(retry.status).toBe(200);
 	});
 
-	it("documents today's replay behaviour: a 202 is not cached, so the same key reaches the 200 (bug 5 fixed 7 Nov)", async () => {
+	it("documents today's replay behaviour: a 202 is not cached, so the same key reaches the 200 (bugs 4 and 5 fixed 7 Nov)", async () => {
 		const pending = await prepared();
 		rpc.wait = async () => {
 			throw new Error("not yet");
@@ -460,11 +460,12 @@ describe("passkey submit", () => {
 		rpc.outcome = { kind: "success", txHash: hashes.release, ledger: 3 };
 		const done = await submit(pending.token, pending.prepareId, h);
 		expect(done.status).toBe(200);
-		// Bug 4 (still open, dormant passkey feature): after acceptance the same key is refused
-		// before the cache lookup instead of replaying the stored 200.
+		// Bug 4 fixed: after acceptance the same key replays the stored 200; a new key is refused.
 		const after = await submit(pending.token, pending.prepareId, h);
-		expect(after.status).toBe(409);
-		expect((await after.json()).message).toMatch(/already accepted/);
+		expect(after.status).toBe(200);
+		const fresh = await submit(pending.token, pending.prepareId);
+		expect(fresh.status).toBe(409);
+		expect((await fresh.json()).message).toMatch(/already accepted/);
 	});
 
 	it("a release that is sent but not yet confirmed answers 202 pending; the next submit recovers it", async () => {

@@ -6,7 +6,7 @@ off-the-shelf tools, and dead code. Each item has a status, an owner, and, where
 
 Status legend: ✅ done · 🟡 in progress · ⏳ planned · 🙋 waiting on the founder · ⏸ deferred
 
-Last updated: 7 Nov 2026.
+Last updated: 7 Nov 2026 (security section 4 added).
 
 ## 1. Testing and CI
 
@@ -18,7 +18,7 @@ Last updated: 7 Nov 2026.
 | 1.4 | Backend tests (payment engine, refunds, poller, route permissions) | ✅ | PR #183: 73% → 87% lines, 403 tests; route permission matrix covers every route. |
 | 1.5 | Web unit tests | ✅ | PR #181: 24% → 56% lines, 272 tests. |
 | 1.6 | Settlement adapter tests | ✅ | PR #180: Stellar 44% → 81%, Solana 70% → 100%. |
-| 1.7 | Bugs found by the audit | ✅ | Fixed in #182 and #184 (CCR-41). Open: passkey submit replay (dormant Stellar passkey feature). |
+| 1.7 | Bugs found by the audit | ✅ | Fixed in #182, #184 (CCR-41) and the security PR (passkey submit replay, bug 4). |
 | 1.8 | Live DB matches the schema | ✅ | Missing `ClaimLink.acceptedEndpointId` index declared; read-only `prisma migrate diff` against Neon is empty. CI checks migrations vs schema on every PR. |
 | 1.9 | Branch protection: require CI before merge | 🙋 | See guide G1. |
 | 1.10 | Load test (many payments at once) | ⏳ | Before real money. |
@@ -54,7 +54,24 @@ retries, refunds), quotes and fees, the Stellar payout vault.
 | 3.5 | Old Stellar demo scripts (`scripts/demo`, `tests/e2e`) | ⏸ | Archive after Demo Day. |
 | 3.6 | Remaining unused exports (about 40, mostly types) | ⏳ | Low risk; clean up with a knip pass in CI. |
 
-## 4. Step-by-step guides (founder actions)
+## 4. Security hardening
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| 4.1 | API security headers (**helmet**) | ✅ | Every response: `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `nosniff`, HSTS 2 years, `Referrer-Policy: no-referrer`, no `X-Powered-By`. `/v1/*` is `Cache-Control: no-store`. `/docs` may load Scalar from jsDelivr only. `apps/api/src/security.ts`. |
+| 4.2 | Rate limit on the whole `/v1` API | ✅ | 600 requests/min per API key or session; public claim routes 300/min per client address; 429 `rate_limited` with `Retry-After`. Sign-in/sign-up limits unchanged. In memory (one API instance); move to a shared store if the API scales out. |
+| 4.3 | Web app security headers (Vercel) | ✅ | Cannot be framed (clickjacking), `nosniff`, HSTS, strict referrer, no plugins, unused browser features off. A full script CSP is deliberately not enforced yet (Privy, Transak); revisit when Privy is live. |
+| 4.4 | **Dependabot** (npm, GitHub Actions, Cargo) | ✅ | `.github/dependabot.yml`: grouped weekly PRs, each runs CI. Security alerts: guide G5. |
+| 4.5 | **CodeQL** code scanning | ✅ | `.github/workflows/codeql.yml`, security-extended queries on every PR, push to main and weekly. Free on a public repo. |
+| 4.6 | Passkey submit replay (bug 4) | ✅ | A retried submit with the same Idempotency-Key now returns the stored 200. |
+| 4.7 | Remaining dependency advisories (21 high, 0 critical, production) | ⏸ | Accepted for now: all are inside the Privy wallet SDK's browser bundle (`ws`, old `zod` 3, `decode-uri-component` via WalletConnect/viem; `ws` is not used in browsers) or `bigint-buffer` under `@solana/spl-token` (no fix published; FlexiPay only parses its own transactions). Re-check when Privy goes live; Dependabot will propose fixes. CI blocks any **critical**. |
+| 4.8 | Dead secrets: Crossmint keys on Render | ✅ | Removed from Render after #187. The Crossmint account was declined; nothing to revoke. |
+| 4.9 | Secret scanning + push protection on GitHub | 🙋 | Guide G5 (gitleaks already runs in CI). |
+| 4.10 | Branch protection: require CI | 🙋 | Guide G1. |
+| 4.11 | Two-factor sign-in on every founder account (GitHub, Render, Vercel, Neon, Tazapay, BlindPay, Brevo, Google) | 🙋 | Guide G6. |
+| 4.12 | Separate production keys and database before real money | ⏸ | Today everything is sandbox/devnet. Before going live: new partner keys, a new Neon database, a new `FP_CLAIM_SEAL_KEY` and `BETTER_AUTH_SECRET`. |
+
+## 5. Step-by-step guides (founder actions)
 
 ### G1. Require CI before merging (GitHub branch protection)
 1. Open https://github.com/Cseni1/flexipay/settings/branches
@@ -79,3 +96,16 @@ retries, refunds), quotes and fees, the Stellar payout vault.
 1. Sign in at https://dashboard.privy.io with ccpeoplesolutions@gmail.com.
 2. Create an app named **FlexiPay**; copy the **App ID** from **Settings → Basics** (never the App secret).
 3. Send the App ID to the integrator, who will then guide the dashboard settings (enable Solana embedded wallets, allowed origins `https://my.getflexipay.app`) and run a live login test.
+
+### G5. GitHub security alerts and secret push protection
+1. Open https://github.com/Cseni1/flexipay/settings/security_analysis
+2. Turn on **Dependabot alerts** and **Dependabot security updates**.
+3. Turn on **Secret scanning** and **Push protection**.
+4. Under **Code scanning**, leave the default off: the repo's CodeQL workflow already runs.
+
+### G6. Two-factor sign-in (about 2 minutes per account)
+For each of GitHub, Render, Vercel, Neon, Tazapay, BlindPay, Brevo and the Google account
+ccpeoplesolutions@gmail.com:
+1. Open the account's **Security** settings.
+2. Turn on **two-factor authentication** with an authenticator app (Google Authenticator or 1Password), not SMS.
+3. Save the recovery codes in your password manager.
