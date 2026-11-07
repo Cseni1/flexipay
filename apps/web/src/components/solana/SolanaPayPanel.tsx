@@ -24,7 +24,7 @@ import {
 } from "../../api/solanaClient"
 import {
 	isFlexiPayWalletConfigured,
-	readCrossmintClientKey,
+	readPrivyAppId,
 } from "../../flexipayWallet/config"
 import {
 	sendFlexiPaySolanaTransaction,
@@ -80,10 +80,10 @@ const FlexiPayPayProviders = lazy(async () => {
 	const { FlexiPayWalletProviders } =
 		await import("../../flexipayWallet/FlexiPayWalletProviders")
 	function Loaded({ children }: { children: ReactNode }) {
-		const apiKey = readCrossmintClientKey(import.meta.env)
-		if (!apiKey) return null
+		const appId = readPrivyAppId(import.meta.env)
+		if (!appId) return null
 		return (
-			<FlexiPayWalletProviders apiKey={apiKey}>
+			<FlexiPayWalletProviders appId={appId}>
 				{children}
 			</FlexiPayWalletProviders>
 		)

@@ -94,6 +94,8 @@ export default defineConfig(({ mode }) => {
 		mode !== "production" && process.env.FP_SOLANA_TEST_WALLET === "1"
 	const crossmintSdkStub =
 		mode !== "production" && process.env.FP_CROSSMINT_SDK_STUB === "1"
+	const privySdkStub =
+		mode !== "production" && process.env.FP_PRIVY_SDK_STUB === "1"
 
 	return {
 		plugins: [
@@ -106,17 +108,38 @@ export default defineConfig(({ mode }) => {
 			solanaTestWalletHarnessPlugin(solanaTestWallet),
 		],
 		resolve: {
-			alias: crossmintSdkStub
-				? [
-						{
-							find: "@crossmint/client-sdk-react-ui",
-							replacement: resolve(
-								rootDir,
-								"src/components/payFrom/crossmintSdk.stub.tsx",
-							),
-						},
-					]
-				: [],
+			alias: [
+				...(crossmintSdkStub
+					? [
+							{
+								find: "@crossmint/client-sdk-react-ui",
+								replacement: resolve(
+									rootDir,
+									"src/components/payFrom/crossmintSdk.stub.tsx",
+								),
+							},
+						]
+					: []),
+				// Playwright only: Privy SDK and wallet balances without network or keys.
+				...(privySdkStub
+					? [
+							{
+								find: /^@privy-io\/react-auth(\/solana)?$/,
+								replacement: resolve(
+									rootDir,
+									"src/flexipayWallet/privySdk.stub.tsx",
+								),
+							},
+							{
+								find: /^\.\/balances$/,
+								replacement: resolve(
+									rootDir,
+									"src/flexipayWallet/balances.stub.ts",
+								),
+							},
+						]
+					: []),
+			],
 		},
 		build: {
 			target: "esnext",

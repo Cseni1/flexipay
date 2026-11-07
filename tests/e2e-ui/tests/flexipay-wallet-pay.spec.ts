@@ -3,7 +3,7 @@ import { paymentDetailFixture } from "./fixtures"
 
 const PAYMENT_ID = "pay_flexi"
 const STUB_SIGNATURE =
-	"5FlexiPayStubSigaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	"5FexiPayStubSigaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 /** Valid base58 Solana pubkeys (buildUsdcTransferTransaction requires real keys). */
 const TGBP_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
 const USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test"
 
-test.describe("Pay-from FlexiPay wallet (Crossmint stub)", () => {
+test.describe("Pay-from FlexiPay wallet (Privy stub)", () => {
 	test("opens the stub wallet, shows address and USDC, and copies", async ({
 		page,
 		context,

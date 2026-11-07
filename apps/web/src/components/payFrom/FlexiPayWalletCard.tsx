@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react"
 import {
 	isFlexiPayWalletConfigured,
-	readCrossmintClientKey,
+	readPrivyAppId,
 } from "../../flexipayWallet/config"
 import { Panel } from "../ui"
 
@@ -16,10 +16,10 @@ const FlexiPayWalletLazy = lazy(async () => {
 			import("../../flexipayWallet/FlexiPayWalletSession"),
 		])
 	function Loaded({ onAddressChange }: Props) {
-		const apiKey = readCrossmintClientKey(import.meta.env)
-		if (!apiKey) return null
+		const appId = readPrivyAppId(import.meta.env)
+		if (!appId) return null
 		return (
-			<FlexiPayWalletProviders apiKey={apiKey}>
+			<FlexiPayWalletProviders appId={appId}>
 				<FlexiPayWalletSession onAddressChange={onAddressChange} />
 			</FlexiPayWalletProviders>
 		)
@@ -28,8 +28,8 @@ const FlexiPayWalletLazy = lazy(async () => {
 })
 
 /**
- * Optional Crossmint embedded Solana wallet on Pay-from.
- * Lazy-loaded so the Crossmint auth/wallet graph stays out of the main bundle.
+ * FlexiPay embedded Solana wallet (Privy) on Pay-from.
+ * Lazy-loaded so the Privy auth/wallet graph stays out of the main bundle.
  */
 export function FlexiPayWalletCard({ onAddressChange }: Props = {}) {
 	const configured = isFlexiPayWalletConfigured(import.meta.env)
@@ -38,7 +38,7 @@ export function FlexiPayWalletCard({ onAddressChange }: Props = {}) {
 		<div data-testid="flexipay-wallet-card">
 			<Panel
 				title="FlexiPay wallet"
-				description="Optional embedded Solana wallet via Crossmint email sign-in — for people without Phantom or Solflare."
+				description="Embedded Solana wallet with email or passkey sign-in (Privy) — for people without Phantom or Solflare. FlexiPay never holds your keys."
 				actions={
 					<span
 						className="pill pill--test"

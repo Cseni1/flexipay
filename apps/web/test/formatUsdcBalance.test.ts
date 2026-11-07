@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
 	FLEXIPAY_WALLET_CHAIN,
-	FLEXIPAY_WALLET_CREATE_ON_LOGIN,
 	isFlexiPayWalletConfigured,
 } from "../src/flexipayWallet/config"
 import { formatUsdcBalance } from "../src/flexipayWallet/formatUsdcBalance"
@@ -24,22 +23,17 @@ describe("formatUsdcBalance", () => {
 })
 
 describe("flexipay wallet config", () => {
-	it("targets Solana with email recovery", () => {
-		expect(FLEXIPAY_WALLET_CHAIN).toBe("solana")
-		expect(FLEXIPAY_WALLET_CREATE_ON_LOGIN.chain).toBe("solana")
-		expect(FLEXIPAY_WALLET_CREATE_ON_LOGIN.recoveryMethods).toEqual([
-			{ type: "email" },
-		])
+	it("targets Solana devnet", () => {
+		// Privy embedded Solana wallet on devnet (Crossmint declined, 7 Nov 2026).
+		expect(FLEXIPAY_WALLET_CHAIN).toBe("solana:devnet")
 	})
 
-	it("requires a non-empty client key", () => {
+	it("requires a non-empty Privy App ID", () => {
 		expect(isFlexiPayWalletConfigured({})).toBe(false)
-		expect(
-			isFlexiPayWalletConfigured({ VITE_CROSSMINT_CLIENT_KEY: "  " }),
-		).toBe(false)
+		expect(isFlexiPayWalletConfigured({ VITE_PRIVY_APP_ID: "  " })).toBe(false)
 		expect(
 			isFlexiPayWalletConfigured({
-				VITE_CROSSMINT_CLIENT_KEY: "ck_staging_test",
+				VITE_PRIVY_APP_ID: "cm_test_app_id",
 			}),
 		).toBe(true)
 	})

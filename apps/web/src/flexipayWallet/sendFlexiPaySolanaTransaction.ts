@@ -8,7 +8,7 @@ type SendResult = {
 	transactionId?: string
 }
 
-/** Minimal wallet shape used for FlexiPay Solana pay (Crossmint or stub). */
+/** Minimal wallet shape used for FlexiPay Solana pay (Privy embedded wallet or the test stub). */
 export type FlexiPaySolanaWallet = {
 	address: string
 	sendTransaction?: (params: SendParams) => Promise<SendResult>
@@ -23,9 +23,7 @@ type SerializableLegacyTx = {
 
 /**
  * Send a legacy Transaction (from buildUsdcTransferTransaction) through the
- * Crossmint embedded Solana wallet as a base58-serialized payload.
- * Prefer duck-typed `wallet.sendTransaction` (stub / SolanaWallet instance).
- * Falls back to `SolanaWallet.from` for a plain Crossmint Wallet.
+ * FlexiPay embedded Solana wallet as a base58-serialized payload.
  */
 export async function sendFlexiPaySolanaTransaction(
 	wallet: FlexiPaySolanaWallet,
@@ -39,13 +37,9 @@ export async function sendFlexiPaySolanaTransaction(
 	)
 	const serializedTransaction = bs58.encode(bytes)
 
-	let send = wallet.sendTransaction?.bind(wallet)
+	const send = wallet.sendTransaction?.bind(wallet)
 	if (!send) {
-		const { SolanaWallet } = await import("@crossmint/client-sdk-react-ui")
-		const solana = SolanaWallet.from(
-			wallet as Parameters<typeof SolanaWallet.from>[0],
-		)
-		send = (params) => solana.sendTransaction(params)
+		throw new Error("The FlexiPay wallet cannot send transactions yet.")
 	}
 
 	const result = await send({ serializedTransaction })
