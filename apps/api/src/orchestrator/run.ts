@@ -335,13 +335,17 @@ async function executeLeg(
 
 	const provider = adapters.getProvider(leg.providerId);
 	if (!provider) {
-		await transitionLeg(db, payment.id, leg.id, "processing", "failed", "no provider", {
-			errorCode: "unsupported",
-			errorMessage: `provider ${leg.providerId} not registered`,
-		});
-		await emitPaymentEvent(db, payment.organizationId, payment.id, "leg.failed", {
-			legId: leg.id,
-		});
+		// A provider that is not registered (keys removed, partner switched off) is a refusal before
+		// anything moved: the CCR-14 retry/refund path handles it like any other leg failure. Failing
+		// the leg directly left a payout after settle stuck in processing (test audit, 7 Nov).
+		await onProviderLegFailed(
+			db,
+			payment,
+			leg,
+			"unsupported",
+			`provider ${leg.providerId} not registered`,
+			"",
+		);
 		return;
 	}
 

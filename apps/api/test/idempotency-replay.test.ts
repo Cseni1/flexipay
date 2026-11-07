@@ -105,12 +105,12 @@ describe("Idempotency-Key replays on payment routes", () => {
 		expect(await t.db.payment.count({ where: { organizationId: orgId } })).toBe(1);
 	});
 
-	// BUG: apps/api/src/idempotency.ts:48-76 looks the key up, runs the handler, then inserts the
+	// Fixed 7 Nov (was BUG): apps/api/src/idempotency.ts looked the key up, ran the handler, then inserted the
 	// record and swallows the unique-key error (`.catch(() => {})`). Two concurrent requests with the
 	// same Idempotency-Key both miss the lookup and both run, so a client retrying a timed-out
 	// POST /v1/payments can create two payments (or run fund twice). Expected: exactly one runs
 	// (reserve the key first, or replay from the winner's record).
-	it.fails("BUG: concurrent requests with the same Idempotency-Key create only one payment", async () => {
+	it("concurrent requests with the same Idempotency-Key create only one payment (fixed)", async () => {
 		const { key, orgId } = await t.newOrg("Idem Race");
 		const recipient = await (await post(key, "/v1/recipients", { name: "W", kind: "individual", country: "US" })).json();
 		const quote = await (
@@ -123,9 +123,20 @@ describe("Idempotency-Key replays on payment routes", () => {
 		).json();
 		const body = { quoteId: quote.id, recipientId: recipient.id, delivery: "direct", profile: "one_off" };
 		const results = await Promise.all(
-			Array.from({ length: 4 }, () => post(key, "/v1/payments", body, "race-1").then((r) => r.json())),
+			Array.from({ length: 4 }, () =>
+				post(key, "/v1/payments", body, "race-1").then(async (r) => ({ status: r.status, json: await r.json() })),
+			),
 		);
-		expect(new Set(results.map((r) => r.id)).size).toBe(1);
+		// Exactly one payment; the others either replay it or get 409 idempotency_in_progress (retry later).
 		expect(await t.db.payment.count({ where: { organizationId: orgId } })).toBe(1);
+		const ok = results.filter((r) => r.status === 201 || r.status === 200);
+		expect(new Set(ok.map((r) => r.json.id)).size).toBe(1);
+		for (const r of results.filter((x) => x.status !== 201 && x.status !== 200)) {
+			expect(r.status).toBe(409);
+			expect(r.json.code).toBe("idempotency_in_progress");
+		}
+		// Once the winner has finished, a retry with the same key replays it.
+		const again = await (await post(key, "/v1/payments", body, "race-1")).json();
+		expect(again.id).toBe(ok[0]!.json.id);
 	});
 });

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { VaultTxFeeError } from "@flexipay/adapter-stellar";
 import {
 	CreatePaymentRequestSchema,
@@ -103,6 +104,8 @@ export const paymentRoutes: RouteDef<any, any>[] = [
 		path: "/v1/payments/{id}/fund",
 		summary: "Mark funded (simulated collection); runs the legs",
 		auth: "customer",
+		// Takes no fields; unknown ones are a 400 like every other POST (test audit, 7 Nov).
+		body: z.object({}).strict(),
 		success: { status: 200, schema: PaymentSchema },
 		handler: async (ctx, { params }) => {
 			const org = orgOf(ctx);
@@ -147,6 +150,8 @@ export const paymentRoutes: RouteDef<any, any>[] = [
 		path: "/v1/payments/{id}/cancel",
 		summary: "Cancel before processing",
 		auth: "customer",
+		// Takes no fields; unknown ones are a 400 like every other POST (test audit, 7 Nov).
+		body: z.object({}).strict(),
 		success: { status: 200, schema: PaymentSchema },
 		handler: async (ctx, { params }) => {
 			const org = orgOf(ctx);
