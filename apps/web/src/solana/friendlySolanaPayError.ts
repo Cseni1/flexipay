@@ -106,8 +106,9 @@ export function friendlySolanaPayError(cause: unknown): string {
 		lower.includes("not enough tgbp") ||
 		lower.includes("insufficient token") ||
 		lower.includes("insufficient funds") ||
-		lower.includes("0x1") ||
-		lower.includes("custom program error: 0x1")
+		// Exactly error 0x1 (SPL Token insufficient funds), not 0x10, 0x11 (frozen account), …
+		/custom program error: 0x1(?![0-9a-f])/.test(lower) ||
+		/(^|[^0-9a-fx])0x1(?![0-9a-f])/.test(lower)
 	) {
 		return INSUFFICIENT_USDC
 	}
