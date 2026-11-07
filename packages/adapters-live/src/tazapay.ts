@@ -602,7 +602,10 @@ export class TazapayAdapter implements ProviderAdapter {
 		let value: "up" | "down" = "down"
 		if (this.baseUrl !== PRODUCTION_BASE_URL || this.opts.liveApproved) {
 			try {
-				const payout = this.payoutCurrencies()[0]
+				// The first local (non-holding) payout currency pairs with the row's first country.
+				const payout =
+					this.payoutCurrencies().find((c) => !(c in HOLDING)) ??
+					this.payoutCurrencies()[0]
 				const country = this.row.countries[0]
 				if (payout && country) {
 					this.ok(
@@ -690,8 +693,14 @@ export class TazapayAdapter implements ProviderAdapter {
 	}
 
 	/** Row currencies that are payout currencies (not holding inputs). */
+	/**
+	 * Row currencies Tazapay can pay out: every fiat currency, including GBP and USD (sandbox
+	 * 7 Nov: a USD balance pays GBP in the UK and a GBP balance pays USD in the US). Only the
+	 * on-chain inputs (tGBP, USDC) are never payout currencies. The row lists PHP first, which
+	 * the health check uses.
+	 */
 	private payoutCurrencies(): string[] {
-		return this.row.currencies.filter((c) => !(c in HOLDING))
+		return this.row.currencies.filter((c) => c !== "TGBP" && c !== "USDC")
 	}
 
 	private holdingFor(currency: string): string {

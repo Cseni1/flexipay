@@ -387,7 +387,9 @@
         "UG",
         "UY",
         "VN",
-        "ZA"
+        "ZA",
+        "US",
+        "GB"
       ],
       "currencies": [
         "GBP",
@@ -1022,6 +1024,486 @@
       "from": "ZAR",
       "to": "GBP",
       "rate": "0.0489599",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "EUR",
+      "rate": "0.8598487",
+      "placeholder": true
+    },
+    {
+      "from": "EUR",
+      "to": "USD",
+      "rate": "1.1629952",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "AED",
+      "rate": "3.5244721",
+      "placeholder": true
+    },
+    {
+      "from": "AED",
+      "to": "USD",
+      "rate": "0.2837304",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "ARS",
+      "rate": "1353.6427140",
+      "placeholder": true
+    },
+    {
+      "from": "ARS",
+      "to": "USD",
+      "rate": "0.0007387",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "AUD",
+      "rate": "1.3675417",
+      "placeholder": true
+    },
+    {
+      "from": "AUD",
+      "to": "USD",
+      "rate": "0.7312390",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "BDT",
+      "rate": "115.7055739",
+      "placeholder": true
+    },
+    {
+      "from": "BDT",
+      "to": "USD",
+      "rate": "0.0086426",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "CAD",
+      "rate": "1.3490259",
+      "placeholder": true
+    },
+    {
+      "from": "CAD",
+      "to": "USD",
+      "rate": "0.7412756",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "CHF",
+      "rate": "0.7944177",
+      "placeholder": true
+    },
+    {
+      "from": "CHF",
+      "to": "USD",
+      "rate": "1.2587835",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "CLP",
+      "rate": "918.8012863",
+      "placeholder": true
+    },
+    {
+      "from": "CLP",
+      "to": "USD",
+      "rate": "0.0010883",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "CNY",
+      "rate": "6.3995165",
+      "placeholder": true
+    },
+    {
+      "from": "CNY",
+      "to": "USD",
+      "rate": "0.1562618",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "CZK",
+      "rate": "20.9252749",
+      "placeholder": true
+    },
+    {
+      "from": "CZK",
+      "to": "USD",
+      "rate": "0.0477890",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "DKK",
+      "rate": "6.4234434",
+      "placeholder": true
+    },
+    {
+      "from": "DKK",
+      "to": "USD",
+      "rate": "0.1556797",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "DZD",
+      "rate": "131.2856028",
+      "placeholder": true
+    },
+    {
+      "from": "DZD",
+      "to": "USD",
+      "rate": "0.0076169",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "GHS",
+      "rate": "10.7835618",
+      "placeholder": true
+    },
+    {
+      "from": "GHS",
+      "to": "USD",
+      "rate": "0.0927337",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "HKD",
+      "rate": "7.5636515",
+      "placeholder": true
+    },
+    {
+      "from": "HKD",
+      "to": "USD",
+      "rate": "0.1322112",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "HUF",
+      "rate": "315.8530220",
+      "placeholder": true
+    },
+    {
+      "from": "HUF",
+      "to": "USD",
+      "rate": "0.0031660",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "IDR",
+      "rate": "17413.7547721",
+      "placeholder": true
+    },
+    {
+      "from": "IDR",
+      "to": "USD",
+      "rate": "0.0000574",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "INR",
+      "rate": "91.3205384",
+      "placeholder": true
+    },
+    {
+      "from": "INR",
+      "to": "USD",
+      "rate": "0.0109504",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "KES",
+      "rate": "124.6697944",
+      "placeholder": true
+    },
+    {
+      "from": "KES",
+      "to": "USD",
+      "rate": "0.0080211",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "KRW",
+      "rate": "1229.8571759",
+      "placeholder": true
+    },
+    {
+      "from": "KRW",
+      "to": "USD",
+      "rate": "0.0008131",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "LKR",
+      "rate": "315.9858756",
+      "placeholder": true
+    },
+    {
+      "from": "LKR",
+      "to": "USD",
+      "rate": "0.0031646",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "MAD",
+      "rate": "9.1338036",
+      "placeholder": true
+    },
+    {
+      "from": "MAD",
+      "to": "USD",
+      "rate": "0.1094834",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "MXN",
+      "rate": "17.8333958",
+      "placeholder": true
+    },
+    {
+      "from": "MXN",
+      "to": "USD",
+      "rate": "0.0560745",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "MYR",
+      "rate": "3.9224056",
+      "placeholder": true
+    },
+    {
+      "from": "MYR",
+      "to": "USD",
+      "rate": "0.2549455",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "NGN",
+      "rate": "1320.3180877",
+      "placeholder": true
+    },
+    {
+      "from": "NGN",
+      "to": "USD",
+      "rate": "0.0007573",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "NOK",
+      "rate": "8.9429067",
+      "placeholder": true
+    },
+    {
+      "from": "NOK",
+      "to": "USD",
+      "rate": "0.1118204",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "NPR",
+      "rate": "144.7831871",
+      "placeholder": true
+    },
+    {
+      "from": "NPR",
+      "to": "USD",
+      "rate": "0.0069068",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "PEN",
+      "rate": "3.2060537",
+      "placeholder": true
+    },
+    {
+      "from": "PEN",
+      "to": "USD",
+      "rate": "0.3119099",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "PKR",
+      "rate": "257.2572373",
+      "placeholder": true
+    },
+    {
+      "from": "PKR",
+      "to": "USD",
+      "rate": "0.0038871",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "PLN",
+      "rate": "3.7884133",
+      "placeholder": true
+    },
+    {
+      "from": "PLN",
+      "to": "USD",
+      "rate": "0.2639627",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "RON",
+      "rate": "4.5978954",
+      "placeholder": true
+    },
+    {
+      "from": "RON",
+      "to": "USD",
+      "rate": "0.2174908",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "SEK",
+      "rate": "9.5551481",
+      "placeholder": true
+    },
+    {
+      "from": "SEK",
+      "to": "USD",
+      "rate": "0.1046556",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "SGD",
+      "rate": "1.2356799",
+      "placeholder": true
+    },
+    {
+      "from": "SGD",
+      "to": "USD",
+      "rate": "0.8092710",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "THB",
+      "rate": "32.2542859",
+      "placeholder": true
+    },
+    {
+      "from": "THB",
+      "to": "USD",
+      "rate": "0.0310036",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "TRY",
+      "rate": "47.5437684",
+      "placeholder": true
+    },
+    {
+      "from": "TRY",
+      "to": "USD",
+      "rate": "0.0210332",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "UGX",
+      "rate": "4251.3185036",
+      "placeholder": true
+    },
+    {
+      "from": "UGX",
+      "to": "USD",
+      "rate": "0.0002352",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "UYU",
+      "rate": "39.0203163",
+      "placeholder": true
+    },
+    {
+      "from": "UYU",
+      "to": "USD",
+      "rate": "0.0256276",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "VND",
+      "rate": "24791.7615201",
+      "placeholder": true
+    },
+    {
+      "from": "VND",
+      "to": "USD",
+      "rate": "0.0000403",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "GBP",
+      "rate": "0.7199288",
+      "placeholder": true
+    },
+    {
+      "from": "GBP",
+      "to": "USD",
+      "rate": "1.3890261",
+      "placeholder": true
+    },
+    {
+      "from": "TGBP",
+      "to": "USD",
+      "rate": "1.2293000",
+      "placeholder": true
+    },
+    {
+      "from": "USD",
+      "to": "GBP",
+      "rate": "0.8134710",
+      "placeholder": true
+    },
+    {
+      "from": "USDC",
+      "to": "COP",
+      "rate": "3900.0000000",
+      "placeholder": true
+    },
+    {
+      "from": "COP",
+      "to": "USD",
+      "rate": "0.0002564",
       "placeholder": true
     }
   ]

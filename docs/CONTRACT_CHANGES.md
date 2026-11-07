@@ -834,3 +834,12 @@ generated from the route table.
 - **Found live:** `Quote.alternatives` was always `[]` (hard-coded in `assembleQuote`); the partner comparison lived only in the reasons text, so the Task 26 saving (#168) could never appear on a live quote.
 - **Change:** `pricePayoutPair` returns the losing convert + payout options; `priceRoute` turns each into a full alternative route (same legs before the pair, the losing pair after), totals its fees with the same `sumFeesTotal`, and returns them best first. Reasons read "Via <label>: delivers <amount> <currency>". Routes without a pair comparison keep `alternatives: []`. No API shape change.
 - **Tests:** domain 99 (1 new: the alternative equals the plain-route quote exactly), API 171, web 111, e2e-ui 118; live BR test now checks the saving line.
+
+## CCR-40 (integrator, 7 Nov 2026): pay from any supported currency into any covered country
+
+- **Why:** the founder wants FlexiPay to pay from any currency into any country, as far as partners reach. Dollars only reached US, PH, BR and ZA.
+- **What:** a Tazapay sandbox sweep on 7 Nov quoted $100 from a USD balance to all 64 Tazapay local-rail countries, including GB (GBP). New corridors: US → every Tazapay country (USDC on Stellar, then the Tazapay pair), US → MX/AR (BlindPay and Tazapay compete), US → CO (BlindPay), GB → US (tGBP on Solana, Tazapay pays USD). US-BR and US-ZA now also list Tazapay, so three or two routes compete. 131 corridors in total.
+- **Tazapay adapter:** GBP and USD are payout currencies as well as holding currencies (a USD balance pays GBP in the UK; a GBP balance pays USD in the US); only tGBP and USDC are never payouts. The health check uses the first local payout currency.
+- **Placeholder rates:** USDC → XX and XX → USD from the sweep (validator and fee totals only; no simulated payout exists on the new corridors, so they never price a route); USDC → COP, TGBP → USD and USD → GBP likewise.
+- **Router check (sandbox, $100):** MX BlindPay MX$1,818.00 beats Tazapay MX$1,655.14; BR BlindPay R$539.63 beats simulated R$534.37 and Tazapay R$467.62; KE KSh 11,570.80, FR €79.80, IN ₹8,475.60, CO COP 313,902 via their partners; £100 GB → US $121.65.
+- **Tests:** adapters-live 41 (1 new), domain 99, API 171.
