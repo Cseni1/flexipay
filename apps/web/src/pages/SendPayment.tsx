@@ -31,6 +31,7 @@ import {
 	defaultSourceForCountry,
 	destinationsForCountry,
 	regulationNoteFor,
+	allSources,
 	sendFromLabel,
 	sourceFromKey,
 	sourceKey,
@@ -118,10 +119,11 @@ const FALLBACK_SOURCES: Record<FallbackCountry, SourceEndpoint> = {
 	GB: { type: "bank_account", currency: "GBP", country: "GB" },
 }
 
+// Pounds are FlexiPay's main focus: before a country is picked, the form sends from GBP.
 const DEFAULT_SOURCE: SourceEndpoint = {
 	type: "bank_account",
-	currency: "USD",
-	country: "US",
+	currency: "GBP",
+	country: "GB",
 }
 
 const isFallbackCountry = (country: string): country is FallbackCountry =>
@@ -132,6 +134,11 @@ const sourceForForm = (
 	country: string,
 	selectedKey: string,
 ): SourceEndpoint => {
+	// No country yet: honour the sender's Send from choice (it shows before the country).
+	if (!country) {
+		const chosen = sourceFromKey(selectedKey)
+		if (chosen) return chosen
+	}
 	if (corridors && country) {
 		const selected = sourceFromKey(selectedKey)
 		if (
@@ -331,7 +338,9 @@ export default function SendPayment() {
 	)
 
 	const sendFromOptions = useMemo(() => {
-		if (!corridors || !form.country) return []
+		if (!corridors) return []
+		// Before a country is chosen, offer every source (pounds first) so the sender picks first.
+		if (!form.country) return allSources(corridors)
 		return sourcesForCountry(corridors, form.country)
 	}, [corridors, form.country])
 
@@ -449,7 +458,17 @@ export default function SendPayment() {
 	}
 
 	const changeCountry = (country: string) => {
-		sendFromChosen.current = false
+		// Keep a Send from the sender picked before the country, if that country can be paid from it.
+		const keepKey =
+			sendFromChosen.current &&
+			corridors !== null &&
+			country !== "" &&
+			sourcesForCountry(corridors, country).some(
+				(entry) => sourceKey(entry) === form.sourceKey,
+			)
+				? form.sourceKey
+				: null
+		sendFromChosen.current = keepKey !== null
 		setRecipientCountryNote(null)
 		setBankDetails(EMPTY_BANK_DETAILS)
 		if (country === "") {
@@ -461,7 +480,7 @@ export default function SendPayment() {
 			})
 			return
 		}
-		const nextSourceKey = resolveSourceKey(corridors, country)
+		const nextSourceKey = keepKey ?? resolveSourceKey(corridors, country)
 		const nextSource = sourceForForm(corridors, country, nextSourceKey)
 		const options = destinationsForForm(corridors, country, nextSource)
 		update({

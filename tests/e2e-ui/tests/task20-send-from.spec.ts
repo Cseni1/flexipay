@@ -120,6 +120,23 @@ test.describe("TASK 20 Send from and sandbox coverage", () => {
 		await expect(page.getByLabel("Amount (£)")).toBeVisible()
 	})
 
+	test("Send from shows before a country, defaults to pounds, and a USD pick survives choosing PH", async ({
+		page,
+	}) => {
+		await mockTask20(page)
+		await page.goto("/")
+		const sendFrom = page.getByLabel("Send from")
+		await expect(sendFrom).toHaveValue("GB:GBP")
+		await expect(sendFrom.locator("option")).toHaveText([
+			"Pounds: GBP bank account, moves as tGBP (UK)",
+			"Dollars: USD operating account (US)",
+		])
+		await sendFrom.selectOption("US:USD")
+		await page.getByLabel("Destination country").selectOption("PH")
+		await expect(page.getByLabel("Send from")).toHaveValue("US:USD")
+		await expect(page.getByLabel("Amount (USD)")).toBeVisible()
+	})
+
 	test("PH shows Send from, defaults to GBP, USD switch updates the quote", async ({
 		page,
 	}) => {

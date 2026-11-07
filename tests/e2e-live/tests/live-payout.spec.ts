@@ -60,7 +60,7 @@ test.describe("Live payout (Tazapay PH bank)", () => {
 
 		const sendFrom = page.getByLabel("Send from")
 		await expect(sendFrom).toBeVisible({ timeout: 90_000 })
-		await sendFrom.selectOption({ label: "USD operating account (US)" })
+		await sendFrom.selectOption("US:USD")
 		await expect(page.getByLabel("Amount (USD)")).toBeVisible()
 
 		await page
