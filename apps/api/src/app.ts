@@ -24,6 +24,7 @@ import type { ApiRuntime } from "./runtime.ts";
 import type { AuthRuntime } from "./auth/auth.ts";
 import { createAuthRateLimiter } from "./auth/rate-limit.ts";
 import { sessionRoutes } from "./routes/session.ts";
+import { mountApiDocs } from "./docs.ts";
 
 export const ROUTES: RouteDef<any, any>[] = [
 	...coreRoutes,
@@ -152,6 +153,7 @@ export function createApp(deps: {
 		});
 	}
 	app.use(express.json({ limit: "1mb" }));
+	mountApiDocs(app);
 
 	const router: Router = express.Router();
 	for (const route of ROUTES) {

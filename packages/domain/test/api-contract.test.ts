@@ -289,7 +289,7 @@ describe("A0 claim and event schemas", () => {
 				accountHolderName: "Worker A",
 				bankName: "BPI",
 				swiftCode: "BOPIPHMM",
-				iban: "PH00DEMO",
+				iban: "GB82WEST12345698765432",
 				bankCode: "001",
 				branchCode: "0001",
 			},
@@ -675,4 +675,19 @@ describe("A0 OpenAPI stubs", () => {
       ].sort(),
     );
   });
+});
+
+describe("bank details format checks (platform tracker 2.6, ibantools)", () => {
+	const base = { recipientId: "rcp_1", type: "bank_account", country: "FR", currency: "EUR", network: null, simulated: true } as const;
+	it("accepts a valid IBAN (spaces allowed) and a valid SWIFT/BIC", () => {
+		expect(CreateEndpointRequestSchema.safeParse({ ...base, details: { accountNumber: "1", iban: "FR76 3000 6000 0112 3456 7890 189", swiftCode: "BNPAFRPP" } }).success).toBe(true);
+	});
+	it("refuses a bad IBAN check digit and a malformed SWIFT/BIC, naming the field", () => {
+		const iban = CreateEndpointRequestSchema.safeParse({ ...base, details: { accountNumber: "1", iban: "FR76 3000 6000 0112 3456 7890 188" } });
+		expect(iban.success).toBe(false);
+		expect(iban.error?.issues[0]?.message).toMatch(/not a valid IBAN/);
+		const bic = CreateEndpointRequestSchema.safeParse({ ...base, details: { accountNumber: "1", swiftCode: "BNOR" } });
+		expect(bic.success).toBe(false);
+		expect(bic.error?.issues[0]?.message).toMatch(/not a valid SWIFT\/BIC/);
+	});
 });

@@ -13,6 +13,7 @@
     "validate:config": "node src/config/validate-cli.ts ../../config"
   },
   "dependencies": {
+    "ibantools": "4.5.4",
     "zod": "^4.6.7"
   },
   "devDependencies": {

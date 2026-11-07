@@ -9,6 +9,9 @@ import { createDb } from "./db.ts";
 import { sandboxEnabledFromEnv } from "./sandbox-gate.ts";
 import { createApiRuntime } from "./runtime.ts";
 import { startProviderPoller } from "./ops/provider-poller.ts";
+import { initMonitoring } from "./monitoring.ts";
+
+if (await initMonitoring()) console.log("error monitoring: Sentry on");
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required");
