@@ -67,6 +67,14 @@
 	line-height: 1.1;
 	font-variant-numeric: tabular-nums;
 }
+.dashboard-saved {
+	margin-bottom: 16px;
+	max-width: 28rem;
+}
+.dashboard-saved .stat-card__value {
+	font-size: 1.35rem;
+	overflow-wrap: anywhere;
+}
 .table-scroll {
 	overflow-x: auto;
 }

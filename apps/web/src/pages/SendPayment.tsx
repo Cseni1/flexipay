@@ -63,6 +63,10 @@ import {
 	bankEndpointLabel,
 	type BankDetailsForm,
 } from "../payments/bankDetails"
+import {
+	linkPaymentSaving,
+	rememberSavingFromQuote,
+} from "../payments/quoteSavingStore"
 import { assetLabel } from "../solana/assets"
 
 /** Sentinel for "enter a new bank account" in the saved-endpoint picker. */
@@ -582,6 +586,7 @@ export default function SendPayment() {
 		try {
 			const next = await createQuote(request, controller.signal)
 			if (requestId !== quoteRequest.current) return
+			rememberSavingFromQuote(next)
 			setQuote(next)
 		} catch (cause) {
 			if (controller.signal.aborted || requestId !== quoteRequest.current)
@@ -679,6 +684,8 @@ export default function SendPayment() {
 				`payment-${quote.id}`,
 				controller.signal,
 			)
+			rememberSavingFromQuote(quote)
+			linkPaymentSaving(payment.id, quote.id)
 			void navigate(`/payments/${encodeURIComponent(payment.id)}`, {
 				// The claim token is returned only on create; GET /payments does not reissue it.
 				state: payment.claimLink ? { claimLink: payment.claimLink } : null,

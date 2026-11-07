@@ -349,6 +349,13 @@
 	overflow-wrap: anywhere;
 }
 
+.why-route__saving {
+	margin: 0.75rem 0 0;
+	font-size: 0.95rem;
+	line-height: 1.45;
+	overflow-wrap: anywhere;
+}
+
 .why-route__reasons {
 	margin-top: 0.75rem;
 }
