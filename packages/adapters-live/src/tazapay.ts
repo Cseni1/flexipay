@@ -367,6 +367,19 @@ export class TazapayAdapter implements ProviderAdapter {
 			)
 		}
 		const details = endpoint.details ?? {}
+		// Tazapay sandbox, 7 Nov: a name with digits or over 140 characters is refused (HTTP 400
+		// "valid beneficiary name"); accents, hyphens, apostrophes and full stops are accepted.
+		for (const [label, name] of [
+			["recipient name", endpoint.recipientName],
+			["account holder name", details.accountHolderName],
+		] as const) {
+			if (name && (/[0-9]/.test(name) || name.length > 140)) {
+				throw new ProviderError(
+					"unsupported",
+					`Tazapay needs the ${label} as letters only (no digits), at most 140 characters`,
+				)
+			}
+		}
 		const required = await this.requiredBankFields(endpoint)
 		const missing: string[] = []
 		for (const field of required.fields) {
