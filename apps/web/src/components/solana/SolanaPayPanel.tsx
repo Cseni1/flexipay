@@ -31,13 +31,18 @@ import {
 	type FlexiPaySolanaWallet,
 } from "../../flexipayWallet/sendFlexiPaySolanaTransaction"
 import { formatLocalClock } from "../../payments/formatPaymentTime"
+import { isSolanaSettleRail } from "../../payments/solanaRails"
 import {
 	clearSolanaTransfer,
 	loadSolanaTransfer,
 	saveSolanaTransfer,
 	type SolanaTransferMemory,
 } from "../../payments/solanaTransferStorage"
-import { assetLabel, formatAssetAmount } from "../../solana/assets"
+import {
+	assetLabel,
+	formatAssetAmount,
+	type SolanaAsset,
+} from "../../solana/assets"
 import {
 	friendlySolanaPayError,
 	SOLANA_PAY_ERROR_COPY,
@@ -57,7 +62,20 @@ import { SolanaWalletPanel } from "./SolanaWalletPanel"
 type Props = {
 	paymentId: string
 	onPaid?: (result: SolanaConfirmOk) => void
+	/** Settle rail from payment detail — keeps the panel visible for GB→abroad Solana wait. */
+	settleRail?: string
+	/** Settle leg amountOut when intent is not yet readable (claim-gated API). */
+	settleAmount?: { amount: string; currency: string }
 }
+
+const assetFromCurrency = (currency: string): SolanaAsset | null => {
+	if (currency === "TGBP") return "TGBP"
+	if (currency === "USDC") return "USDC"
+	return null
+}
+
+/** Domain TGBP/USDC use 7 minor decimals; mint intents usually report 6. */
+const DOMAIN_ASSET_DECIMALS = 7
 
 /** Rough lower bound so the wallet can pay a simple SPL transfer fee on devnet. */
 const MIN_SOL_LAMPORTS_FOR_FEES = 5_000n
@@ -91,7 +109,12 @@ const FlexiPayPayProviders = lazy(async () => {
 	return { default: Loaded }
 })
 
-export function SolanaPayPanel({ paymentId, onPaid }: Props) {
+export function SolanaPayPanel({
+	paymentId,
+	onPaid,
+	settleRail,
+	settleAmount,
+}: Props) {
 	const [intent, setIntent] = useState<SolanaIntent | null>(null)
 	const [notSolanaSettle, setNotSolanaSettle] = useState(false)
 	const [connected, setConnected] = useState<ConnectedSolanaWallet | null>(null)
@@ -107,6 +130,7 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 	const confirmLock = useRef(false)
 	const autoStarted = useRef(false)
 	const flexiConfigured = isFlexiPayWalletConfigured(import.meta.env)
+	const knownSolanaSettle = isSolanaSettleRail(settleRail)
 
 	useEffect(() => {
 		const controller = new AbortController()
@@ -118,13 +142,20 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 			.catch((cause) => {
 				if (controller.signal.aborted) return
 				if (cause instanceof ApiError && cause.status === 409) {
+					// GB→abroad Solana settle waits without a claim destination today —
+					// keep the panel up when detail already knows the settle rail.
+					if (knownSolanaSettle) {
+						setNotSolanaSettle(false)
+						setError(friendlySolanaPayError(cause))
+						return
+					}
 					setNotSolanaSettle(true)
 					return
 				}
 				setError(friendlySolanaPayError(cause))
 			})
 		return () => controller.abort()
-	}, [paymentId])
+	}, [paymentId, knownSolanaSettle])
 
 	useEffect(() => {
 		setStored(loadSolanaTransfer(paymentId))
@@ -197,18 +228,37 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 
 	if (notSolanaSettle) return null
 
+	const fallbackAsset = settleAmount
+		? assetFromCurrency(settleAmount.currency)
+		: null
 	const settlement = intent
 		? {
 				asset: intent.asset,
 				mint: intent.mint,
 				decimals: intent.decimals,
 			}
-		: null
+		: fallbackAsset
+			? {
+					asset: fallbackAsset,
+					mint: "",
+					decimals: DOMAIN_ASSET_DECIMALS,
+				}
+			: null
 	const label = settlement ? assetLabel(settlement.asset) : "Solana"
 	const displayAmount =
 		intent && settlement
 			? formatAssetAmount(settlement.asset, intent.amount, settlement.decimals)
-			: null
+			: settleAmount && fallbackAsset
+				? formatAssetAmount(
+						fallbackAsset,
+						settleAmount.amount,
+						DOMAIN_ASSET_DECIMALS,
+					)
+				: null
+	const instructionAmount =
+		intent && settlement
+			? formatAssetAmount(settlement.asset, intent.amount, settlement.decimals)
+			: displayAmount
 
 	const afterSigned = async (signature: string) => {
 		const memory: SolanaTransferMemory = {
@@ -343,6 +393,14 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 						Transfer sent at {sentClock} — verifying. Do not send again.
 					</Notice>
 				) : null}
+				{settlement?.asset === "TGBP" && instructionAmount ? (
+					<p
+						className="solana-pay-instruction"
+						data-testid="solana-pay-instruction"
+					>
+						Pay {instructionAmount} tGBP from your wallet to send this payment
+					</p>
+				) : null}
 				{intent && settlement ? (
 					<>
 						<Notice>
@@ -358,16 +416,34 @@ export function SolanaPayPanel({ paymentId, onPaid }: Props) {
 								}
 							/>
 							<StaticField label="Asset" value={label} />
-							<StaticField label="Mint" value={settlement.mint} />
+							<StaticField label="Mint" value={settlement.mint || "—"} />
 						</div>
 					</>
+				) : settleAmount && displayAmount ? (
+					<div className="solana-intent-grid">
+						<StaticField
+							label={`Amount (${label})`}
+							value={
+								<span data-testid="solana-pay-amount">{displayAmount}</span>
+							}
+						/>
+						<StaticField label="Asset" value={label} />
+					</div>
 				) : (
 					<p className="form-note">Loading Solana transfer intent…</p>
 				)}
 				<SolanaWalletPanel
 					onConnected={setConnected}
 					title="Sender wallet (Phantom / Wallet Standard)"
-					settlement={settlement ?? undefined}
+					settlement={
+						intent && settlement?.mint
+							? {
+									asset: settlement.asset,
+									mint: settlement.mint,
+									decimals: settlement.decimals,
+								}
+							: undefined
+					}
 				/>
 				{result ? (
 					<SolanaTxSuccess
