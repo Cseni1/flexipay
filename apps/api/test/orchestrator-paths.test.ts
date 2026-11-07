@@ -352,29 +352,19 @@ describe("leg failure after settlement (refund_vault)", () => {
 		expect(settle.errorMessage).toMatch(/refund failed/);
 	});
 
-	// BUG: run.ts executeLeg (lines ~336-346) fails a leg whose provider is not registered at
+	// Fixed 7 Nov (was BUG): run.ts executeLeg failed a leg whose provider is not registered at
 	// attempt 1. For a payout after settlement, runPendingLegs then calls handleLegFailure, where
 	// decideOnFailure answers "retry" and handleLegFailure throws "CCR-14 retry must be handled
 	// while leg is still processing" (run.ts ~1431-1435). fundAndRun rejects, the payment stays
 	// `processing` with a failed payout and an unreleased vault lock, and the provider poller never
 	// picks it up again (no processing leg, not every leg succeeded). Expected: the missing
 	// provider goes through the CCR-14 path (retry, then refund) like any other leg failure.
-	it.fails("BUG: a payout whose provider is not registered after settlement is refunded, not stuck", async () => {
+	it("a payout whose provider is not registered after settlement is refunded, not stuck (fixed)", async () => {
 		sim.controls.reset();
 		const a = adapters({ getProvider: (id) => (id === "sim_bank_ph_instapay" ? undefined : sim.providers.get(id)) });
 		const { paymentId } = await newPayment({ route: phPayoutRoute });
 		const result = await fundAndRun(db, paymentId, a);
 		expect(["refunded", "failed"]).toContain(result.status);
-	});
-
-	it("documents the stuck state of the missing-provider payout (see BUG above)", async () => {
-		sim.controls.reset();
-		const a = adapters({ getProvider: (id) => (id === "sim_bank_ph_instapay" ? undefined : sim.providers.get(id)) });
-		const { paymentId } = await newPayment({ route: phPayoutRoute });
-		await expect(fundAndRun(db, paymentId, a)).rejects.toThrow(/CCR-14 retry must be handled/);
-		expect(await statusOf(paymentId)).toBe("processing");
-		expect((await legsOf(paymentId))[4]!.status).toBe("failed");
-		expect(await paymentsWaitingOnProviders(db)).not.toContain(paymentId);
 	});
 });
 

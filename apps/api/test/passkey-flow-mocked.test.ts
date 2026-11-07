@@ -435,7 +435,7 @@ describe("passkey submit", () => {
 	// the same Idempotency-Key" after a 202, but that retry returns the cached 202 forever, even
 	// once the release tx has succeeded on-chain; only a new key reaches the recovery path.
 	// Expected: a 202 is not cached (or the replay re-runs recovery) so the same key reaches 200.
-	it.fails("BUG: after a 202, retrying with the same Idempotency-Key reaches the 200 once the release lands", async () => {
+	it("after a 202, retrying with the same Idempotency-Key reaches the 200 once the release lands (fixed)", async () => {
 		const { token, prepareId } = await prepared();
 		rpc.wait = async () => {
 			throw new Error("not yet");
@@ -448,22 +448,20 @@ describe("passkey submit", () => {
 		expect(retry.status).toBe(200);
 	});
 
-	it("documents today's replay behaviour (see the two BUG cases above)", async () => {
+	it("documents today's replay behaviour: a 202 is not cached, so the same key reaches the 200 (bug 5 fixed 7 Nov)", async () => {
 		const pending = await prepared();
 		rpc.wait = async () => {
 			throw new Error("not yet");
 		};
 		const h = idem();
-		const first = await (await submit(pending.token, pending.prepareId, h)).json();
+		const first = await submit(pending.token, pending.prepareId, h);
+		expect(first.status).toBe(202);
 		rpc.wait = null;
 		rpc.outcome = { kind: "success", txHash: hashes.release, ledger: 3 };
-		const cached = await submit(pending.token, pending.prepareId, h);
-		expect(cached.status).toBe(202);
-		expect(await cached.json()).toEqual(first);
-		// A new key recovers it.
-		const fresh = await submit(pending.token, pending.prepareId);
-		expect(fresh.status).toBe(200);
-		// And now the claim is accepted, the original key is refused before the cache.
+		const done = await submit(pending.token, pending.prepareId, h);
+		expect(done.status).toBe(200);
+		// Bug 4 (still open, dormant passkey feature): after acceptance the same key is refused
+		// before the cache lookup instead of replaying the stored 200.
 		const after = await submit(pending.token, pending.prepareId, h);
 		expect(after.status).toBe(409);
 		expect((await after.json()).message).toMatch(/already accepted/);

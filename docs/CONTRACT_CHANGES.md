@@ -843,3 +843,11 @@ generated from the route table.
 - **Placeholder rates:** USDC → XX and XX → USD from the sweep (validator and fee totals only; no simulated payout exists on the new corridors, so they never price a route); USDC → COP, TGBP → USD and USD → GBP likewise.
 - **Router check (sandbox, $100):** MX BlindPay MX$1,818.00 beats Tazapay MX$1,655.14; BR BlindPay R$539.63 beats simulated R$534.37 and Tazapay R$467.62; KE KSh 11,570.80, FR €79.80, IN ₹8,475.60, CO COP 313,902 via their partners; £100 GB → US $121.65.
 - **Tests:** adapters-live 41 (1 new), domain 99, API 171.
+
+## CCR-41 (integrator, 7 Nov 2026): fixes from the API test audit (#183)
+
+- **Idempotency race:** `withIdempotency` now claims the key first (a placeholder record, `responseStatus` 0, under the unique `(organizationId, key)` index), runs the handler, then stores the result. A concurrent request with the same key gets the stored result or **409 `idempotency_in_progress`** (retry shortly). Before: 4 parallel `POST /v1/payments` with one key created 3 payments. A handler error releases the claim so the key can be retried.
+- **202 is never cached:** a "pending, retry with the same key" answer is not stored, so the retry reaches the final answer.
+- **Unregistered provider:** a leg whose provider is not registered fails through `onProviderLegFailed` (CCR-14 retry, then refund) instead of being failed directly, which left a payout after settle stuck in `processing`.
+- **Fund and cancel** take a strict empty body: unknown fields are 400 `validation_error`, like every other POST. `openapi.json` regenerated.
+- **Open (dormant passkey feature):** after a passkey submit succeeds, a retry with the same key is refused (409 already accepted) before the cache lookup instead of replaying the stored 200.

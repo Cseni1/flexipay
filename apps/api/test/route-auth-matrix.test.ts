@@ -385,26 +385,7 @@ describe("strict bodies: unknown fields → 400 validation_error", () => {
 		expect((await json(res)).code).toBe("invalid_json");
 	});
 
-	// BUG: POST /v1/payments/{id}/fund and POST /v1/payments/{id}/cancel declare no body schema
-	// (apps/api/src/routes/payments.ts:101-165), so app.ts never parses their body and an unknown
-	// field is silently accepted (the payment is funded or cancelled). Every other POST is strict.
-	// Expected: an empty strict body schema (z.object({}).strict()) so unknown fields are a 400.
-	it.fails.each(posts.filter((r) => !r.body).map((r) => [label(r), r] as const))(
-		"BUG: %s has no body schema and accepts unknown fields",
-		async (_name, r) => {
-			const res = await call(r, {
-				path: CROSS_ORG[label(r)]?.path() ?? placeholderPath(r.path),
-				headers: { authorization: `Bearer ${A.key}` },
-				body: { zzUnknownField: 1 },
-			});
-			expect(res.status).toBe(400);
-		},
-	);
-
-	it("only fund and cancel are POSTs without a body schema today", () => {
-		expect(posts.filter((r) => !r.body).map(label).sort()).toEqual([
-			"POST /v1/payments/{id}/cancel",
-			"POST /v1/payments/{id}/fund",
-		]);
+	it("every POST has a body schema (fund and cancel fixed 7 Nov)", () => {
+		expect(posts.filter((r) => !r.body).map(label)).toEqual([]);
 	});
 });

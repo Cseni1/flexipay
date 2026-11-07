@@ -43,10 +43,11 @@ export async function withIdempotency<T>(
 	const requestHash = sha256Hex(
 		`${req.method} ${req.path} ${JSON.stringify(req.body ?? null)}`,
 	);
-	const found = await db.idempotencyRecord.findUnique({
-		where: { organizationId_key: { organizationId: orgId, key } },
-	});
-	if (found) {
+	const cached = async () => {
+		const found = await db.idempotencyRecord.findUnique({
+			where: { organizationId_key: { organizationId: orgId, key } },
+		});
+		if (!found) return null;
 		if (found.requestHash !== requestHash) {
 			throw new ApiError(
 				409,
@@ -54,20 +55,68 @@ export async function withIdempotency<T>(
 				"This Idempotency-Key was used with a different request",
 			);
 		}
+		// responseStatus 0 marks a request still running under this key (claimed below).
+		if (found.responseStatus === 0) {
+			throw new ApiError(
+				409,
+				"idempotency_in_progress",
+				"A request with this Idempotency-Key is still being processed; retry shortly",
+			);
+		}
 		if (opts?.beforeReturnCache) await opts.beforeReturnCache();
 		return { status: found.responseStatus, body: found.responseBody };
+	};
+	const hit = await cached();
+	if (hit) return hit as { status: number; body: unknown };
+
+	// Claim the key before running, so concurrent requests with the same key cannot all run the
+	// handler (test audit 7 Nov: 4 parallel POST /v1/payments made 3 payments). The unique
+	// (organizationId, key) index lets exactly one claim win.
+	const claimId = newId("idm");
+	const claimed = await db.idempotencyRecord
+		.create({
+			data: {
+				id: claimId,
+				organizationId: orgId,
+				key,
+				requestHash,
+				responseStatus: 0,
+				responseBody: {},
+			},
+		})
+		.then(() => true)
+		.catch(() => false);
+	if (!claimed) {
+		const other = await cached();
+		if (other) return other as { status: number; body: unknown };
+		throw new ApiError(
+			409,
+			"idempotency_in_progress",
+			"A request with this Idempotency-Key is still being processed; retry shortly",
+		);
 	}
-	const result = await run();
+
+	const release = () =>
+		db.idempotencyRecord.delete({ where: { id: claimId } }).catch(() => {});
+	let result: Awaited<ReturnType<typeof run>>;
+	try {
+		result = await run();
+	} catch (e) {
+		await release();
+		throw e;
+	}
+	// 202 means "not finished, retry with the same key": never replay it (test audit 7 Nov).
+	if (result.status === 202) {
+		await release();
+		return result;
+	}
 	const storedBody = opts?.cacheBody
 		? opts.cacheBody(result.body)
 		: result.body;
 	await db.idempotencyRecord
-		.create({
+		.update({
+			where: { id: claimId },
 			data: {
-				id: newId("idm"),
-				organizationId: orgId,
-				key,
-				requestHash,
 				responseStatus: result.status,
 				responseBody: storedBody as object,
 			},
