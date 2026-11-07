@@ -44,7 +44,8 @@ export function toApiLeg(l: DbLeg): Leg {
 		amountOut: { amount: l.amountOutValue, currency: l.amountOutCurrency },
 		status: l.status,
 		attempt: l.attempt,
-		externalRef: l.externalRef,
+		// CCR-36: rows written before the fix may hold "" for a refused leg; the API says null.
+		externalRef: l.externalRef || null,
 		lockTxRef: l.lockTxRef,
 		releaseTxRef: l.releaseTxRef,
 		error:

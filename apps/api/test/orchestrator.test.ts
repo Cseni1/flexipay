@@ -1072,6 +1072,12 @@ describe("partner legs and the vault lock (CCR-33)", () => {
 		const payout = await db.leg.findFirstOrThrow({ where: { paymentId, kind: "payout" } });
 		expect(payout.status).toBe("failed");
 		expect(payout.errorMessage).toContain("beneficiary name");
+		expect(payout.externalRef).toBeNull();
+		// The failed payment must still be readable (GET /v1/payments/{id} turns any error into 404).
+		const { loadPaymentDetail } = await import("../src/serialize.ts");
+		const row = await db.payment.findUniqueOrThrow({ where: { id: paymentId } });
+		const detail = await loadPaymentDetail(db, paymentId, row.organizationId);
+		expect(detail.legs.find((l) => l.kind === "payout")?.error?.message).toContain("beneficiary name");
 		expect(["failed", "refunding", "refunded"]).toContain(result.status);
 		const { paymentsWaitingOnProviders } = await import("../src/ops/provider-poller.ts");
 		expect(await paymentsWaitingOnProviders(db)).not.toContain(paymentId);
