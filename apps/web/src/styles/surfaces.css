@@ -404,6 +404,20 @@
 	font-weight: 700;
 }
 
+.sandbox-priced__count {
+	margin: 0;
+	font-size: 0.85rem;
+	color: var(--color-text-muted, var(--muted));
+}
+
+.solana-pay-instruction {
+	margin: 0 0 0.75rem;
+	font-size: 0.98rem;
+	line-height: 1.45;
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
 .sandbox-priced__partner {
 	display: inline-flex;
 	flex-wrap: wrap;

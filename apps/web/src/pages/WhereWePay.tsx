@@ -51,10 +51,12 @@ const byRegion = (() => {
 
 function SandboxGroup({
 	title,
+	countLabel,
 	testId,
 	rows,
 }: {
 	title: string
+	countLabel?: string
 	testId: string
 	rows: SandboxPayoutRow[]
 }) {
@@ -62,6 +64,11 @@ function SandboxGroup({
 	return (
 		<div className="sandbox-priced__group" data-testid={testId}>
 			<h4 className="sandbox-priced__heading">{title}</h4>
+			{countLabel ? (
+				<p className="sandbox-priced__count" data-testid={`${testId}-count`}>
+					{countLabel}
+				</p>
+			) : null}
 			<ul className="coverage-list">
 				{rows.map((row) => (
 					<li
@@ -140,13 +147,16 @@ export default function WhereWePay() {
 				) : null}
 				{sandboxGroups ? (
 					<div className="sandbox-priced" data-testid="sandbox-priced">
+						{/* Pounds first: Demo Day focus is GBP → abroad (CCR-26 / CCR-30). */}
 						<SandboxGroup
 							title="From GBP"
+							countLabel={`${sandboxGroups.GBP.length} countries from GBP`}
 							testId="sandbox-from-gbp"
 							rows={sandboxGroups.GBP}
 						/>
 						<SandboxGroup
 							title="From USD"
+							countLabel={`${sandboxGroups.USD.length} countries from USD`}
 							testId="sandbox-from-usd"
 							rows={sandboxGroups.USD}
 						/>
