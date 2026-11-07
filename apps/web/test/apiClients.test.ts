@@ -521,7 +521,14 @@ describe("solana client", () => {
 			"Solana confirm failed",
 		)
 
+		// CCR-39: direct pounds payments stay processing while the partner pays out.
 		stubFetch(200, { ...ok, paymentStatus: "processing" })
+		assert.equal(
+			(await confirmSolanaTransfer("p", "s", "i")).paymentStatus,
+			"processing",
+		)
+
+		stubFetch(200, { ...ok, paymentStatus: "expired" })
 		const notPaid = await caught<ApiError>(confirmSolanaTransfer("p", "s", "i"))
 		assert.equal(notPaid.code, "internal_error")
 		assert.equal(notPaid.status, 502)

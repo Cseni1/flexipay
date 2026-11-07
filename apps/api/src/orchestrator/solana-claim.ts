@@ -205,32 +205,29 @@ export function isDirectSolanaSettleWaiting(payment: {
 	);
 }
 
-/** CCR-39: generate once + stamp intent time on Payment (not ClaimLink). */
+/**
+ * CCR-39: generate once + stamp intent time on Payment (not ClaimLink).
+ * Conditional writes (only while still null) so concurrent intent calls agree on one
+ * reference and one intent time; the stored row is always what is returned.
+ */
 export async function ensureDirectSolanaIntentBinding(
 	db: Db,
 	paymentId: string,
 	now: Date = new Date(),
 ): Promise<{ reference: string; intentAt: Date }> {
-	const payment = await db.payment.findUniqueOrThrow({
+	await db.payment.updateMany({
+		where: { id: paymentId, solanaPayReference: null },
+		data: { solanaPayReference: Keypair.generate().publicKey.toBase58() },
+	});
+	await db.payment.updateMany({
+		where: { id: paymentId, solanaIntentAt: null },
+		data: { solanaIntentAt: now },
+	});
+	const row = await db.payment.findUniqueOrThrow({
 		where: { id: paymentId },
 		select: { solanaPayReference: true, solanaIntentAt: true },
 	});
-	let reference = payment.solanaPayReference;
-	if (!reference) {
-		reference = Keypair.generate().publicKey.toBase58();
-		await db.payment.update({
-			where: { id: paymentId },
-			data: { solanaPayReference: reference },
-		});
-	}
-	if (payment.solanaIntentAt) {
-		return { reference, intentAt: payment.solanaIntentAt };
-	}
-	await db.payment.update({
-		where: { id: paymentId },
-		data: { solanaIntentAt: now },
-	});
-	return { reference, intentAt: now };
+	return { reference: row.solanaPayReference!, intentAt: row.solanaIntentAt! };
 }
 
 export class ReusedSolanaSignatureError extends Error {

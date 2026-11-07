@@ -573,7 +573,7 @@ test.describe("TASK 28 pounds to the world", () => {
 		await confirmAndReachPaid(page, state)
 	})
 
-	test("Where we pay lists From GBP first with a country count", async ({
+	test("Where we pay shows one world list with pounds as a source", async ({
 		page,
 	}) => {
 		await page.route(/\/v1\/corridors$/, async (route) => {
@@ -602,13 +602,10 @@ test.describe("TASK 28 pounds to the world", () => {
 		})
 		await page.goto("/where-we-pay")
 		const priced = page.getByTestId("sandbox-priced")
-		await expect(priced.getByTestId("sandbox-from-gbp")).toBeVisible()
-		await expect(priced.getByTestId("sandbox-from-gbp-count")).toHaveText(
-			"2 countries from GBP",
-		)
-		const html = await priced.innerHTML()
-		expect(html.indexOf("sandbox-from-gbp")).toBeLessThan(
-			html.indexOf("sandbox-from-usd"),
+		await expect(priced.getByTestId("sandbox-world")).toBeVisible()
+		await expect(priced.getByTestId("sandbox-from-gbp")).toHaveCount(0)
+		await expect(priced.getByTestId("sandbox-country-KE")).toContainText(
+			"£ pounds",
 		)
 	})
 
@@ -624,9 +621,7 @@ test.describe("TASK 28 pounds to the world", () => {
 			await route.fulfill({ json: corridorsFor("KE", "KES") })
 		})
 		await page.goto("/where-we-pay")
-		await expect(page.getByTestId("sandbox-from-gbp-count")).toContainText(
-			"countries from GBP",
-		)
+		await expect(page.getByTestId("sandbox-world")).toBeVisible()
 		await noSideways(page)
 	})
 })
