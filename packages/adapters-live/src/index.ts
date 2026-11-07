@@ -64,6 +64,7 @@ export function createLiveProviders(
 		} else if (row.implementation === "tazapay") {
 			const apiKey = value(env, "TAZAPAY_API_KEY")
 			const apiSecret = value(env, "TAZAPAY_API_SECRET")
+			const lowBalance = value(env, "TAZAPAY_LOW_BALANCE_ALERT")
 			if (!apiKey || !apiSecret) {
 				skipped.push(row.id)
 				continue
@@ -79,6 +80,10 @@ export function createLiveProviders(
 					beneficiaryEmail: value(env, "TAZAPAY_BENEFICIARY_EMAIL"),
 					purposeCode: value(env, "TAZAPAY_PURPOSE_CODE"),
 					defaultHoldingCurrency: value(env, "TAZAPAY_HOLDING_CURRENCY"),
+					lowBalanceAlert:
+						lowBalance && /^\d+$/.test(lowBalance)
+							? BigInt(lowBalance)
+							: undefined,
 					liveApproved: env.FP_TAZAPAY_LIVE_APPROVED === "1",
 					fetch: opts.fetch,
 				}),

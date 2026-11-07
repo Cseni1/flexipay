@@ -28,6 +28,8 @@ import { jsonRequest, type FetchLike, type HttpResult } from "./http.ts"
 const SANDBOX_BASE_URL = "https://service-sandbox.tazapay.com"
 const PRODUCTION_BASE_URL = "https://service.tazapay.com"
 const HEALTH_TTL_MS = 60_000
+const BALANCE_TTL_MS = 60_000
+const DEFAULT_LOW_BALANCE_ALERT = 50_000n
 /** Documented Tazapay purpose code: "Payment for Services". */
 const DEFAULT_PURPOSE_CODE = "PYR001"
 /** Non-routable sandbox contact when the endpoint carries no recipient email. */
@@ -76,6 +78,8 @@ export interface TazapayOptions {
 	liveApproved: boolean
 	/** Holding currency for a payout whose convert step this process did not see; default USD. */
 	defaultHoldingCurrency?: string
+	/** Alert once per currency below this available balance (hundredths); default 50000. */
+	lowBalanceAlert?: bigint
 	/** Tazapay purpose code (PYR001..PYR036); defaults to PYR001. */
 	purposeCode?: string
 	baseUrl?: string
@@ -155,6 +159,16 @@ export class TazapayAdapter implements ProviderAdapter {
 	private readonly beneficiaries = new Map<string, string>()
 	/** paymentId -> holding currency, set when the convert step runs. */
 	private readonly holdingByPayment = new Map<string, string>()
+	/** paymentId -> holding amount seen at convert execute, if the quote was in another process. */
+	private readonly convertHoldingByPayment = new Map<string, bigint>()
+	/** Quoted payout key -> holding amount plus Tazapay's fee, in hundredths. */
+	private readonly requiredHolding = new Map<string, bigint>()
+	private balanceCache: {
+		at: number
+		available: Map<string, bigint>
+	} | null = null
+	private readonly lowBalanceAlert: bigint
+	private readonly lowBalanceAlerted = new Set<string>()
 	private healthCache: { at: number; value: "up" | "down" } | null = null
 
 	constructor(row: Provider, opts: TazapayOptions) {
@@ -165,6 +179,7 @@ export class TazapayAdapter implements ProviderAdapter {
 		this.now = opts.now ?? (() => Date.now())
 		this.baseUrl = opts.baseUrl ?? SANDBOX_BASE_URL
 		this.purposeCode = opts.purposeCode ?? DEFAULT_PURPOSE_CODE
+		this.lowBalanceAlert = opts.lowBalanceAlert ?? DEFAULT_LOW_BALANCE_ALERT
 	}
 
 	capabilities(): ProviderCapabilities {
@@ -177,6 +192,22 @@ export class TazapayAdapter implements ProviderAdapter {
 			limits: this.row.limits,
 			simulated: this.row.simulated,
 		}
+	}
+
+	/** Sandbox vs live, for the operator partner-status route. */
+	mode(): "sandbox" | "live" {
+		return this.baseUrl === PRODUCTION_BASE_URL ? "live" : "sandbox"
+	}
+
+	/** Tazapay available balances in hundredths, using the quote guard's 60 s cache. */
+	async balances(): Promise<Array<{ currency: string; amount: number }>> {
+		const available = await this.readBalances(false)
+		return [...available.entries()]
+			.sort(([a], [b]) => a.localeCompare(b))
+			.map(([currency, amount]) => ({
+				currency,
+				amount: Number(amount),
+			}))
 	}
 
 	async quote(req: LegQuoteRequest): Promise<LegQuote> {
@@ -245,6 +276,12 @@ export class TazapayAdapter implements ProviderAdapter {
 			intOf(objectOf(feeInfo.fixed)?.in_holding_currency) +
 			intOf(objectOf(feeInfo.variable)?.in_holding_currency)
 		const fee = rescale(feeHolding, TAZAPAY_DECIMALS, inDecimals)
+		const required = holdAmount + feeHolding
+		this.requiredHolding.set(
+			this.payoutRequirementKey(holding, req.outCurrency, outMinor),
+			required,
+		)
+		await this.requireBalance(holding, required, false)
 		return {
 			providerId: this.id,
 			fee: money(fee < inMinor ? fee : inMinor, req.amountIn.currency),
@@ -265,6 +302,14 @@ export class TazapayAdapter implements ProviderAdapter {
 		if (leg.kind === "convert") {
 			const holding = this.holdingFor(leg.amountIn.currency)
 			this.holdingByPayment.set(leg.paymentId, holding)
+			this.convertHoldingByPayment.set(
+				leg.paymentId,
+				rescale(
+					toMinor(leg.amountIn),
+					decimalsOf(leg.amountIn.currency),
+					TAZAPAY_DECIMALS,
+				),
+			)
 			return { externalRef: `${CONVERT_REF}${holding}:${key}` }
 		}
 		if (leg.amountIn.currency !== leg.outCurrency) {
@@ -278,17 +323,34 @@ export class TazapayAdapter implements ProviderAdapter {
 		const known = this.issued.get(key)
 		if (known) return { externalRef: known }
 
-		const beneficiary = await this.beneficiaryFor(leg.endpoint)
 		const holding =
 			this.holdingByPayment.get(leg.paymentId) ??
 			this.opts.defaultHoldingCurrency ??
 			"USD"
-		const reference = `flexipay-${key}`
 		const amount = rescale(
 			toMinor(leg.amountIn),
 			decimalsOf(leg.amountIn.currency),
 			TAZAPAY_DECIMALS,
 		)
+		const required =
+			this.requiredHolding.get(
+				this.payoutRequirementKey(holding, leg.amountIn.currency, amount),
+			) ?? this.convertHoldingByPayment.get(leg.paymentId)
+		// If no bank details exist, resolve a persisted/sandbox beneficiary first: when neither
+		// exists this must refuse without any partner request, including the balance check.
+		let beneficiary: { id: string; created: boolean } | null = null
+		if (!leg.endpoint?.details?.accountNumber)
+			beneficiary = await this.beneficiaryFor(leg.endpoint)
+		// CCR-35: re-read the balance immediately before the payout, ignoring the 60 s cache.
+		const available = await this.readBalances(true)
+		if (required !== undefined && (available.get(holding) ?? 0n) < required) {
+			throw new ProviderError(
+				"insufficient_partner_balance",
+				`Tazapay ${holding} balance too low for this payout`,
+			)
+		}
+		beneficiary ??= await this.beneficiaryFor(leg.endpoint)
+		const reference = `flexipay-${key}`
 		const data = this.ok(
 			await this.call(
 				"POST",
@@ -551,6 +613,73 @@ export class TazapayAdapter implements ProviderAdapter {
 		}
 		this.healthCache = { at: t, value }
 		return value
+	}
+
+	/** GET /v3/balance, cached for 60 s unless a pre-payout recheck asks for fresh data. */
+	private async readBalances(force: boolean): Promise<Map<string, bigint>> {
+		const t = this.now()
+		if (
+			!force &&
+			this.balanceCache &&
+			t - this.balanceCache.at < BALANCE_TTL_MS
+		)
+			return this.balanceCache.available
+		const data = this.ok(await this.call("GET", "/v3/balance"), "balance")
+		if (!Array.isArray(data.available))
+			throw new Error("Tazapay balance returned no available currencies")
+		const available = new Map<string, bigint>()
+		for (const item of data.available) {
+			const row = objectOf(item)
+			if (!row || typeof row.currency !== "string") continue
+			const raw = row.amount
+			const amount =
+				typeof raw === "number" && Number.isFinite(raw)
+					? BigInt(Math.floor(raw))
+					: typeof raw === "string" && /^-?\d+$/.test(raw.trim())
+						? BigInt(raw.trim())
+						: 0n
+			available.set(row.currency, amount)
+		}
+		this.balanceCache = { at: t, available }
+		this.alertLowBalances(available)
+		return available
+	}
+
+	/** One line per currency when it crosses below the alert threshold; no endpoint data. */
+	private alertLowBalances(available: Map<string, bigint>): void {
+		for (const [currency, amount] of available) {
+			if (amount < this.lowBalanceAlert) {
+				if (this.lowBalanceAlerted.has(currency)) continue
+				this.lowBalanceAlerted.add(currency)
+				console.warn(
+					`Tazapay low balance: ${currency} available ${amount} (alert below ${this.lowBalanceAlert})`,
+				)
+			} else {
+				this.lowBalanceAlerted.delete(currency)
+			}
+		}
+	}
+
+	private async requireBalance(
+		holding: string,
+		required: bigint,
+		force: boolean,
+	): Promise<void> {
+		const available = await this.readBalances(force)
+		if ((available.get(holding) ?? 0n) < required) {
+			throw new ProviderError(
+				"insufficient_partner_balance",
+				`Tazapay ${holding} balance too low for this payout`,
+			)
+		}
+	}
+
+	private payoutRequirementKey(
+		holding: string,
+		currency: string,
+		amount: bigint,
+	): string {
+		return `${holding}:${currency}:${amount}`
 	}
 
 	/** Row currencies that are payout currencies (not holding inputs). */
