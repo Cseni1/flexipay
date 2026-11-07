@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
 	loadConfig,
 	money,
+	ProviderError,
 	type FlexiPayConfig,
 	type PlannedLeg,
 } from "@flexipay/domain";
@@ -1043,6 +1044,38 @@ describe("partner legs and the vault lock (CCR-33)", () => {
 			},
 		};
 	}
+
+	it("a partner that refuses the payout (ProviderError) fails the leg instead of leaving it stuck", async () => {
+		sim.controls.reset();
+		const base = adapters();
+		const refusing: OrchestratorAdapters = {
+			...base,
+			partnerProviderIds: new Set(["sim_bank_ph_instapay"]),
+			getProvider: (id) => {
+				const p = sim.providers.get(id);
+				if (!p || id !== "sim_bank_ph_instapay") return p;
+				return {
+					id: p.id,
+					capabilities: () => p.capabilities(),
+					health: () => p.health(),
+					quote: (req) => p.quote(req),
+					execute: async () => {
+						throw new ProviderError("unsupported", "Tazapay beneficiary failed (HTTP 400: Please provide a valid beneficiary name)");
+					},
+					status: (ref) => p.status(ref),
+					reverse: (ref) => p.reverse(ref),
+				};
+			},
+		};
+		const paymentId = await partnerPayment("Partner Refuses");
+		const result = await fundAndRun(db, paymentId, refusing);
+		const payout = await db.leg.findFirstOrThrow({ where: { paymentId, kind: "payout" } });
+		expect(payout.status).toBe("failed");
+		expect(payout.errorMessage).toContain("beneficiary name");
+		expect(["failed", "refunding", "refunded"]).toContain(result.status);
+		const { paymentsWaitingOnProviders } = await import("../src/ops/provider-poller.ts");
+		expect(await paymentsWaitingOnProviders(db)).not.toContain(paymentId);
+	});
 
 	it("releases the lock before the partner leg, so a slow partner never meets an expired lock", async () => {
 		sim.controls.reset();

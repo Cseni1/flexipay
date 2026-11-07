@@ -197,6 +197,8 @@ export default function PaymentDetail() {
 					? `Funding failed: ${describeApiError(cause)}`
 					: "Funding failed. Try again.",
 			)
+			// The route may have run part-way before the error; show the payment as it really is.
+			if (!isAuthRequired(cause)) refresh()
 		} finally {
 			if (!controller.signal.aborted) {
 				setFunding(false)

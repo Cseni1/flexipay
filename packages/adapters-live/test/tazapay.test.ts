@@ -366,6 +366,22 @@ describe("Tazapay adapter", () => {
 		).toHaveLength(1)
 	})
 
+	it("refuses a name with digits before calling Tazapay (sandbox HTTP 400)", async () => {
+		const api = fakeApi()
+		const error = (await adapter(api, { beneficiary: null })
+			.execute(
+				leg("payout", money("785381", "PHP"), "pay_1", {
+					...PH_BANK_DETAILS,
+					recipientName: "Live QA Maria 1794046661872",
+					details: { ...PH_BANK_DETAILS.details, accountHolderName: "Maria Santos" },
+				}),
+			)
+			.catch((e) => e)) as ProviderError
+		expect(error).toBeInstanceOf(ProviderError)
+		expect(error.message).toContain("no digits")
+		expect(api.calls.some((c) => c.path === "/v3/beneficiary")).toBe(false)
+	})
+
 	it("refuses beneficiary creation when metadata-required fields are missing", async () => {
 		const api = fakeApi({
 			requiredBankFields: [
