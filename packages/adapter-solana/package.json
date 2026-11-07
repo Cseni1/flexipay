@@ -16,7 +16,7 @@
 	"dependencies": {
 		"@flexipay/domain": "*",
 		"@solana/spl-token": "^0.4.13",
-		"@solana/web3.js": "^1.98.4",
+		"@solana/web3.js": "^3.1.1",
 		"bs58": "^6.0.0"
 	},
 	"devDependencies": {
