@@ -827,3 +827,4 @@ single low-balance warning, and the pre-payout refusal against the fake API;
 secrets. Verification: domain 98, adapters-live 40, API 169, web 107, e2e-ui 114; workspace
 typecheck, lint, the production build and OpenAPI regeneration passed. `apps/api/openapi.json` is
 generated from the route table.
+- **Integrator addition (7 Nov):** `GET /v1/ops/partners` used `api_key` auth, which every customer organization has, so any API customer could read FlexiPay's partner balances. It now answers only for organizations listed in `FP_OPERATOR_ORG_IDS` (comma-separated) and is 404 for everyone else; unset means closed. Tazapay 4xx replies are `ProviderError` (20199 → `insufficient_partner_balance`) and an unreadable balance before a payout refuses cleanly (CCR-36).

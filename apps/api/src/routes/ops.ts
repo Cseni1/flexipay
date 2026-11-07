@@ -50,6 +50,15 @@ export const opsRoutes: RouteDef<any, any>[] = [
       if (!ctx.runtime) {
         throw new ApiError(500, "internal_error", "runtime not configured");
       }
+      // FlexiPay's partner balances are not for customers: every customer org has an api_key, so
+      // only orgs listed in FP_OPERATOR_ORG_IDS may read this route; everyone else gets 404.
+      const operators = (process.env.FP_OPERATOR_ORG_IDS ?? "")
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean);
+      if (!ctx.org || !operators.includes(ctx.org.id)) {
+        throw new ApiError(404, "not_found", "Not found");
+      }
       const partners: Array<z.infer<typeof PartnerStatus>> = [];
       for (const id of ctx.runtime.liveProviderIds ?? []) {
         const adapter = ctx.runtime.getProvider(id);
