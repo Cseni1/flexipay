@@ -193,6 +193,49 @@ export function persistQuoteRow(
 	};
 }
 
+/** Rebuilds the API quote from its stored row (the inverse of persistQuoteRow). */
+export function quoteFromRow(row: {
+	id: string;
+	source: unknown;
+	destination: unknown;
+	amountSide: string;
+	amountValue: string;
+	amountCurrency: string;
+	route: unknown;
+	fees: unknown;
+	fxRate: string | null;
+	expectedReceive: string;
+	receiveCurrency: string;
+	priceRiskBearer: string;
+	policy: string;
+	validUntil: Date;
+	alternatives: unknown;
+	reasons: unknown;
+	feeMode: string | null;
+	simulated: boolean;
+}): Quote {
+	return QuoteSchema.parse({
+		id: row.id,
+		source: row.source,
+		destination: row.destination,
+		amount: {
+			side: row.amountSide,
+			value: { amount: row.amountValue, currency: row.amountCurrency },
+		},
+		route: row.route,
+		fees: row.fees,
+		fxRate: row.fxRate,
+		expectedReceive: { amount: row.expectedReceive, currency: row.receiveCurrency },
+		priceRiskBearer: row.priceRiskBearer,
+		policy: row.policy,
+		feeMode: row.feeMode,
+		validUntil: row.validUntil.toISOString(),
+		alternatives: row.alternatives,
+		reasons: row.reasons,
+		simulated: row.simulated,
+	});
+}
+
 export function toApiEvent(e: {
 	id: string;
 	type: string;

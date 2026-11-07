@@ -153,6 +153,18 @@ describe("CCR-6 sandbox advance-time (API clock only)", () => {
 		expect(Math.abs(t.runtime.now().getTime() - Date.now())).toBeLessThan(5_000);
 	});
 
+	it("GET /v1/quotes/{id} returns the quote exactly as priced, only to its organization", async () => {
+		const { key } = await t.newOrg("Quote Reader");
+		const dest = { type: "bank_account", currency: "PHP", country: "PH", recipientKind: "individual" };
+		const created = await quote(key, dest);
+		const res = await get(key, `/v1/quotes/${created.id}`);
+		expect(res.status).toBe(200);
+		expect(await json(res)).toEqual(created);
+		const other = await t.newOrg("Someone Else");
+		expect((await get(other.key, `/v1/quotes/${created.id}`)).status).toBe(404);
+		expect((await get(key, "/v1/quotes/quo_missing")).status).toBe(404);
+	});
+
 	it("an expired quote cannot create a payment (422), using the API clock", async () => {
 		const { key } = await t.newOrg("Demo Platform");
 		const r = await recipient(key, "Worker B", "individual", "BR");
