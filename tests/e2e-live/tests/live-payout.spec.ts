@@ -38,7 +38,11 @@ test.describe("Live payout (Tazapay PH bank)", () => {
 		test.setTimeout(TEN_MINUTES_MS)
 
 		const stamp = Date.now()
-		const recipientName = `Live QA Maria ${stamp}`
+		// Tazapay refuses beneficiary names with digits (CCR-36), so the unique part is letters only.
+		const letters = stamp
+			.toString(26)
+			.replace(/[0-9]/g, (d) => "abcdefghij"[Number(d)]!)
+		const recipientName = `Live QA Maria ${letters}`
 		const accountNumber = randomAccountNumber()
 		const accountLast4 = accountNumber.slice(-4)
 
@@ -71,9 +75,7 @@ test.describe("Live payout (Tazapay PH bank)", () => {
 		await expect(bank).toBeVisible()
 		await bank.getByLabel(/Account number/).fill(accountNumber)
 		await bank.getByLabel("Account holder name").fill(recipientName)
-		await bank
-			.getByLabel("Bank name")
-			.fill("Banco De Oro Unibank, Inc.")
+		await bank.getByLabel("Bank name").fill("Banco De Oro Unibank, Inc.")
 		await bank.getByLabel("SWIFT/BIC").fill("BNORPHMM")
 
 		await page.getByRole("button", { name: "Get quote" }).click()
@@ -96,7 +98,9 @@ test.describe("Live payout (Tazapay PH bank)", () => {
 		await expect(page.getByText(/Waiting for Tazapay/i).first()).toBeVisible({
 			timeout: 120_000,
 		})
-		await expect(page.getByText("Paid", { exact: true }).first()).toBeVisible({
+		// The paid-at timestamp appears only after payment.paid (a bare "Paid" text matches other
+		// labels on the page and passed while the payout was still processing).
+		await expect(page.getByTestId("payment-paid-at")).toBeVisible({
 			timeout: SIX_MINUTES_MS,
 		})
 
@@ -109,9 +113,7 @@ test.describe("Live payout (Tazapay PH bank)", () => {
 		await expect(
 			page.getByRole("heading", { name: "Recipients", exact: true }),
 		).toBeVisible({ timeout: 90_000 })
-		await page
-			.getByRole("button", { name: recipientName, exact: true })
-			.click()
+		await page.getByRole("button", { name: recipientName, exact: true }).click()
 		const endpoints = page.getByTestId("endpoints-table")
 		await expect(endpoints).toBeVisible({ timeout: 90_000 })
 		await expect(endpoints).toContainText(accountLast4)
