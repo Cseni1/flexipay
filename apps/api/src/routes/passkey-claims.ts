@@ -852,15 +852,17 @@ export const passkeyClaimRoutes: RouteDef<any, any>[] = [
 			const token = params.token!;
 			const link = await loadClaimByToken(ctx.db, token);
 			if (!link) throw new ApiError(404, "not_found", "Claim not found");
-			const now = ctx.runtime?.now() ?? new Date();
-			assertClaimOpenForPasskey(link, now);
 			const orgId = link.payment.organizationId;
 
+			// The claim-open check runs inside the idempotent body: a client that lost the 200
+			// and retries with the same key gets the stored success (the claim is accepted by
+			// then), while a new key still refuses a closed claim.
 			const result = await withIdempotency(
 				ctx.db,
 				req,
 				orgId,
 				async () => {
+					assertClaimOpenForPasskey(link, ctx.runtime?.now() ?? new Date());
 					const out = await handleSubmit(ctx, token, body);
 					return { status: out.httpStatus, body: out.body };
 				},

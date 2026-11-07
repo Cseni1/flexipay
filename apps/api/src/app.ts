@@ -25,6 +25,8 @@ import type { AuthRuntime } from "./auth/auth.ts";
 import { createAuthRateLimiter } from "./auth/rate-limit.ts";
 import { sessionRoutes } from "./routes/session.ts";
 import { mountApiDocs } from "./docs.ts";
+import { createApiRateLimiter, mountSecurityHeaders } from "./security.ts";
+import type { Rule } from "./auth/rate-limit.ts";
 
 export const ROUTES: RouteDef<any, any>[] = [
 	...coreRoutes,
@@ -120,10 +122,13 @@ export function createApp(deps: {
 	sandboxEnabled?: boolean;
 	/** Hops of trusted reverse proxy, so req.ip is the real client (rate limiting). */
 	trustProxy?: number;
+	/** Rate-limit rules for /v1 (default API_RULES); false turns the limit off. */
+	apiRateLimit?: Rule[] | false;
 }) {
 	const app = express();
 	app.disable("x-powered-by");
 	if (deps.trustProxy) app.set("trust proxy", deps.trustProxy);
+	mountSecurityHeaders(app);
 
 	// Better Auth reads the raw body itself: mount it before express.json.
 	app.use("/api/auth", (_req, res, next) => {
@@ -154,6 +159,9 @@ export function createApp(deps: {
 	}
 	app.use(express.json({ limit: "1mb" }));
 	mountApiDocs(app);
+	if (deps.apiRateLimit !== false) {
+		app.use("/v1", createApiRateLimiter(deps.apiRateLimit || undefined));
+	}
 
 	const router: Router = express.Router();
 	for (const route of ROUTES) {
