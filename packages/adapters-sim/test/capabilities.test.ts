@@ -22,7 +22,10 @@ describe("the simulated providers", () => {
 
 	it("reports the config's capabilities, unchanged", () => {
 		const sim = fresh()
-		for (const configRow of config.providers) {
+		// Partner rows (implementation blindpay/tazapay, CCR-29) are served by adapters-live, not here.
+		for (const configRow of config.providers.filter(
+			(row) => !row.implementation || row.implementation === "sim",
+		)) {
 			expect(adapterOf(sim, configRow.id).capabilities()).toEqual({
 				providerId: configRow.id,
 				countries: configRow.countries,
