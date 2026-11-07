@@ -417,21 +417,13 @@ describe("friendlySolanaPayError branches", () => {
 		assert.equal(friendlySolanaPayError({ message: "x" }), COPY.FALLBACK)
 	})
 
-	// BUG: the insufficient-token check uses a bare substring `includes("0x1")`, so any
-	// Solana custom program error whose code merely starts with 0x1 (e.g. SPL Token 0x11
-	// "Account is frozen", or 0x10) is reported as "not enough of the required token".
-	// Expected: only error 0x1 maps to INSUFFICIENT_USDC.
-	test.fails(
-		"custom program error 0x11 (frozen account) is not reported as insufficient tokens",
-		() => {
-			assert.notEqual(
-				friendlySolanaPayError(
-					new Error(
-						"Transaction simulation failed: custom program error: 0x11",
-					),
-				),
-				COPY.INSUFFICIENT_USDC,
-			)
-		},
-	)
+	// Fixed (was BUG): only error 0x1 maps to INSUFFICIENT_USDC, not 0x10/0x11.
+	test("custom program error 0x11 (frozen account) is not reported as insufficient tokens", () => {
+		assert.notEqual(
+			friendlySolanaPayError(
+				new Error("Transaction simulation failed: custom program error: 0x11"),
+			),
+			COPY.INSUFFICIENT_USDC,
+		)
+	})
 })

@@ -210,7 +210,10 @@ export const sourceStaticLabel = (source: SourceEndpoint): string => {
 	if (source.currency === "GBP" && source.country === "GB") {
 		return "GBP bank account"
 	}
-	return "USD operating account"
+	if (source.currency === "USD" && source.country === "US") {
+		return "USD operating account"
+	}
+	return `${source.currency} bank account`
 }
 
 /**

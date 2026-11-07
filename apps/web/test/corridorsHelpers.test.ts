@@ -76,22 +76,17 @@ describe("source keys and labels", () => {
 		)
 	})
 
-	// BUG: sourceStaticLabel returns "USD operating account" for every source that is not
-	// GB/GBP, so a single-source corridor sending from e.g. EUR (DE) would be labelled as a
-	// USD account. Expected: a generic "<CUR> bank account" like sendFromLabel uses.
-	test.fails(
-		"static label for a non-GBP, non-USD source names its own currency",
-		() => {
-			assert.equal(
-				sourceStaticLabel({
-					type: "bank_account",
-					country: "DE",
-					currency: "EUR",
-				}),
-				"EUR bank account",
-			)
-		},
-	)
+	// Fixed (was BUG): a non-GBP, non-USD source names its own currency.
+	test("static label for a non-GBP, non-USD source names its own currency", () => {
+		assert.equal(
+			sourceStaticLabel({
+				type: "bank_account",
+				country: "DE",
+				currency: "EUR",
+			}),
+			"EUR bank account",
+		)
+	})
 
 	test("countryLabel: fixed names, Intl names, and unknown codes", () => {
 		assert.equal(countryLabel("GB"), "United Kingdom")
