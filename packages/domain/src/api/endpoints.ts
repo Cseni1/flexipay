@@ -5,10 +5,22 @@ import {
 	IsoTimestamp,
 } from "./common.ts";
 import { CurrencyCode } from "../money.ts";
+import { electronicFormatIBAN, isValidBIC, isValidIBAN } from "ibantools";
 
 // POST/GET /v1/endpoints (CCR-16). Auth: api_key. details keys: CCR-17.
 
 const detailString = z.string().min(1).max(200);
+
+/** IBAN checked with ibantools (country format + checksum); spaces allowed (platform tracker 2.6). */
+const ibanString = detailString.refine(
+	(v) => isValidIBAN(electronicFormatIBAN(v) ?? ""),
+	{ message: "iban is not a valid IBAN (check the country code, length and check digits)" },
+);
+/** SWIFT/BIC: 8 or 11 characters, checked with ibantools. */
+const bicString = detailString.refine(
+	(v) => isValidBIC(v.replace(/\s+/g, "").toUpperCase()),
+	{ message: "swiftCode is not a valid SWIFT/BIC (8 or 11 characters)" },
+);
 
 /**
  * Type-specific destination details (CCR-17). Only these keys are accepted;
@@ -24,8 +36,8 @@ export function endpointDetailsSchemaFor(
 				accountNumber: detailString,
 				accountHolderName: detailString.optional(),
 				bankName: detailString.optional(),
-				swiftCode: detailString.optional(),
-				iban: detailString.optional(),
+				swiftCode: bicString.optional(),
+				iban: ibanString.optional(),
 				bankCode: detailString.optional(),
 				branchCode: detailString.optional(),
 				// CCR-34: BlindPay bank-account fields for BR, MX, CO and AR.
@@ -98,10 +110,12 @@ export const CreateEndpointRequestSchema = z
 		}
 		const parsed = endpointDetailsSchemaFor(ep.type).safeParse(ep.details);
 		if (!parsed.success) {
+			// Name the bad field when it is a format check (IBAN, SWIFT/BIC); else the CCR-17 rule.
+			const specific = parsed.error.issues.find((i) => i.code === "custom");
 			ctx.addIssue({
 				code: "custom",
-				message: `details must match type ${ep.type} (CCR-17)`,
-				path: ["details"],
+				message: specific?.message ?? `details must match type ${ep.type} (CCR-17)`,
+				path: ["details", ...(specific?.path ?? [])],
 			});
 		}
 	});

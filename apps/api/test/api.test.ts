@@ -50,6 +50,18 @@ describe("API skeleton", () => {
     expect(za.simulated).toBe(true);
   });
 
+  it("serves the public API reference: /openapi.json and /docs, no key needed", async () => {
+    const spec = await fetch(`${t.base}/openapi.json`);
+    expect(spec.status).toBe(200);
+    const body = await spec.json();
+    expect(body.openapi).toMatch(/^3\./);
+    expect(Object.keys(body.paths)).toContain("/v1/quotes");
+    const docs = await fetch(`${t.base}/docs`);
+    expect(docs.status).toBe(200);
+    expect(docs.headers.get("content-type")).toMatch(/text\/html/);
+    expect(await docs.text()).toContain('data-url="/openapi.json"');
+  });
+
   it("validates bodies with a 400 and an error code", async () => {
     const res = await post("/v1/recipients", { name: "Worker A", kind: "robot", country: "PH" });
     expect(res.status).toBe(400);

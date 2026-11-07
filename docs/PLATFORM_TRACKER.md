@@ -27,13 +27,13 @@ Last updated: 7 Nov 2026.
 
 | # | Item | Status | Owner | Notes |
 |---|---|---|---|---|
-| 2.1 | Error monitoring: **Sentry** | ⏸ / 🙋 | Founder (account), integrator (code) | Founder: configure later. Code will be added behind `SENTRY_DSN` / `VITE_SENTRY_DSN` so nothing changes until the DSN is set. Guide G2. |
+| 2.1 | Error monitoring: **Sentry** | 🙋 | Founder (account) | Code ready (API `src/monitoring.ts`, web `src/monitoring.ts`): off until `SENTRY_DSN` (Render) / `VITE_SENTRY_DSN` (Vercel) are set; request bodies and headers are never sent. Founder configures later: guide G2. |
 | 2.2 | Uptime monitoring: **UptimeRobot** (free) | 🙋 | Founder | Guide G3. |
-| 2.3 | Keep the API awake so the partner poller runs (Render free plan sleeps) | ⏳ | Integrator | Scheduled ping of `/health` from GitHub Actions; later replaced by partner webhooks (2.4). |
+| 2.3 | Keep the API awake so the partner poller runs (Render free plan sleeps) | ✅ | Integrator | `.github/workflows/keep-awake.yml` pings `/healthz` every 10 minutes; partner webhooks (2.4) will become the main signal. |
 | 2.4 | **Partner webhooks** (Tazapay, BlindPay) instead of polling only | ⏳ | Builder (Freebuff) | Faster status updates; poller stays as a safety net. |
 | 2.5 | Durable background jobs: **pg-boss** (on our Postgres) | ⏳ | Builder | Jobs survive restarts and redeploys. |
-| 2.6 | Bank detail checks: **ibantools** (IBAN/BIC format) | ⏳ | Integrator | Catch typos on the form and in the API before a partner rejects the payout. |
-| 2.7 | Public API docs: **Scalar** from `openapi.json` | ⏳ | Integrator | Developer portal for the API-first pitch. |
+| 2.6 | Bank detail checks: **ibantools** (IBAN/BIC format) | ✅ | Integrator | `POST /v1/endpoints` refuses a malformed IBAN or SWIFT/BIC with a message naming the field (domain `api/endpoints.ts`). Web form shows the API message. |
+| 2.7 | Public API docs: **Scalar** from `openapi.json` | ✅ | Integrator | `https://flexipay-api.onrender.com/docs` (reference) and `/openapi.json` (spec), public, no key. |
 | 2.8 | Solana Pay links/QR: official **@solana/pay** | ⏳ | Builder | Replace our own URL building. |
 | 2.9 | Reference FX for simulated routes: **Frankfurter** (ECB, free) | ⏳ | Integrator | Only the simulated/placeholder rates; partner routes already use live partner quotes. |
 | 2.10 | Outgoing customer webhooks: **Svix** | ⏸ | Later | When customers integrate events. |
@@ -47,8 +47,8 @@ retries, refunds), quotes and fees, the Stellar payout vault.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| 3.1 | Crossmint (declined 7 Nov): card checkout, onramp route, SDK, stubs | 🟡 | PR #187. High-severity production audit advisories 51 → 21. |
-| 3.2 | Unused web code found by knip (notification provider, old corridor helpers, `formatUsdcBalance`) | 🟡 | PR #187. |
+| 3.1 | Crossmint (declined 7 Nov): card checkout, onramp route, SDK, stubs | ✅ | PR #187. High-severity production audit advisories 51 → 21. |
+| 3.2 | Unused web code found by knip (notification provider, old corridor helpers, `formatUsdcBalance`) | ✅ | PR #187. |
 | 3.3 | Transak top-up | ⏸ | Kept for now (founder decision, 7 Nov). |
 | 3.4 | Stellar passkey claim wallets, SEP-24 anchor cash-out | ⏸ | Earlier Stellar phase; decide after Demo Day. |
 | 3.5 | Old Stellar demo scripts (`scripts/demo`, `tests/e2e`) | ⏸ | Archive after Demo Day. |
@@ -71,7 +71,7 @@ retries, refunds), quotes and fees, the Stellar payout vault.
 
 ### G3. UptimeRobot (free uptime alerts)
 1. Go to https://uptimerobot.com and sign up (free plan).
-2. Click **New monitor** → type **HTTP(s)** → URL `https://flexipay-api.onrender.com/health` → interval 5 minutes → alert contact: your email → **Create monitor**.
+2. Click **New monitor** → type **HTTP(s)** → URL `https://flexipay-api.onrender.com/healthz` → interval 5 minutes → alert contact: your email → **Create monitor**.
 3. Repeat for `https://my.getflexipay.app`.
 4. Optional: also add `https://flexipay-console-prototype.vercel.app`.
 

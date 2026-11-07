@@ -1,0 +1,23 @@
+name: Keep API awake
+
+# Render's free plan sleeps the API after ~15 idle minutes; while asleep the partner poller
+# (CCR-29) cannot finish slow payouts. A ping every 10 minutes keeps it awake until partner
+# webhooks (docs/PLATFORM_TRACKER.md 2.4) replace polling as the main signal.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping /healthz (allows a cold start)
+        run: |
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 https://flexipay-api.onrender.com/healthz) && echo "health $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 20
+          done
+          echo "::warning::API did not answer 200 after 3 tries"
