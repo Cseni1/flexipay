@@ -12,6 +12,7 @@
     "postinstall": "patch-package",
     "validate:config": "npm run validate:config --workspace @flexipay/domain",
     "test:domain": "npm test --workspace @flexipay/domain",
+    "test:live:payout": "npm exec --workspace @flexipay/ui-e2e -- playwright test --config=../e2e-live/playwright.config.ts ../e2e-live/tests/live-payout.spec.ts",
     "demo:offline": "node scripts/demo/offline.ts"
   },
   "workspaces": [

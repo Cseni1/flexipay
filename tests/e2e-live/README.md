@@ -42,5 +42,16 @@ npx playwright test
 3. Send: United Kingdom → GBP source / tGBP destination → quote £10 → receive £9.90, fees £0.10  
 4. Payments list + Account: no raw `TGBP` / `99,009,900`  
 5. `/take-payment` form when that route is deployed  
+6. Aggregator read-only quotes (BlindPay BR, Tazapay KE)  
 
-No payments or recipients are created (quotes only).
+`live-smoke` and `live-aggregator` create no payments (quotes only).
+
+### Live payout (creates one sandbox payment)
+
+USD → Philippines bank via Tazapay: quote, create, fund, wait for Paid (up to 6 minutes). Ten-minute test timeout.
+
+From the repo root:
+
+```bash
+FP_QA_EMAIL='…' FP_QA_PASSWORD='…' npm run test:live:payout
+```
