@@ -92,8 +92,6 @@ export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), "")
 	const solanaTestWallet =
 		mode !== "production" && process.env.FP_SOLANA_TEST_WALLET === "1"
-	const crossmintSdkStub =
-		mode !== "production" && process.env.FP_CROSSMINT_SDK_STUB === "1"
 	const privySdkStub =
 		mode !== "production" && process.env.FP_PRIVY_SDK_STUB === "1"
 
@@ -109,17 +107,6 @@ export default defineConfig(({ mode }) => {
 		],
 		resolve: {
 			alias: [
-				...(crossmintSdkStub
-					? [
-							{
-								find: "@crossmint/client-sdk-react-ui",
-								replacement: resolve(
-									rootDir,
-									"src/components/payFrom/crossmintSdk.stub.tsx",
-								),
-							},
-						]
-					: []),
 				// Playwright only: Privy SDK and wallet balances without network or keys.
 				...(privySdkStub
 					? [

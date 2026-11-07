@@ -121,9 +121,9 @@ export default function FlexiPayWallet() {
 				actions={<SimulatedLabel>Coming soon</SimulatedLabel>}
 			>
 				<p className="muted" data-testid="embedded-wallet-soon">
-					Coming soon. Until an embedded-wallet partner (for example Crossmint)
-					is approved, use a Wallet Standard Solana wallet on devnet. No seed
-					phrase is ever stored by FlexiPay.
+					Coming soon. Until the embedded-wallet partner (Privy) is approved,
+					use a Wallet Standard Solana wallet on devnet. No seed phrase is ever
+					stored by FlexiPay.
 				</p>
 			</Panel>
 		</Page>

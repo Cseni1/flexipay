@@ -5,7 +5,6 @@ import {
 	isFlexiPayWalletConfigured,
 	readPrivyAppId,
 } from "../src/flexipayWallet/config.ts"
-import { formatUsdcBalance } from "../src/flexipayWallet/formatUsdcBalance.ts"
 import { sendFlexiPaySolanaTransaction } from "../src/flexipayWallet/sendFlexiPaySolanaTransaction.ts"
 
 const balances =
@@ -90,23 +89,6 @@ describe("sendFlexiPaySolanaTransaction", () => {
 					{ serialize: () => new Uint8Array([1]) },
 				),
 			/no signature/,
-		)
-	})
-})
-
-describe("formatUsdcBalance", () => {
-	test("human amount, raw fallback and placeholders", () => {
-		assert.equal(formatUsdcBalance(null), "—")
-		assert.equal(formatUsdcBalance({ amount: "abc" }), "abc")
-		assert.equal(formatUsdcBalance({ amount: "   ", rawAmount: "x" }), "—")
-		assert.equal(formatUsdcBalance({}), "—")
-		assert.equal(
-			formatUsdcBalance({ rawAmount: "1500000" }),
-			(1.5).toLocaleString(undefined, { minimumFractionDigits: 2 }),
-		)
-		assert.equal(
-			formatUsdcBalance({ rawAmount: "5", decimals: 2 }),
-			(0.05).toLocaleString(undefined, { minimumFractionDigits: 2 }),
 		)
 	})
 })

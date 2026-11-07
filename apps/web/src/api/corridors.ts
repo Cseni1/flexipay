@@ -30,13 +30,6 @@ export interface SourceEndpoint {
 	country: string
 }
 
-export interface SandboxPayoutRow {
-	code: string
-	name: string
-	providerId: string
-	providerName: string
-}
-
 const DESTINATION_LABELS: Readonly<Record<DestinationOption["value"], string>> =
 	{
 		bank_account: "Bank account",
@@ -274,58 +267,6 @@ export const regulationNoteFor = (
 ): string | null => {
 	const match = matchingCorridors(corridors, country, source)[0]
 	return match?.regulationNote ?? null
-}
-
-/**
- * Source bank endpoint for the corridor that pays out to `country`.
- * Prefers GBP/GB when that corridor exists (pounds-first product).
- */
-export const sourceForCountry = (
-	corridors: readonly CorridorSummary[],
-	country: string,
-): SourceEndpoint | null => defaultSourceForCountry(corridors, country)
-
-const firstSandboxProvider = (
-	providers: readonly string[] | undefined,
-): string | null => providers?.find((id) => id.endsWith("_sandbox")) ?? null
-
-/**
- * Destination countries priced by a partner sandbox payout, grouped by send currency.
- * One row per destination country per source currency (first *_sandbox payout id wins).
- */
-export const sandboxPayoutsBySource = (
-	corridors: readonly CorridorSummary[],
-): { GBP: SandboxPayoutRow[]; USD: SandboxPayoutRow[] } => {
-	const byCurrency = {
-		GBP: new Map<string, SandboxPayoutRow>(),
-		USD: new Map<string, SandboxPayoutRow>(),
-	}
-
-	for (const corridor of corridors) {
-		const providerId = firstSandboxProvider(corridor.payoutProviders)
-		if (!providerId) continue
-		const group =
-			corridor.fromCurrency === "GBP"
-				? byCurrency.GBP
-				: corridor.fromCurrency === "USD"
-					? byCurrency.USD
-					: null
-		if (!group || group.has(corridor.toCountry)) continue
-		group.set(corridor.toCountry, {
-			code: corridor.toCountry,
-			name: countryLabel(corridor.toCountry),
-			providerId,
-			providerName: providerLabel(providerId),
-		})
-	}
-
-	const sortRows = (rows: SandboxPayoutRow[]) =>
-		[...rows].sort((a, b) => a.name.localeCompare(b.name, "en"))
-
-	return {
-		GBP: sortRows([...byCurrency.GBP.values()]),
-		USD: sortRows([...byCurrency.USD.values()]),
-	}
 }
 
 /** One destination country in the world list: every send currency and every competing partner. */

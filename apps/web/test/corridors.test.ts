@@ -7,10 +7,8 @@ import {
 	defaultSourceForCountry,
 	destinationsForCountry,
 	regulationNoteFor,
-	sandboxPayoutsBySource,
 	sandboxPayoutsWorld,
 	sendFromLabel,
-	sourceForCountry,
 	sourcesForCountry,
 	type CorridorSummary,
 } from "../src/api/corridors.ts"
@@ -133,16 +131,6 @@ describe("corridor destination mapping", () => {
 			regulationNoteFor(SAMPLE, "PH", { country: "GB", currency: "GBP" }),
 			"PH GBP note",
 		)
-		assert.deepEqual(sourceForCountry(SAMPLE, "GB"), {
-			type: "bank_account",
-			currency: "GBP",
-			country: "GB",
-		})
-		assert.deepEqual(sourceForCountry(SAMPLE, "PH"), {
-			type: "bank_account",
-			currency: "GBP",
-			country: "GB",
-		})
 		assert.deepEqual(sourcesForCountry(SAMPLE, "PH"), [
 			{ type: "bank_account", currency: "GBP", country: "GB" },
 			{ type: "bank_account", currency: "USD", country: "US" },
@@ -163,33 +151,6 @@ describe("corridor destination mapping", () => {
 			sendFromLabel({ type: "bank_account", currency: "USD", country: "US" }),
 			"Dollars: USD operating account (US)",
 		)
-	})
-
-	test("groups sandbox payout countries by send currency", () => {
-		assert.deepEqual(sandboxPayoutsBySource(SAMPLE), {
-			GBP: [
-				{
-					code: "KE",
-					name: "Kenya",
-					providerId: "tazapay_sandbox",
-					providerName: "Tazapay",
-				},
-				{
-					code: "PH",
-					name: "Philippines",
-					providerId: "tazapay_sandbox",
-					providerName: "Tazapay",
-				},
-			],
-			USD: [
-				{
-					code: "PH",
-					name: "Philippines",
-					providerId: "tazapay_sandbox",
-					providerName: "Tazapay",
-				},
-			],
-		})
 	})
 
 	test("crypto settle currency falls back when settle rails are absent", () => {

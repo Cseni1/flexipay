@@ -6,7 +6,6 @@ import {
 	cryptoCurrencyForCorridor,
 	destinationsForCountry,
 	regulationNoteFor,
-	sandboxPayoutsBySource,
 	sandboxPayoutsWorld,
 	sendFromLabel,
 	sourceFromKey,
@@ -228,21 +227,6 @@ describe("sandbox payout lists", () => {
 			payoutProviders: ["tazapay_sandbox"],
 		}),
 	]
-
-	test("by source: first sandbox id wins per country; non GBP/USD sources ignored", () => {
-		const bySource = sandboxPayoutsBySource(corridors)
-		assert.deepEqual(
-			bySource.GBP.map((r) => [r.code, r.providerName]),
-			[
-				["AR", "Tazapay"],
-				["PH", "Tazapay"],
-			],
-		)
-		assert.deepEqual(
-			bySource.USD.map((r) => [r.code, r.providerId]),
-			[["PH", "blindpay_sandbox"]],
-		)
-	})
 
 	test("world list merges send currencies (pounds first) and partners (sorted)", () => {
 		const world = sandboxPayoutsWorld(corridors)
