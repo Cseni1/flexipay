@@ -791,3 +791,11 @@ Idempotency: same signature replay returns current paid state; a **different** s
 - **Verification:** domain 97, adapters-live 35, API 166, web 104, e2e-ui 109 passed; workspace typecheck, lint, OpenAPI regeneration and the production build passed.
 - **Not confirmed:** no live BlindPay keys, receiver KYC onboarding or real bank account was exercised. Third-party bank accounts may require relationship/compliance documents and some countries restrict them (https://blindpay.com/docs/payouts); an account under a customer that is not the payout party needs compliance review before production.
 - **Status:** implemented on branch `feat/ccr34-blindpay-beneficiaries`, PR open against `main`, not merged.
+
+## CCR-36 (integrator, 7 Nov 2026): a partner refusal fails the leg; Tazapay name rule
+
+- **Found live (Task 24 live test):** Tazapay refused the beneficiary for "Live QA Maria 1794046661872" (HTTP 400 "valid beneficiary name"). The `ProviderError` escaped `executeLeg`, the fund call failed, and the payout leg stayed `processing` with no reference: the poller never saw it and nothing was refunded.
+- **Change 1 (orchestrator):** a `ProviderError` thrown by `provider.execute()` means the partner refused before creating anything, so the leg fails through `onProviderLegFailed` and the CCR-14 retry/refund rules run. Any other error (for example a timeout, where money may have moved) still propagates.
+- **Change 2 (Tazapay):** sandbox check 7 Nov: names with digits or over 140 characters are refused; accents, hyphens, apostrophes and full stops are accepted. The adapter refuses such a recipient or account holder name before calling Tazapay, naming the rule.
+- **Change 3 (web):** Payment detail reloads the payment after a failed Fund, so it never shows a stale "Awaiting funding".
+- **Tests:** API 167 (1 new), adapters-live 37 (1 new), web 107, e2e-ui 114.

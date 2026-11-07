@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import {
 	FundDepositUnconfirmedError,
 	FundDepositVerifyError,
+	ProviderError,
 	decideOnFailure,
 	isPaid,
 	isSolanaSettleRail,
@@ -368,18 +369,30 @@ async function executeLeg(
 	}
 
 	const amountIn = moneyOf(leg.amountInValue, leg.amountInCurrency);
-	const started = await provider.execute({
-		kind: leg.kind as LegKind,
-		amountIn,
-		outCurrency: leg.amountOutCurrency,
-		endpoint:
-			leg.kind === "payout" && rt.payoutEndpoint
-				? rt.payoutEndpoint
-				: undefined,
-		paymentId: payment.id,
-		legId: leg.id,
-		attempt: leg.attempt,
-	});
+	let started: Awaited<ReturnType<typeof provider.execute>>;
+	try {
+		started = await provider.execute({
+			kind: leg.kind as LegKind,
+			amountIn,
+			outCurrency: leg.amountOutCurrency,
+			endpoint:
+				leg.kind === "payout" && rt.payoutEndpoint
+					? rt.payoutEndpoint
+					: undefined,
+			paymentId: payment.id,
+			legId: leg.id,
+			attempt: leg.attempt,
+		});
+	} catch (e) {
+		// A partner that refuses before creating anything (ProviderError: missing bank fields, invalid
+		// beneficiary name, balance too low) moved no money: fail the leg so the CCR-14 retry/refund
+		// rules run. Other errors (timeouts) may have moved money, so they still propagate.
+		if (e instanceof ProviderError) {
+			await onProviderLegFailed(db, payment, leg, e.code, e.message, "");
+			return;
+		}
+		throw e;
+	}
 	const { externalRef } = started;
 
 	await db.leg.update({
