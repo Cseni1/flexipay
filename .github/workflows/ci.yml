@@ -1,0 +1,115 @@
+name: CI
+
+# Runs on every pull request and every push to main. Branch protection should require the
+# "checks", "e2e-ui" and "contract" jobs so nothing merges red.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: checks (config, types, lint, unit + API tests with coverage, build, drift)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: fp
+          POSTGRES_PASSWORD: fp
+          POSTGRES_DB: flexipay
+        ports: ["54329:5432"]
+        options: >-
+          --health-cmd "pg_isready -U fp" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://fp:fp@localhost:54329/flexipay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate --workspace=@flexipay/api
+      - name: Config is valid
+        run: npm run validate:config
+      - name: Typecheck every workspace
+        run: |
+          for ws in packages/domain packages/adapters-sim packages/adapters-live packages/adapter-solana packages/adapter-stellar packages/web-lib apps/api apps/web; do
+            echo "::group::tsc $ws"; npx tsc --noEmit -p "$ws"; echo "::endgroup::"
+          done
+      - run: npm run lint
+      # Coverage floors = levels measured on 7 Nov 2026; they only go up.
+      - name: Unit tests with coverage floors
+        run: |
+          run() { (cd "$1" && npx vitest run --coverage --coverage.include='src/**' --coverage.reporter=text-summary --coverage.thresholds.lines="$2"); }
+          run packages/domain 80
+          run packages/adapters-sim 90
+          run packages/adapters-live 85
+          run packages/adapter-solana 68
+          run packages/adapter-stellar 40
+          run apps/web 20
+      - name: API tests (embedded Postgres) with coverage floor
+        run: cd apps/api && npx vitest run --coverage --coverage.include='src/**' --coverage.reporter=text-summary --coverage.thresholds.lines=70
+      - name: OpenAPI matches the code
+        run: npm run openapi --workspace=@flexipay/api && git diff --exit-code apps/api/openapi.json
+      - name: Migrations match the Prisma schema (drift check)
+        working-directory: apps/api
+        run: |
+          npx prisma migrate deploy
+          npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+      - run: npm run build
+      - name: Dependency audit (production deps; blocks on critical)
+        run: |
+          npm audit --omit=dev --audit-level=high || echo "::warning::high-severity advisories in production dependencies (see log)"
+          npm audit --omit=dev --audit-level=critical
+
+  e2e-ui:
+    name: e2e-ui (Playwright, mocked API)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+        working-directory: tests/e2e-ui
+      - run: npx playwright test --workers=2
+        working-directory: tests/e2e-ui
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-ui-report
+          path: tests/e2e-ui/test-results
+          retention-days: 7
+
+  contract:
+    name: contract (Soroban payout vault, cargo test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.93.0
+        with:
+          targets: wasm32v1-none
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --locked -p payout-vault
+
+  secrets:
+    name: secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

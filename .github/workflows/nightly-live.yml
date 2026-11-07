@@ -1,0 +1,36 @@
+name: Nightly live check
+
+# Real browser against the live site, live API and partner sandboxes, every night and on demand.
+# Needs repository secrets FP_QA_EMAIL and FP_QA_PASSWORD (the live QA account). The payout test
+# creates one real sandbox payment per run.
+on:
+  schedule:
+    - cron: "17 5 * * *" # 05:17 UTC daily
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FP_QA_EMAIL: ${{ secrets.FP_QA_EMAIL }}
+      FP_QA_PASSWORD: ${{ secrets.FP_QA_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+        working-directory: tests/e2e-ui
+      - name: Live read-only suite
+        run: npm exec --workspace @flexipay/ui-e2e -- playwright test --config=../e2e-live/playwright.config.ts --grep-invert "Live payout"
+      - name: Live payout (one sandbox payment)
+        run: npm run test:live:payout
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: live-report
+          path: test-results
+          retention-days: 14
