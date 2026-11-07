@@ -232,6 +232,13 @@ export const createQuote = (
 		signal,
 	})
 
+/** Fetch a previously created quote when the API still retains it (Demo Day savings). */
+export const getQuote = (id: string, signal?: AbortSignal): Promise<Quote> =>
+	request(`/v1/quotes/${encodeURIComponent(id)}`, {
+		schema: QuoteSchema,
+		signal,
+	})
+
 interface CreateRecipientInput {
 	name: string
 	kind: RecipientKind

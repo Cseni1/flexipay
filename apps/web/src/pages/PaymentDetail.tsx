@@ -32,12 +32,14 @@ import {
 	StatusBadge,
 } from "../components/ui"
 import { usePaymentDetail } from "../hooks/usePaymentDetail"
+import { usePaymentSaving } from "../hooks/usePaymentSaving"
 import {
 	primaryEndpoint,
 	recipientDisplayName,
 	useRecipientDirectory,
 } from "../hooks/useRecipientDirectory"
 import { useWakeUpRetry } from "../hooks/useWakeUpRetry"
+import { formatPaymentSavingLine } from "../payments/aggregatorSaving"
 import { paymentMilestoneTimes } from "../payments/paymentEventTimes"
 import { providerLabel } from "../payments/providerNames"
 import { displayMoney } from "../payments/quoteDisplay"
@@ -141,6 +143,7 @@ export default function PaymentDetail() {
 			?.claimLink ?? null
 	const { payment, error, loading, polling, refresh } =
 		usePaymentDetail(paymentId)
+	const saving = usePaymentSaving(payment)
 	const { waking, exhausted, attempt, retryNow } = useWakeUpRetry({
 		error,
 		hasData: payment !== null,
@@ -403,6 +406,16 @@ export default function PaymentDetail() {
 											: "—"
 									}
 								/>
+								{saving ? (
+									<StaticField
+										label="Aggregator saving"
+										value={
+											<span data-testid="payment-saving">
+												{formatPaymentSavingLine(saving)}
+											</span>
+										}
+									/>
+								) : null}
 							</div>
 
 							{claimLink ? (

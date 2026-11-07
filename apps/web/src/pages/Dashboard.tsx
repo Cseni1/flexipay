@@ -11,9 +11,29 @@ import {
 	SimulatedLabel,
 } from "../components/ui"
 import { usePaymentList } from "../hooks/usePaymentList"
+import {
+	sumSavingsByCurrency,
+	type AggregatorSaving,
+} from "../payments/aggregatorSaving"
+import { displayMoney } from "../payments/quoteDisplay"
+import { lookupStoredSaving } from "../payments/quoteSavingStore"
 
 const count = (list: { status: string }[], ...statuses: string[]): number =>
 	list.filter((payment) => statuses.includes(payment.status)).length
+
+const savingsForLoadedPayments = (
+	payments: { id: string; quoteId: string }[],
+): AggregatorSaving[] => {
+	const found: AggregatorSaving[] = []
+	for (const payment of payments) {
+		const saving = lookupStoredSaving({
+			paymentId: payment.id,
+			quoteId: payment.quoteId,
+		})
+		if (saving) found.push(saving)
+	}
+	return found
+}
 
 export default function Dashboard() {
 	const { payments, error, loading, refresh } = usePaymentList()
@@ -27,6 +47,7 @@ export default function Dashboard() {
 	const done = count(payments, "paid", "completed")
 	const refunded = count(payments, "refunded")
 	const failed = count(payments, "failed")
+	const savedTotals = sumSavingsByCurrency(savingsForLoadedPayments(payments))
 
 	return (
 		<Page>
@@ -72,6 +93,20 @@ export default function Dashboard() {
 					<strong className="stat-card__value">{refunded + failed}</strong>
 				</div>
 			</div>
+
+			{savedTotals.length > 0 ? (
+				<div
+					className="stat-card dashboard-saved"
+					data-testid="dashboard-saved-for-recipients"
+				>
+					<span className="stat-card__label">Saved for recipients</span>
+					<strong className="stat-card__value">
+						{savedTotals
+							.map((total) => displayMoney(total.amount, total.currency))
+							.join(" · ")}
+					</strong>
+				</div>
+			) : null}
 
 			<Panel
 				title="Recent payments"
