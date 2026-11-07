@@ -28,6 +28,8 @@ export const DEFAULT_RULES: Rule[] = [
 export function createAuthRateLimiter(
 	rules: Rule[] = DEFAULT_RULES,
 	now: () => number = Date.now,
+	/** Who a hit counts against; default the client address. */
+	clientKey: (req: Request, rule: Rule) => string = (req) => req.ip ?? "unknown",
 ) {
 	const hits = new Map<string, { count: number; resetAt: number }>();
 	let lastSweep = now();
@@ -42,7 +44,7 @@ export function createAuthRateLimiter(
 		// Session reads are cheap and frequent; only throttle them via the generic bucket.
 		const rule = rules.find((r) => r.match.test(path));
 		if (!rule) return next();
-		const key = `${req.ip ?? "unknown"}|${rule.bucket}`;
+		const key = `${clientKey(req, rule)}|${rule.bucket}`;
 		let entry = hits.get(key);
 		if (!entry || entry.resetAt <= t) {
 			entry = { count: 0, resetAt: t + rule.windowMs };

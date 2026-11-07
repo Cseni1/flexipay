@@ -851,3 +851,10 @@ generated from the route table.
 - **Unregistered provider:** a leg whose provider is not registered fails through `onProviderLegFailed` (CCR-14 retry, then refund) instead of being failed directly, which left a payout after settle stuck in `processing`.
 - **Fund and cancel** take a strict empty body: unknown fields are 400 `validation_error`, like every other POST. `openapi.json` regenerated.
 - **Open (dormant passkey feature):** after a passkey submit succeeds, a retry with the same key is refused (409 already accepted) before the cache lookup instead of replaying the stored 200.
+
+## CCR-42 (integrator, 7 Nov 2026): security hardening
+
+- **Rate limit:** every `/v1` route answers 429 `rate_limited` (with `Retry-After`) past 600 requests a minute per API key or session, or 300 a minute per client address on the public `/v1/claims/*` routes. Clients should back off and retry after `Retry-After` seconds.
+- **Headers:** every API response carries `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, HSTS and `Referrer-Policy: no-referrer`. `/v1/*` responses are `Cache-Control: no-store`. No body or status changes.
+- **Passkey submit (bug 4):** a retry with the same Idempotency-Key after a successful submit returns the stored 200 instead of 409 "already accepted". A new key on an accepted claim is still 409.
+- Tracker: `docs/PLATFORM_TRACKER.md` section 4.
