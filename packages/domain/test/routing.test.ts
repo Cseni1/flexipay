@@ -271,8 +271,8 @@ describe("checkEligibility exclusions", () => {
 				sendReq({
 					destination: {
 						type: "bank_account",
-						currency: "EUR",
-						country: "DE",
+						currency: "SYP",
+						country: "SY",
 						recipientKind: "individual",
 					},
 				}),

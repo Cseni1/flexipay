@@ -99,9 +99,9 @@
 			},
 			"legsAvailable": {
 				"collect": ["sim_bank_us_ach"],
-				"convert": ["sim_fx", "blindpay_sandbox"],
+				"convert": ["sim_fx", "blindpay_sandbox", "tazapay_sandbox"],
 				"settle": ["stellar_usdc"],
-				"payout": ["sim_bank_br_pix", "blindpay_sandbox"]
+				"payout": ["sim_bank_br_pix", "blindpay_sandbox", "tazapay_sandbox"]
 			},
 			"domesticRail": null,
 			"regulationNote": "Cross-border USD to BRL. Bank account and crypto-wallet destinations. Brazil is the baseline Latin American country; Mexico is added after the event.",
@@ -126,9 +126,9 @@
 			},
 			"legsAvailable": {
 				"collect": ["sim_bank_us_ach"],
-				"convert": ["sim_fx"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
 				"settle": [],
-				"payout": ["sim_bank_za_eft"]
+				"payout": ["sim_bank_za_eft", "tazapay_sandbox"]
 			},
 			"domesticRail": null,
 			"regulationNote": "Bank rails only. Draft cross-border crypto rules of 3 Aug 2026 would stop companies sending or receiving crypto across the border; on 21 Oct 2026 the finance minister said they will be rewritten, with no timeline. Demo policy, not legal advice.",
@@ -1833,6 +1833,1707 @@
 			},
 			"domesticRail": null,
 			"regulationNote": "Cross-border GBP to ZAR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "AD", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "AE", "currency": "AED" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to AED over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "AR", "currency": "ARS" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "blindpay_sandbox", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["blindpay_sandbox", "tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to ARS over USDC on Stellar. BlindPay and Tazapay sandboxes compete; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "AT", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "AU", "currency": "AUD" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to AUD over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "BD", "currency": "BDT" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to BDT over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "BE", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "BG", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "CA", "currency": "CAD" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to CAD over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "CH", "currency": "CHF" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to CHF over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "CL", "currency": "CLP" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to CLP over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "CN", "currency": "CNY" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to CNY over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "CY", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "CZ", "currency": "CZK" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to CZK over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "DE", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "DK", "currency": "DKK" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to DKK over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "DZ", "currency": "DZD" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to DZD over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "EE", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "ES", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "FI", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "FR", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "GB", "currency": "GBP" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to GBP over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "GH", "currency": "GHS" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to GHS over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "GR", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "HK", "currency": "HKD" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to HKD over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "HR", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "HU", "currency": "HUF" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to HUF over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "ID", "currency": "IDR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to IDR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "IE", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "IN", "currency": "INR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to INR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "IS", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "IT", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "KE", "currency": "KES" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to KES over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "KR", "currency": "KRW" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to KRW over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "LI", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "LK", "currency": "LKR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to LKR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "LT", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "LU", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "LV", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "MA", "currency": "MAD" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to MAD over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "MT", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "MX", "currency": "MXN" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "blindpay_sandbox", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["blindpay_sandbox", "tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to MXN over USDC on Stellar. BlindPay and Tazapay sandboxes compete; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "MY", "currency": "MYR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to MYR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "NG", "currency": "NGN" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to NGN over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "NL", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "NO", "currency": "NOK" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to NOK over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "NP", "currency": "NPR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to NPR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "PE", "currency": "PEN" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to PEN over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "PK", "currency": "PKR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to PKR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "PL", "currency": "PLN" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to PLN over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "PT", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "RO", "currency": "RON" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to RON over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "SE", "currency": "SEK" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to SEK over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "SG", "currency": "SGD" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to SGD over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "SI", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "SK", "currency": "EUR" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to EUR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "TH", "currency": "THB" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to THB over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "TR", "currency": "TRY" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to TRY over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "UG", "currency": "UGX" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to UGX over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "UY", "currency": "UYU" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to UYU over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "VN", "currency": "VND" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "tazapay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to VND over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "US", "currency": "USD" },
+			"to": { "country": "CO", "currency": "COP" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "500000", "currency": "USD" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "USD" },
+					"max": { "amount": "5000000", "currency": "USD" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_us_ach"],
+				"convert": ["sim_fx", "blindpay_sandbox"],
+				"settle": ["stellar_usdc"],
+				"payout": ["blindpay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border USD to COP over USDC on Stellar. BlindPay sandbox pays local bank accounts; sandbox only.",
+			"simulated": true,
+			"placeholder": true
+		},
+		{
+			"from": { "country": "GB", "currency": "GBP" },
+			"to": { "country": "US", "currency": "USD" },
+			"allowedDestinationTypes": ["bank_account"],
+			"recipientKinds": ["individual", "company"],
+			"cryptoLegAllowed": { "individual": true, "company": true },
+			"limits": {
+				"individual": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "500000", "currency": "GBP" }
+				},
+				"company": {
+					"min": { "amount": "100", "currency": "GBP" },
+					"max": { "amount": "5000000", "currency": "GBP" }
+				}
+			},
+			"legsAvailable": {
+				"collect": ["sim_bank_gb_fps"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"settle": ["solana_tgbp"],
+				"payout": ["tazapay_sandbox"]
+			},
+			"domesticRail": null,
+			"regulationNote": "Cross-border GBP to USD over tGBP on Solana. Tazapay sandbox pays US bank accounts from a GBP balance; sandbox only.",
 			"simulated": true,
 			"placeholder": true
 		}

@@ -37,9 +37,12 @@ describe("API skeleton", () => {
     const { corridors } = await res.json();
     const ids = corridors.map((c: any) => `${c.from.country}-${c.to.country}`);
     expect(ids.slice(0, 6)).toEqual(["US-US", "US-PH", "GB-PH", "US-BR", "US-ZA", "GB-GB"]);
-    // CCR-31: GBP to 62 more countries through Tazapay's sandbox (bank accounts, tGBP settle).
+    // CCR-31: GBP to 62 more countries through Tazapay's sandbox (bank accounts, tGBP settle); CCR-40 adds GB-US.
     const tazapay = corridors.filter((c: any) => c.from.country === "GB" && c.legsAvailable.payout.join() === "tazapay_sandbox");
-    expect(tazapay).toHaveLength(62);
+    expect(tazapay).toHaveLength(63);
+    // CCR-40: dollars reach every Tazapay country too, plus BlindPay's Latin America.
+    const fromUsd = new Set(corridors.filter((c: any) => c.from.country === "US").map((c: any) => c.to.country));
+    for (const cc of ["KE", "GB", "FR", "IN", "MX", "CO", "AR", "BR", "PH", "ZA"]) expect(fromUsd.has(cc)).toBe(true);
     expect(ids).toContain("GB-KE");
     expect(new Set(ids).size).toBe(ids.length);
     const za = corridors.find((c: any) => c.to.country === "ZA");

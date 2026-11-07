@@ -451,6 +451,28 @@ describe("Tazapay adapter", () => {
 		).toHaveLength(1)
 	})
 
+	it("pays out GBP and USD too (a USD balance pays GBP in the UK); tGBP and USDC are never payouts", async () => {
+		const row = { ...ROW, countries: ["PH", "GB"], currencies: [...ROW.currencies, "GBP"] }
+		const api = fakeApi()
+		const a = new TazapayAdapter(row, {
+			apiKey: "k",
+			apiSecret: "s",
+			sandboxBeneficiaryId: "bnf_1",
+			liveApproved: false,
+			fetch: api.fetch,
+		})
+		const q = await a.quote({
+			kind: "payout",
+			amountIn: money("10000", "GBP"),
+			outCurrency: "GBP",
+			endpoint: { endpointId: "ep_gb", type: "bank_account", country: "GB", currency: "GBP" },
+		})
+		expect(q.amountOut).toEqual(money("10000", "GBP"))
+		await expect(
+			a.quote({ kind: "payout", amountIn: money("10000", "USDC"), outCurrency: "USDC" }),
+		).rejects.toMatchObject({ code: "unsupported" })
+	})
+
 	it("refuses a name with digits before calling Tazapay (sandbox HTTP 400)", async () => {
 		const api = fakeApi()
 		const error = (await adapter(api, { beneficiary: null })
