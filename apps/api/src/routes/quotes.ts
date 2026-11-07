@@ -6,7 +6,7 @@ import {
 	type Quote,
 } from "@flexipay/domain";
 import { ApiError } from "../errors.ts";
-import { persistQuoteRow } from "../serialize.ts";
+import { persistQuoteRow, quoteFromRow } from "../serialize.ts";
 import { defineRoute, type Ctx, type RouteDef } from "../routes.ts";
 
 const orgOf = (ctx: { org?: { id: string }; runtime?: unknown }) => {
@@ -52,5 +52,19 @@ export const quoteRoutes: RouteDef<any, any>[] = [
 		body: CreateQuoteRequestSchema,
 		success: { status: 201, schema: QuoteSchema },
 		handler: async (ctx, { body }) => createQuoteForOrg(ctx, orgOf(ctx).id, body),
+	}),
+	defineRoute({
+		method: "get",
+		path: "/v1/quotes/{id}",
+		summary: "A quote this organization created, as it was priced (route, alternatives, reasons)",
+		auth: "customer",
+		success: { status: 200, schema: QuoteSchema },
+		handler: async (ctx, { params }) => {
+			const row = await ctx.db.quote.findFirst({
+				where: { id: params.id!, organizationId: orgOf(ctx).id },
+			});
+			if (!row) throw new ApiError(404, "not_found", "Quote not found");
+			return quoteFromRow(row);
+		},
 	}),
 ];
