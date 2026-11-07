@@ -1,9 +1,10 @@
-import { useCrossmintAuth, useWallet } from "@crossmint/client-sdk-react-ui"
+import { usePrivy } from "@privy-io/react-auth"
+import { useWallets } from "@privy-io/react-auth/solana"
 import { useCallback, useEffect, useState } from "react"
 import { QrCode } from "../components/QrCode"
 import { Button, Notice, StaticField } from "../components/ui"
 import { shortAddress } from "../solana/walletStandard"
-import { formatUsdcBalance } from "./formatUsdcBalance"
+import { loadFlexiPayBalances } from "./balances"
 
 type Props = {
 	/** Notify parent when the FlexiPay Solana address is ready (for Add funds). */
@@ -11,12 +12,14 @@ type Props = {
 }
 
 /**
- * Inner session UI: email login via Crossmint, then address, balances, receive QR.
+ * Inner session UI: email or passkey login via Privy, then address, balances, receive QR.
  * Must render under FlexiPayWalletProviders.
  */
 export function FlexiPayWalletSession({ onAddressChange }: Props = {}) {
-	const { login, logout, status: authStatus, user } = useCrossmintAuth()
-	const { wallet, status: walletStatus } = useWallet()
+	const { ready, authenticated, login, logout, user } = usePrivy()
+	const { wallets, ready: walletsReady } = useWallets()
+	// Only embedded wallets are configured (no external connectors), so the first is the user's.
+	const wallet = wallets[0]
 	const [usdcLabel, setUsdcLabel] = useState<string>("—")
 	const [solLabel, setSolLabel] = useState<string>("—")
 	const [tokenLines, setTokenLines] = useState<string[]>([])
@@ -37,37 +40,20 @@ export function FlexiPayWalletSession({ onAddressChange }: Props = {}) {
 		setBalanceBusy(true)
 		setBalanceError(null)
 		try {
-			const balances = await wallet.balances()
-			setUsdcLabel(formatUsdcBalance(balances.usdc))
-			const solAmount = balances.nativeToken?.amount?.trim()
-			setSolLabel(solAmount && solAmount.length > 0 ? solAmount : "—")
-			const extras = Array.isArray(balances.tokens) ? balances.tokens : []
+			const balances = await loadFlexiPayBalances(wallet.address)
+			setSolLabel(balances.sol)
+			const usdc = balances.tokens.find((t) => t.asset === "USDC")
+			setUsdcLabel(usdc ? usdc.amount : "—")
 			setTokenLines(
-				extras
-					.map((row) => {
-						if (!row || typeof row !== "object") return null
-						const rec = row as {
-							symbol?: string
-							amount?: string
-							mint?: string
-						}
-						const symbol =
-							typeof rec.symbol === "string" && rec.symbol
-								? rec.symbol
-								: typeof rec.mint === "string"
-									? shortAddress(rec.mint)
-									: "token"
-						const amount =
-							typeof rec.amount === "string" && rec.amount ? rec.amount : "—"
-						return `${symbol}: ${amount}`
-					})
-					.filter((line): line is string => Boolean(line)),
+				balances.tokens
+					.filter((t) => t.asset !== "USDC")
+					.map((t) => `${t.asset === "TGBP" ? "tGBP" : t.asset}: ${t.amount}`),
 			)
 		} catch {
 			setUsdcLabel("—")
 			setSolLabel("—")
 			setTokenLines([])
-			setBalanceError("Could not load balances from Crossmint.")
+			setBalanceError("Could not load balances from Solana devnet.")
 		} finally {
 			setBalanceBusy(false)
 		}
@@ -78,9 +64,9 @@ export function FlexiPayWalletSession({ onAddressChange }: Props = {}) {
 	}, [refreshBalances])
 
 	const address = wallet?.address?.trim() ?? ""
-	const loggedIn = authStatus === "logged-in"
-	const walletLoading =
-		walletStatus === "in-progress" || authStatus === "in-progress"
+	const loggedIn = ready && authenticated
+	const walletLoading = !ready || (authenticated && !walletsReady)
+	const email = user?.email?.address
 
 	useEffect(() => {
 		onAddressChange?.(loggedIn && address ? address : null)
@@ -101,9 +87,9 @@ export function FlexiPayWalletSession({ onAddressChange }: Props = {}) {
 		return (
 			<div className="stack" data-testid="flexipay-wallet-logged-out">
 				<p className="muted">
-					Create a Solana wallet with your email (Crossmint staging). No Phantom
-					required. Devnet / test funds only — you can pay FlexiPay settlements
-					from this wallet when signed in.
+					Create a Solana wallet with your email or a passkey. No Phantom and no
+					seed phrase; FlexiPay never holds your keys. Devnet / test funds only
+					— you can pay FlexiPay settlements from this wallet when signed in.
 				</p>
 				<div className="form-actions">
 					<Button
@@ -122,8 +108,8 @@ export function FlexiPayWalletSession({ onAddressChange }: Props = {}) {
 	return (
 		<div className="stack" data-testid="flexipay-wallet-session">
 			<p className="form-note">
-				Signed in{user?.email ? ` as ${user.email}` : ""}. Test wallet — not for
-				mainnet payments.
+				Signed in{email ? ` as ${email}` : ""}. Test wallet — not for mainnet
+				payments.
 			</p>
 			{walletLoading && !address ? (
 				<p className="muted" role="status">
@@ -221,10 +207,11 @@ export function FlexiPayWalletSession({ onAddressChange }: Props = {}) {
 					{balanceError}
 				</Notice>
 			) : null}
-			{walletStatus === "error" ? (
+			{loggedIn && walletsReady && !address ? (
 				<Notice tone="warning" data-testid="flexipay-wallet-error">
-					Could not load the FlexiPay wallet. Check the Crossmint staging client
-					key has Wallet API scopes, then try again.
+					Signed in, but no Solana wallet was created. Check that Solana
+					embedded wallets are enabled for this app in the Privy dashboard, then
+					sign in again.
 				</Notice>
 			) : null}
 		</div>

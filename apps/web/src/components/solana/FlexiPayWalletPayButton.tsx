@@ -1,4 +1,10 @@
-import { useCrossmintAuth, useWallet } from "@crossmint/client-sdk-react-ui"
+import { usePrivy } from "@privy-io/react-auth"
+import {
+	useSignAndSendTransaction,
+	useWallets,
+} from "@privy-io/react-auth/solana"
+import bs58 from "bs58"
+import { FLEXIPAY_WALLET_CHAIN } from "../../flexipayWallet/config"
 import { type FlexiPaySolanaWallet } from "../../flexipayWallet/sendFlexiPaySolanaTransaction"
 import { Button } from "../ui"
 
@@ -10,7 +16,7 @@ type Props = {
 }
 
 /**
- * Shows "Pay with FlexiPay wallet" only when Crossmint email wallet is signed in.
+ * Shows "Pay with FlexiPay wallet" only when the Privy embedded wallet is signed in.
  * Must render under FlexiPayWalletProviders.
  */
 export function FlexiPayWalletPayButton({
@@ -19,21 +25,30 @@ export function FlexiPayWalletPayButton({
 	label,
 	onPay,
 }: Props) {
-	const { status: authStatus } = useCrossmintAuth()
-	const { wallet, status: walletStatus } = useWallet()
-	const ready =
-		authStatus === "logged-in" &&
-		walletStatus === "loaded" &&
-		Boolean(wallet?.address)
+	const { ready, authenticated } = usePrivy()
+	const { wallets, ready: walletsReady } = useWallets()
+	const { signAndSendTransaction } = useSignAndSendTransaction()
+	const wallet = wallets[0]
+	if (!ready || !authenticated || !walletsReady || !wallet?.address) return null
 
-	if (!ready || !wallet) return null
+	const flexiWallet: FlexiPaySolanaWallet = {
+		address: wallet.address,
+		sendTransaction: async ({ serializedTransaction }) => {
+			const { signature } = await signAndSendTransaction({
+				transaction: bs58.decode(serializedTransaction),
+				wallet,
+				chain: FLEXIPAY_WALLET_CHAIN,
+			})
+			return { hash: bs58.encode(signature) }
+		},
+	}
 
 	return (
 		<Button
 			type="button"
 			variant="secondary"
 			disabled={disabled || busy}
-			onClick={() => onPay(wallet as FlexiPaySolanaWallet)}
+			onClick={() => onPay(flexiWallet)}
 			data-testid="solana-pay-flexipay"
 		>
 			{busy ? "Signing / confirming…" : label}
