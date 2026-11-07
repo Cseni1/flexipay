@@ -124,6 +124,54 @@ export default function Dashboard() {
 					<PaymentHistoryTable payments={payments.slice(0, 6)} />
 				)}
 			</Panel>
+
+			<Panel
+				title="What works today, and what is coming"
+				description="Everything here runs on partner sandboxes and Solana devnet. Nothing moves real money yet."
+				actions={<SimulatedLabel>Roadmap</SimulatedLabel>}
+			>
+				<ul className="roadmap-list" data-testid="dashboard-roadmap">
+					{ROADMAP.map((item) => (
+						<li key={item.title} className="roadmap-list__item">
+							<span className="roadmap-list__title">{item.title}</span>
+							{item.status === "working" ? (
+								<span className="roadmap-list__status roadmap-list__status--working">
+									Working (sandbox)
+								</span>
+							) : (
+								<SimulatedLabel>Coming soon</SimulatedLabel>
+							)}
+						</li>
+					))}
+				</ul>
+			</Panel>
 		</Page>
 	)
 }
+
+/** Demo roadmap: only items the founder has confirmed; "working" means proven end to end on sandboxes. */
+const ROADMAP: ReadonlyArray<{ title: string; status: "working" | "soon" }> = [
+	{ title: "Quotes from pounds to 63 countries (Tazapay)", status: "working" },
+	{
+		title: "Compare partners and pick the route that delivers the most",
+		status: "working",
+	},
+	{
+		title:
+			"Bank payouts from dollars: Philippines (Tazapay), Brazil (BlindPay)",
+		status: "working",
+	},
+	{ title: "Recipients with saved bank accounts", status: "working" },
+	{
+		title: "Take payment: till QR in tGBP (Solana devnet; phone test pending)",
+		status: "working",
+	},
+	{ title: "Bank payouts from pounds via tGBP on Solana", status: "soon" },
+	{
+		title: "FlexiPay wallet (embedded) to hold tGBP and pay by QR",
+		status: "soon",
+	},
+	{ title: "Merchant cash-out to their bank account", status: "soon" },
+	{ title: "Card and bank top-up", status: "soon" },
+	{ title: "Real money with production partners", status: "soon" },
+]

@@ -470,3 +470,33 @@
 		display: none !important;
 	}
 }
+
+/* Dashboard roadmap: what works today and what is coming. */
+.roadmap-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 0.5rem;
+}
+
+.roadmap-list__item {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+	padding: 0.5rem 0;
+	border-bottom: 1px solid var(--line);
+}
+
+.roadmap-list__title {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.roadmap-list__status--working {
+	font-size: 0.8rem;
+	font-weight: 600;
+	color: var(--ok);
+}
