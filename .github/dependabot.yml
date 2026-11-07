@@ -8,6 +8,10 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    # Major upgrades are planned work, not weekly chores; security updates still arrive.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly, day: monday }
@@ -17,3 +21,7 @@ updates:
   - package-ecosystem: cargo
     directory: /
     schedule: { interval: monthly }
+    # Major upgrades are planned work, not weekly chores; security updates still arrive.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

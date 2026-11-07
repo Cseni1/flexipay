@@ -23,7 +23,12 @@ const DOCS_CSP = {
 		"https://fonts.googleapis.com",
 		"'unsafe-inline'",
 	],
-	fontSrc: ["https://cdn.jsdelivr.net", "https://fonts.gstatic.com", "data:"],
+	fontSrc: [
+		"https://cdn.jsdelivr.net",
+		"https://fonts.scalar.com",
+		"https://fonts.gstatic.com",
+		"data:",
+	],
 	imgSrc: ["'self'", "https:", "data:"],
 	connectSrc: ["'self'"],
 	workerSrc: ["blob:"],
