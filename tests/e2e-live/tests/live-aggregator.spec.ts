@@ -67,6 +67,10 @@ test.describe("Live aggregator (read-only)", () => {
 		await expect(
 			page.getByRole("heading", { name: "Other eligible routes" }),
 		).toBeVisible()
+		// Task 26 + CCR-38: the losing payout option is a real alternative, so the saving shows.
+		await expect(page.getByTestId("aggregator-saving")).toContainText(
+			/more than the next best route/,
+		)
 		await expect(
 			page.getByRole("button", { name: "Create payment" }),
 		).toBeVisible()

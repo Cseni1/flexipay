@@ -42,6 +42,15 @@ export interface PricedRoute {
 	fxRate: string | null;
 	estimatedTimeSeconds: number;
 	exclusionReasons: string[];
+	/** Losing convert + payout options as full routes, best first (Quote.alternatives). */
+	alternatives: PricedAlternative[];
+}
+
+export interface PricedAlternative {
+	legs: PricedLeg[];
+	totalCost: Money;
+	estimatedTimeSeconds: number;
+	reasons: string[];
 }
 
 export type PriceFail = { ok: false; reasons: string[] };
@@ -576,7 +585,10 @@ async function pricePayoutPair(
 	convertOut: string,
 	payoutOut: string,
 	exclusionReasons: string[],
-): Promise<{ ok: true; legs: [PricedLeg, PricedLeg] } | PriceFail> {
+): Promise<
+	| { ok: true; legs: [PricedLeg, PricedLeg]; others: Array<{ label: string; legs: [PricedLeg, PricedLeg] }> }
+	| PriceFail
+> {
 	const conv = await legCandidates(deps, corridor, "convert", destination, exclusionReasons);
 	if (!conv.ok) return conv;
 	const pay = await legCandidates(deps, corridor, "payout", destination, exclusionReasons);
@@ -658,7 +670,10 @@ async function pricePayoutPair(
 			`Best payout route: ${best.label} delivers ${best.legs[1].amountOut.amount} ${best.legs[1].amountOut.currency} (others: ${others})`,
 		);
 	}
-	return { ok: true, legs: best.legs };
+	const others = options
+		.filter((o) => o !== best)
+		.sort((a, b) => (toMinor(b.legs[1].amountOut) > toMinor(a.legs[1].amountOut) ? 1 : -1));
+	return { ok: true, legs: best.legs, others };
 }
 
 export async function priceRoute(
@@ -686,6 +701,8 @@ export async function priceRoute(
 	let totalTime = 0;
 	let settleUnlockedRemainder: Money | null = null;
 
+	let pairAt = -1;
+	let pairOthers: Array<{ label: string; legs: [PricedLeg, PricedLeg] }> = [];
 	for (let i = 0; i < template.length; i++) {
 		const kind = template[i]!;
 		const outCurrency = outs[i]!;
@@ -740,6 +757,8 @@ export async function priceRoute(
 				exclusionReasons,
 			);
 			if (!pair.ok) return pair;
+			pairAt = legs.length;
+			pairOthers = pair.others;
 			for (const leg of pair.legs) {
 				legs.push(leg);
 				totalTime += leg.estimatedTimeSeconds;
@@ -812,9 +831,25 @@ export async function priceRoute(
 
 	const fxRate = overallFxRate(sendAmount, expectedReceive);
 
+	// Losing payout options as full routes, so clients can show what the aggregator saved.
+	const alternatives: PricedAlternative[] = [];
+	for (const other of pairOthers) {
+		if (other.legs[1].amountOut.currency !== expectedReceive.currency) continue;
+		const altLegs = [...legs.slice(0, pairAt), ...other.legs, ...legs.slice(pairAt + 2)];
+		const altSummed = sumFeesTotal(altLegs, flexiPayFee, fromCurrency, deps.config.fxRates);
+		if (!altSummed.ok) continue;
+		alternatives.push({
+			legs: altLegs,
+			totalCost: altSummed.total,
+			estimatedTimeSeconds: altLegs.reduce((t, l) => t + l.estimatedTimeSeconds, 0),
+			reasons: [`Via ${other.label}: delivers ${other.legs[1].amountOut.amount} ${other.legs[1].amountOut.currency}`],
+		});
+	}
+
 	return {
 		ok: true,
 		priced: {
+			alternatives,
 			legs,
 			expectedReceive,
 			fees: {

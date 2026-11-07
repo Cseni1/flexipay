@@ -333,6 +333,20 @@ describe("aggregator: off-ramp partner on the convert + payout pair", () => {
 		expect(q.reasons.join(" ")).toMatch(/Best payout route: blindpay_sandbox delivers .*others: sim_fx \+ sim_bank_br_pix/);
 	});
 
+	it("returns the losing payout option as a full alternative route (Task 26 saving)", async () => {
+		const plain = await brQuote(null);
+		const q = await brQuote(offramp("6.0000000"));
+		expect(q.alternatives).toHaveLength(1);
+		const alt = q.alternatives[0]!;
+		// The alternative is the plain route: same legs before the pair, plain convert + payout after.
+		expect(alt.route.map((l) => l.providerId)).toEqual(plain.route.map((l) => l.providerId));
+		expect(alt.route.at(-1)!.amountOut).toEqual(plain.expectedReceive);
+		expect(alt.totalCost.currency).toBe(q.fees.total.currency);
+		expect(alt.reasons[0]).toMatch(/^Via sim_fx \+ sim_bank_br_pix: delivers /);
+		// No partner means no comparison, so no alternatives.
+		expect(plain.alternatives).toEqual([]);
+	});
+
 	it("keeps the plain route when the partner delivers less", async () => {
 		const q = await brQuote(offramp("4.0000000"));
 		expect(legOf(q, "payout")[0]!.providerId).toBe("sim_bank_br_pix");
