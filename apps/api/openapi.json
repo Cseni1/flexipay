@@ -7871,7 +7871,7 @@
     },
     "/v1/payments/{id}/solana/intent": {
       "get": {
-        "summary": "Expected Solana transfer (USDC or tGBP) for a claim-accepted payment",
+        "summary": "Expected Solana transfer (claim-accepted destination, or CCR-39 direct treasury)",
         "security": [
           {
             "bearerAuth": []
@@ -8037,7 +8037,7 @@
     },
     "/v1/payments/{id}/solana/confirm": {
       "post": {
-        "summary": "Verify on-chain Solana transfer (USDC or tGBP) then mark payment paid",
+        "summary": "Verify on-chain Solana transfer then mark settle done (CCR-39 may continue partner legs)",
         "security": [
           {
             "bearerAuth": []
@@ -8101,7 +8101,10 @@
                     },
                     "paymentStatus": {
                       "type": "string",
-                      "const": "paid"
+                      "enum": [
+                        "paid",
+                        "processing"
+                      ]
                     },
                     "signature": {
                       "type": "string",

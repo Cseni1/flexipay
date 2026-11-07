@@ -66,6 +66,11 @@ type Props = {
 	settleRail?: string
 	/** Settle leg amountOut when intent is not yet readable (claim-gated API). */
 	settleAmount?: { amount: string; currency: string }
+	/**
+	 * CCR-39: direct settle-to-treasury shows as "FlexiPay settlement account"
+	 * instead of a recipient wallet.
+	 */
+	recipientFieldLabel?: string
 }
 
 const assetFromCurrency = (currency: string): SolanaAsset | null => {
@@ -114,6 +119,7 @@ export function SolanaPayPanel({
 	onPaid,
 	settleRail,
 	settleAmount,
+	recipientFieldLabel = "Recipient",
 }: Props) {
 	const [intent, setIntent] = useState<SolanaIntent | null>(null)
 	const [notSolanaSettle, setNotSolanaSettle] = useState(false)
@@ -408,7 +414,14 @@ export function SolanaPayPanel({
 							{label} only — not mainnet.
 						</Notice>
 						<div className="solana-intent-grid">
-							<StaticField label="Recipient" value={intent.recipient} />
+							<StaticField
+								label={recipientFieldLabel}
+								value={
+									<span data-testid="solana-pay-recipient">
+										{intent.recipient}
+									</span>
+								}
+							/>
 							<StaticField
 								label={`Amount (${label})`}
 								value={

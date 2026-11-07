@@ -834,3 +834,14 @@ generated from the route table.
 - **Found live:** `Quote.alternatives` was always `[]` (hard-coded in `assembleQuote`); the partner comparison lived only in the reasons text, so the Task 26 saving (#168) could never appear on a live quote.
 - **Change:** `pricePayoutPair` returns the losing convert + payout options; `priceRoute` turns each into a full alternative route (same legs before the pair, the losing pair after), totals its fees with the same `sumFeesTotal`, and returns them best first. Reasons read "Via <label>: delivers <amount> <currency>". Routes without a pair comparison keep `alternatives: []`. No API shape change.
 - **Tests:** domain 99 (1 new: the alternative equals the plain-route quote exactly), API 171, web 111, e2e-ui 118; live BR test now checks the saving line.
+
+## CCR-39 (builder, 7 Nov 2026): direct Solana settle to FlexiPay treasury
+
+- **Problem:** `GET/POST /v1/payments/{id}/solana/intent|confirm` required a claim-accepted Solana destination. Direct GB→abroad bank routes (`delivery=direct`, settle `solana_tgbp`, convert+payout after) have no claim destination, so intent was 409 while settle waited on `solana_settle_wait`.
+- **Env:** `FP_SOLANA_SETTLE_TREASURY` — Solana owner address the sender pays. Unset / invalid → 409 `invalid_state` "Solana settle treasury not configured" for **direct** routes only. Claim-link intent/confirm unchanged.
+- **Direct route:** `delivery=direct`, settle rail is `solana_*`, settle `processing` with no `releaseTxRef`, and at least one leg after settle.
+- **Intent (direct):** `recipient` = treasury; `reference` = per-payment Solana Pay pubkey (generated once, stored on `Payment.solanaPayReference`); `intentIssuedAt` stamped once on `Payment.solanaIntentAt`; `asset`/`mint`/`decimals` from the **settle rail** (TGBP for `solana_tgbp`, not `quote.receiveCurrency`); `amount` = settle `amountIn` floored with `floorMinorForSolanaMint` then converted to mint minors.
+- **Confirm (direct):** `verifyPaymentTransfer` against treasury + stored reference + amount + `notBefore=intentAt`; same reuse / 202 pending / 502 rpc / 422 not-verified / idempotent replay guards as claim-link. On success: settle `releaseTxRef=signature`, then `fundAndRun` with the fund route's adapters (including `partnerProviderIds`) so convert+payout continue.
+- **Response:** `SolanaConfirmResponseSchema.paymentStatus` is `paid | processing` (claim-link crypto stays `paid`; direct abroad is often `processing` until Tazapay finishes). OpenAPI regenerated.
+- **Web:** accept confirm `processing`; poll shows Waiting for Tazapay then paid; treasury field labelled **FlexiPay settlement account**.
+- **Migration:** `20261107120000_ccr39_direct_solana_treasury` adds `Payment.solanaPayReference` and `Payment.solanaIntentAt`.

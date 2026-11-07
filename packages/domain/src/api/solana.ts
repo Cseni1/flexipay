@@ -77,7 +77,11 @@ export type SolanaConfirmRequest = z.infer<typeof SolanaConfirmRequestSchema>;
 export const SolanaConfirmResponseSchema = z
 	.object({
 		paymentId: z.string().min(1),
-		paymentStatus: z.literal("paid"),
+		/**
+		 * CCR-39: `paid` when the route ends at settle (claim-link crypto);
+		 * `processing` when further convert/payout legs still run after treasury settle.
+		 */
+		paymentStatus: z.enum(["paid", "processing"]),
 		signature: SolanaBase58Schema,
 		explorerUrl: z.string().url(),
 		verifiedAt: IsoTimestamp,

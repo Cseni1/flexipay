@@ -437,6 +437,11 @@ export default function PaymentDetail() {
 									paymentId={payment.id}
 									settleRail={settleLeg.rail}
 									settleAmount={settleLeg.amountOut}
+									recipientFieldLabel={
+										payment.delivery === "direct"
+											? "FlexiPay settlement account"
+											: "Recipient"
+									}
 									onPaid={() => refresh()}
 								/>
 							) : null}

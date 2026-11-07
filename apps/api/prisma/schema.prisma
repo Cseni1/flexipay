@@ -134,6 +134,10 @@ model Payment {
   batch          Batch?       @relation(fields: [batchId], references: [id])
   /// Current vault lock attempt, from 1. The on-chain id is sha256("<id>:<attempt>").
   lockAttempt    Int          @default(0)
+  /// CCR-39: Solana Pay reference for direct settle-to-treasury (not claim_link).
+  solanaPayReference String?
+  /// CCR-39: first intent issue time for direct settle-to-treasury age bound.
+  solanaIntentAt     DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
