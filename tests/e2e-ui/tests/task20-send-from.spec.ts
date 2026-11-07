@@ -196,7 +196,7 @@ test.describe("TASK 20 Send from and sandbox coverage", () => {
 		})
 	})
 
-	test("Where we pay lists Kenya under From GBP with Tazapay Sandbox", async ({
+	test("Where we pay is one world list: Kenya from pounds with Tazapay Sandbox, PH from pounds or dollars", async ({
 		page,
 	}) => {
 		await mockTask20(page)
@@ -211,12 +211,20 @@ test.describe("TASK 20 Send from and sandbox coverage", () => {
 		await expect(
 			page.getByRole("heading", { name: "Priced live in sandbox" }),
 		).toBeVisible()
+		await expect(page.getByTestId("sandbox-from-gbp")).toHaveCount(0)
 
-		const fromGbp = page.getByTestId("sandbox-from-gbp")
-		await expect(fromGbp.getByText("Kenya")).toBeVisible()
-		const kenya = fromGbp.getByTestId("sandbox-country-KE")
+		const world = page.getByTestId("sandbox-world")
+		const kenya = world.getByTestId("sandbox-country-KE")
+		await expect(kenya).toContainText("Kenya")
+		await expect(kenya.getByTestId("sandbox-from")).toHaveText(
+			"· from £ pounds",
+		)
 		await expect(kenya.getByText("Tazapay")).toBeVisible()
 		await expect(kenya.getByTestId("provider-badge")).toHaveText("Sandbox")
+		const ph = world.getByTestId("sandbox-country-PH")
+		await expect(ph.getByTestId("sandbox-from")).toHaveText(
+			"· from £ pounds or $ dollars",
+		)
 	})
 
 	test("390px: Send and Where we pay do not scroll sideways", async ({
@@ -239,7 +247,7 @@ test.describe("TASK 20 Send from and sandbox coverage", () => {
 		await noSideways()
 
 		await page.goto("/where-we-pay")
-		await expect(page.getByTestId("sandbox-from-gbp")).toBeVisible()
+		await expect(page.getByTestId("sandbox-world")).toBeVisible()
 		await noSideways()
 	})
 })

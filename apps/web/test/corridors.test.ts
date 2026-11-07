@@ -8,6 +8,7 @@ import {
 	destinationsForCountry,
 	regulationNoteFor,
 	sandboxPayoutsBySource,
+	sandboxPayoutsWorld,
 	sendFromLabel,
 	sourceForCountry,
 	sourcesForCountry,
@@ -217,6 +218,49 @@ describe("corridor destination mapping", () => {
 				simulated: true,
 			}),
 			"USDC",
+		)
+	})
+
+	test("world list: one row per country with every send currency and partner (CCR-40)", () => {
+		const corridors = [
+			{
+				...SAMPLE[0]!,
+				toCountry: "MX",
+				fromCurrency: "USD",
+				fromCountry: "US",
+				payoutProviders: ["blindpay_sandbox", "tazapay_sandbox"],
+			},
+			{
+				...SAMPLE[0]!,
+				toCountry: "MX",
+				fromCurrency: "GBP",
+				fromCountry: "GB",
+				payoutProviders: ["tazapay_sandbox"],
+			},
+			{
+				...SAMPLE[0]!,
+				toCountry: "KE",
+				fromCurrency: "GBP",
+				fromCountry: "GB",
+				payoutProviders: ["tazapay_sandbox"],
+			},
+			{
+				...SAMPLE[0]!,
+				toCountry: "ZA",
+				fromCurrency: "USD",
+				fromCountry: "US",
+				payoutProviders: ["sim_bank_za_eft"],
+			},
+		] as CorridorSummary[]
+		const rows = sandboxPayoutsWorld(corridors)
+		assert.deepEqual(
+			rows.map((r) => r.code),
+			["KE", "MX"],
+		)
+		assert.deepEqual(rows[1]!.from, ["GBP", "USD"])
+		assert.deepEqual(
+			rows[1]!.partners.map((p) => p.id),
+			["blindpay_sandbox", "tazapay_sandbox"],
 		)
 	})
 })

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react"
 import { describeApiError, listCorridors, ApiError } from "../api/client"
 import {
-	sandboxPayoutsBySource,
+	sandboxPayoutsWorld,
 	summarizeCorridor,
 	type CorridorSummary,
-	type SandboxPayoutRow,
+	type WorldPayoutRow,
 } from "../api/corridors"
 import { ProviderBadge } from "../components/payments/ProviderBadge"
 import { Notice, Page, PageHeader, Panel } from "../components/ui"
@@ -49,39 +49,38 @@ const byRegion = (() => {
 	return map
 })()
 
-function SandboxGroup({
-	title,
-	testId,
-	rows,
-}: {
-	title: string
-	testId: string
-	rows: SandboxPayoutRow[]
-}) {
-	if (rows.length === 0) return null
+const CURRENCY_SIGN: Record<string, string> = {
+	GBP: "£ pounds",
+	USD: "$ dollars",
+}
+
+function WorldList({ rows }: { rows: WorldPayoutRow[] }) {
 	return (
-		<div className="sandbox-priced__group" data-testid={testId}>
-			<h4 className="sandbox-priced__heading">{title}</h4>
-			<ul className="coverage-list">
-				{rows.map((row) => (
-					<li
-						key={`${testId}-${row.code}`}
-						className="coverage-list__row"
-						data-testid={`sandbox-country-${row.code}`}
-					>
-						<span className="coverage-list__name">
-							<span className="coverage-list__code">{row.code}</span> {row.name}
+		<ul className="coverage-list" data-testid="sandbox-world">
+			{rows.map((row) => (
+				<li
+					key={row.code}
+					className="coverage-list__row"
+					data-testid={`sandbox-country-${row.code}`}
+				>
+					<span className="coverage-list__name">
+						<span className="coverage-list__code">{row.code}</span> {row.name}
+						<span className="sandbox-priced__from" data-testid="sandbox-from">
+							{" "}
+							· from {row.from.map((c) => CURRENCY_SIGN[c] ?? c).join(" or ")}
 						</span>
-						<span className="sandbox-priced__partner">
-							<span className="sandbox-priced__partner-name">
-								{row.providerName}
+					</span>
+					<span className="sandbox-priced__partner">
+						{row.partners.map((partner) => (
+							<span key={partner.id} className="sandbox-priced__partner-name">
+								{partner.name}{" "}
+								<ProviderBadge simulated providerId={partner.id} />
 							</span>
-							<ProviderBadge simulated providerId={row.providerId} />
-						</span>
-					</li>
-				))}
-			</ul>
-		</div>
+						))}
+					</span>
+				</li>
+			))}
+		</ul>
 	)
 }
 
@@ -113,8 +112,8 @@ export default function WhereWePay() {
 		}
 	}, [])
 
-	const sandboxGroups = useMemo(
-		() => (corridors ? sandboxPayoutsBySource(corridors) : null),
+	const world = useMemo(
+		() => (corridors ? sandboxPayoutsWorld(corridors) : null),
 		[corridors],
 	)
 
@@ -131,31 +130,26 @@ export default function WhereWePay() {
 
 			<Panel
 				title="Priced live in sandbox"
-				description="Destination countries whose corridor payout includes a partner sandbox provider from GET /v1/corridors."
+				description={
+					world && world.length > 0
+						? `Pay from pounds or dollars into ${world.length} countries. Partners compete on each payment; FlexiPay picks the route that delivers the most.`
+						: "Countries a partner sandbox prices today, from GET /v1/corridors."
+				}
 			>
 				{corridorsError ? (
 					<Notice tone="warning" data-testid="sandbox-corridors-unavailable">
 						Corridors unavailable: {corridorsError}
 					</Notice>
 				) : null}
-				{sandboxGroups ? (
+				{world ? (
 					<div className="sandbox-priced" data-testid="sandbox-priced">
-						<SandboxGroup
-							title="From GBP"
-							testId="sandbox-from-gbp"
-							rows={sandboxGroups.GBP}
-						/>
-						<SandboxGroup
-							title="From USD"
-							testId="sandbox-from-usd"
-							rows={sandboxGroups.USD}
-						/>
-						{sandboxGroups.GBP.length === 0 &&
-						sandboxGroups.USD.length === 0 ? (
+						{world.length > 0 ? (
+							<WorldList rows={world} />
+						) : (
 							<p className="form-note">
 								No partner sandbox payout corridors were returned.
 							</p>
-						) : null}
+						)}
 					</div>
 				) : corridorsError ? null : (
 					<p className="form-note" data-testid="sandbox-priced-loading">

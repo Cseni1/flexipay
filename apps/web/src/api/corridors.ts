@@ -325,6 +325,51 @@ export const sandboxPayoutsBySource = (
 	}
 }
 
+/** One destination country in the world list: every send currency and every competing partner. */
+export type WorldPayoutRow = {
+	code: string
+	name: string
+	/** Send currencies that reach this country, pounds first. */
+	from: string[]
+	partners: Array<{ id: string; name: string }>
+}
+
+/**
+ * One world list (CCR-40): each destination country priced by a partner sandbox, with every
+ * send currency that reaches it and every partner that competes on it. Sorted by name.
+ */
+export const sandboxPayoutsWorld = (
+	corridors: readonly CorridorSummary[],
+): WorldPayoutRow[] => {
+	const rows = new Map<string, { from: Set<string>; partners: Set<string> }>()
+	for (const corridor of corridors) {
+		const partners = (corridor.payoutProviders ?? []).filter((id) =>
+			id.endsWith("_sandbox"),
+		)
+		if (partners.length === 0) continue
+		const row = rows.get(corridor.toCountry) ?? {
+			from: new Set(),
+			partners: new Set(),
+		}
+		row.from.add(corridor.fromCurrency)
+		for (const id of partners) row.partners.add(id)
+		rows.set(corridor.toCountry, row)
+	}
+	const rank = (c: string) => (c === "GBP" ? 0 : c === "USD" ? 1 : 2)
+	return [...rows.entries()]
+		.map(([code, row]) => ({
+			code,
+			name: countryLabel(code),
+			from: [...row.from].sort(
+				(a, b) => rank(a) - rank(b) || a.localeCompare(b),
+			),
+			partners: [...row.partners]
+				.sort()
+				.map((id) => ({ id, name: providerLabel(id) })),
+		}))
+		.sort((a, b) => a.name.localeCompare(b.name, "en"))
+}
+
 /** Map a listCorridors row into the browser-safe summary used by Send / Where we pay. */
 export const summarizeCorridor = (row: {
 	from: { country: string; currency: string }
