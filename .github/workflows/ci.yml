@@ -51,8 +51,8 @@ jobs:
           run packages/domain 80
           run packages/adapters-sim 90
           run packages/adapters-live 85
-          run packages/adapter-solana 68
-          run packages/adapter-stellar 40
+          run packages/adapter-solana 98
+          run packages/adapter-stellar 80
           run apps/web 20
       - name: API tests (embedded Postgres) with coverage floor
         run: cd apps/api && npx vitest run --coverage --coverage.include='src/**' --coverage.reporter=text-summary --coverage.thresholds.lines=70
