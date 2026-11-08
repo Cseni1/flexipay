@@ -4,7 +4,9 @@ import {
 	describeApiError,
 	saveBlindpayTos,
 	submitBlindpayKyc,
+	uploadBlindpayKycFile,
 } from "../../api/client"
+import { shrinkPhoto } from "../../payments/shrinkPhoto"
 import { Button, Notice, TextField } from "../ui"
 
 type Step =
@@ -52,7 +54,29 @@ export function SenderKycPanel({ details }: { details: unknown }) {
 	const [fields, setFields] = useState(empty)
 	const [error, setError] = useState<string | null>(null)
 	const [busy, setBusy] = useState(false)
+	const [uploading, setUploading] = useState<string | null>(null)
 	if (!step) return null
+
+	const upload = async (
+		key: "id_doc_front_file" | "selfie_file",
+		file: File | undefined,
+	) => {
+		if (!file) return
+		setUploading(key)
+		setError(null)
+		try {
+			const { fileUrl } = await uploadBlindpayKycFile(await shrinkPhoto(file))
+			setFields((current) => ({ ...current, [key]: fileUrl }))
+		} catch (cause) {
+			setError(
+				cause instanceof ApiError
+					? describeApiError(cause)
+					: "Could not upload the file",
+			)
+		} finally {
+			setUploading(null)
+		}
+	}
 
 	const saveTos = async () => {
 		setBusy(true)
@@ -93,32 +117,30 @@ export function SenderKycPanel({ details }: { details: unknown }) {
 			{step.step === "accept_terms" ? (
 				<>
 					<Notice>
-						Accept BlindPay&apos;s terms, then paste the tos id from the return
-						address.
+						Payments are provided by BlindPay, our payment partner. Accept their
+						terms; you will come back here automatically.
 					</Notice>
 					<p>
-						<a
-							href={step.url}
-							target="_blank"
-							rel="noreferrer"
-							data-testid="blindpay-kyc-url"
-						>
+						<a href={step.url} data-testid="blindpay-kyc-url">
 							Open BlindPay terms
 						</a>
 					</p>
-					<TextField
-						id="blindpay-tos-id"
-						label="Terms id"
-						value={tosId}
-						onChange={(event) => setTosId(event.target.value)}
-					/>
-					<Button
-						type="button"
-						disabled={busy || tosId.trim().length === 0}
-						onClick={() => void saveTos()}
-					>
-						Save terms id
-					</Button>
+					<details data-testid="blindpay-tos-manual">
+						<summary>Already accepted and not sent back?</summary>
+						<TextField
+							id="blindpay-tos-id"
+							label="Terms id (tos_…) from the return address"
+							value={tosId}
+							onChange={(event) => setTosId(event.target.value)}
+						/>
+						<Button
+							type="button"
+							disabled={busy || tosId.trim().length === 0}
+							onClick={() => void saveTos()}
+						>
+							Save terms id
+						</Button>
+					</details>
 				</>
 			) : null}
 			{step.step === "submit_kyc" ? (
@@ -141,8 +163,6 @@ export function SenderKycPanel({ details }: { details: unknown }) {
 							["country", "Country"],
 							["id_doc_country", "ID country"],
 							["id_doc_type", "ID type"],
-							["id_doc_front_file", "ID document URL"],
-							["selfie_file", "Selfie URL"],
 						] as const
 					).map(([key, label]) => (
 						<TextField
@@ -158,9 +178,41 @@ export function SenderKycPanel({ details }: { details: unknown }) {
 							}
 						/>
 					))}
+					{(
+						[
+							["id_doc_front_file", "Photo of your ID (front)", "environment"],
+							["selfie_file", "Selfie", "user"],
+						] as const
+					).map(([key, label, camera]) => (
+						<label key={key} className="field" htmlFor={`blindpay-${key}`}>
+							<span className="field__label">
+								{label}
+								{fields[key] ? " ✓ uploaded" : ""}
+								{uploading === key ? " (uploading…)" : ""}
+							</span>
+							<input
+								id={`blindpay-${key}`}
+								data-testid={`blindpay-${key}`}
+								type="file"
+								accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+								capture={camera}
+								disabled={busy || uploading !== null}
+								onChange={(event) => void upload(key, event.target.files?.[0])}
+							/>
+						</label>
+					))}
+					<p className="form-note">
+						Files go straight to BlindPay, encrypted. FlexiPay does not keep a
+						copy. JPEG, PNG, HEIC or PDF, up to 5 MB.
+					</p>
 					<Button
 						type="button"
-						disabled={busy}
+						disabled={
+							busy ||
+							uploading !== null ||
+							!fields.id_doc_front_file ||
+							!fields.selfie_file
+						}
 						onClick={() => void submit()}
 						data-testid="blindpay-kyc-submit"
 					>
@@ -169,10 +221,24 @@ export function SenderKycPanel({ details }: { details: unknown }) {
 				</div>
 			) : null}
 			{step.step === "wait_for_review" ? (
-				<Notice data-testid="blindpay-kyc-wait">
-					BlindPay is reviewing your identity ({step.kycStatus}). You can quote
-					after it is approved.
-				</Notice>
+				step.kycStatus === "rejected" ? (
+					<Notice tone="warning" data-testid="blindpay-kyc-rejected">
+						BlindPay could not verify your identity. Check your details and
+						photos, then submit again, or contact support.
+						<Button
+							type="button"
+							onClick={() => setStep({ step: "submit_kyc" })}
+							data-testid="blindpay-kyc-retry"
+						>
+							Submit again
+						</Button>
+					</Notice>
+				) : (
+					<Notice data-testid="blindpay-kyc-wait">
+						BlindPay is reviewing your identity ({step.kycStatus}). You can
+						quote after it is approved.
+					</Notice>
+				)
 			) : null}
 			{step.step === "approved" ? (
 				<Notice>Identity approved. Quote the payment again.</Notice>
