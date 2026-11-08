@@ -376,8 +376,8 @@ export default function TakePayment() {
 									>
 										{amountLabel}
 									</p>
-									{request.label ? (
-										<p className="gp-waiting__label">{request.label}</p>
+									{label.trim() ? (
+										<p className="gp-waiting__label">{label.trim()}</p>
 									) : null}
 									<div className="till-qr" data-testid="till-qr">
 										<QrCode

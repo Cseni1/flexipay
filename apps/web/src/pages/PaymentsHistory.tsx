@@ -48,7 +48,7 @@ export default function PaymentsHistory() {
 	const { names } = useRecipientDirectory()
 	const [filterKey, setFilterKey] = useState("all")
 	const [query, setQuery] = useState("")
-	const filter = FILTERS.find((entry) => entry.key === filterKey) ?? FILTERS[0]
+	const filter = FILTERS.find((entry) => entry.key === filterKey) ?? FILTERS[0]!
 	const needle = query.trim().toLowerCase()
 	const shown = payments.filter(
 		(payment) =>

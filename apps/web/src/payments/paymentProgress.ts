@@ -18,7 +18,6 @@ type ProgressInput = {
 }
 
 const WAITING_FOR_SENDER: readonly PaymentStatus[] = [
-	"pending",
 	"quoted",
 	"awaiting_funding",
 ]
@@ -102,7 +101,6 @@ export function paymentHeadline(
 	recipientName: string,
 ): string {
 	switch (status) {
-		case "pending":
 		case "quoted":
 		case "awaiting_funding":
 			return "Waiting for you to pay. Nothing has left your account yet."

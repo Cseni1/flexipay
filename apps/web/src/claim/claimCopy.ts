@@ -1,8 +1,10 @@
 // Plain-words copy and pure helpers for the public claim page (ClaimPage.tsx).
 import { type ClaimView } from "@flexipay/web-lib/claim-contract"
-import { type IconName } from "../components/ui/Icon"
 import { displayMoney, isPoundDisplayCurrency } from "../payments/quoteDisplay"
 import { CLAIM_EXPIRED_ASK_SENDER } from "./expiry"
+
+/** Icon names (from components/ui/Icon) for each way to receive money. Kept local so tests need no JSX. */
+export type ClaimMethodIcon = "bank" | "phone" | "wallet" | "shield"
 
 export type DestinationType = ClaimView["allowedDestinationTypes"][number]
 
@@ -60,7 +62,7 @@ export const supportsClaimAccept = (
 
 export const optionCopy = (
 	type: DestinationType,
-): { title: string; detail: string; icon: IconName } => {
+): { title: string; detail: string; icon: ClaimMethodIcon } => {
 	switch (type) {
 		case "bank_account":
 			return {

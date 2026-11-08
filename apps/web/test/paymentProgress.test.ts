@@ -118,7 +118,6 @@ describe("paymentProgress", () => {
 describe("paymentHeadline", () => {
 	test("every status has a plain sentence", () => {
 		const statuses: PaymentStatus[] = [
-			"pending",
 			"quoted",
 			"awaiting_funding",
 			"funded",
