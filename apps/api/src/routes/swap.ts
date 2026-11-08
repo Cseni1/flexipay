@@ -27,6 +27,8 @@ const OPEN_STATUSES = new Set(["awaiting_funding", "funded", "processing"]);
 /** USDC (base units of the configured mint) BlindPay will pull for this payment. */
 async function requiredUsdc(ctx: Ctx, paymentId: string) {
 	const org = orgOf(ctx);
+	// Ownership first: another organization's payment is 404 whatever the cluster.
+	const { payment, payout } = await loadSenderPayment(ctx, paymentId, org.id);
 	if (!swapInputAssets().includes("TGBP")) {
 		throw new ApiError(
 			409,
@@ -34,7 +36,6 @@ async function requiredUsdc(ctx: Ctx, paymentId: string) {
 			"Swaps to USDC run on Solana mainnet only",
 		);
 	}
-	const { payment, payout } = await loadSenderPayment(ctx, paymentId, org.id);
 	if (payout.externalRef || !OPEN_STATUSES.has(payment.status)) {
 		throw new ApiError(
 			409,

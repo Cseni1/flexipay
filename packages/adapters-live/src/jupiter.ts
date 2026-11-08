@@ -57,7 +57,9 @@ export class JupiterClient {
 	constructor(opts: JupiterOptions = {}) {
 		this.fetchImpl = opts.fetch ?? (globalThis.fetch as unknown as FetchLike)
 		const key = opts.apiKey?.trim()
-		this.base = (opts.baseUrl ?? (key ? JUPITER_KEYED_BASE : JUPITER_LITE_BASE)).replace(/\/+$/, "")
+		let base = opts.baseUrl ?? (key ? JUPITER_KEYED_BASE : JUPITER_LITE_BASE)
+		while (base.endsWith("/")) base = base.slice(0, -1)
+		this.base = base
 		this.headers = key ? { "x-api-key": key } : {}
 		this.timeoutMs = opts.timeoutMs ?? 15_000
 	}
