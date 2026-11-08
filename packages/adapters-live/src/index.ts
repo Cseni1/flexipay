@@ -10,6 +10,14 @@ export {
 	type UploadFetch,
 } from "./blindpay.ts"
 export { TazapayAdapter, type TazapayOptions } from "./tazapay.ts"
+export {
+	JupiterClient,
+	JupiterError,
+	JUPITER_KEYED_BASE,
+	JUPITER_LITE_BASE,
+	type JupiterExactOutQuote,
+	type JupiterOptions,
+} from "./jupiter.ts"
 export type { FetchLike } from "./http.ts"
 
 export interface LiveProviders {

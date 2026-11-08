@@ -346,9 +346,14 @@ export async function signAndSendVersionedSolanaTransaction(opts: {
 	connected: ConnectedSolanaWallet
 	transactionBase64: string
 	cluster?: ClusterLabel
+	/**
+	 * CCR-49: mainnet signing only when the API itself runs on mainnet (it refuses to start
+	 * there without FP_LIVE_MONEY=1 and the individual limits, CCR-44).
+	 */
+	allowMainnet?: boolean
 }): Promise<string> {
 	const cluster: ClusterLabel = opts.cluster ?? "devnet"
-	if (cluster === "mainnet-beta") {
+	if (cluster === "mainnet-beta" && !opts.allowMainnet) {
 		throw new Error(
 			"Sender-wallet BlindPay signing stays on devnet in this build.",
 		)
@@ -358,7 +363,7 @@ export async function signAndSendVersionedSolanaTransaction(opts: {
 	VersionedTransaction.deserialize(bytes)
 	if (!walletSupportsCluster(opts.connected.wallet, cluster)) {
 		throw new Error(
-			`Wallet does not advertise ${chain}. Switch the wallet to Devnet and reconnect.`,
+			`Wallet does not advertise ${chain}. Switch the wallet to ${cluster === "mainnet-beta" ? "Mainnet" : "Devnet"} and reconnect.`,
 		)
 	}
 	const feature = opts.connected.wallet.features[

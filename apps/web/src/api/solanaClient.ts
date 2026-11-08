@@ -15,6 +15,8 @@ export type SolanaConfig = {
 	/** Null when no public RPC is configured — never the server RPC. */
 	publicRpcUrl: string | null
 	label: string
+	/** CCR-49: assets the sender can swap to USDC in their own wallet (mainnet only). */
+	swapInputAssets: "TGBP"[]
 }
 
 export type SolanaIntent = {
@@ -109,6 +111,9 @@ export function parseSolanaConfig(payload: unknown): SolanaConfig {
 					? null
 					: null,
 		label: typeof raw.label === "string" ? raw.label : "Solana",
+		swapInputAssets: Array.isArray(raw.swapInputAssets)
+			? raw.swapInputAssets.filter((a): a is "TGBP" => a === "TGBP")
+			: [],
 	}
 }
 

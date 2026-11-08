@@ -24,6 +24,12 @@ export {
 	BlindPayOnboardingResponseSchema,
 } from "../domain/src/api/blindpay.ts"
 export {
+	SolanaSwapConfirmResponseSchema,
+	SolanaSwapResponseSchema,
+	type SolanaSwapConfirmResponse,
+	type SolanaSwapResponse,
+} from "../domain/src/api/solana.ts"
+export {
 	EventListResponseSchema,
 	EventSchema,
 } from "../domain/src/api/events.ts"

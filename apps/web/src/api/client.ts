@@ -8,6 +8,8 @@ import {
 	BlindPayOnboardingResponseSchema,
 	PaymentSchema,
 	QuoteSchema,
+	SolanaSwapConfirmResponseSchema,
+	SolanaSwapResponseSchema,
 	type CreatePaymentRequest,
 	type CreateQuoteRequest,
 	type EndpointType,
@@ -768,6 +770,34 @@ export const confirmBlindpayPayout = (
 		body: { signature },
 		schema: BlindPayConfirmResponseSchema,
 		idempotencyKey: newIdempotencyKey("blindpay-confirm"),
+		signal,
+	})
+
+/** CCR-49: Jupiter swap (tGBP → USDC) for the sender's own wallet before a BlindPay payout. */
+export const requestSolanaSwap = (
+	paymentId: string,
+	walletAddress: string,
+	signal?: AbortSignal,
+) =>
+	request(`/v1/payments/${encodeURIComponent(paymentId)}/solana-swap`, {
+		method: "POST",
+		body: { walletAddress, inputAsset: "TGBP" },
+		schema: SolanaSwapResponseSchema,
+		idempotencyKey: newIdempotencyKey("solana-swap"),
+		signal,
+	})
+
+export const confirmSolanaSwap = (
+	paymentId: string,
+	walletAddress: string,
+	signature: string,
+	signal?: AbortSignal,
+) =>
+	request(`/v1/payments/${encodeURIComponent(paymentId)}/solana-swap/confirm`, {
+		method: "POST",
+		body: { walletAddress, signature },
+		schema: SolanaSwapConfirmResponseSchema,
+		idempotencyKey: newIdempotencyKey("solana-swap-confirm"),
 		signal,
 	})
 
