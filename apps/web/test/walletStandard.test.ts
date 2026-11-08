@@ -3,7 +3,12 @@ import {
 	SolanaSignAndSendTransaction,
 	SolanaSignTransaction,
 } from "@solana/wallet-standard-features"
-import { Keypair, Transaction } from "@solana/web3.js"
+import {
+	Keypair,
+	Transaction,
+	TransactionMessage,
+	VersionedTransaction,
+} from "@solana/web3.js"
 import { type Wallet, type WalletAccount } from "@wallet-standard/base"
 import { afterEach, describe, test, vi } from "vitest"
 
@@ -32,6 +37,7 @@ const {
 	listSolanaWallets,
 	PREFERRED_USER_WALLETS,
 	signAndSendSolanaTransaction,
+	signAndSendVersionedSolanaTransaction,
 	subscribeSolanaWallets,
 	walletSupportsCluster,
 } = await import("../src/solana/walletStandard.ts")
@@ -249,5 +255,83 @@ describe("TASK 04 walletStandard", () => {
 		for (const listener of registerListeners) listener()
 		assert.equal(hits, 1)
 		off()
+	})
+})
+
+describe("CCR-45 signAndSendVersionedSolanaTransaction (BlindPay delegation)", () => {
+	const payer = Keypair.generate().publicKey
+	const versionedBase64 = () => {
+		const message = new TransactionMessage({
+			payerKey: payer,
+			recentBlockhash: "11111111111111111111111111111111",
+			instructions: [],
+		}).compileToV0Message()
+		return Buffer.from(new VersionedTransaction(message).serialize()).toString(
+			"base64",
+		)
+	}
+
+	test("signs BlindPay's base64 transaction and returns a base58 signature", async () => {
+		registered.push(makeWallet({ name: "Phantom" }))
+		const connected = await connectSolanaWallet("Phantom")
+		const signature = await signAndSendVersionedSolanaTransaction({
+			connected,
+			transactionBase64: versionedBase64(),
+		})
+		assert.match(signature, /^[1-9A-HJ-NP-Za-km-z]{60,90}$/)
+	})
+
+	test("refuses mainnet in this build", async () => {
+		registered.push(makeWallet({ name: "Phantom" }))
+		const connected = await connectSolanaWallet("Phantom")
+		await assert.rejects(
+			signAndSendVersionedSolanaTransaction({
+				connected,
+				transactionBase64: versionedBase64(),
+				cluster: "mainnet-beta",
+			}),
+			/devnet/,
+		)
+	})
+
+	test("refuses a wallet on the wrong network", async () => {
+		registered.push(
+			makeWallet({
+				name: "Phantom",
+				chains: ["solana:devnet"],
+			}),
+		)
+		const connected = await connectSolanaWallet("Phantom")
+		;(connected.wallet as { chains: string[] }).chains = ["solana:mainnet"]
+		await assert.rejects(
+			signAndSendVersionedSolanaTransaction({
+				connected,
+				transactionBase64: versionedBase64(),
+			}),
+			/Devnet/,
+		)
+	})
+
+	test("refuses a wallet that cannot sign and send", async () => {
+		registered.push(makeWallet({ name: "Phantom", signAndSend: false }))
+		const connected = await connectSolanaWallet("Phantom")
+		await assert.rejects(
+			signAndSendVersionedSolanaTransaction({
+				connected,
+				transactionBase64: versionedBase64(),
+			}),
+			/cannot sign/,
+		)
+	})
+
+	test("rejects bytes that are not a transaction", async () => {
+		registered.push(makeWallet({ name: "Phantom" }))
+		const connected = await connectSolanaWallet("Phantom")
+		await assert.rejects(
+			signAndSendVersionedSolanaTransaction({
+				connected,
+				transactionBase64: "AAAA",
+			}),
+		)
 	})
 })
