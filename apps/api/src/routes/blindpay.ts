@@ -49,7 +49,7 @@ function adaptersOf(ctx: Ctx): OrchestratorAdapters {
 	};
 }
 
-function hundredths(value: string, currency: string): number {
+export function hundredths(value: string, currency: string): number {
 	const decimals = CURRENCY_DECIMALS[currency];
 	if (decimals === undefined) {
 		throw new ApiError(422, "invalid_quote", `BlindPay does not know ${currency}`);
@@ -59,7 +59,7 @@ function hundredths(value: string, currency: string): number {
 	return Number(minor * 10n ** BigInt(2 - decimals));
 }
 
-async function loadSenderPayment(ctx: Ctx, paymentId: string, orgId: string) {
+export async function loadSenderPayment(ctx: Ctx, paymentId: string, orgId: string) {
 	const payment = await ctx.db.payment.findFirst({
 		where: { id: paymentId, organizationId: orgId },
 		include: { legs: { orderBy: { position: "asc" } } },

@@ -34,6 +34,7 @@ import {
 	explorerUrlForSignature,
 	getSolanaRuntimeConfig,
 } from "../solana/runtime-config.ts";
+import { swapInputAssets } from "../solana/swap.ts";
 import { verifyPaymentTransfer } from "../solana/verify.ts";
 
 /** CCR-26 / CCR-39: configured Solana asset by code, or 422. */
@@ -228,6 +229,7 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 				// F6: never fall back to the server RPC URL (may embed API keys).
 				publicRpcUrl: cfg.publicRpcUrl ?? null,
 				label: cfg.label,
+				swapInputAssets: swapInputAssets(),
 			};
 		},
 	}),

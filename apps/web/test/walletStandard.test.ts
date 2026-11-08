@@ -294,6 +294,38 @@ describe("CCR-45 signAndSendVersionedSolanaTransaction (BlindPay delegation)", (
 		)
 	})
 
+	test("CCR-49: signs on mainnet only when the caller allows it", async () => {
+		registered.push(
+			makeWallet({
+				name: "Phantom",
+				chains: ["solana:mainnet", "solana:devnet"],
+			}),
+		)
+		const connected = await connectSolanaWallet("Phantom")
+		;(connected.wallet as unknown as { chains: string[] }).chains = [
+			"solana:mainnet",
+		]
+		const signature = await signAndSendVersionedSolanaTransaction({
+			connected,
+			transactionBase64: versionedBase64(),
+			cluster: "mainnet-beta",
+			allowMainnet: true,
+		})
+		assert.match(signature, /^[1-9A-HJ-NP-Za-km-z]{60,90}$/)
+		;(connected.wallet as unknown as { chains: string[] }).chains = [
+			"solana:devnet",
+		]
+		await assert.rejects(
+			signAndSendVersionedSolanaTransaction({
+				connected,
+				transactionBase64: versionedBase64(),
+				cluster: "mainnet-beta",
+				allowMainnet: true,
+			}),
+			/Switch the wallet to Mainnet/,
+		)
+	})
+
 	test("refuses a wallet on the wrong network", async () => {
 		registered.push(
 			makeWallet({

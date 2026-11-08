@@ -36,6 +36,11 @@ export const SolanaConfigResponseSchema = z
 		 */
 		publicRpcUrl: z.string().url().nullable(),
 		label: z.string().min(1),
+		/**
+		 * CCR-49: assets a sender can swap to USDC in their own wallet (Jupiter) before a
+		 * sender-wallet payout. Empty off mainnet or when tGBP is not configured.
+		 */
+		swapInputAssets: z.array(z.literal("TGBP")),
 	})
 	.strict();
 
@@ -103,3 +108,72 @@ export const SolanaConfirmPendingResponseSchema = z
 export type SolanaConfirmPendingResponse = z.infer<
 	typeof SolanaConfirmPendingResponseSchema
 >;
+
+// CCR-49: Jupiter swap in the sender's own wallet (mainnet only) before a sender-wallet payout.
+
+export const SolanaSwapRequestSchema = z
+	.object({
+		/** The sender's Solana wallet that will sign the swap and the payout delegation. */
+		walletAddress: SolanaBase58Schema,
+		/** Asset the sender pays with; swapped to the payout's USDC. */
+		inputAsset: z.literal("TGBP"),
+	})
+	.strict();
+
+export const SolanaSwapResponseSchema = z.discriminatedUnion("status", [
+	z
+		.object({
+			/** The wallet already holds enough USDC; go straight to the payout approval. */
+			status: z.literal("not_needed"),
+			/** USDC needed and held, base units of the USDC mint. */
+			requiredAmount: z.string().regex(/^\d+$/),
+			heldAmount: z.string().regex(/^\d+$/),
+			outputDecimals: z.number().int().nonnegative(),
+		})
+		.strict(),
+	z
+		.object({
+			status: z.literal("ready"),
+			provider: z.literal("jupiter"),
+			/** Unsigned versioned transaction (base64) for the sender's wallet to sign and send. */
+			transaction: z.string().min(1),
+			inputAsset: z.literal("TGBP"),
+			inputMint: SolanaBase58Schema,
+			inputDecimals: z.number().int().nonnegative(),
+			/** Expected and maximum (after slippage) input, base units. */
+			inputAmount: z.string().regex(/^\d+$/),
+			inputMaxAmount: z.string().regex(/^\d+$/),
+			outputMint: SolanaBase58Schema,
+			outputDecimals: z.number().int().nonnegative(),
+			/** USDC the swap delivers (the shortfall), base units. */
+			outputAmount: z.string().regex(/^\d+$/),
+			requiredAmount: z.string().regex(/^\d+$/),
+			heldAmount: z.string().regex(/^\d+$/),
+			slippageBps: z.number().int().nonnegative(),
+			/** Fraction, e.g. 0.001 = 0.1 %. */
+			priceImpact: z.number().nonnegative(),
+			route: z.array(z.string()),
+		})
+		.strict(),
+]);
+
+export type SolanaSwapResponse = z.infer<typeof SolanaSwapResponseSchema>;
+
+export const SolanaSwapConfirmRequestSchema = z
+	.object({
+		walletAddress: SolanaBase58Schema,
+		signature: SolanaBase58Schema,
+	})
+	.strict();
+
+export const SolanaSwapConfirmResponseSchema = z
+	.object({
+		/** confirmed: the wallet now holds the USDC; pending: ask again shortly. */
+		status: z.enum(["confirmed", "pending"]),
+		signature: SolanaBase58Schema,
+		heldAmount: z.string().regex(/^\d+$/),
+		requiredAmount: z.string().regex(/^\d+$/),
+	})
+	.strict();
+
+export type SolanaSwapConfirmResponse = z.infer<typeof SolanaSwapConfirmResponseSchema>;
