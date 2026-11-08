@@ -4,6 +4,10 @@ export type SolanaCluster = "devnet" | "testnet" | "mainnet-beta";
 export const DEFAULT_DEVNET_USDC_MINT =
 	"4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 
+/** Circle's Solana mainnet USDC mint. Used only when FP_LIVE_MONEY=1. */
+export const DEFAULT_MAINNET_USDC_MINT =
+	"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
 export const DEFAULT_USDC_DECIMALS = 6;
 
 /** Settlement assets FlexiPay can verify on Solana (CCR-26). */
@@ -50,9 +54,9 @@ export function loadSolanaRuntimeConfig(
 	env: Record<string, string | undefined> = process.env,
 ): SolanaRuntimeConfig {
 	const cluster = solanaClusterFromEnv(env);
-	if (cluster === "mainnet-beta" && env.FP_SOLANA_MAINNET_APPROVED !== "1") {
+	if (cluster === "mainnet-beta" && env.FP_LIVE_MONEY !== "1") {
 		throw new Error(
-			"mainnet-beta Solana requires separate explicit approval (FP_SOLANA_MAINNET_APPROVED=1)",
+			"FP_SOLANA_CLUSTER=mainnet-beta requires FP_LIVE_MONEY=1; refusing to start",
 		);
 	}
 	const rpcUrl =
@@ -64,7 +68,11 @@ export function loadSolanaRuntimeConfig(
 				: "https://api.mainnet-beta.solana.com");
 	const usdcMint =
 		env.FP_SOLANA_USDC_MINT?.trim() ||
-		(cluster === "devnet" ? DEFAULT_DEVNET_USDC_MINT : "");
+		(cluster === "devnet"
+			? DEFAULT_DEVNET_USDC_MINT
+			: cluster === "mainnet-beta"
+				? DEFAULT_MAINNET_USDC_MINT
+				: "");
 	if (!usdcMint) {
 		throw new Error("FP_SOLANA_USDC_MINT is required for this Solana cluster");
 	}

@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom"
 import { AppShell } from "./components/AppShell"
+import { LiveMoneyProvider } from "./live/LiveMoney"
 import Account from "./pages/Account"
 import {
 	ForgotPasswordPage,
@@ -22,33 +23,35 @@ import { RequireSession } from "./providers/SessionProvider"
 
 function App() {
 	return (
-		<Routes>
-			<Route path="login" element={<LoginPage />} />
-			<Route path="register" element={<RegisterPage />} />
-			<Route path="forgot-password" element={<ForgotPasswordPage />} />
-			<Route path="reset-password" element={<ResetPasswordPage />} />
-			<Route
-				element={
-					<RequireSession>
-						<AppShell />
-					</RequireSession>
-				}
-			>
-				<Route index element={<SendPayment />} />
-				<Route path="take-payment" element={<TakePayment />} />
-				<Route path="dashboard" element={<Dashboard />} />
-				<Route path="payments" element={<PaymentsHistory />} />
-				<Route path="recipients" element={<Recipients />} />
-				<Route path="pay-from" element={<PayFrom />} />
-				<Route path="wallet" element={<FlexiPayWallet />} />
-				<Route path="developers" element={<Developers />} />
-				<Route path="where-we-pay" element={<WhereWePay />} />
-				<Route path="account" element={<Account />} />
-				<Route path="payments/:paymentId" element={<PaymentDetail />} />
-			</Route>
-			<Route path="claim/:claimToken" element={<ClaimPage />} />
-			<Route path="*" element={<Navigate to="/" replace />} />
-		</Routes>
+		<LiveMoneyProvider>
+			<Routes>
+				<Route path="login" element={<LoginPage />} />
+				<Route path="register" element={<RegisterPage />} />
+				<Route path="forgot-password" element={<ForgotPasswordPage />} />
+				<Route path="reset-password" element={<ResetPasswordPage />} />
+				<Route
+					element={
+						<RequireSession>
+							<AppShell />
+						</RequireSession>
+					}
+				>
+					<Route index element={<SendPayment />} />
+					<Route path="take-payment" element={<TakePayment />} />
+					<Route path="dashboard" element={<Dashboard />} />
+					<Route path="payments" element={<PaymentsHistory />} />
+					<Route path="recipients" element={<Recipients />} />
+					<Route path="pay-from" element={<PayFrom />} />
+					<Route path="wallet" element={<FlexiPayWallet />} />
+					<Route path="developers" element={<Developers />} />
+					<Route path="where-we-pay" element={<WhereWePay />} />
+					<Route path="account" element={<Account />} />
+					<Route path="payments/:paymentId" element={<PaymentDetail />} />
+				</Route>
+				<Route path="claim/:claimToken" element={<ClaimPage />} />
+				<Route path="*" element={<Navigate to="/" replace />} />
+			</Routes>
+		</LiveMoneyProvider>
 	)
 }
 

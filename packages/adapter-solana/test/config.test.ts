@@ -43,12 +43,12 @@ describe("CCR-26 settlement asset registry", () => {
 		).toThrow(/FP_SOLANA_TGBP_DECIMALS/);
 	});
 
-	it("never configures TGBP by default on mainnet and keeps the approval guard", () => {
+	it("never configures TGBP on mainnet without FP_LIVE_MONEY=1", () => {
 		expect(() =>
 			loadSolanaRuntimeConfig({
 				FP_SOLANA_CLUSTER: "mainnet-beta",
 				FP_SOLANA_TGBP_MINT: TGBP_MINT,
 			}),
-		).toThrow(/explicit approval/);
+		).toThrow(/FP_LIVE_MONEY=1/);
 	});
 });

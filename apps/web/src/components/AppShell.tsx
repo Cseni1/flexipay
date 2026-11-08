@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet } from "react-router-dom"
 import { useTheme } from "../hooks/useTheme"
+import { useLiveMoney } from "../live/LiveMoney"
 import { useSession } from "../providers/SessionProvider"
 import { ApiStatus } from "./ApiStatus"
 import { InfoPopover, SimulatedLabel } from "./ui"
@@ -7,6 +8,7 @@ import { InfoPopover, SimulatedLabel } from "./ui"
 export function AppShell() {
 	const { state, logout } = useSession()
 	const { cycle, label } = useTheme()
+	const live = useLiveMoney()
 	const user = state.status === "signed_in" ? state.session.user : null
 	return (
 		<div className="app-shell">
@@ -76,13 +78,15 @@ export function AppShell() {
 				) : null}
 
 				<div className="app-sidebar__footer">
-					<div className="env-row">
-						<SimulatedLabel />
-						<InfoPopover label="Simulated environment">
-							Bank, e-wallet and FX providers are simulated. Settlement uses the
-							mock adapter or Stellar testnet. No real money moves.
-						</InfoPopover>
-					</div>
+					{live ? null : (
+						<div className="env-row">
+							<SimulatedLabel />
+							<InfoPopover label="Simulated environment">
+								Bank, e-wallet and FX providers are simulated. Settlement uses
+								the mock adapter or Stellar testnet. No real money moves.
+							</InfoPopover>
+						</div>
+					)}
 					<button
 						type="button"
 						className="theme-toggle"
@@ -92,12 +96,27 @@ export function AppShell() {
 						{label}
 					</button>
 					<p className="app-sidebar__caption">
-						Demo environment. Nothing here moves real funds.
+						{live
+							? "Live money. Real USDC on Solana mainnet."
+							: "Test mode. Nothing here moves real funds."}
 					</p>
 				</div>
 			</aside>
 
 			<div className="app-body">
+				<p
+					className={
+						live
+							? "mode-banner mode-banner--live"
+							: "mode-banner mode-banner--test"
+					}
+					data-testid="mode-banner"
+					data-mode={live ? "live" : "test"}
+				>
+					{live
+						? "Live money. Payments use real USDC on Solana mainnet."
+						: "Test mode. No real money moves."}
+				</p>
 				<main className="app-main">
 					<Outlet />
 				</main>

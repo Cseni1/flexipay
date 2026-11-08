@@ -148,6 +148,23 @@
 	padding-top: 0;
 }
 
+.mode-banner {
+	margin: 0;
+	padding: 10px 16px;
+	font-weight: 600;
+	font-size: 14px;
+}
+
+.mode-banner--test {
+	background: var(--warn-soft);
+	color: var(--warn);
+}
+
+.mode-banner--live {
+	background: var(--ok-soft);
+	color: var(--ok);
+}
+
 .env-row {
 	display: flex;
 	align-items: center;

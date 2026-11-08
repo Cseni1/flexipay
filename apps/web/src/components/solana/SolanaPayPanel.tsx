@@ -2,6 +2,7 @@ import {
 	buildUsdcTransferTransaction,
 	getSolAndUsdcBalances,
 } from "@flexipay/adapter-solana/browser"
+import { type Quote } from "@flexipay/web-lib/contract"
 import {
 	lazy,
 	Suspense,
@@ -12,6 +13,7 @@ import {
 } from "react"
 import {
 	ApiError,
+	getQuote,
 	isTransientApiError,
 	newIdempotencyKey,
 } from "../../api/client"
@@ -30,7 +32,10 @@ import {
 	sendFlexiPaySolanaTransaction,
 	type FlexiPaySolanaWallet,
 } from "../../flexipayWallet/sendFlexiPaySolanaTransaction"
+import { useLiveMoney } from "../../live/LiveMoney"
 import { formatLocalClock } from "../../payments/formatPaymentTime"
+import { providerLabel } from "../../payments/providerNames"
+import { displayFeesTotal, displayMoney } from "../../payments/quoteDisplay"
 import { isSolanaSettleRail } from "../../payments/solanaRails"
 import {
 	clearSolanaTransfer,
@@ -71,6 +76,8 @@ type Props = {
 	 * instead of a recipient wallet.
 	 */
 	recipientFieldLabel?: string
+	/** Quote that priced this payment, so the live confirm step can show fees. */
+	quoteId?: string
 }
 
 const assetFromCurrency = (currency: string): SolanaAsset | null => {
@@ -120,7 +127,11 @@ export function SolanaPayPanel({
 	settleRail,
 	settleAmount,
 	recipientFieldLabel = "Recipient",
+	quoteId,
 }: Props) {
+	const live = useLiveMoney()
+	const [confirmed, setConfirmed] = useState(false)
+	const [reviewQuote, setReviewQuote] = useState<Quote | null>(null)
 	const [intent, setIntent] = useState<SolanaIntent | null>(null)
 	const [notSolanaSettle, setNotSolanaSettle] = useState(false)
 	const [connected, setConnected] = useState<ConnectedSolanaWallet | null>(null)
@@ -167,6 +178,19 @@ export function SolanaPayPanel({
 		setStored(loadSolanaTransfer(paymentId))
 		autoStarted.current = false
 	}, [paymentId])
+
+	useEffect(() => {
+		if (!live || !quoteId) return
+		const controller = new AbortController()
+		getQuote(quoteId, controller.signal)
+			.then((quote) => {
+				if (!controller.signal.aborted) setReviewQuote(quote)
+			})
+			.catch(() => {
+				if (!controller.signal.aborted) setReviewQuote(null)
+			})
+		return () => controller.abort()
+	}, [live, quoteId])
 
 	const markPaid = (confirmed: SolanaConfirmOk) => {
 		clearSolanaTransfer(paymentId)
@@ -367,8 +391,18 @@ export function SolanaPayPanel({
 	}
 
 	const sentClock = stored ? formatLocalClock(stored.sentAt) : null
-	const phantomDisabled = Boolean(busy || !intent || !connected || stored)
-	const flexiDisabled = Boolean(busy || !intent || stored)
+
+	const signLocked = live && !confirmed
+	const phantomDisabled = Boolean(
+		busy || !intent || !connected || stored || signLocked,
+	)
+	const flexiDisabled = Boolean(busy || !intent || stored || signLocked)
+	const payoutLeg = reviewQuote?.route.find((leg) => leg.kind === "payout")
+	const reviewAmount = reviewQuote
+		? reviewQuote.amount.side === "send"
+			? reviewQuote.amount.value
+			: reviewQuote.route[0]?.amountIn
+		: undefined
 
 	return (
 		<div
@@ -465,12 +499,68 @@ export function SolanaPayPanel({
 					/>
 				) : (
 					<>
+						{live ? (
+							<section className="stack" data-testid="live-sign-confirm">
+								<h3 className="panel__title">Confirm before signing</h3>
+								<StaticField
+									label="Amount"
+									value={
+										<span data-testid="live-confirm-amount">
+											{reviewAmount
+												? displayMoney(
+														reviewAmount.amount,
+														reviewAmount.currency,
+													)
+												: "Loading quote…"}
+										</span>
+									}
+								/>
+								<StaticField
+									label="Fees"
+									value={
+										<span data-testid="live-confirm-fees">
+											{reviewQuote ? displayFeesTotal(reviewQuote.fees) : "—"}
+										</span>
+									}
+								/>
+								<StaticField
+									label="Recipient gets"
+									value={
+										<span data-testid="live-confirm-receive">
+											{reviewQuote
+												? displayMoney(
+														reviewQuote.expectedReceive.amount,
+														reviewQuote.expectedReceive.currency,
+													)
+												: "—"}
+										</span>
+									}
+								/>
+								<StaticField
+									label="Partner"
+									value={
+										<span data-testid="live-confirm-partner">
+											{payoutLeg ? providerLabel(payoutLeg.providerId) : "—"}
+										</span>
+									}
+								/>
+								<Button
+									type="button"
+									disabled={!reviewQuote || confirmed}
+									onClick={() => setConfirmed(true)}
+									data-testid="live-confirm-sign"
+								>
+									{confirmed ? "Confirmed" : "Confirm this payment"}
+								</Button>
+							</section>
+						) : null}
 						<div className="form-actions">
 							<Button
 								type="button"
 								disabled={phantomDisabled}
 								onClick={() => void payWithPhantom()}
 								data-testid="solana-pay-send"
+								data-sign-locked={signLocked ? "true" : "false"}
 							>
 								{busy && !stored && connected
 									? "Signing / confirming…"

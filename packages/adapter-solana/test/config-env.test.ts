@@ -51,37 +51,37 @@ describe("loadSolanaRuntimeConfig", () => {
 		expect(cfg.label).toMatch(/testnet/);
 	});
 
-	it("mainnet guard: blocked without approval, approval other than '1' still blocked", () => {
+	it("mainnet guard: blocked without FP_LIVE_MONEY=1", () => {
 		expect(() => loadSolanaRuntimeConfig({ FP_SOLANA_CLUSTER: "mainnet-beta" })).toThrow(
-			/FP_SOLANA_MAINNET_APPROVED=1/,
+			/FP_LIVE_MONEY=1/,
 		);
 		expect(() =>
 			loadSolanaRuntimeConfig({
 				FP_SOLANA_CLUSTER: "mainnet-beta",
-				FP_SOLANA_MAINNET_APPROVED: "true",
+				FP_LIVE_MONEY: "true",
 				FP_SOLANA_USDC_MINT: MAINNET_USDC,
 			}),
-		).toThrow(/explicit approval/);
+		).toThrow(/FP_LIVE_MONEY=1/);
 	});
 
-	it("mainnet with approval still has no default USDC mint", () => {
-		expect(() =>
-			loadSolanaRuntimeConfig({
-				FP_SOLANA_CLUSTER: "mainnet-beta",
-				FP_SOLANA_MAINNET_APPROVED: "1",
-			}),
-		).toThrow(/FP_SOLANA_USDC_MINT is required/);
-	});
-
-	it("mainnet with approval and mint", () => {
+	it("mainnet with FP_LIVE_MONEY=1 defaults to Circle USDC", () => {
 		const cfg = loadSolanaRuntimeConfig({
 			FP_SOLANA_CLUSTER: "mainnet-beta",
-			FP_SOLANA_MAINNET_APPROVED: "1",
-			FP_SOLANA_USDC_MINT: MAINNET_USDC,
+			FP_LIVE_MONEY: "1",
 		});
+		expect(cfg.usdcMint).toBe(MAINNET_USDC);
 		expect(cfg.rpcUrl).toBe("https://api.mainnet-beta.solana.com");
 		expect(cfg.label).toBe("Solana USDC");
 		expect(cfg.assets).toEqual([{ asset: "USDC", mint: MAINNET_USDC, decimals: 6 }]);
+	});
+
+	it("mainnet with FP_LIVE_MONEY=1 still honours an explicit mint", () => {
+		const cfg = loadSolanaRuntimeConfig({
+			FP_SOLANA_CLUSTER: "mainnet-beta",
+			FP_LIVE_MONEY: "1",
+			FP_SOLANA_USDC_MINT: MAINNET_USDC,
+		});
+		expect(cfg.usdcMint).toBe(MAINNET_USDC);
 	});
 
 	it("honours RPC / public RPC / explorer overrides; blank values fall back", () => {
@@ -129,7 +129,7 @@ describe("loadSolanaRuntimeConfig", () => {
 		const TGBP = "2zMqyX4AYCk6mgy5UZ2S7zUaLxwERhK5WjqDzkPPbSpW";
 		const cfg = loadSolanaRuntimeConfig({
 			FP_SOLANA_CLUSTER: "mainnet-beta",
-			FP_SOLANA_MAINNET_APPROVED: "1",
+			FP_LIVE_MONEY: "1",
 			FP_SOLANA_USDC_MINT: MAINNET_USDC,
 			FP_SOLANA_TGBP_MINT: TGBP,
 			FP_SOLANA_TGBP_DECIMALS: "2",

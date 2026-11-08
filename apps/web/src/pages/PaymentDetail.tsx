@@ -436,6 +436,7 @@ export default function PaymentDetail() {
 							!settleLeg.releaseTxRef ? (
 								<SolanaPayPanel
 									paymentId={payment.id}
+									quoteId={payment.quoteId}
 									settleRail={settleLeg.rail}
 									settleAmount={settleLeg.amountOut}
 									recipientFieldLabel={
