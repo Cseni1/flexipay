@@ -22,7 +22,6 @@ const treasury = Keypair.generate();
 const payer = Keypair.generate().publicKey.toBase58();
 const tgbpMint = Keypair.generate().publicKey.toBase58();
 const usdcMint = Keypair.generate().publicKey.toBase58();
-const blockhash = Keypair.generate().publicKey.toBase58();
 
 type Api = Awaited<ReturnType<typeof startTestServer>>;
 
@@ -60,16 +59,22 @@ async function stopApi(api: Api): Promise<void> {
 	}
 }
 
-function fakeRefundRpc(opts: { failFirstSend?: boolean } = {}) {
+function fakeRefundRpc(
+	opts: {
+		failFirstSend?: boolean;
+		confirmOnSecondSend?: boolean;
+	} = {},
+) {
 	let landed = false;
+	let height = 1;
 	let sendAttempts = 0;
 	const sent: Buffer[] = [];
 	const rpc: SolanaRefundRpc = {
 		getLatestBlockhash: async () => ({
-			blockhash,
+			blockhash: Keypair.generate().publicKey.toBase58(),
 			lastValidBlockHeight: 100,
 		}),
-		getBlockHeight: async () => 1,
+		getBlockHeight: async () => height,
 		getSignatureStatuses: async (signatures) => ({
 			value: signatures.map(() =>
 				landed
@@ -82,8 +87,11 @@ function fakeRefundRpc(opts: { failFirstSend?: boolean } = {}) {
 			if (opts.failFirstSend && sendAttempts === 1) {
 				throw new Error("mock RPC send unavailable");
 			}
-			landed = true;
 			sent.push(Buffer.from(raw));
+			if (opts.confirmOnSecondSend && sendAttempts === 1) {
+				return "pending-signature";
+			}
+			landed = true;
 			return "mock-signature";
 		},
 	};
@@ -93,10 +101,16 @@ function fakeRefundRpc(opts: { failFirstSend?: boolean } = {}) {
 		get sendAttempts() {
 			return sendAttempts;
 		},
+		set blockHeight(value: number) {
+			height = value;
+		},
 	};
 }
 
-function stubTazapay(api: Api): void {
+function stubTazapay(
+	api: Api,
+	opts: { reverseFails?: boolean } = {},
+): void {
 	const stub: ProviderAdapter = {
 		id: "tazapay_sandbox",
 		capabilities: () => ({
@@ -139,9 +153,10 @@ function stubTazapay(api: Api): void {
 						},
 					}
 				: { status: "succeeded" as const, externalRef },
-		reverse: async (externalRef) => ({
-			externalRef: `reversed:${externalRef}`,
-		}),
+		reverse: async (externalRef) => {
+			if (opts.reverseFails) throw new Error("mock reverse failed");
+			return { externalRef: `reversed:${externalRef}` };
+		},
 		health: async () => "up" as const,
 	};
 	const original = api.runtime.getProvider.bind(api.runtime);
@@ -521,6 +536,102 @@ describe("CCR-37 Solana treasury refund", { timeout: 120_000 }, () => {
 			});
 			assert.equal(after.status, "confirmed");
 			assert.equal(after.signature, refund.signature);
+		} finally {
+			await stopApi(api);
+		}
+	});
+
+	test("an expired pending refund is rebuilt and confirmed on retry", async () => {
+		setEnv();
+		verifyTransfer();
+		const fake = fakeRefundRpc({ confirmOnSecondSend: true });
+		setSolanaRefundRpcForTests(fake.rpc);
+		const api = await startTestServer();
+		try {
+			stubTazapay(api);
+			const { key } = await api.newOrg("CCR37 Refund Expired");
+			const { payment } = await fundedDirectKe(api, key);
+
+			const confirm = await confirmFundedPayment(
+				api,
+				key,
+				payment.id,
+				Keypair.generate().publicKey.toBase58(),
+			);
+			assert.equal(confirm.status, 200, await confirm.text());
+
+			const first = await api.db.solanaRefund.findUniqueOrThrow({
+				where: { paymentId: payment.id },
+			});
+			assert.equal(first.status, "submitted");
+			assert.equal(first.attempts, 1);
+			assert.equal(fake.sendAttempts, 1);
+			assert.equal(
+				(
+					await api.db.payment.findUniqueOrThrow({
+						where: { id: payment.id },
+					})
+				).status,
+				"refunding",
+			);
+
+			fake.blockHeight = 101;
+			await pollProvidersOnce(api.db, adaptersOf(api));
+
+			assert.equal(
+				(
+					await api.db.payment.findUniqueOrThrow({
+						where: { id: payment.id },
+					})
+				).status,
+				"refunded",
+			);
+			const retried = await api.db.solanaRefund.findUniqueOrThrow({
+				where: { paymentId: payment.id },
+			});
+			assert.equal(retried.status, "confirmed");
+			assert.equal(retried.attempts, 2);
+			assert.notEqual(retried.signature, first.signature);
+			assert.equal(fake.sendAttempts, 2);
+		} finally {
+			await stopApi(api);
+		}
+	});
+
+	test("a reversal failure leaves the payment failed after the on-chain refund", async () => {
+		setEnv();
+		verifyTransfer();
+		const fake = fakeRefundRpc();
+		setSolanaRefundRpcForTests(fake.rpc);
+		const api = await startTestServer();
+		try {
+			stubTazapay(api, { reverseFails: true });
+			const { key } = await api.newOrg("CCR37 Reverse Failed");
+			const { payment } = await fundedDirectKe(api, key);
+
+			const confirm = await confirmFundedPayment(
+				api,
+				key,
+				payment.id,
+				Keypair.generate().publicKey.toBase58(),
+			);
+			assert.equal(confirm.status, 200, await confirm.text());
+
+			assert.equal(
+				(
+					await api.db.payment.findUniqueOrThrow({
+						where: { id: payment.id },
+					})
+				).status,
+				"failed",
+			);
+			const refund = await api.db.solanaRefund.findUniqueOrThrow({
+				where: { paymentId: payment.id },
+			});
+			assert.equal(refund.status, "confirmed");
+			assert.equal(fake.sendAttempts, 1);
+			const detail = await paymentDetail(api, key, payment.id);
+			assert.equal(detail.refundTxRef, refund.signature);
 		} finally {
 			await stopApi(api);
 		}
