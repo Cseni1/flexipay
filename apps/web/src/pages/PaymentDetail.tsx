@@ -216,6 +216,7 @@ export default function PaymentDetail() {
 	const firstLeg = payment?.legs[0]
 	const claimLink = payment?.claimLink ?? handedOffClaimLink
 	const settleLeg = payment?.legs.find((leg) => leg.kind === "settle")
+	const refundTxRef = payment?.refundTxRef ?? null
 	const lastLeg = payment?.legs.at(-1)
 	const milestones = payment
 		? paymentMilestoneTimes(payment.events)
@@ -569,6 +570,27 @@ export default function PaymentDetail() {
 										)
 									}
 									hint="Release or refund transaction hash."
+								/>
+								<StaticField
+									label="Refund transaction"
+									value={
+										refundTxRef ? (
+											<a
+												data-testid="payment-refund-link"
+												href={solanaExplorerUrl(
+													solanaExplorerTemplate ?? undefined,
+													refundTxRef,
+												)}
+												target="_blank"
+												rel="noreferrer"
+											>
+												<code className="code-text">{refundTxRef}</code>
+											</a>
+										) : (
+											"—"
+										)
+									}
+									hint="Confirmed on-chain return to the original payer (CCR-37)."
 								/>
 							</div>
 							{!settleLeg ? (

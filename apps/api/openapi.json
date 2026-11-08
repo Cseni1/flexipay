@@ -4274,6 +4274,17 @@
                         }
                       ]
                     },
+                    "refundTxRef": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time",
@@ -4298,6 +4309,7 @@
                     "batchId",
                     "legs",
                     "claimLink",
+                    "refundTxRef",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -4684,6 +4696,17 @@
                               }
                             ]
                           },
+                          "refundTxRef": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "createdAt": {
                             "type": "string",
                             "format": "date-time",
@@ -4708,6 +4731,7 @@
                           "batchId",
                           "legs",
                           "claimLink",
+                          "refundTxRef",
                           "createdAt",
                           "updatedAt"
                         ],
@@ -5085,6 +5109,17 @@
                         }
                       ]
                     },
+                    "refundTxRef": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time",
@@ -5170,6 +5205,7 @@
                     "batchId",
                     "legs",
                     "claimLink",
+                    "refundTxRef",
                     "createdAt",
                     "updatedAt",
                     "events"
@@ -5562,6 +5598,17 @@
                         }
                       ]
                     },
+                    "refundTxRef": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time",
@@ -5586,6 +5633,7 @@
                     "batchId",
                     "legs",
                     "claimLink",
+                    "refundTxRef",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -6000,6 +6048,17 @@
                         }
                       ]
                     },
+                    "refundTxRef": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time",
@@ -6024,6 +6083,7 @@
                     "batchId",
                     "legs",
                     "claimLink",
+                    "refundTxRef",
                     "createdAt",
                     "updatedAt"
                   ],

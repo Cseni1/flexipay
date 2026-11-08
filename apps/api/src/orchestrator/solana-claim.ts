@@ -246,7 +246,14 @@ export class ReusedSolanaSignatureError extends Error {
 export async function completeSolanaTransferSettle(
 	db: Db,
 	paymentId: string,
-	opts: { signature: string; destination: string; payer?: string | null },
+	opts: {
+		signature: string;
+		destination: string;
+		payer?: string | null;
+		mint?: string | null;
+		amountMinor?: bigint | string | null;
+		decimals?: number | null;
+	},
 ): Promise<{ status: PaymentStatus }> {
 	const payment = await db.payment.findUniqueOrThrow({
 		where: { id: paymentId },
@@ -264,6 +271,27 @@ export async function completeSolanaTransferSettle(
 		if (settle.releaseTxRef !== opts.signature) {
 			throw new DuplicateSolanaEvidenceError(settle.releaseTxRef);
 		}
+		// A replay may fill refund metadata recorded by an older build; never overwrite it.
+		await db.payment.update({
+			where: { id: paymentId },
+			data: {
+				...(payment.solanaPayer === null && opts.payer
+					? { solanaPayer: opts.payer }
+					: {}),
+				...(payment.solanaSettleMint === null && opts.mint
+					? { solanaSettleMint: opts.mint }
+					: {}),
+				...(payment.solanaSettleAmount === null && opts.amountMinor != null
+					? { solanaSettleAmount: BigInt(opts.amountMinor).toString() }
+					: {}),
+				...(payment.solanaSettleDecimals === null && opts.decimals != null
+					? { solanaSettleDecimals: opts.decimals }
+					: {}),
+				...(payment.solanaSettleDestination === null
+					? { solanaSettleDestination: opts.destination }
+					: {}),
+			},
+		});
 		const after = await db.payment.findUniqueOrThrow({ where: { id: paymentId } });
 		return { status: after.status as PaymentStatus };
 	}
@@ -307,6 +335,21 @@ export async function completeSolanaTransferSettle(
 				providerId: isSolanaSettleRail(settle.providerId)
 					? settle.providerId
 					: solanaRail,
+			},
+		});
+		// CCR-37: keep the refund inputs exactly as verified, not re-derived after a failure.
+		await db.payment.update({
+			where: { id: paymentId },
+			data: {
+				...(opts.payer ? { solanaPayer: opts.payer } : {}),
+				...(opts.mint ? { solanaSettleMint: opts.mint } : {}),
+				...(opts.amountMinor != null
+					? { solanaSettleAmount: BigInt(opts.amountMinor).toString() }
+					: {}),
+				...(opts.decimals != null
+					? { solanaSettleDecimals: opts.decimals }
+					: {}),
+				solanaSettleDestination: opts.destination,
 			},
 		});
 	} catch (cause) {

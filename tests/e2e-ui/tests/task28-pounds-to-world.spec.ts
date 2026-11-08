@@ -378,6 +378,7 @@ function paymentDetail(
 		batchId: null,
 		legs,
 		claimLink: null,
+		refundTxRef: null,
 		createdAt: now,
 		updatedAt: now,
 		events,

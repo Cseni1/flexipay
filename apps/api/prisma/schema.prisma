@@ -150,6 +150,12 @@ model Payment {
   solanaPayReference String?
   /// CCR-39: first intent issue time for direct settle-to-treasury age bound.
   solanaIntentAt     DateTime?
+  /// CCR-37: original payer, mint and exact transferred amount for a treasury refund.
+  solanaPayer             String?
+  solanaSettleMint        String?
+  solanaSettleAmount      String?
+  solanaSettleDecimals    Int?
+  solanaSettleDestination String?
   /// CCR-45: BlindPay payout quote locked for the sender's wallet. Expires in 5 minutes.
   blindpayQuoteId        String?
   blindpayQuoteExpiresAt DateTime?
@@ -163,6 +169,7 @@ model Payment {
   claimLink        ClaimLink?
   passkeyPrepares  PasskeyClaimPrepare[]
   audit            AuditRow[]
+  solanaRefund     SolanaRefund?
 
   @@unique([organizationId, externalId])
   @@index([organizationId, status])
@@ -215,6 +222,35 @@ model Leg {
   @@index([fundTxRef])
   /// Lane B / F4: Solana (and other) release evidence must be unique across payments.
   /// Partial unique is in migration SQL (WHERE releaseTxRef IS NOT NULL).
+}
+
+/// CCR-37: durable idempotency for a Solana settle refund. The signed transaction is persisted
+/// before its first send; a retry checks the chain for the same signature before re-sending it.
+model SolanaRefund {
+  id                 String    @id
+  paymentId          String    @unique
+  payment            Payment   @relation(fields: [paymentId], references: [id])
+  payer              String
+  mint               String
+  /// Mint decimals frozen with the amount used to build every retry.
+  decimals           Int
+  /// Exact transferred amount in mint minor units, not re-derived after settlement.
+  amountValue        String
+  treasury           String
+  /// pending | submitted | confirmed | failed
+  status             String    @default("pending")
+  /// Base58 Solana transaction signature; unique, so a signature cannot back two refunds.
+  signature          String?   @unique
+  /// Base64 signed transaction; retained so a retry re-sends the same bytes/signature.
+  signedTx           String?
+  lastValidBlockHeight Int?
+  attempts           Int       @default(0)
+  lastError          String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  confirmedAt        DateTime?
+
+  @@index([status])
 }
 
 model Batch {

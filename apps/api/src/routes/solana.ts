@@ -469,6 +469,9 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 						signature: body.signature,
 						destination: treasury,
 						payer: verified.payer,
+						mint: asset.mint,
+						amountMinor: verified.amountMinor,
+						decimals: asset.decimals,
 					});
 				} catch (cause) {
 					if (cause instanceof DuplicateSolanaEvidenceError) {
@@ -583,6 +586,9 @@ export const solanaRoutes: RouteDef<any, any>[] = [
 					signature: body.signature,
 					destination: destination.address,
 					payer: verified.payer,
+					mint: asset.mint,
+					amountMinor: verified.amountMinor,
+					decimals: asset.decimals,
 				});
 				if (result.status !== "paid") {
 					throw new ApiError(
