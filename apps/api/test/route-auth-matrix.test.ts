@@ -157,6 +157,7 @@ describe("route table invariants", () => {
 					r.path === "/healthz" ||
 						r.path === "/v1/solana/config" ||
 						r.path === "/v1/webhooks/blindpay" ||
+					r.path === "/v1/webhooks/tazapay" ||
 						r.path.startsWith("/v1/claims/{token}"),
 					`${label(r)} is public; add it here only on purpose`,
 				).toBe(true);
@@ -371,10 +372,13 @@ describe("operator routes (/v1/ops/*)", () => {
 });
 
 describe("strict bodies: unknown fields → 400 validation_error", () => {
-	// BlindPay's webhook body is their payload. The signature check accepts it; a closed
-	// schema would reject fields BlindPay adds.
+	// Partner webhook bodies are their payloads. The signature check accepts them; a closed
+	// schema would reject fields the partner adds.
 	const posts = ROUTES.filter(
-		(r) => r.method === "post" && r.path !== "/v1/webhooks/blindpay",
+		(r) =>
+			r.method === "post" &&
+			r.path !== "/v1/webhooks/blindpay" &&
+			r.path !== "/v1/webhooks/tazapay",
 	);
 
 	function credentialsFor(r: RouteDef<any, any>): Record<string, string> {
