@@ -150,7 +150,11 @@ describe("CCR-47 Tazapay payout webhook", { timeout: 60_000 }, () => {
 
 	async function postWebhook(
 		payload: PayoutEvent,
-		opts: { signature?: string | null; secret?: string } = {},
+		opts: {
+			signature?: string | null;
+			secret?: string;
+			header?: "signature" | "webhook-signature";
+		} = {},
 	): Promise<Response> {
 		const raw = JSON.stringify(payload);
 		const signature =
@@ -160,7 +164,7 @@ describe("CCR-47 Tazapay payout webhook", { timeout: 60_000 }, () => {
 		const headers: Record<string, string> = {
 			"content-type": "application/json",
 		};
-		if (signature !== null) headers.signature = signature;
+		if (signature !== null) headers[opts.header ?? "webhook-signature"] = signature;
 		return fetch(`${s.base}/v1/webhooks/tazapay`, {
 			method: "POST",
 			headers,
@@ -273,6 +277,14 @@ describe("CCR-47 Tazapay payout webhook", { timeout: 60_000 }, () => {
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ received: true });
 		expect(fake.statusCalls).toEqual([]);
+	});
+
+	it("accepts the legacy signature header", async () => {
+		const res = await postWebhook(payoutEvent("pot_legacy_header"), {
+			header: "signature",
+		});
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ received: true });
 	});
 
 	it("re-checks a known payout and ignores the webhook's claimed status", async () => {

@@ -48,6 +48,10 @@ export const tazapayRoutes: RouteDef<any, any>[] = [
 				const value = headers[name];
 				return Array.isArray(value) ? value[0] : value;
 			};
+			// Tazapay's current guide names the header `webhook-signature`; its
+			// authentication page still names `signature`. Both carry the HMAC.
+			const signature =
+				header("webhook-signature") ?? header("signature") ?? "";
 			const record = body as Record<string, unknown>;
 			const eventId = typeof record.id === "string" ? record.id : "";
 			const createdAt =
@@ -58,7 +62,7 @@ export const tazapayRoutes: RouteDef<any, any>[] = [
 				createdAt &&
 				verifyTazapaySignature({
 					secret,
-					signature: header("signature") ?? "",
+					signature,
 					rawBody: raw,
 					eventId,
 					createdAt,

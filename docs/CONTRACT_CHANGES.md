@@ -917,7 +917,7 @@ generated from the route table.
 
 ## CCR-47 (builder, 8 Nov 2026): Tazapay payout webhooks
 
-- **Endpoint:** `POST /v1/webhooks/tazapay` (auth none) verifies the `signature` header as Base64 HMAC-SHA256 over `<event id><raw body><created_at>` with `TAZAPAY_WEBHOOK_SECRET`. A missing secret is **503 `webhook_unconfigured`**; a missing, bad or stale (over 5 minutes) signature is **400 `invalid_signature`**.
+- **Endpoint:** `POST /v1/webhooks/tazapay` (auth none) verifies Tazapay's `webhook-signature` header (its authentication page also names `signature`, so either is accepted) as Base64 HMAC-SHA256 over `<event id><raw body><created_at>` with `TAZAPAY_WEBHOOK_SECRET`. A missing secret is **503 `webhook_unconfigured`**; a missing, bad or stale (over 5 minutes) signature is **400 `invalid_signature`**.
 - **Re-check:** a `payout.*` event uses `data.id` (the Tazapay `pot_...` payout id stored on the payout leg as `externalRef`) to find the owning payment and call `fundAndRun`; the webhook's `data.status` is never trusted. An unknown id is **200** and ignored. The provider poller remains the safety net.
 - **Tests:** signature helper plus API route tests with a fake Tazapay adapter cover a valid signature, invalid/missing signatures, missing secret, stale timestamp, unknown payout id, and a known payout that is re-checked. Nothing calls Tazapay.
 - **OpenAPI:** `apps/api/openapi.json` regenerated.
