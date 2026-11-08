@@ -47,6 +47,7 @@ function fakeApi(
 		requiredBankFields?: string[]
 		requiredBankCodes?: string[]
 		localFields?: string[]
+		beneficiaryFields?: string[]
 		available?: Array<{ currency: string; amount: number | string }>
 		balanceFails?: boolean
 	} = {},
@@ -120,6 +121,7 @@ function fakeApi(
 						required_bank_fields: opts.requiredBankFields ?? ["account_number"],
 						required_bank_codes: opts.requiredBankCodes ?? [],
 						local_fields: opts.localFields ?? [],
+						required_beneficiary_fields: opts.beneficiaryFields ?? [],
 					},
 				],
 			})
@@ -295,7 +297,9 @@ describe("Tazapay adapter", () => {
 			await quote()
 			expect(api.calls.filter((c) => c.path === "/v3/balance")).toHaveLength(1)
 			expect(warn).toHaveBeenCalledTimes(1)
-			expect(String(warn.mock.calls[0]![0])).toContain("Tazapay low balance: GBP")
+			expect(String(warn.mock.calls[0]![0])).toContain(
+				"Tazapay low balance: GBP",
+			)
 			now += 60_001
 			await quote()
 			expect(api.calls.filter((c) => c.path === "/v3/balance")).toHaveLength(2)
@@ -409,20 +413,12 @@ describe("Tazapay adapter", () => {
 		})
 		const a = adapter(api, { beneficiary: null })
 		const first = await a.execute(
-			leg(
-				"payout",
-				money("785381", "PHP"),
-				"pay_1",
-				PH_BANK_DETAILS,
-				"leg_a",
-			),
+			leg("payout", money("785381", "PHP"), "pay_1", PH_BANK_DETAILS, "leg_a"),
 		)
 		expect(first.partnerRefs).toEqual({
 			tazapay_beneficiary_id: "bnf_created",
 		})
-		expect(
-			api.calls.find((c) => c.path === "/v3/beneficiary")!.body,
-		).toEqual({
+		expect(api.calls.find((c) => c.path === "/v3/beneficiary")!.body).toEqual({
 			name: "Worker A",
 			type: "individual",
 			email: "sandbox@flexipay.test",
@@ -454,16 +450,20 @@ describe("Tazapay adapter", () => {
 			),
 		)
 		expect(second.partnerRefs).toBeUndefined()
-		expect(
-			api.calls.filter((c) => c.path === "/v3/beneficiary"),
-		).toHaveLength(1)
+		expect(api.calls.filter((c) => c.path === "/v3/beneficiary")).toHaveLength(
+			1,
+		)
 		expect(
 			api.calls.filter((c) => c.path === "/v3/metadata/payout/bank"),
 		).toHaveLength(1)
 	})
 
 	it("pays out GBP and USD too (a USD balance pays GBP in the UK); tGBP and USDC are never payouts", async () => {
-		const row = { ...ROW, countries: ["PH", "GB"], currencies: [...ROW.currencies, "GBP"] }
+		const row = {
+			...ROW,
+			countries: ["PH", "GB"],
+			currencies: [...ROW.currencies, "GBP"],
+		}
 		const api = fakeApi()
 		const a = new TazapayAdapter(row, {
 			apiKey: "k",
@@ -476,11 +476,20 @@ describe("Tazapay adapter", () => {
 			kind: "payout",
 			amountIn: money("10000", "GBP"),
 			outCurrency: "GBP",
-			endpoint: { endpointId: "ep_gb", type: "bank_account", country: "GB", currency: "GBP" },
+			endpoint: {
+				endpointId: "ep_gb",
+				type: "bank_account",
+				country: "GB",
+				currency: "GBP",
+			},
 		})
 		expect(q.amountOut).toEqual(money("10000", "GBP"))
 		await expect(
-			a.quote({ kind: "payout", amountIn: money("10000", "USDC"), outCurrency: "USDC" }),
+			a.quote({
+				kind: "payout",
+				amountIn: money("10000", "USDC"),
+				outCurrency: "USDC",
+			}),
 		).rejects.toMatchObject({ code: "unsupported" })
 	})
 
@@ -491,7 +500,10 @@ describe("Tazapay adapter", () => {
 				leg("payout", money("785381", "PHP"), "pay_1", {
 					...PH_BANK_DETAILS,
 					recipientName: "Live QA Maria 1794046661872",
-					details: { ...PH_BANK_DETAILS.details, accountHolderName: "Maria Santos" },
+					details: {
+						...PH_BANK_DETAILS.details,
+						accountHolderName: "Maria Santos",
+					},
 				}),
 			)
 			.catch((e) => e)) as ProviderError
@@ -529,6 +541,31 @@ describe("Tazapay adapter", () => {
 		).toHaveLength(1)
 	})
 
+	it("reads address needs from required_beneficiary_fields (live KE shape, 8 Nov)", async () => {
+		const api = fakeApi({
+			requiredBankFields: [
+				"account_holder_name",
+				"bank_name",
+				"account_number",
+			],
+			requiredBankCodes: ["swift_code", "branch_code"],
+			beneficiaryFields: [
+				"address.line1",
+				"address.city",
+				"address.state",
+				"address.postal_code",
+			],
+		})
+		const reqs = await adapter(api).payoutRequirements("KE", "KES")
+		expect(reqs.localFields).toEqual([
+			"address.line1",
+			"address.city",
+			"address.state",
+			"address.postal_code",
+		])
+		expect(reqs.detailKeys).toContain("branchCode")
+	})
+
 	it("sends the recipient address on the Tazapay beneficiary", async () => {
 		const api = fakeApi({
 			requiredBankFields: ["account_number"],
@@ -562,7 +599,9 @@ describe("Tazapay adapter", () => {
 		await adapter(api, { beneficiary: null }).execute(
 			leg("payout", money("785381", "PHP"), "pay_ke", ke, "leg_ke"),
 		)
-		expect(api.calls.find((c) => c.path === "/v3/beneficiary")!.body).toMatchObject({
+		expect(
+			api.calls.find((c) => c.path === "/v3/beneficiary")!.body,
+		).toMatchObject({
 			address: {
 				line1: "1 Market Street",
 				city: "Nairobi",
