@@ -397,6 +397,25 @@ describe("CCR-37 Solana treasury refund", { timeout: 120_000 }, () => {
 				"refunded",
 			);
 
+			// Two workers (poller and request path) starting the same refund at once must send
+			// one transaction, never two.
+			await api.db.solanaRefund.delete({ where: { paymentId: payment.id } });
+			await api.db.payment.update({
+				where: { id: payment.id },
+				data: { status: "refunding" },
+			});
+			const before = fake.sent.length;
+			const raced = await Promise.all([
+				refundSolanaSettleIfOwed(api.db, payment.id),
+				refundSolanaSettleIfOwed(api.db, payment.id),
+			]);
+			assert.equal(fake.sent.length - before, 1, JSON.stringify(raced));
+			assert.ok(raced.some((r) => r.required && r.status === "confirmed"));
+			await api.db.payment.update({
+				where: { id: payment.id },
+				data: { status: "refunded" },
+			});
+
 			// Inconsistent settled rows must fail closed instead of using the legacy refund path.
 			await api.db.payment.update({
 				where: { id: payment.id },

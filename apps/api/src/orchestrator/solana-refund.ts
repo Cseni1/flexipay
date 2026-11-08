@@ -81,20 +81,23 @@ export async function refundSolanaSettleIfOwed(
 		);
 	}
 
-	let refund = await db.solanaRefund.upsert({
-		where: { paymentId },
-		create: {
-			id: newId("srf"),
-			paymentId,
-			payer: payment.solanaPayer,
-			mint: payment.solanaSettleMint,
-			decimals: payment.solanaSettleDecimals,
-			amountValue: payment.solanaSettleAmount,
-			treasury,
-			status: "pending",
-		},
-		update: {},
-	});
+	const create = {
+		id: newId("srf"),
+		paymentId,
+		payer: payment.solanaPayer,
+		mint: payment.solanaSettleMint,
+		decimals: payment.solanaSettleDecimals,
+		amountValue: payment.solanaSettleAmount,
+		treasury,
+		status: "pending",
+	};
+	// Two first attempts at once: the loser of the unique (paymentId) insert reads the winner's row.
+	let refund = await db.solanaRefund
+		.upsert({ where: { paymentId }, create, update: {} })
+		.catch(async (cause: unknown) => {
+			if ((cause as { code?: string })?.code !== "P2002") throw cause;
+			return db.solanaRefund.findUniqueOrThrow({ where: { paymentId } });
+		});
 	if (refund.status === "confirmed" && refund.signature) {
 		return {
 			required: true,
@@ -119,8 +122,10 @@ export async function refundSolanaSettleIfOwed(
 				decimals: refund.decimals,
 				reference,
 			});
-			refund = await db.solanaRefund.update({
-				where: { id: refund.id },
+			// Conditional on the signature we started from: if another worker (poller vs.
+			// request path) stored a transaction first, never send a second, different one.
+			const claimed = await db.solanaRefund.updateMany({
+				where: { id: refund.id, signature: refund.signature ?? null },
 				data: {
 					signature: next.signature,
 					signedTx: next.signedTransaction,
@@ -130,6 +135,10 @@ export async function refundSolanaSettleIfOwed(
 					lastError: null,
 				},
 			});
+			if (claimed.count !== 1) {
+				throw new Error("another worker is already sending this Solana refund");
+			}
+			refund = await db.solanaRefund.findUniqueOrThrow({ where: { id: refund.id } });
 			return next;
 		};
 

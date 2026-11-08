@@ -154,6 +154,22 @@ export {
 export { A0_OPENAPI_STUBS, type ApiOpenApiStub } from "./openapi-stubs.ts";
 
 export {
+	BlindPayConfirmRequestSchema,
+	BlindPayConfirmResponseSchema,
+	BlindPayDelegationRequestSchema,
+	BlindPayDelegationResponseSchema,
+	BlindPayKycBodySchema,
+	BlindPayKycStepSchema,
+	BlindPayOnboardingRequestSchema,
+	BlindPayOnboardingResponseSchema,
+	BlindPayTosBodySchema,
+	type BlindPayConfirmResponse,
+	type BlindPayDelegationResponse,
+	type BlindPayKycBody,
+	type BlindPayKycStep,
+} from "./blindpay.ts";
+
+export {
 	SolanaConfigResponseSchema,
 	SolanaConfirmPendingResponseSchema,
 	SolanaConfirmRequestSchema,

@@ -82,6 +82,20 @@ function fakeApi(opts: { instanceType?: string; payoutStatus?: string } = {}) {
 			return reply(200, { id: "wa_1", address: "So1anaAddr" })
 		if (path === "/v1/instances/in_1/mint-usdb-solana")
 			return reply(200, { success: true })
+		if (path === "/v1/e/instances/in_1/tos")
+			return reply(200, {
+				url: "https://app.blindpay.com/e/terms-of-service?session_token=test",
+			})
+		if (path === "/v1/instances/in_1/customers" && init.method === "POST")
+			return reply(200, { id: "re_sender", kyc_status: "approved" })
+		if (path === "/v1/instances/in_1/customers/re_sender")
+			return reply(200, { id: "re_sender", kyc_status: "approved" })
+		if (path.endsWith("/bank-accounts") && init.method === "POST")
+			return reply(200, { id: "ba_sender", type: body?.type ?? "pix" })
+		if (path === "/v1/instances/in_1/prepare-delegate-solana")
+			return reply(200, { transaction: "AQAAA" })
+		if (path === "/v1/instances/in_1/payouts/solana")
+			return reply(200, { id: "pa_sol", status: "processing" })
 		if (path === "/v1/instances/in_1/payouts/evm")
 			return reply(200, { id: "pa_1", status: "processing" })
 		if (path === "/v1/instances/in_1/payouts/pa_1")
@@ -435,7 +449,8 @@ describe("BlindPay adapter", () => {
 			"pa_1",
 		)
 		expect(failed.status).toBe("failed")
-		expect(failed.error?.code).toBe("provider_down")
+		expect(failed.error?.code).toBe("returned_to_wallet")
+		expect(failed.error?.message).toBe("returned to your wallet")
 		await expect(adapter().status("pa_unknown")).rejects.toMatchObject({
 			code: "unknown_reference",
 		})
@@ -469,6 +484,78 @@ describe("BlindPay adapter", () => {
 
 	it("health is up on a development instance", async () => {
 		expect(await adapter().health()).toBe("up")
+	})
+
+	it("prepares a devnet delegation and creates a solana payout without a managed wallet", async () => {
+		const api = fakeApi()
+		const a = adapter(api, { sandbox: null })
+		const terms = await a.startTermsOfService(
+			"123e4567-e89b-12d3-a456-426614174000",
+			"https://flexipay.test/tos",
+		)
+		expect(terms.url).toContain("app.blindpay.com")
+		const customer = await a.createIndividualCustomer("to_1", {
+			email: "sender@example.test",
+			first_name: "Ada",
+			last_name: "Sender",
+		})
+		expect(customer).toEqual({ id: "re_sender", kycStatus: "approved" })
+		const now = Date.now()
+		const prepared = await a.prepareSenderWalletDelegation({
+			customerId: "re_sender",
+			endpoint: BR_ENDPOINT,
+			ownerAddress: "SoLanaSenderWallet1111111111111111111111",
+			requestAmountHundredths: 10000,
+			nowMs: now,
+		})
+		expect(prepared.transaction).toBe("AQAAA")
+		expect(prepared.quoteId).toBe("qu_1")
+		const quoteCall = api.calls.find((c) => c.path.endsWith("/quotes"))
+		expect(quoteCall?.body).toMatchObject({
+			network: "solana_devnet",
+			token: "USDB",
+			bank_account_id: "ba_sender",
+			request_amount: 10000,
+		})
+		expect(api.calls.some((c) => c.path.endsWith("/payouts/evm"))).toBe(false)
+		expect(api.calls.some((c) => c.path.endsWith("/mint-usdb-solana"))).toBe(false)
+		const again = await a.prepareSenderWalletDelegation({
+			customerId: "re_sender",
+			endpoint: {
+				...BR_ENDPOINT,
+				partnerRefs: { blindpay_bank_account_id: "ba_sender" },
+			},
+			ownerAddress: "SoLanaSenderWallet1111111111111111111111",
+			requestAmountHundredths: 10000,
+			existingQuoteId: prepared.quoteId,
+			quoteExpiresAtMs: prepared.expiresAtMs,
+			nowMs: now,
+		})
+		expect(again.requoted).toBe(false)
+		const payout = await a.createSenderWalletPayout({
+			quoteId: prepared.quoteId,
+			senderWalletAddress: "SoLanaSenderWallet1111111111111111111111",
+			signature: "sig_delegation",
+			idempotencyKey: "flexipay-solana-pay_1",
+		})
+		expect(payout.id).toBe("pa_sol")
+		const solana = api.calls.find((c) => c.path.endsWith("/payouts/solana"))
+		expect(solana?.body).toEqual({
+			quote_id: "qu_1",
+			sender_wallet_address: "SoLanaSenderWallet1111111111111111111111",
+			signed_transaction: "sig_delegation",
+		})
+		await expect(
+			adapter(fakeApi({ instanceType: "production" }), {
+				sandbox: null,
+			}).prepareSenderWalletDelegation({
+				customerId: "re_sender",
+				endpoint: BR_ENDPOINT,
+				ownerAddress: "SoLanaSenderWallet1111111111111111111111",
+				requestAmountHundredths: 10000,
+				nowMs: now,
+			}),
+		).rejects.toMatchObject({ code: "unsupported" })
 	})
 })
 

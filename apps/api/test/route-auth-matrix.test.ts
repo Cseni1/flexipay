@@ -27,6 +27,9 @@ const owned: Record<string, string> = {};
 const prevEnv: Record<string, string | undefined> = {};
 const ENV = {
 	FP_SOLANA_CLUSTER: "devnet",
+	// Never the public devnet RPC: its rate limit (429 + retries) made this suite time out.
+	FP_SOLANA_RPC_URL: "http://127.0.0.1:9",
+	FP_SOLANA_PUBLIC_RPC_URL: "http://127.0.0.1:9",
 	FP_SOLANA_USDC_MINT: Keypair.generate().publicKey.toBase58(),
 	FP_SOLANA_USDC_DECIMALS: "6",
 	FP_SOLANA_TGBP_MINT: Keypair.generate().publicKey.toBase58(),
@@ -151,7 +154,10 @@ describe("route table invariants", () => {
 			expect(["api_key", "customer", "session", "none"], label(r)).toContain(r.auth);
 			if (r.auth === "none") {
 				expect(
-					r.path === "/healthz" || r.path === "/v1/solana/config" || r.path.startsWith("/v1/claims/{token}"),
+					r.path === "/healthz" ||
+						r.path === "/v1/solana/config" ||
+						r.path === "/v1/webhooks/blindpay" ||
+						r.path.startsWith("/v1/claims/{token}"),
 					`${label(r)} is public; add it here only on purpose`,
 				).toBe(true);
 			}
@@ -261,6 +267,14 @@ const CROSS_ORG: Record<string, { path: () => string; body?: unknown }> = {
 		path: () => `/v1/payments/${owned.payment}/solana/confirm`,
 		body: { signature: SIG },
 	},
+	"POST /v1/payments/{id}/blindpay/delegation": {
+		path: () => `/v1/payments/${owned.payment}/blindpay/delegation`,
+		body: { ownerAddress: "1".repeat(32) },
+	},
+	"POST /v1/payments/{id}/blindpay/confirm": {
+		path: () => `/v1/payments/${owned.payment}/blindpay/confirm`,
+		body: { signature: SIG },
+	},
 	"GET /v1/batches/{id}": { path: () => `/v1/batches/${owned.batch}` },
 	"GET /v1/payment-requests/{id}": { path: () => `/v1/payment-requests/${owned.paymentRequest}` },
 	"POST /v1/api-keys/{id}/revoke": { path: () => `/v1/api-keys/${owned.apiKey}/revoke`, body: {} },
@@ -357,7 +371,11 @@ describe("operator routes (/v1/ops/*)", () => {
 });
 
 describe("strict bodies: unknown fields → 400 validation_error", () => {
-	const posts = ROUTES.filter((r) => r.method === "post");
+	// BlindPay's webhook body is their payload. The signature check accepts it; a closed
+	// schema would reject fields BlindPay adds.
+	const posts = ROUTES.filter(
+		(r) => r.method === "post" && r.path !== "/v1/webhooks/blindpay",
+	);
 
 	function credentialsFor(r: RouteDef<any, any>): Record<string, string> {
 		if (r.auth === "session") return { cookie: cookieS, origin: s.origin };

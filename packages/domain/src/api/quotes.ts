@@ -40,6 +40,11 @@ export const CreateQuoteRequestSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * CCR-45: pay the bank from the sender's own Solana wallet via BlindPay.
+     * Omitted quotes keep the vault route. No FlexiPay treasury and no vault fee.
+     */
+    settleMode: z.literal("sender_wallet_blindpay").optional(),
   })
   .strict()
   .superRefine((req, ctx) => {

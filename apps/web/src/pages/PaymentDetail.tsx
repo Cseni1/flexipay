@@ -18,6 +18,7 @@ import { LegTimeline } from "../components/payments/LegTimeline"
 import { PaymentFromToCard } from "../components/payments/PaymentFromToCard"
 import { PaymentReceipt } from "../components/payments/PaymentReceipt"
 import { PaymentTimestamp } from "../components/payments/PaymentTimestamp"
+import { BlindpaySenderPanel } from "../components/solana/BlindpaySenderPanel"
 import { SolanaPayPanel } from "../components/solana/SolanaPayPanel"
 import {
 	Button,
@@ -221,8 +222,12 @@ export default function PaymentDetail() {
 		? paymentMilestoneTimes(payment.events)
 		: { created: null, funded: null, paid: null }
 	const createdAtIso = milestones.created ?? payment?.createdAt ?? null
+	const senderWalletSettle = settleLeg?.rail === "sender_wallet_blindpay"
+	const payoutLeg = payment?.legs.find((leg) => leg.kind === "payout")
 	const canFund =
-		(status === "awaiting_funding" || status === "quoted") && !authBlocked
+		(status === "awaiting_funding" || status === "quoted") &&
+		!authBlocked &&
+		!senderWalletSettle
 	const orgName =
 		sessionState.status === "signed_in"
 			? sessionState.session.organization.name
@@ -427,6 +432,32 @@ export default function PaymentDetail() {
 									The claim link was shown once when the payment was created and
 									can&apos;t be shown again.
 								</Notice>
+							) : null}
+
+							{senderWalletSettle && payment.status === "refunded" ? (
+								<Notice data-testid="blindpay-returned">
+									returned to your wallet
+								</Notice>
+							) : null}
+
+							{senderWalletSettle &&
+							payoutLeg?.externalRef &&
+							payment.status === "processing" ? (
+								<Notice data-testid="blindpay-tracking">
+									Tracking the payout. A failure returns the stablecoins to your
+									wallet.
+								</Notice>
+							) : null}
+
+							{senderWalletSettle &&
+							!payoutLeg?.externalRef &&
+							(payment.status === "awaiting_funding" ||
+								payment.status === "processing" ||
+								payment.status === "funded") ? (
+								<BlindpaySenderPanel
+									paymentId={payment.id}
+									onChanged={() => refresh()}
+								/>
 							) : null}
 
 							{payment.status === "processing" &&
