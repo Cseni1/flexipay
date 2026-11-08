@@ -24,6 +24,9 @@ const routeEndsAt = (payment: Payment): string => {
 	return leg ? providerLabel(leg.providerId || leg.rail) : "-"
 }
 
+const initial = (name: string): string =>
+	(name.trim().match(/\p{L}|\d/u)?.[0] ?? "?").toUpperCase()
+
 const savingFor = (payment: Payment): AggregatorSaving | null =>
 	lookupStoredSaving({ paymentId: payment.id, quoteId: payment.quoteId })
 
@@ -36,42 +39,42 @@ export function PaymentHistoryTable({ payments }: { payments: Payment[] }) {
 				<table className="history-table" data-testid="payment-history">
 					<thead>
 						<tr>
-							<th>Payment</th>
-							<th>Created</th>
 							<th>To</th>
-							<th>Delivery</th>
-							<th>Route ends at</th>
-							<th>Status</th>
 							<th className="num">Amount</th>
+							<th>Status</th>
+							<th>When</th>
+							<th>Via</th>
 							<th className="num">Saved</th>
+							<th>Reference</th>
 						</tr>
 					</thead>
 					<tbody>
 						{payments.map((payment) => {
 							const saving = savingFor(payment)
+							const name = recipientDisplayName(names, payment.recipientId)
 							return (
 								<tr key={payment.id}>
+									<td data-testid="payment-history-to">
+										<span className="person">
+											<span className="person__avatar" aria-hidden="true">
+												{initial(name)}
+											</span>
+											{name}
+										</span>
+									</td>
+									<td className="num history-table__amount">
+										{firstAmount(payment)}
+									</td>
 									<td>
-										<Link to={`/payments/${encodeURIComponent(payment.id)}`}>
-											<code className="code-text">{payment.id}</code>
-										</Link>
+										<StatusBadge status={payment.status} />
 									</td>
 									<td>
 										<PaymentTimestamp iso={payment.createdAt} />
 									</td>
-									<td data-testid="payment-history-to">
-										{recipientDisplayName(names, payment.recipientId)}
-									</td>
 									<td>
-										{payment.delivery === "claim_link"
-											? "Claim link"
-											: "Direct"}
+										{routeEndsAt(payment)}
+										{payment.delivery === "claim_link" ? " · claim link" : ""}
 									</td>
-									<td>{routeEndsAt(payment)}</td>
-									<td>
-										<StatusBadge status={payment.status} />
-									</td>
-									<td className="num">{firstAmount(payment)}</td>
 									<td className="num">
 										{saving ? (
 											<span data-testid="payment-saving">
@@ -80,6 +83,11 @@ export function PaymentHistoryTable({ payments }: { payments: Payment[] }) {
 										) : (
 											"—"
 										)}
+									</td>
+									<td>
+										<Link to={`/payments/${encodeURIComponent(payment.id)}`}>
+											<code className="code-text">{payment.id}</code>
+										</Link>
 									</td>
 								</tr>
 							)
@@ -101,19 +109,20 @@ export function PaymentHistoryTable({ payments }: { payments: Payment[] }) {
 								className="history-card__link"
 								to={`/payments/${encodeURIComponent(payment.id)}`}
 							>
-								<div className="history-card__row">
-									<span className="history-card__label">Payment</span>
-									<code className="code-text">{payment.id}</code>
-								</div>
-								<div className="history-card__row">
-									<span className="history-card__label">Created</span>
-									<PaymentTimestamp iso={payment.createdAt} />
-								</div>
-								<div className="history-card__row">
-									<span className="history-card__label">To</span>
-									<span>
+								<div className="history-card__head">
+									<span className="person">
+										<span className="person__avatar" aria-hidden="true">
+											{initial(
+												recipientDisplayName(names, payment.recipientId),
+											)}
+										</span>
 										{recipientDisplayName(names, payment.recipientId)}
 									</span>
+									<StatusBadge status={payment.status} />
+								</div>
+								<div className="history-card__row">
+									<span className="history-card__label">When</span>
+									<PaymentTimestamp iso={payment.createdAt} />
 								</div>
 								<div className="history-card__row">
 									<span className="history-card__label">Amount</span>
@@ -130,8 +139,8 @@ export function PaymentHistoryTable({ payments }: { payments: Payment[] }) {
 									</div>
 								) : null}
 								<div className="history-card__row">
-									<span className="history-card__label">Status</span>
-									<StatusBadge status={payment.status} />
+									<span className="history-card__label">Reference</span>
+									<code className="code-text">{payment.id}</code>
 								</div>
 							</Link>
 						</li>

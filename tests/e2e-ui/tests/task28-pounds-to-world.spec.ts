@@ -504,7 +504,7 @@ async function fillGbBankForm(page: Page, country: "KE" | "PH") {
 		label: "Bank account",
 	})
 	await page.getByLabel("Recipient kind").selectOption({ label: "Individual" })
-	await page.getByLabel("Who pays the fee? (Vault fee payer)").selectOption({
+	await page.getByLabel("Who pays the fee?").selectOption({
 		label: "I pay the fee (added on top)",
 	})
 	await page.getByLabel("Amount (£)").fill("100.00")

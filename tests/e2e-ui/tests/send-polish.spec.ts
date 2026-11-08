@@ -106,7 +106,7 @@ test.describe("Send form polish", () => {
 
 		await page.getByLabel("Destination", { exact: true }).selectOption("ewallet")
 		await page.getByLabel("Recipient kind").selectOption("individual")
-		await page.getByLabel("Vault fee payer").selectOption("PayerPays")
+		await page.getByLabel("Who pays the fee?").selectOption("PayerPays")
 		await page.getByLabel("Amount (USD)").fill("10.00")
 		await page.getByRole("button", { name: "Get quote" }).click()
 

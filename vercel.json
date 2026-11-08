@@ -10,6 +10,10 @@
       "destination": "https://flexipay-api.onrender.com/api/auth/:path*"
     },
     {
+      "source": "/healthz",
+      "destination": "https://flexipay-api.onrender.com/healthz"
+    },
+    {
       "source": "/v1/:path*",
       "destination": "https://flexipay-api.onrender.com/v1/:path*"
     },

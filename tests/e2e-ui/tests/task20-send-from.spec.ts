@@ -88,7 +88,7 @@ async function mockTask20(page: Page) {
 }
 
 async function fillQuoteBasics(page: Page) {
-	await page.getByLabel("Who pays the fee? (Vault fee payer)").selectOption({
+	await page.getByLabel("Who pays the fee?").selectOption({
 		label: "I pay the fee (added on top)",
 	})
 	await page.getByRole("textbox", { name: "Recipient" }).fill("Worker A")

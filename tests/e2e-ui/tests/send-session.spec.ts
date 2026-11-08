@@ -15,7 +15,7 @@ async function fillQuoteForm(page: Page) {
 	await page.getByLabel("Destination country").selectOption("PH")
 	await page.getByLabel("Destination", { exact: true }).selectOption("ewallet")
 	await page.getByLabel("Recipient kind").selectOption("individual")
-	await page.getByLabel("Vault fee payer").selectOption("PayerPays")
+	await page.getByLabel("Who pays the fee?").selectOption("PayerPays")
 	await page.getByLabel("Amount (USD)").fill("1,250.00")
 	await page.getByLabel("Recipient", { exact: true }).fill("Worker A")
 }

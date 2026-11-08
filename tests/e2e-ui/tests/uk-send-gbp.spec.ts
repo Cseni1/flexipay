@@ -184,7 +184,7 @@ test.describe("UK GBP send (CCR-26)", () => {
 		)
 
 		await page.getByLabel("Recipient kind").selectOption("individual")
-		await page.getByLabel("Vault fee payer").selectOption("PayerPays")
+		await page.getByLabel("Who pays the fee?").selectOption("PayerPays")
 		await page.getByLabel("Amount (£)").fill("10.00")
 		await page.getByLabel("Recipient", { exact: true }).fill("UK Worker")
 		await page.getByRole("button", { name: "Get quote" }).click()

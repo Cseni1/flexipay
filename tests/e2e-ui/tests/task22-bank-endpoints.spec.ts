@@ -209,7 +209,7 @@ async function fillBankQuote(page: Page) {
 	await page.getByLabel("Destination", { exact: true }).selectOption({
 		label: "Bank account",
 	})
-	await page.getByLabel("Who pays the fee? (Vault fee payer)").selectOption({
+	await page.getByLabel("Who pays the fee?").selectOption({
 		label: "I pay the fee (added on top)",
 	})
 	await page.getByLabel("Amount (£)").fill("10.00")
