@@ -13,11 +13,10 @@ import {
 	Notice,
 	Page,
 	PageHeader,
-	Panel,
 	SimulatedLabel,
-	StaticField,
 	TextField,
 } from "../components/ui"
+import { Icon } from "../components/ui/Icon"
 import { useCountdown } from "../hooks/useCountdown"
 import { formatLocalDateTime } from "../payments/formatPaymentTime"
 import { displayMoney } from "../payments/quoteDisplay"
@@ -35,8 +34,12 @@ import {
 	shortAddress,
 	type ConnectedSolanaWallet,
 } from "../solana/walletStandard"
+import "../styles/pages/getpaid.css"
 
 const POLL_MS = 2_000
+
+/** One-tap amounts for the till (pounds). */
+const QUICK_AMOUNTS = ["5", "10", "20", "50"] as const
 
 /** Stable ids so labels stay tied to inputs (Playwright getByLabel / a11y). */
 const FIELD_IDS = {
@@ -222,8 +225,8 @@ export default function TakePayment() {
 			<div className="till-page" data-testid="till-page">
 				<PageHeader
 					eyebrow="Till"
-					title="Take payment"
-					description="Create a Solana Pay QR for tGBP. The customer pays wallet to wallet; FlexiPay does not hold the funds."
+					title="Get paid"
+					description="Type the amount, show the QR code, and your customer pays you straight from their phone."
 					actions={<SimulatedLabel />}
 				/>
 
@@ -233,39 +236,72 @@ export default function TakePayment() {
 					className="form-note till-devnet-note"
 					data-testid="till-devnet-note"
 				>
+					<Icon name="shield" size={14} />
 					Test mode: devnet tGBP. The customer&apos;s wallet must be set to
 					devnet.
 				</p>
 
 				{phase === "form" ? (
-					<Panel
-						title="New request"
-						description="Amount is what you receive in pounds. Collect and fee steps stay simulated."
-						actions={<SimulatedLabel />}
-					>
-						<form onSubmit={(event) => void handleCreate(event)}>
-							<div className="form-grid">
+					<div className="gp-form">
+						<form
+							id="till-form"
+							className="gp-card gp-amount"
+							onSubmit={(event) => void handleCreate(event)}
+						>
+							<p className="gp-card__kicker">
+								<span className="gp-step">1</span>
+								How much?
+							</p>
+							<div className="gp-amount__field">
+								<span className="gp-amount__pound" aria-hidden="true">
+									£
+								</span>
 								<TextField
 									id={FIELD_IDS.amount}
 									name="tillAmount"
 									label="Amount (£)"
-									placeholder="10.00"
+									placeholder="0.00"
 									inputMode="decimal"
+									autoComplete="off"
 									value={amount}
-									hint="£1.00 to £10,000.00 · at most two decimals."
+									hint="From £1 to £10,000."
 									disabled={authBlocked}
+									className="gp-amount__input"
 									onChange={(event) => setAmount(event.target.value)}
 								/>
+							</div>
+							<div className="gp-quick" role="group" aria-label="Quick amounts">
+								{QUICK_AMOUNTS.map((value) => (
+									<button
+										key={value}
+										type="button"
+										className={`gp-quick__chip${amount === value ? " is-on" : ""}`}
+										disabled={authBlocked}
+										onClick={() => setAmount(value)}
+									>
+										£{value}
+									</button>
+								))}
+							</div>
+						</form>
+
+						<section className="gp-card gp-wallet" aria-labelledby="gp-to">
+							<p className="gp-card__kicker" id="gp-to">
+								<span className="gp-step">2</span>
+								Where the money goes
+							</p>
+							<div className="gp-wallet__fields">
 								<TextField
 									id={FIELD_IDS.wallet}
+									form="till-form"
 									name="merchantWallet"
 									label="Merchant wallet"
-									placeholder="Base58 Solana address…"
+									placeholder="Your Solana wallet address"
 									value={wallet}
 									hint={
 										connected
-											? `Pre-filled from ${shortAddress(connected.address)}. You can edit it.`
-											: "Connect a wallet below or paste a base58 address (32–44 characters)."
+											? `Filled in from ${shortAddress(connected.address)}. You can change it.`
+											: "Connect your wallet below, or paste its address."
 									}
 									autoComplete="off"
 									disabled={authBlocked}
@@ -273,17 +309,20 @@ export default function TakePayment() {
 								/>
 								<TextField
 									id={FIELD_IDS.label}
+									form="till-form"
 									name="tillLabel"
 									label="Label"
 									placeholder="Table 4"
 									value={label}
-									hint="Optional · shown in the customer's wallet · max 40 characters."
+									hint="Optional. Your customer sees it in their wallet."
 									disabled={authBlocked}
 									onChange={(event) => setLabel(event.target.value)}
 								/>
 							</div>
 							{hasSavedMerchant ? (
-								<p className="form-note">
+								<p className="gp-saved">
+									<Icon name="check" size={14} />
+									Saved on this device.{" "}
 									<button
 										type="button"
 										className="linkish"
@@ -294,83 +333,99 @@ export default function TakePayment() {
 									</button>
 								</p>
 							) : null}
+							<details className="gp-connect till-wallet-panel">
+								<summary>
+									<Icon name="wallet" size={16} />
+									Connect a wallet instead
+								</summary>
+								<SolanaWalletPanel
+									title="Connect Solana (optional)"
+									onConnected={setConnected}
+								/>
+							</details>
+						</section>
+
+						<div className="gp-action">
 							{formError ? (
 								<Notice tone="warning" data-testid="till-form-error">
 									{formError}
 								</Notice>
 							) : null}
-							<div className="form-actions">
-								<Button type="submit" disabled={creating || authBlocked}>
-									{creating ? "Creating…" : "Create QR"}
-								</Button>
-							</div>
-						</form>
-						<div className="till-wallet-panel">
-							<SolanaWalletPanel
-								title="Connect Solana (optional)"
-								onConnected={setConnected}
-							/>
+							<Button
+								type="submit"
+								form="till-form"
+								className="gp-create"
+								disabled={creating || authBlocked}
+							>
+								<Icon name="qr" size={20} />
+								{creating ? "Creating…" : "Create QR"}
+							</Button>
 						</div>
-					</Panel>
+					</div>
 				) : null}
 
 				{phase === "waiting" && request && amountLabel ? (
-					<div data-testid="till-waiting">
-						<Panel
-							title="Waiting for payment…"
-							description="Show this QR to the customer. Status updates every few seconds."
-							actions={<SimulatedLabel />}
-						>
+					<div data-testid="till-waiting" className="gp-waiting-wrap">
+						<section className="gp-card gp-waiting">
 							<div className="till-waiting">
 								<div className="till-qr-stack">
-									<div className="till-qr" data-testid="till-qr">
-										<QrCode
-											value={request.solanaPayUrl}
-											label="Solana Pay QR"
-											size={printMode ? 420 : 280}
-										/>
-									</div>
+									<p className="gp-waiting__kicker">Scan to pay</p>
 									<p
 										className="till-waiting__amount"
 										data-testid="till-waiting-amount"
 									>
 										{amountLabel}
 									</p>
+									{request.label ? (
+										<p className="gp-waiting__label">{request.label}</p>
+									) : null}
+									<div className="till-qr" data-testid="till-qr">
+										<QrCode
+											value={request.solanaPayUrl}
+											label="Solana Pay QR"
+											size={printMode ? 420 : 320}
+										/>
+									</div>
 									<p className="till-waiting__status" role="status">
+										<span className="gp-live-dot" aria-hidden="true" />
 										Waiting for payment…
 									</p>
 								</div>
-								<div className="till-waiting__meta">
-									<StaticField label="Amount" value={amountLabel} />
-									<StaticField
-										label="Merchant wallet"
-										value={shortAddress(request.merchantWallet)}
-									/>
-									<StaticField
-										label="Expires in"
-										value={countdown.expired ? "Expired" : countdown.label}
-									/>
-								</div>
+								<dl className="till-waiting__meta">
+									<div>
+										<dt>Expires in</dt>
+										<dd>{countdown.expired ? "Expired" : countdown.label}</dd>
+									</div>
+									<div>
+										<dt>Paid to</dt>
+										<dd>
+											<code className="code-text">
+												{shortAddress(request.merchantWallet)}
+											</code>
+										</dd>
+									</div>
+								</dl>
 							</div>
-							<div className="form-actions">
+							<div className="form-actions gp-waiting__actions">
 								<Button
 									type="button"
 									variant="secondary"
 									onClick={() => setPrintMode((value) => !value)}
 									data-testid="till-print-toggle"
 								>
+									<Icon name={printMode ? "close" : "print"} size={18} />
 									{printMode ? "Exit full screen" : "Print / full screen"}
 								</Button>
 								<Button
 									type="button"
-									variant="secondary"
+									variant="ghost"
 									className="no-print"
 									onClick={resetToForm}
 								>
 									Cancel
 								</Button>
 							</div>
-						</Panel>
+						</section>
 					</div>
 				) : null}
 
@@ -383,6 +438,9 @@ export default function TakePayment() {
 						aria-labelledby="till-paid-heading"
 					>
 						<div className="till-paid-screen__card">
+							<span className="till-paid-screen__tick" aria-hidden="true">
+								<Icon name="check" size={44} />
+							</span>
 							<p className="till-paid-screen__eyebrow">Payment received</p>
 							<h2
 								className="till-paid-screen__amount"
@@ -415,7 +473,7 @@ export default function TakePayment() {
 								</p>
 							)}
 							{request.explorerUrl ? (
-								<p>
+								<p className="till-paid-screen__meta">
 									<a
 										href={request.explorerUrl}
 										target="_blank"
@@ -440,8 +498,14 @@ export default function TakePayment() {
 				) : null}
 
 				{phase === "expired" ? (
-					<div className="till-expired" data-testid="till-expired">
-						<p className="till-expired__title">Expired, create a new request</p>
+					<div className="till-expired gp-card" data-testid="till-expired">
+						<span className="till-expired__icon" aria-hidden="true">
+							<Icon name="clock" size={30} />
+						</span>
+						<p className="till-expired__title">This QR code has expired</p>
+						<p className="till-expired__text">
+							No money was taken. Make a new one to try again.
+						</p>
 						<div className="form-actions">
 							<Button type="button" onClick={resetToForm}>
 								New request

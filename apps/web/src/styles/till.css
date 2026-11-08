@@ -1,72 +1,136 @@
+/* Get paid (till): structure + print/full-screen. Look-and-feel lives in styles/pages/getpaid.css. */
 .till-page {
+	display: grid;
+	gap: 18px;
+	min-width: 0;
 	max-width: 100%;
-	overflow-x: hidden;
 }
 
 .till-devnet-note {
-	margin: 0 0 1rem;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	width: fit-content;
+	max-width: 100%;
+	margin: 0;
+	padding: 6px 12px;
+	border-radius: 999px;
+	background: var(--surface2);
+	color: var(--muted);
+	font-size: 12.5px;
+	line-height: 1.35;
+}
+
+.till-devnet-note .icon {
+	flex: none;
 }
 
 .till-wallet-panel {
-	margin-top: 1.25rem;
 	max-width: 100%;
 	overflow-x: hidden;
 }
 
 .till-waiting {
 	display: grid;
-	grid-template-columns: minmax(0, auto) minmax(0, 1fr);
-	gap: 1.5rem;
-	align-items: start;
+	grid-template-columns: minmax(0, 1fr);
+	justify-items: center;
+	gap: 1.25rem;
 	max-width: 100%;
+	text-align: center;
 }
 
 .till-qr-stack {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 0.75rem;
+	gap: 0.6rem;
 	min-width: 0;
 	width: 100%;
 }
 
 .till-qr {
-	justify-self: center;
 	width: 100%;
 	display: flex;
 	justify-content: center;
+	margin: 0.6rem 0 0.4rem;
 }
 
 .till-qr .qr-code {
-	width: min(100%, 280px);
+	width: min(100%, 320px);
 	min-width: min(280px, 100%);
 	height: auto;
-	border-radius: 12px;
+	padding: 14px;
+	border-radius: 24px;
 	border: 1px solid var(--line);
 	background: #fff;
+	box-shadow:
+		0 0 0 6px color-mix(in srgb, var(--brand) 10%, transparent),
+		var(--shadow);
+	box-sizing: border-box;
 }
 
 .till-waiting__amount {
 	margin: 0;
 	font-family: var(--display);
-	font-size: 1.5rem;
+	font-size: clamp(2.6rem, 9vw, 3.6rem);
 	font-weight: 800;
-	letter-spacing: -0.02em;
+	letter-spacing: -0.045em;
+	line-height: 1.05;
 	text-align: center;
 }
 
 .till-waiting__status {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
 	margin: 0;
-	color: var(--ink-muted, var(--ink));
+	padding: 8px 16px;
+	border-radius: 999px;
+	background: var(--brand-soft);
+	color: var(--brand);
+	font-weight: 700;
 	text-align: center;
 }
 
 .till-waiting__meta {
-	display: grid;
-	gap: 0.75rem;
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 10px;
 	min-width: 0;
+	margin: 0;
 }
 
+.till-waiting__meta > div {
+	display: grid;
+	gap: 2px;
+	min-width: 132px;
+	padding: 10px 16px;
+	border: 1px solid var(--line);
+	border-radius: 16px;
+	background: var(--surface);
+}
+
+.till-waiting__meta dt {
+	color: var(--muted);
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.till-waiting__meta dd {
+	margin: 0;
+	font-family: var(--display);
+	font-size: 17px;
+	font-weight: 800;
+}
+
+.till-waiting__meta dd .code-text {
+	font-size: 14px;
+}
+
+/* Paid: full-screen celebration until Done. */
 .till-paid-screen {
 	position: fixed;
 	inset: 0;
@@ -77,34 +141,57 @@
 		max(16px, env(safe-area-inset-right, 0px))
 		max(16px, env(safe-area-inset-bottom, 0px))
 		max(16px, env(safe-area-inset-left, 0px));
-	background: #14653a;
+	background:
+		radial-gradient(
+			600px 400px at 50% 20%,
+			rgba(255, 255, 255, 0.18),
+			transparent 70%
+		),
+		linear-gradient(160deg, #13a06d 0%, #0f8a5f 45%, #0a6247 100%);
 	color: #f4fff8;
 	overflow: auto;
 }
 
 .till-paid-screen__card {
-	width: min(100%, 420px);
+	width: min(100%, 440px);
 	display: grid;
-	gap: 0.85rem;
+	gap: 0.8rem;
 	justify-items: center;
 	text-align: center;
+}
+
+.till-paid-screen__tick {
+	display: inline-grid;
+	place-items: center;
+	width: 96px;
+	height: 96px;
+	margin-bottom: 0.4rem;
+	border-radius: 50%;
+	background: #fff;
+	color: #0f8a5f;
+	box-shadow: 0 0 0 14px rgba(255, 255, 255, 0.16);
+	animation: till-pop 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+.till-paid-screen__tick .icon {
+	stroke-width: 3;
 }
 
 .till-paid-screen__eyebrow {
 	margin: 0;
 	font-size: 0.9rem;
 	font-weight: 700;
-	letter-spacing: 0.08em;
+	letter-spacing: 0.12em;
 	text-transform: uppercase;
-	opacity: 0.85;
+	opacity: 0.9;
 }
 
 .till-paid-screen__amount {
 	margin: 0;
 	font-family: var(--display);
-	font-size: clamp(2.2rem, 9vw, 3.4rem);
+	font-size: clamp(2.4rem, 10vw, 3.8rem);
 	font-weight: 800;
-	letter-spacing: -0.03em;
+	letter-spacing: -0.045em;
 	line-height: 1.05;
 	overflow-wrap: anywhere;
 }
@@ -113,43 +200,83 @@
 	margin: 0;
 	font-size: 1rem;
 	line-height: 1.4;
+	opacity: 0.92;
 	overflow-wrap: anywhere;
+}
+
+.till-paid-screen .muted {
+	color: inherit;
 }
 
 .till-paid-screen .form-actions {
 	width: 100%;
 	justify-content: center;
-	margin-top: 0.5rem;
+	margin-top: 0.8rem;
+	padding-top: 0;
+	border-top: 0;
 }
 
 .till-paid-screen .button {
-	min-width: min(100%, 220px);
-	min-height: 48px;
-	background: #f4fff8;
-	color: #14653a;
-	border-color: #f4fff8;
+	min-width: min(100%, 240px);
+	min-height: 56px;
+	background: #fff;
+	background-image: none;
+	color: #0a6247;
+	border-color: #fff;
+	font-size: 17px;
+	box-shadow: 0 14px 30px rgba(0, 40, 25, 0.25);
+}
+
+.till-paid-screen .code-text {
+	padding: 2px 8px;
+	border-radius: 8px;
+	background: rgba(255, 255, 255, 0.18);
+	color: #fff;
 }
 
 .till-paid-screen a {
 	color: #f4fff8;
+	font-weight: 700;
 }
 
+/* Expired */
 .till-expired {
-	padding: 2rem 1.25rem;
-	border-radius: 16px;
-	background: color-mix(in srgb, var(--ink) 6%, var(--surface));
-	border: 1px solid var(--line);
+	display: grid;
+	justify-items: center;
+	gap: 8px;
+	padding: 2.2rem 1.25rem;
 	text-align: center;
 	max-width: 100%;
 	overflow-x: hidden;
 }
 
+.till-expired__icon {
+	display: inline-grid;
+	place-items: center;
+	width: 68px;
+	height: 68px;
+	border-radius: 50%;
+	background: var(--warn-soft);
+	color: var(--warn);
+}
+
 .till-expired__title {
-	margin: 0 0 0.75rem;
+	margin: 0.3rem 0 0;
 	font-family: var(--display);
-	font-size: clamp(1.3rem, 2.5vw, 1.8rem);
-	font-weight: 700;
-	color: var(--ink-muted, var(--ink));
+	font-size: clamp(1.4rem, 2.5vw, 1.8rem);
+	font-weight: 800;
+	letter-spacing: -0.03em;
+}
+
+.till-expired__text {
+	margin: 0;
+	color: var(--muted);
+}
+
+.till-expired .form-actions {
+	justify-content: center;
+	border-top: 0;
+	padding-top: 0;
 }
 
 button.linkish {
@@ -159,12 +286,17 @@ button.linkish {
 	background: none;
 	color: var(--brand, #1a5fb4);
 	font: inherit;
+	font-weight: 600;
 	text-decoration: underline;
 	cursor: pointer;
 }
 
-/* Full screen / print: hide chrome, centre QR, large amount under it. */
-html.till-print .app-sidebar {
+/* Full screen / print: hide chrome, centre QR, large amount over it. */
+html.till-print .app-sidebar,
+html.till-print .app-topbar,
+html.till-print .mode-banner,
+html.till-print .app-footer,
+html.till-print .tabbar {
 	display: none;
 }
 
@@ -180,9 +312,6 @@ html.till-print .till-page {
 }
 
 html.till-print .till-waiting {
-	grid-template-columns: 1fr;
-	justify-items: center;
-	text-align: center;
 	min-height: 70vh;
 	align-content: center;
 }
@@ -192,7 +321,7 @@ html.till-print .till-waiting__meta {
 }
 
 html.till-print .till-waiting__amount {
-	font-size: max(48px, 3rem);
+	font-size: max(48px, 4rem);
 	line-height: 1.1;
 }
 
@@ -210,16 +339,38 @@ html.till-print .no-print {
 }
 
 html.till-print .page-header,
-html.till-print .till-devnet-note,
-html.till-print .panel__description,
-html.till-print .panel__actions {
+html.till-print .till-devnet-note {
 	display: none;
+}
+
+html.till-print .gp-waiting {
+	border: 0;
+	box-shadow: none;
+	background: transparent;
 }
 
 /* Keep the exit control reachable in full-screen till mode. */
 html.till-print .form-actions {
 	justify-content: center;
 	margin-top: 1.5rem;
+	border-top: 0;
+}
+
+@keyframes till-pop {
+	from {
+		transform: scale(0.5);
+		opacity: 0;
+	}
+	to {
+		transform: scale(1);
+		opacity: 1;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.till-paid-screen__tick {
+		animation: none;
+	}
 }
 
 @media print {
@@ -244,26 +395,18 @@ html.till-print .form-actions {
 
 	.till-qr .qr-code {
 		width: 360px;
+		box-shadow: none;
 	}
 }
 
 @media (max-width: 720px) {
-	.till-waiting {
-		grid-template-columns: 1fr;
-	}
-
 	.till-qr .qr-code {
-		width: min(100%, 280px);
+		width: min(100%, 300px);
 		min-width: min(280px, 100%);
-	}
-
-	.form-grid {
-		grid-template-columns: 1fr;
 	}
 }
 
 @media (max-width: 390px) {
-	.till-page,
 	.till-waiting,
 	.till-paid,
 	.till-expired,

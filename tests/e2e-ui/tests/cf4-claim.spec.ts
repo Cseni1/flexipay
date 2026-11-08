@@ -128,6 +128,8 @@ test.describe("CF4 claim page", () => {
 
 		await expect(page.getByText("25.00")).toBeVisible()
 		await expect(page.getByText(/US → PH/)).toBeVisible()
+		// Technical fee note lives in the Details disclosure (plain words up front).
+		await page.getByTestId("claim-details").locator("summary").click()
 		await expect(
 			page.getByText(/Fee and net are not fields of the public claim view/),
 		).toBeVisible()
@@ -156,7 +158,7 @@ test.describe("CF4 claim page", () => {
 		await expect(
 			page
 				.locator(".claim-status-row")
-				.getByText("Processing", { exact: true }),
+				.getByText("On its way", { exact: true }),
 		).toBeVisible()
 		expect(counts.acceptCount()).toBe(1)
 		expect(counts.acceptBody()).toEqual({
@@ -177,7 +179,7 @@ test.describe("CF4 claim page", () => {
 		expect(counts.acceptAuthHeader()).toBeUndefined()
 
 		await expect(
-			page.getByText(/Paid: confirmed by the claim API/),
+			page.getByText(/Paid\. We have confirmed your money was released/),
 		).toBeVisible({
 			timeout: 5_000,
 		})
@@ -235,7 +237,7 @@ test.describe("CF4 claim page", () => {
 			},
 		})
 		await expect(
-			page.getByText(/Paid: confirmed by the claim API/),
+			page.getByText(/Paid\. We have confirmed your money was released/),
 		).toBeVisible({ timeout: 5_000 })
 	})
 
@@ -250,7 +252,7 @@ test.describe("CF4 claim page", () => {
 
 		await expect(page.getByText("Claim Accepted")).toBeVisible()
 		await expect(
-			page.getByText(/Paid: confirmed by the claim API/),
+			page.getByText(/Paid\. We have confirmed your money was released/),
 		).toBeVisible({ timeout: 5_000 })
 		expect(counts.acceptCount()).toBe(0)
 		expect(counts.getCount()).toBeGreaterThanOrEqual(2)
@@ -416,10 +418,8 @@ test.describe("CF4 claim page", () => {
 			claim: claimFixture({ paymentStatus: "funded" }),
 		})
 		await openClaim(page)
-		await expect(page.getByText("Funded", { exact: true })).toBeVisible()
-		await expect(
-			page.getByText(/not ready to accept yet.*processing/i),
-		).toBeVisible()
+		await expect(page.getByText("Paid in", { exact: true })).toBeVisible()
+		await expect(page.getByText(/not ready to accept yet/i)).toBeVisible()
 
 		await page.getByRole("radio", { name: /Crypto wallet/ }).check()
 		await page

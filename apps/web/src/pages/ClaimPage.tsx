@@ -16,16 +16,12 @@ import {
 import { NoWalletYetHelp } from "../components/claim/NoWalletYetHelp"
 import { CopyableValue } from "../components/CopyableValue"
 import { SolanaWalletPanel } from "../components/solana/SolanaWalletPanel"
-import {
-	Button,
-	InfoPopover,
-	Notice,
-	SimulatedLabel,
-	TextField,
-} from "../components/ui"
+import { Button, Notice, SimulatedLabel, TextField } from "../components/ui"
+import { Icon, type IconName } from "../components/ui/Icon"
 import { useLiveMoney } from "../live/LiveMoney"
 import { displayMoney, isPoundDisplayCurrency } from "../payments/quoteDisplay"
 import { type ConnectedSolanaWallet } from "../solana/walletStandard"
+import "../styles/pages/claim.css"
 
 type DestinationType = ClaimView["allowedDestinationTypes"][number]
 
@@ -40,14 +36,14 @@ const CURRENCY_DECIMALS: Readonly<Record<string, number>> = {
 
 const PAYMENT_STATUS_LABELS: Readonly<Record<string, string>> = {
 	quoted: "Quoted",
-	awaiting_funding: "Awaiting funding",
-	funded: "Funded",
-	processing: "Processing",
-	paid: "Paid",
+	awaiting_funding: "Waiting for payment",
+	funded: "Paid in",
+	processing: "On its way",
+	paid: "Delivered",
 	cancelled: "Cancelled",
 	failed: "Failed",
-	refunding: "Refunding",
-	refunded: "Refunded",
+	refunding: "Returning money",
+	refunded: "Money returned",
 	expired: "Expired",
 }
 
@@ -83,21 +79,31 @@ const supportsClaimAccept = (
 
 const optionCopy = (
 	type: DestinationType,
-): { title: string; detail: string } => {
+): { title: string; detail: string; icon: IconName } => {
 	switch (type) {
 		case "bank_account":
-			return { title: "Bank account", detail: "Local bank payout" }
+			return {
+				title: "Bank account",
+				detail: "Straight into your bank",
+				icon: "bank",
+			}
 		case "ewallet":
-			return { title: "E-wallet", detail: "Mobile wallet payout" }
+			return {
+				title: "E-wallet",
+				detail: "To your mobile money app",
+				icon: "phone",
+			}
 		case "crypto_wallet":
 			return {
 				title: "Crypto wallet",
-				detail: "Stellar or Solana USDC destination",
+				detail: "Digital dollars (USDC) to your own wallet",
+				icon: "wallet",
 			}
 		case "crypto_custodial":
 			return {
 				title: "Custodial wallet",
-				detail: "Backend-held testnet wallet",
+				detail: "A test wallet we hold for you",
+				icon: "shield",
 			}
 	}
 }
@@ -161,9 +167,9 @@ const paymentStatusTone = (status: string): string => {
 }
 
 const claimStatusLabel = (status: ClaimView["status"]): string => {
-	if (status === "accepted") return "Accepted"
-	if (status === "expired") return "Expired"
-	return "Open"
+	if (status === "accepted") return "accepted"
+	if (status === "expired") return "expired"
+	return "open"
 }
 
 const paymentStatusLabel = (status: string): string =>
@@ -175,17 +181,26 @@ const closedClaimMessage = (claim: ClaimView): string => {
 	}
 	if (claim.paymentStatus === "paid") {
 		if (claim.releaseEvidence?.network === "solana") {
-			return "Paid: backend verified the Solana USDC transfer on-chain before marking paid."
+			return "Paid. We checked the Solana transfer on-chain before marking it paid."
 		}
-		return "Paid: confirmed by the claim API after the release."
+		return "Paid. We have confirmed your money was released."
 	}
 	if (claim.paymentStatus === "failed") {
-		return "Failed: the payment did not complete. No funds were marked paid."
+		return "This payment did not go through, so nothing was marked as paid."
 	}
 	if (CLOSED_PAYMENT_STATUSES.has(claim.paymentStatus)) {
-		return `The claim API reports ${paymentStatusLabel(claim.paymentStatus)}. This page does not treat that as paid.`
+		return `This payment is now: ${paymentStatusLabel(claim.paymentStatus)}. It has not been paid to you.`
 	}
-	return "Accepted. Waiting for the sender's verified Solana transfer (or vault release). This page polls until paid or closed."
+	return "We are waiting for the sender's money to reach you. This page updates by itself, so you can leave it open."
+}
+
+const closedClaimTitle = (claim: ClaimView): string => {
+	if (claim.status === "expired") return "This link has expired"
+	if (claim.paymentStatus === "paid") return "Money delivered"
+	if (claim.paymentStatus === "failed") return "This payment didn't go through"
+	if (CLOSED_PAYMENT_STATUSES.has(claim.paymentStatus))
+		return "This payment was stopped"
+	return "You're all set"
 }
 
 const notReadyMessage = (claim: ClaimView): string => {
@@ -193,12 +208,12 @@ const notReadyMessage = (claim: ClaimView): string => {
 		claim.paymentStatus === "quoted" ||
 		claim.paymentStatus === "awaiting_funding"
 	) {
-		return "This claim is open, but the payment is not funded yet. Ask the sender to fund it before accepting."
+		return "The sender hasn't paid this in yet. Ask them to pay it, then come back to accept."
 	}
 	if (claim.paymentStatus === "funded") {
-		return "This claim is open, but the payment is not ready to accept yet. Wait until the API reports processing (settle waiting), then accept."
+		return "The sender has paid in, but this is not ready to accept yet. Check back in a minute."
 	}
-	return `This claim cannot be accepted while the payment is ${paymentStatusLabel(claim.paymentStatus)}.`
+	return `This can't be accepted while the payment is: ${paymentStatusLabel(claim.paymentStatus)}.`
 }
 
 const closedClaimTone = (claim: ClaimView): "info" | "warning" =>
@@ -414,69 +429,58 @@ export default function ClaimPage() {
 		? formatAmount(claim.amount.amount, claim.amount.currency)
 		: null
 
+	const isOpen = claim?.status === "open"
+	const step2Ready = Boolean(selectedType)
+	const doneTone = claim ? closedClaimTone(claim) : "info"
+	const doneIcon: IconName =
+		claim?.paymentStatus === "paid"
+			? "check"
+			: doneTone === "warning"
+				? "alert"
+				: "clock"
+
 	return (
-		<main className="phone-shell">
-			<div className="phone-frame">
-				<header className="phone-header">
-					<span className="phone-brand">FlexiPay</span>
+		<main className="claim-page">
+			<div className="claim-page__inner">
+				<header className="claim-top">
+					<span className="claim-brand">
+						<span className="claim-brand__mark" aria-hidden="true">
+							<Icon name="bolt" size={18} />
+						</span>
+						<span className="claim-brand__text">
+							<span className="claim-brand__name">FlexiPay</span>
+							<span className="claim-brand__by">by FlexiWork</span>
+						</span>
+					</span>
 					<SimulatedLabel />
 				</header>
 
-				<div className="stack">
-					<div>
-						<p className="eyebrow">Payment from Demo Platform</p>
-						<h1 className="phone-title">Claim your payment</h1>
-						<p className="muted">
-							{live
-								? "Choose how you want to be paid. This payment uses live money on Solana mainnet."
-								: "Choose how you want to be paid. Bank and e-wallet payouts are simulated; Solana devnet only; no real money moves."}
-						</p>
-					</div>
-
-					{loading ? (
-						<p className="muted" role="status">
-							Loading claim…
-						</p>
-					) : null}
-
-					{loadError && !claim ? (
-						<div className="stack">
-							<Notice tone="warning">{loadError.message}</Notice>
-							<Button
-								variant="secondary"
-								onClick={() => setReloadKey((value) => value + 1)}
-							>
-								Try again
-							</Button>
-						</div>
-					) : null}
+				<section
+					className={`claim-hero${claim ? "" : " claim-hero--empty"}`}
+					aria-labelledby="claim-title"
+				>
+					<p className="claim-hero__eyebrow">
+						<Icon name="gift" size={15} />
+						{claim ? "You've got money" : "Payment from Demo Platform"}
+					</p>
+					<h1 className="claim-hero__title" id="claim-title">
+						Claim your payment
+					</h1>
 
 					{claim && amount ? (
 						<>
-							<div className="amount-display">
-								<div>
-									<span className="amount-display__label">Amount</span>
-									<span
-										className="amount-display__value"
-										data-testid="claim-amount"
-									>
-										{amount.value}
+							<p className="claim-hero__amount">
+								<span className="claim-hero__value" data-testid="claim-amount">
+									{amount.value}
+								</span>
+								{amount.currency ? (
+									<span className="claim-hero__currency">
+										{amount.currency}
 									</span>
-									{amount.currency ? (
-										<span className="amount-display__currency">
-											{amount.currency}
-										</span>
-									) : null}
-								</div>
-								<InfoPopover label="Amount and fee">
-									The amount is the expected receive side from the payment
-									quote. The public claim response does not include a fee or net
-									amount, so none is inferred here.
-								</InfoPopover>
-							</div>
-							<p className="form-note">
-								Fee and net are not fields of the public claim view; no fee is
-								computed in the browser.
+								) : null}
+							</p>
+							<p className="claim-hero__from">
+								From <strong>Demo Platform</strong>
 							</p>
 
 							<div className="claim-status-row">
@@ -497,240 +501,366 @@ export default function ClaimPage() {
 							</div>
 
 							<div className="claim-meta" data-testid="claim-expiry">
-								<p>
+								<p className="claim-meta__chip">
+									<Icon name="globe" size={14} />
 									{claim.corridor.from.country} → {claim.corridor.to.country} ·{" "}
 									{claim.corridor.to.currency}
 								</p>
 								{(() => {
 									const until = formatClaimValidUntil(claim.expiresAt)
 									const remaining = aboutDaysLeft(claim.expiresAt)
+									if (claim.status === "accepted") return null
 									if (claim.status === "expired" || expired) {
 										return (
-											<p data-testid="claim-expiry-expired">
+											<p
+												className="claim-meta__chip claim-meta__chip--bad"
+												data-testid="claim-expiry-expired"
+											>
+												<Icon name="clock" size={14} />
 												Expired (was valid until {until}). Ask the sender for a
 												new link.
 											</p>
 										)
 									}
 									return (
-										<p data-testid="claim-expiry-open">
+										<p
+											className="claim-meta__chip"
+											data-testid="claim-expiry-open"
+										>
+											<Icon name="clock" size={14} />
 											Valid until {until}
 											{remaining ? ` · ${remaining}` : ""}.
 										</p>
 									)
 								})()}
 							</div>
-
-							{claim.status === "open" ? (
-								<>
-									<fieldset className="option-list">
-										<legend className="field__label">Receive to</legend>
-										{claim.allowedDestinationTypes.map((type) => {
-											const copy = optionCopy(type)
-											const supported = supportsClaimAccept(type)
-											return (
-												<label className="option-card" key={type}>
-													<input
-														type="radio"
-														name="receive"
-														value={type}
-														checked={selectedType === type}
-														disabled={accepting || expired || !supported}
-														onChange={() => updateSelection(type)}
-													/>
-													<span className="option-card__body">
-														<span className="option-card__title">
-															{copy.title}
-														</span>
-														<span className="option-card__detail">
-															{supported
-																? copy.detail
-																: "Not available for this claim."}
-														</span>
-													</span>
-												</label>
-											)
-										})}
-									</fieldset>
-									<p className="form-note">
-										Bank, e-wallet and crypto destinations use the claim accept
-										API. Bank and e-wallet payouts remain simulated.
-									</p>
-									{selectedType ? (
-										<div className="claim-detail">
-											{isCrypto(selectedType) ? (
-												<fieldset
-													className="stack"
-													data-testid="claim-crypto-network"
-												>
-													<legend className="field-label">
-														Crypto network
-													</legend>
-													<label className="option-card">
-														<input
-															type="radio"
-															name="crypto-network"
-															checked={cryptoNetwork === "solana"}
-															disabled={accepting || expired}
-															onChange={() => {
-																setCryptoNetwork("solana")
-																setDetail("")
-																setSolanaConnected(null)
-																idempotencyKey.current = null
-															}}
-														/>
-														<span>
-															<span className="option-card__title">
-																Solana USDC (devnet test)
-															</span>
-															<span className="option-card__detail">
-																Confirm this address before the sender pays. Not
-																mainnet USDC.
-															</span>
-														</span>
-													</label>
-													<label className="option-card">
-														<input
-															type="radio"
-															name="crypto-network"
-															checked={cryptoNetwork === "stellar"}
-															disabled={accepting || expired}
-															onChange={() => {
-																setCryptoNetwork("stellar")
-																setDetail("")
-																setSolanaConnected(null)
-																idempotencyKey.current = null
-															}}
-														/>
-														<span>
-															<span className="option-card__title">
-																Stellar testnet
-															</span>
-															<span className="option-card__detail">
-																Existing vault release path
-															</span>
-														</span>
-													</label>
-												</fieldset>
-											) : null}
-											{isCrypto(selectedType) && cryptoNetwork === "solana" ? (
-												<>
-													<p className="form-note">
-														Bank and e-wallet methods stay in the architecture
-														but are not labelled LIVE without a verified
-														provider.
-													</p>
-													<SolanaWalletPanel
-														title="Confirm Solana destination wallet"
-														onConnected={(
-															session: ConnectedSolanaWallet | null,
-														) => {
-															setSolanaConnected(session)
-															if (!session) return
-															updateDetail(session.address)
-														}}
-													/>
-												</>
-											) : null}
-											<TextField
-												id="claim-detail"
-												label={detailLabel(selectedType, cryptoNetwork)}
-												placeholder={detailPlaceholder(
-													selectedType,
-													cryptoNetwork,
-												)}
-												autoComplete="off"
-												value={detail}
-												disabled={accepting || expired}
-												onChange={(event) => updateDetail(event.target.value)}
-												hint={
-													isCrypto(selectedType)
-														? cryptoNetwork === "solana"
-															? "Devnet only. Connect a wallet or paste a public Solana address; never a secret key."
-															: "Testnet only. Paste a public wallet address; never a secret key."
-														: "Only the claimed endpoint type is sent. Simulated fiat is not LIVE."
-												}
-											/>
-											{selectedType === "crypto_wallet" &&
-											cryptoNetwork === "solana" &&
-											!solanaConnected ? (
-												<NoWalletYetHelp />
-											) : null}
-										</div>
-									) : null}
-									{expired ? (
-										<Notice tone="warning" data-testid="claim-expired-notice">
-											{CLAIM_EXPIRED_ASK_SENDER}
-										</Notice>
-									) : null}
-									{!paymentAcceptable ? (
-										<Notice tone="warning">{notReadyMessage(claim)}</Notice>
-									) : null}
-									{acceptError ? (
-										<Notice tone="warning" data-testid="claim-accept-error">
-											{acceptError}
-										</Notice>
-									) : null}
-									{hasSupportedType ? (
-										<>
-											<Button
-												onClick={() => void handleAccept()}
-												disabled={!canAccept}
-												data-testid="claim-accept"
-											>
-												{accepting ? "Accepting…" : "Accept payment"}
-											</Button>
-											<p className="form-note">
-												Accepting sends one idempotent request. For Solana,
-												accept only locks your destination — PAID happens after
-												the sender&apos;s transfer is verified on-chain.
-											</p>
-										</>
-									) : (
-										<Notice tone="warning">
-											This claim has no endpoint that the current claim API can
-											accept.
-										</Notice>
-									)}
-								</>
-							) : (
-								<>
-									<Notice
-										tone={closedClaimTone(claim)}
-										data-testid="claim-closed-status"
-									>
-										{closedClaimMessage(claim)}
-									</Notice>
-									{claim.paymentStatus === "paid" && claim.releaseEvidence ? (
-										<Notice data-testid="claim-release-evidence">
-											Verified on {claim.releaseEvidence.network}. Signature:{" "}
-											<CopyableValue
-												value={claim.releaseEvidence.signature}
-												label="Copy signature"
-												data-testid="claim-release-signature"
-											/>
-											{claim.releaseEvidence.explorerUrl ? (
-												<>
-													{" "}
-													<a
-														href={claim.releaseEvidence.explorerUrl}
-														target="_blank"
-														rel="noreferrer"
-														data-testid="claim-explorer-link"
-													>
-														View on Explorer
-													</a>
-												</>
-											) : null}
-										</Notice>
-									) : null}
-								</>
-							)}
-
-							{pollError ? <Notice tone="warning">{pollError}</Notice> : null}
 						</>
 					) : null}
-				</div>
+				</section>
+
+				<p className="claim-testnote">
+					<Icon name="shield" size={14} />
+					{live
+						? "This payment uses live money on Solana mainnet."
+						: "Test mode: bank and e-wallet payouts are simulated. Solana devnet only; no real money moves."}
+				</p>
+
+				{loading ? (
+					<div className="claim-card claim-loading" role="status">
+						<span className="claim-spinner" aria-hidden="true" />
+						Loading claim…
+					</div>
+				) : null}
+
+				{loadError && !claim ? (
+					<div className="claim-card claim-problem">
+						<span className="claim-problem__icon" aria-hidden="true">
+							<Icon name="link" size={26} />
+						</span>
+						<h2 className="claim-problem__title">
+							We couldn&apos;t open this link
+						</h2>
+						<p className="claim-problem__text">{loadError.message}</p>
+						<p className="claim-problem__hint">
+							Check you used the whole link, or ask the person who sent it for a
+							new one.
+						</p>
+						<Button
+							variant="secondary"
+							onClick={() => setReloadKey((value) => value + 1)}
+						>
+							Try again
+						</Button>
+					</div>
+				) : null}
+
+				{claim && isOpen ? (
+					<div className="claim-steps">
+						<section className="claim-card claim-step">
+							<h2 className="claim-step__title">
+								<span className="claim-step__num" aria-hidden="true">
+									1
+								</span>
+								How do you want your money?
+							</h2>
+							<fieldset className="claim-choices">
+								<legend className="visually-hidden">Receive to</legend>
+								{claim.allowedDestinationTypes.map((type) => {
+									const copy = optionCopy(type)
+									const supported = supportsClaimAccept(type)
+									return (
+										<label
+											className={`claim-choice${supported ? "" : " claim-choice--off"}`}
+											key={type}
+										>
+											<input
+												type="radio"
+												name="receive"
+												value={type}
+												checked={selectedType === type}
+												disabled={accepting || expired || !supported}
+												onChange={() => updateSelection(type)}
+											/>
+											<span className="claim-choice__icon" aria-hidden="true">
+												<Icon name={copy.icon} size={24} />
+											</span>
+											<span className="claim-choice__body">
+												<span className="claim-choice__title">
+													{copy.title}
+												</span>{" "}
+												<span className="claim-choice__detail">
+													{supported
+														? copy.detail
+														: "Not available for this claim."}
+												</span>
+											</span>
+											<span className="claim-choice__tick" aria-hidden="true">
+												<Icon name="check" size={16} />
+											</span>
+										</label>
+									)
+								})}
+							</fieldset>
+						</section>
+
+						{step2Ready && selectedType ? (
+							<section className="claim-card claim-step claim-detail">
+								<h2 className="claim-step__title">
+									<span className="claim-step__num" aria-hidden="true">
+										2
+									</span>
+									{isCrypto(selectedType)
+										? "Which wallet should get it?"
+										: selectedType === "ewallet"
+											? "What's your e-wallet number?"
+											: "Where should we send it?"}
+								</h2>
+								{isCrypto(selectedType) ? (
+									<fieldset
+										className="claim-networks"
+										data-testid="claim-crypto-network"
+									>
+										<legend className="claim-networks__legend">
+											Pick your wallet&apos;s network
+										</legend>
+										<label className="claim-network">
+											<input
+												type="radio"
+												name="crypto-network"
+												checked={cryptoNetwork === "solana"}
+												disabled={accepting || expired}
+												onChange={() => {
+													setCryptoNetwork("solana")
+													setDetail("")
+													setSolanaConnected(null)
+													idempotencyKey.current = null
+												}}
+											/>
+											<span className="claim-network__body">
+												<span className="claim-network__title">
+													Solana USDC (devnet test)
+												</span>{" "}
+												<span className="claim-network__detail">
+													Phantom, Solflare and similar. Test network only.
+												</span>
+											</span>
+										</label>
+										<label className="claim-network">
+											<input
+												type="radio"
+												name="crypto-network"
+												checked={cryptoNetwork === "stellar"}
+												disabled={accepting || expired}
+												onChange={() => {
+													setCryptoNetwork("stellar")
+													setDetail("")
+													setSolanaConnected(null)
+													idempotencyKey.current = null
+												}}
+											/>
+											<span className="claim-network__body">
+												<span className="claim-network__title">
+													Stellar testnet
+												</span>{" "}
+												<span className="claim-network__detail">
+													Stellar wallets. Test network only.
+												</span>
+											</span>
+										</label>
+									</fieldset>
+								) : null}
+								{isCrypto(selectedType) && cryptoNetwork === "solana" ? (
+									<div className="claim-solana">
+										<SolanaWalletPanel
+											title="Connect your Solana wallet"
+											onConnected={(session: ConnectedSolanaWallet | null) => {
+												setSolanaConnected(session)
+												if (!session) return
+												updateDetail(session.address)
+											}}
+										/>
+										<p className="claim-fine">
+											Bank and e-wallet payouts are not labelled LIVE without a
+											verified provider.
+										</p>
+									</div>
+								) : null}
+								<TextField
+									id="claim-detail"
+									label={detailLabel(selectedType, cryptoNetwork)}
+									placeholder={detailPlaceholder(selectedType, cryptoNetwork)}
+									autoComplete="off"
+									value={detail}
+									disabled={accepting || expired}
+									onChange={(event) => updateDetail(event.target.value)}
+									hint={
+										isCrypto(selectedType)
+											? cryptoNetwork === "solana"
+												? "Connect your wallet or paste its public address. Never share a secret key or recovery phrase."
+												: "Paste your public wallet address. Never share a secret key or recovery phrase."
+											: "Only these details are shared to pay you."
+									}
+								/>
+								{selectedType === "crypto_wallet" &&
+								cryptoNetwork === "solana" &&
+								!solanaConnected ? (
+									<NoWalletYetHelp />
+								) : null}
+							</section>
+						) : null}
+
+						<section className="claim-card claim-step claim-step--action">
+							<h2 className="claim-step__title">
+								<span className="claim-step__num" aria-hidden="true">
+									{step2Ready ? 3 : 2}
+								</span>
+								Get your money
+							</h2>
+							{expired ? (
+								<Notice tone="warning" data-testid="claim-expired-notice">
+									{CLAIM_EXPIRED_ASK_SENDER}
+								</Notice>
+							) : null}
+							{!paymentAcceptable ? (
+								<Notice tone="warning">{notReadyMessage(claim)}</Notice>
+							) : null}
+							{acceptError ? (
+								<Notice tone="warning" data-testid="claim-accept-error">
+									{acceptError}
+								</Notice>
+							) : null}
+							{hasSupportedType ? (
+								<>
+									<Button
+										className="claim-accept"
+										onClick={() => void handleAccept()}
+										disabled={!canAccept}
+										data-testid="claim-accept"
+									>
+										{accepting ? "Accepting…" : "Accept payment"}
+									</Button>
+									<p className="claim-fine claim-fine--center">
+										<Icon name="lock" size={13} />
+										{!selectedType
+											? "Choose how you want your money to continue."
+											: !detail.trim()
+												? "Add your details above to continue."
+												: "We only use these details to pay you."}
+									</p>
+								</>
+							) : (
+								<Notice tone="warning">
+									This claim can&apos;t be accepted here yet. Ask the sender for
+									help.
+								</Notice>
+							)}
+						</section>
+					</div>
+				) : null}
+
+				{claim && !isOpen ? (
+					<>
+						<section
+							className={`claim-card claim-done claim-done--${claim.paymentStatus === "paid" ? "ok" : doneTone}`}
+							data-testid="claim-closed-status"
+							role="status"
+						>
+							<span className="claim-done__icon" aria-hidden="true">
+								<Icon name={doneIcon} size={30} />
+							</span>
+							<h2 className="claim-done__title">{closedClaimTitle(claim)}</h2>
+							<p className="claim-done__text">{closedClaimMessage(claim)}</p>
+							{claim.status === "accepted" &&
+							!TERMINAL_PAYMENT_STATUSES.has(claim.paymentStatus) ? (
+								<span className="claim-done__pulse" aria-hidden="true">
+									<span />
+									<span />
+									<span />
+								</span>
+							) : null}
+						</section>
+						{claim.paymentStatus === "paid" && claim.releaseEvidence ? (
+							<section
+								className="claim-card claim-proof"
+								data-testid="claim-release-evidence"
+							>
+								<p className="claim-proof__title">
+									<Icon name="shield" size={16} />
+									Proof of payment · verified on{" "}
+									{claim.releaseEvidence.network === "solana"
+										? "Solana"
+										: claim.releaseEvidence.network}
+								</p>
+								<CopyableValue
+									value={claim.releaseEvidence.signature}
+									label="Copy signature"
+									data-testid="claim-release-signature"
+								/>
+								{claim.releaseEvidence.explorerUrl ? (
+									<a
+										className="claim-proof__link"
+										href={claim.releaseEvidence.explorerUrl}
+										target="_blank"
+										rel="noreferrer"
+										data-testid="claim-explorer-link"
+									>
+										View on Explorer
+										<Icon name="arrow" size={14} />
+									</a>
+								) : null}
+							</section>
+						) : null}
+					</>
+				) : null}
+
+				{pollError ? <Notice tone="warning">{pollError}</Notice> : null}
+
+				{claim ? (
+					<details className="claim-details" data-testid="claim-details">
+						<summary>Details</summary>
+						<div className="claim-details__body">
+							<p>
+								The amount is the expected receive side from the payment quote.
+								Fee and net are not fields of the public claim view; no fee is
+								computed in the browser.
+							</p>
+							<p>
+								Every payout option uses the claim accept API; fiat payouts stay
+								simulated in test mode.
+							</p>
+							<p>
+								Accepting sends one idempotent request. For Solana, accept only
+								locks your destination; it is marked paid after the
+								sender&apos;s transfer is verified on-chain.
+							</p>
+						</div>
+					</details>
+				) : null}
+
+				<footer className="claim-foot">
+					<Icon name="lock" size={13} />
+					Secure payment link · FlexiPay by FlexiWork
+				</footer>
 			</div>
 		</main>
 	)

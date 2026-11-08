@@ -97,7 +97,7 @@ const cases: Array<{
 	{
 		name: "Take payment",
 		module: "../src/pages/TakePayment.tsx",
-		expect: /Take payment/,
+		expect: /Get paid/,
 	},
 	{
 		name: "Dashboard",
