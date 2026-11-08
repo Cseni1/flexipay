@@ -33,6 +33,34 @@ function moneyOf(value: string, currency: string): Money {
 	return { amount: value, currency };
 }
 
+function recipientAddressOf(
+	recipient: {
+		country: string;
+		addressLine1: string | null;
+		addressLine2: string | null;
+		addressCity: string | null;
+		addressState: string | null;
+		addressPostalCode: string | null;
+	} | null,
+): EndpointRef["recipientAddress"] {
+	if (
+		!recipient?.addressLine1 ||
+		!recipient.addressCity ||
+		!recipient.addressState ||
+		!recipient.addressPostalCode
+	) {
+		return undefined;
+	}
+	return {
+		line1: recipient.addressLine1,
+		...(recipient.addressLine2 ? { line2: recipient.addressLine2 } : {}),
+		city: recipient.addressCity,
+		state: recipient.addressState,
+		postalCode: recipient.addressPostalCode,
+		country: recipient.country,
+	};
+}
+
 function legStates(
 	legs: { kind: string; status: string }[],
 ): { kind: LegKind; status: LegStatus }[] {
@@ -144,6 +172,7 @@ async function loadRuntime(
 				details: endpoint.details as Record<string, string>,
 				recipientName: endpoint.recipient?.name,
 				recipientKind: endpoint.recipient?.kind as EndpointRef["recipientKind"],
+				recipientAddress: recipientAddressOf(endpoint.recipient),
 				partnerRefs:
 					(endpoint.partnerRefs as Record<string, string> | null) ?? undefined,
 			};

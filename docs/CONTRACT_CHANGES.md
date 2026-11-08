@@ -869,3 +869,12 @@ generated from the route table.
 - **Headers:** every API response carries `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, HSTS and `Referrer-Policy: no-referrer`. `/v1/*` responses are `Cache-Control: no-store`. No body or status changes.
 - **Passkey submit (bug 4):** a retry with the same Idempotency-Key after a successful submit returns the stored 200 instead of 409 "already accepted". A new key on an accepted claim is still 409.
 - Tracker: `docs/PLATFORM_TRACKER.md` section 4.
+
+## CCR-43 (builder, 7 Nov 2026): recipient address for partner payouts
+
+- **Problem:** Tazapay refuses Kenya bank payouts until `address.line1`, `address.city`, `address.state`, `address.postal_code` and a branch code are present. FlexiPay never collected a recipient address, and branch code stayed optional, so the failure happened after the sender had paid.
+- **Recipient:** `POST /v1/recipients` accepts an optional `address` (`line1`, `line2?`, `city`, `state`, `postalCode`, `country`). `country` must equal the recipient country. The address is returned on create and list (`address: null` when unset). Migration `20261107190000_ccr43_recipient_address` adds nullable `Recipient.addressLine1`, `addressLine2`, `addressCity`, `addressState`, `addressPostalCode`.
+- **Quote:** optional `payout.details` and `payout.address` on `POST /v1/quotes`. Routing asks the partner for `required_bank_fields`, `required_bank_codes` and `local_fields` (cached per country and currency) and excludes that partner, with a reason naming the missing fields, when they are not on the quote. The check runs only when the quote carries `payout` (the web Send form always does for bank payouts): a Kenya quote whose payout profile lacks the address or branch code is `422 not_eligible` instead of a payout failure after funding. A quote without `payout` (API clients, claim links where the recipient picks the bank later) keeps every partner; the payout leg still checks the real endpoint.
+- **Tazapay:** the beneficiary body includes `address.line1`, `address.city`, `address.state`, `address.postal_code` (and `country`, `line2` when set) when the recipient has an address. `GET /v1/payout-requirements?country=&currency=` returns `detailKeys`, `localFields` and `addressRequired` for the Send form.
+- **Web:** the Send form shows the address and marks Branch code required when that endpoint says the country needs them.
+- **OpenAPI:** `apps/api/openapi.json` regenerated.

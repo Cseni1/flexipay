@@ -12,6 +12,7 @@ import {
   QuoteSourceSchema,
   RateString,
 } from "./common.ts";
+import { RecipientAddressSchema } from "./recipients.ts";
 
 // POST /v1/quotes (ARCHITECTURE §6.4, §8, §10). MVP policy is only `cheapest` (CCR-5 / §8).
 
@@ -27,8 +28,32 @@ export const CreateQuoteRequestSchema = z
      * settle; ignored for domestic / no-settle routes. No silent product default.
      */
     feeMode: FeeModeSchema.optional(),
+    /**
+     * CCR-43: bank details and recipient address the sender will pay to.
+     * Routing drops a partner whose required fields are missing here, instead of
+     * failing after the sender has paid.
+     */
+    payout: z
+      .object({
+        details: z.record(z.string().min(1).max(64), z.string().min(1).max(200)).optional(),
+        address: RecipientAddressSchema.optional(),
+      })
+      .strict()
+      .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((req, ctx) => {
+    if (
+      req.payout?.address &&
+      req.payout.address.country !== req.destination.country
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "payout.address.country must match the destination country",
+        path: ["payout", "address", "country"],
+      });
+    }
+  });
 
 export type CreateQuoteRequest = z.infer<typeof CreateQuoteRequestSchema>;
 

@@ -1,6 +1,7 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
 	bankDetailLabel,
+	type BankDetailKey,
 	type BankDetailsForm,
 } from "../../payments/bankDetails"
 import { Button, TextField } from "../ui"
@@ -11,6 +12,8 @@ type Props = {
 	disabled?: boolean
 	/** Start with the IBAN / bank code / branch code row open. */
 	defaultMoreOpen?: boolean
+	/** CCR-43: keys the destination country requires (labels gain "(required)"). */
+	requiredKeys?: readonly BankDetailKey[]
 	"data-testid"?: string
 }
 
@@ -23,13 +26,30 @@ export function BankDetailsFields({
 	onChange,
 	disabled = false,
 	defaultMoreOpen = false,
+	requiredKeys = [],
 	"data-testid": testId = "bank-details",
 }: Props) {
 	const [moreOpen, setMoreOpen] = useState(defaultMoreOpen)
+	const required = new Set(requiredKeys)
+
+	useEffect(() => {
+		if (
+			requiredKeys.includes("branchCode") ||
+			requiredKeys.includes("bankCode") ||
+			requiredKeys.includes("iban")
+		) {
+			setMoreOpen(true)
+		}
+	}, [requiredKeys])
 
 	const patch = (key: keyof BankDetailsForm, next: string) => {
 		onChange({ ...value, [key]: next })
 	}
+
+	const labelFor = (key: BankDetailKey) =>
+		key === "accountNumber" || required.has(key)
+			? `${bankDetailLabel(key)} (required)`
+			: bankDetailLabel(key)
 
 	return (
 		<fieldset className="bank-details" data-testid={testId} disabled={disabled}>
@@ -37,7 +57,7 @@ export function BankDetailsFields({
 			<div className="form-grid">
 				<TextField
 					id={`${testId}-account-number`}
-					label={`${bankDetailLabel("accountNumber")} (required)`}
+					label={labelFor("accountNumber")}
 					value={value.accountNumber}
 					autoComplete="off"
 					aria-required="true"
@@ -45,21 +65,21 @@ export function BankDetailsFields({
 				/>
 				<TextField
 					id={`${testId}-account-holder`}
-					label={bankDetailLabel("accountHolderName")}
+					label={labelFor("accountHolderName")}
 					value={value.accountHolderName}
 					autoComplete="off"
 					onChange={(event) => patch("accountHolderName", event.target.value)}
 				/>
 				<TextField
 					id={`${testId}-bank-name`}
-					label={bankDetailLabel("bankName")}
+					label={labelFor("bankName")}
 					value={value.bankName}
 					autoComplete="off"
 					onChange={(event) => patch("bankName", event.target.value)}
 				/>
 				<TextField
 					id={`${testId}-swift`}
-					label={bankDetailLabel("swiftCode")}
+					label={labelFor("swiftCode")}
 					value={value.swiftCode}
 					autoComplete="off"
 					onChange={(event) => patch("swiftCode", event.target.value)}
@@ -79,23 +99,24 @@ export function BankDetailsFields({
 					<div className="form-grid" data-testid={`${testId}-extra`}>
 						<TextField
 							id={`${testId}-iban`}
-							label={bankDetailLabel("iban")}
+							label={labelFor("iban")}
 							value={value.iban}
 							autoComplete="off"
 							onChange={(event) => patch("iban", event.target.value)}
 						/>
 						<TextField
 							id={`${testId}-bank-code`}
-							label={bankDetailLabel("bankCode")}
+							label={labelFor("bankCode")}
 							value={value.bankCode}
 							autoComplete="off"
 							onChange={(event) => patch("bankCode", event.target.value)}
 						/>
 						<TextField
 							id={`${testId}-branch-code`}
-							label={bankDetailLabel("branchCode")}
+							label={labelFor("branchCode")}
 							value={value.branchCode}
 							autoComplete="off"
+							aria-required={required.has("branchCode") || undefined}
 							onChange={(event) => patch("branchCode", event.target.value)}
 						/>
 					</div>

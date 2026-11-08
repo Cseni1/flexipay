@@ -17,6 +17,26 @@ export interface ProviderCapabilities {
   simulated: boolean;
 }
 
+/** Postal address stored on the recipient and sent to a partner beneficiary (CCR-43). */
+export interface RecipientAddress {
+  line1: string;
+  line2?: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+}
+
+/**
+ * Partner payout fields for one country (CCR-43). `detailKeys` are FlexiPay endpoint
+ * detail names (from required_bank_fields / required_bank_codes). `localFields` are the
+ * partner's local_fields, such as address.line1.
+ */
+export interface PayoutFieldRequirements {
+  detailKeys: string[];
+  localFields: string[];
+}
+
 /**
  * The destination of a payout leg. `details` are the endpoint's unmasked values and are
  * server-side only: adapters must never return them in API responses or write them to logs.
@@ -31,6 +51,8 @@ export interface EndpointRef {
   /** Recipient name and kind, filled by the orchestrator from the DB (CCR-32). */
   recipientName?: string;
   recipientKind?: "individual" | "company";
+  /** Recipient postal address (CCR-43). */
+  recipientAddress?: RecipientAddress;
   /** Partner references persisted on the endpoint, e.g. Tazapay or BlindPay ids. */
   partnerRefs?: Record<string, string>;
 }
@@ -143,6 +165,14 @@ export interface ProviderAdapter {
    */
   reverse(externalRef: string): Promise<{ externalRef: string }>;
   health(): Promise<"up" | "down">;
+  /**
+   * CCR-43: required payout fields for a country, cached by the adapter.
+   * Routing excludes the provider when the quote endpoint is missing any of them.
+   */
+  payoutRequirements?(
+    country: string,
+    currency: string,
+  ): Promise<PayoutFieldRequirements | null>;
 }
 
 // ---------- Settlement adapter: Stellar or mock ----------

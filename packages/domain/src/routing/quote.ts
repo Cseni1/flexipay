@@ -45,6 +45,16 @@ export type BuildQuoteResult =
 	| { ok: true; quote: Quote }
 	| { ok: false; reasons: string[] };
 
+function quoteDestination(req: CreateQuoteRequest) {
+	return {
+		type: req.destination.type,
+		currency: req.destination.currency,
+		country: req.destination.country,
+		...(req.payout?.details ? { details: req.payout.details } : {}),
+		...(req.payout?.address ? { recipientAddress: req.payout.address } : {}),
+	};
+}
+
 function defaultQuoteId(): string {
 	const bytes = new Uint8Array(8);
 	crypto.getRandomValues(bytes);
@@ -162,11 +172,7 @@ async function priceForReceive(
 	let hi = toMinor(limits.max);
 	let best: { send: Money; priced: PricedRoute; diff: bigint } | null = null;
 
-	const destination = {
-		type: req.destination.type,
-		currency: req.destination.currency,
-		country: req.destination.country,
-	};
+	const destination = quoteDestination(req);
 
 	for (let iter = 0; iter < 64 && lo <= hi; iter++) {
 		const mid = (lo + hi) / 2n;
@@ -263,11 +269,7 @@ export async function buildQuote(
 		}
 	}
 
-	const destination = {
-		type: req.destination.type,
-		currency: req.destination.currency,
-		country: req.destination.country,
-	};
+	const destination = quoteDestination(req);
 
 	if (req.amount.side === "send") {
 		const priced = await priceRoute(

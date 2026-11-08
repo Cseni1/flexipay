@@ -455,6 +455,48 @@
                   "country": {
                     "type": "string",
                     "pattern": "^[A-Z]{2}$"
+                  },
+                  "address": {
+                    "type": "object",
+                    "properties": {
+                      "line1": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "line2": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "city": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      },
+                      "state": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      },
+                      "postalCode": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                      },
+                      "country": {
+                        "type": "string",
+                        "pattern": "^[A-Z]{2}$"
+                      }
+                    },
+                    "required": [
+                      "line1",
+                      "city",
+                      "state",
+                      "postalCode",
+                      "country"
+                    ],
+                    "additionalProperties": false
                   }
                 },
                 "required": [
@@ -477,7 +519,8 @@
                   "type": "object",
                   "properties": {
                     "id": {
-                      "type": "string"
+                      "type": "string",
+                      "minLength": 1
                     },
                     "name": {
                       "type": "string"
@@ -492,8 +535,62 @@
                     "country": {
                       "type": "string"
                     },
+                    "address": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "line1": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "line2": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "city": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "state": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "postalCode": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "country": {
+                              "type": "string",
+                              "pattern": "^[A-Z]{2}$"
+                            }
+                          },
+                          "required": [
+                            "line1",
+                            "line2",
+                            "city",
+                            "state",
+                            "postalCode",
+                            "country"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
-                      "type": "string"
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
                     }
                   },
                   "required": [
@@ -501,6 +598,7 @@
                     "name",
                     "kind",
                     "country",
+                    "address",
                     "createdAt"
                   ],
                   "additionalProperties": false
@@ -604,7 +702,8 @@
                         "type": "object",
                         "properties": {
                           "id": {
-                            "type": "string"
+                            "type": "string",
+                            "minLength": 1
                           },
                           "name": {
                             "type": "string"
@@ -619,8 +718,62 @@
                           "country": {
                             "type": "string"
                           },
+                          "address": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "line1": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "line2": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "minLength": 1
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "city": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "state": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "postalCode": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "country": {
+                                    "type": "string",
+                                    "pattern": "^[A-Z]{2}$"
+                                  }
+                                },
+                                "required": [
+                                  "line1",
+                                  "line2",
+                                  "city",
+                                  "state",
+                                  "postalCode",
+                                  "country"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "createdAt": {
-                            "type": "string"
+                            "type": "string",
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
                           }
                         },
                         "required": [
@@ -628,6 +781,7 @@
                           "name",
                           "kind",
                           "country",
+                          "address",
                           "createdAt"
                         ],
                         "additionalProperties": false
@@ -636,6 +790,138 @@
                   },
                   "required": [
                     "recipients"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/payout-requirements": {
+      "get": {
+        "summary": "Partner payout fields required for a destination country (CCR-43)",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "country",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9]{2,11}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "country": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{2}$"
+                    },
+                    "currency": {
+                      "type": "string",
+                      "pattern": "^[A-Z][A-Z0-9]{2,11}$"
+                    },
+                    "providerId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "detailKeys": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "localFields": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "addressRequired": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "country",
+                    "currency",
+                    "providerId",
+                    "detailKeys",
+                    "localFields",
+                    "addressRequired"
                   ],
                   "additionalProperties": false
                 }
@@ -2345,6 +2631,67 @@
                       "PayerPays",
                       "RecipientPays"
                     ]
+                  },
+                  "payout": {
+                    "type": "object",
+                    "properties": {
+                      "details": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "additionalProperties": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        }
+                      },
+                      "address": {
+                        "type": "object",
+                        "properties": {
+                          "line1": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "line2": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "city": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 120
+                          },
+                          "state": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 120
+                          },
+                          "postalCode": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 32
+                          },
+                          "country": {
+                            "type": "string",
+                            "pattern": "^[A-Z]{2}$"
+                          }
+                        },
+                        "required": [
+                          "line1",
+                          "city",
+                          "state",
+                          "postalCode",
+                          "country"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "additionalProperties": false
                   }
                 },
                 "required": [

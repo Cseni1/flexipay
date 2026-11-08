@@ -115,6 +115,64 @@ function stringList(value: unknown): string[] {
 		: []
 }
 
+function localFieldNames(value: unknown): string[] {
+	if (!Array.isArray(value)) return []
+	const names: string[] = []
+	for (const item of value) {
+		if (typeof item === "string") {
+			names.push(item)
+			continue
+		}
+		const record = objectOf(item)
+		const name = record?.name ?? record?.key ?? record?.field
+		if (typeof name === "string") names.push(name)
+	}
+	return names
+}
+
+const ADDRESS_LOCAL: Record<string, "line1" | "line2" | "city" | "state" | "postalCode" | "country"> = {
+	"address.line1": "line1",
+	"address.line2": "line2",
+	"address.city": "city",
+	"address.state": "state",
+	"address.postal_code": "postalCode",
+	"address.country": "country",
+}
+
+function localFieldPresent(
+	endpoint: { recipientAddress?: { line1: string; line2?: string; city: string; state: string; postalCode: string; country: string } },
+	local: string,
+): boolean {
+	const key = ADDRESS_LOCAL[local]
+	const value = key ? endpoint.recipientAddress?.[key] : undefined
+	return typeof value === "string" && value.length > 0
+}
+
+function beneficiaryAddress(endpoint: {
+	country: string
+	recipientAddress?: {
+		line1: string
+		line2?: string
+		city: string
+		state: string
+		postalCode: string
+		country: string
+	}
+}): Record<string, string> | null {
+	const address = endpoint.recipientAddress
+	if (!address?.line1 || !address.city || !address.state || !address.postalCode) {
+		return null
+	}
+	return {
+		line1: address.line1,
+		...(address.line2 ? { line2: address.line2 } : {}),
+		city: address.city,
+		state: address.state,
+		postal_code: address.postalCode,
+		country: address.country || endpoint.country,
+	}
+}
+
 function intOf(value: unknown): bigint {
 	return typeof value === "number" && Number.isFinite(value)
 		? BigInt(Math.floor(value))
@@ -170,6 +228,11 @@ export class TazapayAdapter implements ProviderAdapter {
 	private readonly lowBalanceAlert: bigint
 	private readonly lowBalanceAlerted = new Set<string>()
 	private healthCache: { at: number; value: "up" | "down" } | null = null
+	/** CCR-43: payout bank metadata, keyed by country|currency. */
+	private readonly requirementsCache = new Map<
+		string,
+		{ fields: string[]; codes: string[]; localFields: string[] }
+	>()
 
 	constructor(row: Provider, opts: TazapayOptions) {
 		this.id = row.id
@@ -197,6 +260,25 @@ export class TazapayAdapter implements ProviderAdapter {
 	/** Sandbox vs live, for the operator partner-status route. */
 	mode(): "sandbox" | "live" {
 		return this.baseUrl === PRODUCTION_BASE_URL ? "live" : "sandbox"
+	}
+
+	/**
+	 * CCR-43: FlexiPay detail keys and local_fields for one country. Cached per country
+	 * and currency for the life of this adapter.
+	 */
+	async payoutRequirements(
+		country: string,
+		currency: string,
+	): Promise<{ detailKeys: string[]; localFields: string[] }> {
+		const raw = await this.bankRequirements(country, currency)
+		const detailKeys = [
+			...raw.fields.map((field) => BANK_FIELD_KEYS[field] ?? field),
+			...raw.codes.map((code) => BANK_CODE_KEYS[code] ?? code),
+		]
+		return {
+			detailKeys: [...new Set(detailKeys)],
+			localFields: raw.localFields,
+		}
 	}
 
 	/** Tazapay available balances in hundredths, using the quote guard's 60 s cache. */
@@ -466,10 +548,17 @@ export class TazapayAdapter implements ProviderAdapter {
 			else if (!details[key])
 				missing.push(`${key} (required_bank_codes: ${code})`)
 		}
+		for (const local of required.localFields) {
+			if (!local.startsWith("address.")) {
+				missing.push(`${local} (local_fields)`)
+				continue
+			}
+			if (!localFieldPresent(endpoint, local)) missing.push(local)
+		}
 		if (missing.length > 0) {
 			throw new ProviderError(
 				"unsupported",
-				`Tazapay beneficiary for endpoint ${endpoint.endpointId} is missing ${missing.join(", ")}; required_bank_fields: ${required.fields.join(", ") || "none"}; required_bank_codes: ${required.codes.join(", ") || "none"}`,
+				`Tazapay beneficiary for endpoint ${endpoint.endpointId} is missing ${missing.join(", ")}; required_bank_fields: ${required.fields.join(", ") || "none"}; required_bank_codes: ${required.codes.join(", ") || "none"}; local_fields: ${required.localFields.join(", ") || "none"}`,
 			)
 		}
 
@@ -493,12 +582,14 @@ export class TazapayAdapter implements ProviderAdapter {
 			codes.branch_code = details.branchCode
 		if (Object.keys(codes).length > 0) bank.bank_codes = codes
 
+		const address = beneficiaryAddress(endpoint)
 		const data = this.ok(
 			await this.call("POST", "/v3/beneficiary", {
 				name: endpoint.recipientName,
 				type:
 					endpoint.recipientKind === "company" ? "business" : "individual",
 				email: this.opts.beneficiaryEmail ?? DEFAULT_BENEFICIARY_EMAIL,
+				...(address ? { address } : {}),
 				destination_details: { type: "bank", bank },
 			}),
 			"beneficiary",
@@ -511,11 +602,22 @@ export class TazapayAdapter implements ProviderAdapter {
 
 	private async requiredBankFields(
 		endpoint: EndpointRef,
-	): Promise<{ fields: string[]; codes: string[] }> {
+	): Promise<{ fields: string[]; codes: string[]; localFields: string[] }> {
+		return this.bankRequirements(endpoint.country, endpoint.currency)
+	}
+
+	/** Cached per country and currency (CCR-43). */
+	private async bankRequirements(
+		country: string,
+		currency: string,
+	): Promise<{ fields: string[]; codes: string[]; localFields: string[] }> {
+		const key = `${country}|${currency}`
+		const cached = this.requirementsCache.get(key)
+		if (cached) return cached
 		const data = this.ok(
 			await this.call(
 				"GET",
-				`/v3/metadata/payout/bank?country=${encodeURIComponent(endpoint.country)}&currency=${encodeURIComponent(endpoint.currency)}`,
+				`/v3/metadata/payout/bank?country=${encodeURIComponent(country)}&currency=${encodeURIComponent(currency)}`,
 			),
 			"payout bank metadata",
 		)
@@ -528,24 +630,24 @@ export class TazapayAdapter implements ProviderAdapter {
 			methods.find(
 				(m) =>
 					m.payout_type === "local" &&
-					m.country === endpoint.country &&
-					m.currency === endpoint.currency,
+					m.country === country &&
+					m.currency === currency,
 			) ??
-			methods.find(
-				(m) =>
-					m.country === endpoint.country && m.currency === endpoint.currency,
-			) ??
+			methods.find((m) => m.country === country && m.currency === currency) ??
 			methods.find((m) => m.payout_type === "local")
 		if (!method) {
 			throw new ProviderError(
 				"unsupported",
-				`Tazapay has no local bank payout method for ${endpoint.country}/${endpoint.currency}`,
+				`Tazapay has no local bank payout method for ${country}/${currency}`,
 			)
 		}
-		return {
+		const parsed = {
 			fields: stringList(method.required_bank_fields),
 			codes: stringList(method.required_bank_codes),
+			localFields: localFieldNames(method.local_fields),
 		}
+		this.requirementsCache.set(key, parsed)
+		return parsed
 	}
 
 	async status(externalRef: string): Promise<ProviderLegState> {

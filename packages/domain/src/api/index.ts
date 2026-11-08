@@ -119,6 +119,16 @@ export {
 } from "./sandbox.ts";
 
 export {
+  CreateRecipientRequestSchema,
+  RecipientAddressResponseSchema,
+  RecipientAddressSchema,
+  RecipientListResponseSchema,
+  RecipientSchema,
+  type CreateRecipientRequest,
+  type Recipient,
+} from "./recipients.ts";
+
+export {
   CreateEndpointRequestSchema,
   EndpointListResponseSchema,
   EndpointSchema,

@@ -53,6 +53,12 @@ model Recipient {
   name           String
   kind           String // individual | company
   country        String
+  /// CCR-43 postal address for partner beneficiaries. All null when unset.
+  addressLine1      String?
+  addressLine2      String?
+  addressCity       String?
+  addressState      String?
+  addressPostalCode String?
   createdAt      DateTime     @default(now())
 
   endpoints Endpoint[]

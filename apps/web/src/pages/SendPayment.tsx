@@ -18,11 +18,14 @@ import {
 	createQuote,
 	createRecipient,
 	describeApiError,
+	getPayoutRequirements,
 	isAuthRequired,
 	listCorridors,
 	listEndpoints,
 	listRecipients,
 	type EndpointSummary,
+	type PayoutRequirements,
+	type RecipientAddressInput,
 	type RecipientSummary,
 } from "../api/client"
 import {
@@ -60,8 +63,10 @@ import {
 import { useCountdown } from "../hooks/useCountdown"
 import {
 	EMPTY_BANK_DETAILS,
+	bankDetailLabel,
 	bankDetailsPayload,
 	bankEndpointLabel,
+	type BankDetailKey,
 	type BankDetailsForm,
 } from "../payments/bankDetails"
 import {
@@ -199,6 +204,52 @@ interface FormState {
 	existingRecipientId: string
 }
 
+interface AddressForm {
+	line1: string
+	line2: string
+	city: string
+	state: string
+	postalCode: string
+}
+
+const EMPTY_ADDRESS: AddressForm = {
+	line1: "",
+	line2: "",
+	city: "",
+	state: "",
+	postalCode: "",
+}
+
+const KNOWN_BANK_KEYS = new Set<BankDetailKey>([
+	"accountNumber",
+	"accountHolderName",
+	"bankName",
+	"swiftCode",
+	"iban",
+	"bankCode",
+	"branchCode",
+])
+
+function addressPayload(
+	form: AddressForm,
+	country: string,
+): RecipientAddressInput | undefined {
+	const line1 = form.line1.trim()
+	const city = form.city.trim()
+	const state = form.state.trim()
+	const postalCode = form.postalCode.trim()
+	if (!line1 || !city || !state || !postalCode) return undefined
+	const line2 = form.line2.trim()
+	return {
+		line1,
+		...(line2 ? { line2 } : {}),
+		city,
+		state,
+		postalCode,
+		country,
+	}
+}
+
 const INITIAL_FORM: FormState = {
 	country: "",
 	sourceKey: "",
@@ -256,6 +307,9 @@ export default function SendPayment() {
 	>(null)
 	const [bankDetails, setBankDetails] =
 		useState<BankDetailsForm>(EMPTY_BANK_DETAILS)
+	const [address, setAddress] = useState<AddressForm>(EMPTY_ADDRESS)
+	const [payoutRequirements, setPayoutRequirements] =
+		useState<PayoutRequirements | null>(null)
 	const [bankEndpointChoice, setBankEndpointChoice] =
 		useState(NEW_BANK_ENDPOINT)
 	const [recipientBankEndpoints, setRecipientBankEndpoints] = useState<
@@ -471,6 +525,7 @@ export default function SendPayment() {
 		sendFromChosen.current = keepKey !== null
 		setRecipientCountryNote(null)
 		setBankDetails(EMPTY_BANK_DETAILS)
+		setAddress(EMPTY_ADDRESS)
 		if (country === "") {
 			update({
 				country,
@@ -505,6 +560,7 @@ export default function SendPayment() {
 		if (recipientId === "") {
 			setRecipientCountryNote(null)
 			setBankDetails(EMPTY_BANK_DETAILS)
+			setAddress(EMPTY_ADDRESS)
 			update({ existingRecipientId: "" })
 			return
 		}
@@ -519,6 +575,17 @@ export default function SendPayment() {
 		const nextSource = sourceForForm(corridors, saved.country, nextSourceKey)
 		const options = destinationsForForm(corridors, saved.country, nextSource)
 		setBankDetails(EMPTY_BANK_DETAILS)
+		setAddress(
+			saved.address
+				? {
+						line1: saved.address.line1,
+						line2: saved.address.line2 ?? "",
+						city: saved.address.city,
+						state: saved.address.state,
+						postalCode: saved.address.postalCode,
+					}
+				: EMPTY_ADDRESS,
+		)
 		update({
 			existingRecipientId: saved.id,
 			recipientName: saved.name,
@@ -537,6 +604,32 @@ export default function SendPayment() {
 	const destination = destinationOptions.find(
 		(option) => option.value === form.destinationType,
 	)
+
+	const requiredBankKeys = useMemo(
+		() =>
+			(payoutRequirements?.detailKeys ?? []).filter(
+				(key): key is BankDetailKey =>
+					KNOWN_BANK_KEYS.has(key as BankDetailKey),
+			),
+		[payoutRequirements],
+	)
+	const addressRequired = payoutRequirements?.addressRequired === true
+
+	useEffect(() => {
+		if (!showBankDetails || !form.country || !destination?.currency) {
+			setPayoutRequirements(null)
+			return
+		}
+		const controller = new AbortController()
+		getPayoutRequirements(form.country, destination.currency, controller.signal)
+			.then((requirements) => {
+				if (!controller.signal.aborted) setPayoutRequirements(requirements)
+			})
+			.catch(() => {
+				if (!controller.signal.aborted) setPayoutRequirements(null)
+			})
+		return () => controller.abort()
+	}, [showBankDetails, form.country, destination?.currency])
 
 	const usingSavedRecipient = Boolean(form.existingRecipientId)
 	const showBankPicker = showBankDetails && usingSavedRecipient
@@ -575,6 +668,24 @@ export default function SendPayment() {
 			setFormError("Choose who pays the vault fee.")
 			return
 		}
+		const postedAddress = addressPayload(address, form.country)
+		if (addressRequired && !postedAddress) {
+			setFormError(
+				"Enter the recipient's address: line 1, city, state and postal code.",
+			)
+			return
+		}
+		const missingBank = requiredBankKeys.filter(
+			(key) => key !== "accountNumber" && !bankDetails[key].trim(),
+		)
+		if (showBankDetails && enteringNewBank && missingBank.length > 0) {
+			setFormError(
+				`This country needs: ${missingBank
+					.map((key) => bankDetailLabel(key))
+					.join(", ")}.`,
+			)
+			return
+		}
 
 		quoteLock.current = true
 		quoteAbort.current?.abort()
@@ -585,6 +696,22 @@ export default function SendPayment() {
 		setQuoteError(null)
 		setFormError(null)
 		setCreateError(null)
+
+		const filledDetails = showBankDetails
+			? bankDetailsPayload(bankDetails)
+			: undefined
+		if (filledDetails && !filledDetails.accountNumber) {
+			delete filledDetails.accountNumber
+		}
+		const payout =
+			(filledDetails && Object.keys(filledDetails).length > 0) || postedAddress
+				? {
+						...(filledDetails && Object.keys(filledDetails).length > 0
+							? { details: filledDetails }
+							: {}),
+						...(postedAddress ? { address: postedAddress } : {}),
+					}
+				: undefined
 
 		const request: CreateQuoteRequest = {
 			source,
@@ -600,6 +727,7 @@ export default function SendPayment() {
 			},
 			policy: "cheapest",
 			feeMode: form.feeMode,
+			...(payout ? { payout } : {}),
 		}
 
 		try {
@@ -645,14 +773,23 @@ export default function SendPayment() {
 		createAbort.current = controller
 
 		try {
-			const saved =
-				form.existingRecipientId &&
-				recipients.find((entry) => entry.id === form.existingRecipientId)
+			const saved = form.existingRecipientId
+				? recipients.find((entry) => entry.id === form.existingRecipientId)
+				: undefined
+			const createdAddress = addressPayload(address, form.country)
+			const savedAddressMatches =
+				!createdAddress ||
+				(saved?.address?.line1 === createdAddress.line1 &&
+					saved?.address?.city === createdAddress.city &&
+					saved?.address?.state === createdAddress.state &&
+					saved?.address?.postalCode === createdAddress.postalCode &&
+					(saved?.address?.line2 ?? "") === (createdAddress.line2 ?? ""))
 			const recipientId =
 				saved &&
 				saved.name === form.recipientName.trim() &&
 				saved.kind === form.recipientKind &&
-				saved.country === form.country
+				saved.country === form.country &&
+				savedAddressMatches
 					? saved.id
 					: (
 							await createRecipient(
@@ -660,6 +797,7 @@ export default function SendPayment() {
 									name: form.recipientName.trim(),
 									kind: form.recipientKind,
 									country: form.country,
+									...(createdAddress ? { address: createdAddress } : {}),
 								},
 								`recipient-${quote.id}`,
 								controller.signal,
@@ -923,8 +1061,81 @@ export default function SendPayment() {
 										<BankDetailsFields
 											value={bankDetails}
 											disabled={authBlocked}
+											requiredKeys={requiredBankKeys}
 											onChange={setBankDetails}
 										/>
+									) : null}
+									{addressRequired ? (
+										<fieldset
+											className="bank-details"
+											data-testid="recipient-address"
+										>
+											<legend className="bank-details__legend">
+												Recipient address
+											</legend>
+											<div className="form-grid">
+												<TextField
+													id="recipient-address-line1"
+													label="Address line 1 (required)"
+													value={address.line1}
+													autoComplete="address-line1"
+													onChange={(event) =>
+														setAddress((current) => ({
+															...current,
+															line1: event.target.value,
+														}))
+													}
+												/>
+												<TextField
+													id="recipient-address-line2"
+													label="Address line 2"
+													value={address.line2}
+													autoComplete="address-line2"
+													onChange={(event) =>
+														setAddress((current) => ({
+															...current,
+															line2: event.target.value,
+														}))
+													}
+												/>
+												<TextField
+													id="recipient-address-city"
+													label="City (required)"
+													value={address.city}
+													autoComplete="address-level2"
+													onChange={(event) =>
+														setAddress((current) => ({
+															...current,
+															city: event.target.value,
+														}))
+													}
+												/>
+												<TextField
+													id="recipient-address-state"
+													label="State (required)"
+													value={address.state}
+													autoComplete="address-level1"
+													onChange={(event) =>
+														setAddress((current) => ({
+															...current,
+															state: event.target.value,
+														}))
+													}
+												/>
+												<TextField
+													id="recipient-address-postal-code"
+													label="Postal code (required)"
+													value={address.postalCode}
+													autoComplete="postal-code"
+													onChange={(event) =>
+														setAddress((current) => ({
+															...current,
+															postalCode: event.target.value,
+														}))
+													}
+												/>
+											</div>
+										</fieldset>
 									) : null}
 								</>
 							) : null}
