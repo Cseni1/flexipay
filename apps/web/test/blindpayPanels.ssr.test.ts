@@ -34,7 +34,8 @@ describe("SenderKycPanel", () => {
 			step: "accept_terms",
 			url: "https://app.blindpay.com/tos/x",
 		})
-		assert.ok(terms.includes("https://app.blindpay.com/tos/x"))
+		const hrefs = [...terms.matchAll(/href="([^"]*)"/g)].map((m) => m[1])
+		assert.deepEqual(hrefs, ["https://app.blindpay.com/tos/x"])
 		assert.ok(kyc({ step: "submit_kyc" }).length > 200)
 		assert.ok(
 			kyc({ step: "wait_for_review", kycStatus: "verifying" }).length > 0,
