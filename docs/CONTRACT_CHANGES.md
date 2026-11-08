@@ -922,3 +922,10 @@ generated from the route table.
 - **Tests:** signature helper plus API route tests with a fake Tazapay adapter cover a valid signature, invalid/missing signatures, missing secret, stale timestamp, unknown payout id, and a known payout that is re-checked. Nothing calls Tazapay.
 - **OpenAPI:** `apps/api/openapi.json` regenerated.
 - No migration.
+
+## CCR-48 (integrator, 8 Nov 2026): re-check the saved recipient at payment create
+
+- **Problem:** CCR-43 checks partner payout fields against the quote's `payout` profile only. A direct payment could then name a saved endpoint/recipient missing the address or branch code, and fail at the payout leg after the sender had paid.
+- **Create:** `POST /v1/payments` with `delivery: "direct"` and an `endpointId` asks the payout leg's partner for its requirements and checks the saved endpoint details and recipient address. Missing fields are **422 `recipient_incomplete`**, `details: { providerId, missing: [...] }`, and no payment is created. A partner whose requirements cannot be read is not blocked here; the payout leg still checks it.
+- **Tests:** `ccr43-recipient-address.test.ts` covers a refused bare recipient and an accepted complete one.
+- No migration.

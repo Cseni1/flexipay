@@ -205,4 +205,93 @@ describe("CCR-43 recipient address", { timeout: 60_000 }, () => {
 			await api.stop();
 		}
 	});
+
+	test("CCR-48: payment create refuses a saved recipient missing partner fields", async () => {
+		const api = await startTestServer();
+		try {
+			stubTazapay(api);
+			const { key } = await api.newOrg("CCR48 Create");
+			const post = (path: string, idem: string, body: unknown) =>
+				fetch(`${api.base}${path}`, {
+					method: "POST",
+					headers: auth(key, { "idempotency-key": idem }),
+					body: JSON.stringify(body),
+				});
+			const quoteBody = {
+				source: { type: "bank_account", currency: "GBP", country: "GB" },
+				destination: {
+					type: "bank_account",
+					currency: "KES",
+					country: "KE",
+					recipientKind: "individual",
+				},
+				amount: { side: "send", value: { amount: "10000", currency: "GBP" } },
+				policy: "cheapest",
+				feeMode: "PayerPays",
+				payout: {
+					details: { accountNumber: "1234567890", branchCode: "01" },
+					address: {
+						line1: "1 Market Street",
+						city: "Nairobi",
+						state: "Nairobi",
+						postalCode: "00100",
+						country: "KE",
+					},
+				},
+			};
+			const recipientWith = async (idem: string, address?: unknown) => {
+				const r = await json(
+					await post("/v1/recipients", `r-${idem}`, {
+						name: "Worker KE",
+						kind: "individual",
+						country: "KE",
+						...(address ? { address } : {}),
+					}),
+				);
+				const ep = await json(
+					await post("/v1/endpoints", `e-${idem}`, {
+						recipientId: r.id,
+						type: "bank_account",
+						country: "KE",
+						currency: "KES",
+						network: null,
+						details: address
+							? { accountNumber: "1234567890", branchCode: "01" }
+							: { accountNumber: "1234567890" },
+						simulated: true,
+					}),
+				);
+				assert.ok(ep.id, JSON.stringify(ep));
+				return { recipientId: r.id as string, endpointId: ep.id as string };
+			};
+
+			const q1 = await json(await post("/v1/quotes", "q48-1", quoteBody));
+			assert.ok(q1.id, JSON.stringify(q1));
+			const bare = await recipientWith("bare");
+			const refused = await post("/v1/payments", "p48-1", {
+				quoteId: q1.id,
+				recipientId: bare.recipientId,
+				endpointId: bare.endpointId,
+				delivery: "direct",
+				profile: "one_off",
+			});
+			const refusedBody = await json(refused);
+			assert.equal(refused.status, 422, JSON.stringify(refusedBody));
+			assert.equal(refusedBody.code, "recipient_incomplete");
+			assert.ok(refusedBody.details.missing.includes("branchCode"));
+			assert.ok(refusedBody.details.missing.includes("address.line1"));
+
+			const full = await recipientWith("full", quoteBody.payout.address);
+			const ok = await post("/v1/payments", "p48-2", {
+				quoteId: q1.id,
+				recipientId: full.recipientId,
+				endpointId: full.endpointId,
+				delivery: "direct",
+				profile: "one_off",
+			});
+			assert.equal(ok.status, 201, JSON.stringify(await json(ok)));
+		} finally {
+			await api.stop();
+		}
+	});
 });

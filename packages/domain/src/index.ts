@@ -12,6 +12,7 @@ export {
 	buildQuote,
 	checkEligibility,
 	corridorExplanationReasons,
+	missingPartnerPayoutFields,
 	priceRoute,
 	routeTemplate,
 	sizePayerPaysPrincipal,
