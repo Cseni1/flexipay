@@ -189,6 +189,7 @@ describe("A0 payment schemas", () => {
     batchId: null,
     legs: [],
     claimLink: null,
+    refundTxRef: null,
     createdAt: T0,
     updatedAt: T0,
   };
