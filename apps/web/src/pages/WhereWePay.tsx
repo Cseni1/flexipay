@@ -122,12 +122,12 @@ export default function WhereWePay() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow="Coverage"
+				eyebrow="Countries"
 				title="Where we pay"
 				description={
 					live
 						? "Live money. Simulated partners and sandbox coverage are hidden."
-						: "Paper coverage from partner docs and sandbox metadata — not live payments."
+						: "Every country our partners can pay into, and how. Green means a local bank payout."
 				}
 			/>
 			<Notice data-testid="coverage-disclaimer">

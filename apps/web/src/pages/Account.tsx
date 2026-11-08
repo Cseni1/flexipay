@@ -131,7 +131,7 @@ function ApiKeysPanel({ viaSession }: { viaSession: boolean }) {
 		return (
 			<Panel
 				title="API keys"
-				description="Create and revoke organization keys for the API."
+				description="Only needed if you connect your own software to FlexiPay."
 			>
 				<SessionRequiredNotice forWhat="API key management" />
 			</Panel>
@@ -415,7 +415,7 @@ export default function Account() {
 			<PageHeader
 				eyebrow="Account"
 				title="API keys and account"
-				description="Manage session API keys and change your sign-in password."
+				description="Your password, and keys for connecting your own software."
 			/>
 			<Grid>
 				<ApiKeysPanel viaSession={viaSession} />
