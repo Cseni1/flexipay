@@ -86,7 +86,11 @@ export async function uploadSenderDocument(
 			"Upload a JPEG, PNG, WEBP, HEIC or PDF file",
 		);
 	}
-	if (file.bytes.length === 0 || file.bytes.length > KYC_FILE_MAX_BYTES) {
+	if (
+		!(file.bytes instanceof Uint8Array) ||
+		file.bytes.length === 0 ||
+		file.bytes.length > KYC_FILE_MAX_BYTES
+	) {
 		throw new ApiError(413, "file_too_large", "Files must be between 1 byte and 5 MB");
 	}
 	const ext = contentType === "application/pdf" ? "pdf" : contentType.split("/")[1];
