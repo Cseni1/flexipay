@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
-import { paymentDetailFixture } from "./fixtures"
+import { openTechnicalDetails, paymentDetailFixture } from "./fixtures"
 
 const processingBlindPay = () => {
 	const base = paymentDetailFixture("processing")
@@ -82,6 +82,7 @@ test.describe("TASK 19 BlindPay payout polling", () => {
 		await page.clock.install()
 		const state = await mockBlindPayPoll(page)
 		await page.goto("/payments/pay_blindpay")
+		await openTechnicalDetails(page)
 
 		await expect(page.getByTestId("leg-waiting-payout")).toBeVisible()
 		await expect(page.getByTestId("leg-waiting-payout")).toHaveText(
@@ -114,10 +115,7 @@ test.describe("TASK 19 BlindPay payout polling", () => {
 			}),
 		).toBeVisible()
 		await expect(
-			page
-				.locator(".status-badge")
-				.filter({ hasText: /^Paid$/i })
-				.first(),
+			page.locator(".status-badge").filter({ hasText: /^Delivered$/i }).first(),
 		).toBeVisible()
 	})
 
@@ -127,6 +125,7 @@ test.describe("TASK 19 BlindPay payout polling", () => {
 		await page.setViewportSize({ width: 390, height: 844 })
 		await mockBlindPayPoll(page)
 		await page.goto("/payments/pay_blindpay")
+		await openTechnicalDetails(page)
 		await expect(page.getByTestId("leg-waiting-payout")).toBeVisible()
 		const metrics = await page.evaluate(() => ({
 			scrollWidth: document.documentElement.scrollWidth,

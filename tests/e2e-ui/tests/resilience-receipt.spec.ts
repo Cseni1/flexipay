@@ -85,12 +85,11 @@ test.describe("Resilience: API wake-up", () => {
 			page.getByTestId("api-wakeup-retry").click(),
 		])
 		await expect(page.getByTestId("api-wakeup")).toHaveCount(0)
-		await expect(
-			page.getByRole("heading", { name: "Payment", exact: true }),
-		).toBeVisible()
-		await expect(
-			page.locator(".field__static").filter({ hasText: "1,250.00 USD" }),
-		).toBeVisible()
+		const summary = page.getByTestId("payment-summary")
+		await expect(summary).toBeVisible()
+		await expect(page.getByTestId("payment-summary-send")).toHaveText(
+			"1,250.00 USD",
+		)
 	})
 
 	test("replaces waking copy after automatic retries are exhausted", async ({

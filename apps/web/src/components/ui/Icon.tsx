@@ -35,6 +35,11 @@ const PATHS = {
 		"M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M16 9h2a2 2 0 0 1 2 2v10M2 21h20M8 7h4M8 11h4M8 15h4",
 	chevron: "m9 18 6-6-6-6",
 	coin: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M9 9.5a3 3 0 0 1 3-2 2.5 2.5 0 0 1 0 5 2.5 2.5 0 0 0 0 5 3 3 0 0 0 3-2M12 5.5v2M12 16.5v2",
+	close: "M18 6 6 18M6 6l12 12",
+	chevronDown: "m6 9 6 6 6-6",
+	link: "M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7",
+	receipt:
+		"M5 21V4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v17l-3-2-2 2-2-2-2 2-2-2zM9 8h6M9 12h6",
 } as const
 
 export type IconName = keyof typeof PATHS

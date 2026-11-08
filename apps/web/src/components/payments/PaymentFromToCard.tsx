@@ -52,7 +52,7 @@ export function PaymentFromToCard({
 							</p>
 						) : (
 							<p className="from-to__meta muted">
-								Paying wallet unknown until an on-chain settle is recorded.
+								Your paying wallet shows here once you pay from one.
 							</p>
 						)}
 					</div>

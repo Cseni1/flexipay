@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
+import { openTechnicalDetails } from "./fixtures"
 
 // TASK 28: Demo Day pounds → abroad (GB→KE / GB→PH). Fixture coverage with
 // response shapes matching the live API (CCR-26 settle on solana_tgbp, Tazapay payout).
@@ -538,6 +539,7 @@ async function confirmAndReachPaid(page: Page, state: { phase: Phase }) {
 	await page.getByTestId("solana-already-paid").locator("summary").click()
 	await page.getByTestId("solana-manual-signature").fill(SIGNATURE)
 	await page.getByTestId("solana-manual-verify").click()
+	await openTechnicalDetails(page)
 
 	await expect(page.getByTestId("leg-waiting-payout")).toBeVisible()
 	await expect(page.getByTestId("leg-waiting-payout")).toHaveText(
