@@ -302,7 +302,9 @@ describe("CCR-45 signAndSendVersionedSolanaTransaction (BlindPay delegation)", (
 			}),
 		)
 		const connected = await connectSolanaWallet("Phantom")
-		;(connected.wallet as { chains: string[] }).chains = ["solana:mainnet"]
+		;(connected.wallet as unknown as { chains: string[] }).chains = [
+			"solana:mainnet",
+		]
 		await assert.rejects(
 			signAndSendVersionedSolanaTransaction({
 				connected,
