@@ -1,3 +1,4 @@
+import { type Quote } from "@flexipay/web-lib/contract"
 import { useEffect, useState } from "react"
 import { getQuote } from "../api/client"
 import {
@@ -18,15 +19,27 @@ import {
 export function usePaymentSaving(
 	payment: { id: string; quoteId: string } | null | undefined,
 ): AggregatorSaving | null {
+	return usePaymentQuote(payment).saving
+}
+
+/**
+ * Same lookup as usePaymentSaving, also returning the quote itself (fees, rate)
+ * when the API still has it. One GET /v1/quotes/{id} per payment.
+ */
+export function usePaymentQuote(
+	payment: { id: string; quoteId: string } | null | undefined,
+): { quote: Quote | null; saving: AggregatorSaving | null } {
 	const paymentId = payment?.id
 	const quoteId = payment?.quoteId
 	const [saving, setSaving] = useState<AggregatorSaving | null>(() =>
 		paymentId && quoteId ? lookupStoredSaving({ paymentId, quoteId }) : null,
 	)
+	const [quote, setQuote] = useState<Quote | null>(null)
 
 	useEffect(() => {
 		if (!paymentId || !quoteId) {
 			setSaving(null)
+			setQuote(null)
 			return
 		}
 
@@ -35,12 +48,13 @@ export function usePaymentSaving(
 
 		let cancelled = false
 		void getQuote(quoteId)
-			.then((quote) => {
+			.then((loaded) => {
 				if (cancelled) return
-				const computed = computeAggregatorSaving(quote)
+				setQuote(loaded)
+				const computed = computeAggregatorSaving(loaded)
 				if (computed) {
-					rememberQuoteSaving(quote.id, computed)
-					linkPaymentSaving(paymentId, quote.id)
+					rememberQuoteSaving(loaded.id, computed)
+					linkPaymentSaving(paymentId, loaded.id)
 				}
 				setSaving(computed)
 			})
@@ -53,5 +67,5 @@ export function usePaymentSaving(
 		}
 	}, [paymentId, quoteId])
 
-	return saving
+	return { quote, saving }
 }

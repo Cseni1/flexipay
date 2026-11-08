@@ -57,8 +57,8 @@ export function PaymentReceipt({
 		>
 			<header className="payment-receipt__header">
 				<div>
-					<p className="eyebrow">Receipt</p>
-					<h3 className="payment-receipt__title">Payment paid</h3>
+					<p className="eyebrow">Proof of payment</p>
+					<h3 className="payment-receipt__title">Money delivered</h3>
 					<p className="muted">
 						Payment <code className="code-text">{payment.id}</code> ·{" "}
 						<PaymentTimestamp

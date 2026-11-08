@@ -26,6 +26,11 @@ const PATHS = {
 	logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
 	shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10",
 	bolt: "M13 2 3 14h9l-1 8 10-12h-9z",
+	close: "M18 6 6 18M6 6l12 12",
+	chevron: "m6 9 6 6 6-6",
+	link: "M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7",
+	receipt:
+		"M5 21V4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v17l-3-2-2 2-2-2-2 2-2-2zM9 8h6M9 12h6",
 } as const
 
 export type IconName = keyof typeof PATHS
