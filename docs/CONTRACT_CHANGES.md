@@ -878,3 +878,14 @@ generated from the route table.
 - **Tazapay:** the beneficiary body includes `address.line1`, `address.city`, `address.state`, `address.postal_code` (and `country`, `line2` when set) when the recipient has an address. `GET /v1/payout-requirements?country=&currency=` returns `detailKeys`, `localFields` and `addressRequired` for the Send form.
 - **Web:** the Send form shows the address and marks Branch code required when that endpoint says the country needs them.
 - **OpenAPI:** `apps/api/openapi.json` regenerated.
+
+## CCR-37 (builder, 8 Nov 2026): refund a Solana settle from the treasury
+
+- **Problem (live, 7 Nov):** a GB→KE direct payment paid tGBP into the CCR-39 Solana settle treasury, then the Tazapay payout failed. The payment became `refunded` but the stablecoin stayed in the treasury: the old refund path only handled a Stellar/mock vault `settle.externalRef`, which a Solana settle does not have.
+- **Settle metadata:** `completeSolanaTransferSettle` now stores the original payer, exact verified mint amount and mint decimals plus the destination on `Payment` (`solanaPayer`, `solanaSettleMint`, `solanaSettleAmount`, `solanaSettleDecimals`, `solanaSettleDestination`). Refunds never re-derive the amount from config.
+- **Refund:** when a direct, succeeded `solana_*` settle ends in `refunding`, FlexiPay signs an SPL `transferChecked` from the stored treasury back to that payer, same mint and amount. The treasury keypair is `FP_SOLANA_SETTLE_TREASURY_SECRET` as a JSON byte array; the refund refuses to start unless its public key matches `FP_SOLANA_SETTLE_TREASURY` and the stored destination.
+- **Idempotency:** migration `20261108150000_ccr37_solana_refund` adds `SolanaRefund` (one per payment, unique signature) with the payer, mint, decimals, exact amount and treasury frozen at refund creation; it stores the base64 signed transaction before its first send. A retry queries the signature on-chain before re-sending; it re-sends only the same bytes while their blockhash is valid, and builds a fresh signature only after expiry or a confirmed failed tx. A confirmed refund is never sent again.
+- **Status/API:** the payment stays `refunding` until the refund signature is confirmed; only then does it move to `refunded`. `Payment.refundTxRef` is exposed (null until confirmed), and Payment detail links it to the Solana explorer. The provider poller now resumes `refunding` payments.
+- **Migration:** `20261108150000_ccr37_solana_refund` (additive only).
+- **Tests:** adapter-solana refund signer/build/status unit tests; API HTTP tests with a mocked Solana RPC cover success, RPC failure then poller retry, and no second send after confirmation; web e2e covers the refund explorer link.
+- **Status:** implemented on branch `feat/ccr37-solana-refund`, PR open against `main`, not merged.

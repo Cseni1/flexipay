@@ -14,6 +14,7 @@ export type IdPrefix =
 	| "idm"
 	| "aud"
 	| "pkp"
+	| "srf"
 	| "mem";
 
 export const newId = (prefix: IdPrefix): string => `${prefix}_${randomBytes(12).toString("hex")}`;

@@ -14,6 +14,18 @@ export {
 	type SolanaRuntimeConfig,
 } from "./config.ts";
 export {
+	assertTreasuryRefundSigner,
+	connectionAsRefundRpc,
+	loadTreasuryRefundSigner,
+	prepareTreasuryRefund,
+	refundSignatureStatus,
+	sendPreparedTreasuryRefund,
+	treasuryRefundSignerFromEnv,
+	type PreparedTreasuryRefund,
+	type SolanaRefundRpc,
+	type TreasuryRefundStatus,
+} from "./refund.ts";
+export {
 	connectionAsRpc,
 	evaluateParsedTransfer,
 	verifyUsdcTransfer,
