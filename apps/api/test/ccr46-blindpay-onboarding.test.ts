@@ -149,4 +149,14 @@ describe("CCR-46 onboarding routes", () => {
 		uploadReply = { status: 200, json: { file_url: "http://insecure.example/x" } };
 		expect((await upload(new Uint8Array([1, 2]), "image/jpeg")).status).toBe(502);
 	});
+
+	it("uploads are capped at 20 per 10 minutes per user (429 after that)", async () => {
+		uploadReply = { status: 200, json: { file_url: "https://files.blindpay.com/x.png" } };
+		const statuses: number[] = [];
+		for (let i = 0; i < 25; i++) {
+			statuses.push((await upload(new Uint8Array([1]), "image/png")).status);
+		}
+		expect(statuses).toContain(429);
+		expect(statuses.at(-1)).toBe(429);
+	});
 });

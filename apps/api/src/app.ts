@@ -25,6 +25,7 @@ import type { ApiRuntime } from "./runtime.ts";
 import type { AuthRuntime } from "./auth/auth.ts";
 import { createAuthRateLimiter } from "./auth/rate-limit.ts";
 import { sessionRoutes } from "./routes/session.ts";
+import { rateLimit } from "express-rate-limit";
 import { mountApiDocs } from "./docs.ts";
 import { KYC_FILE_MAX_BYTES, uploadSenderDocument } from "./blindpay/onboarding.ts";
 import { createApiRateLimiter, mountSecurityHeaders } from "./security.ts";
@@ -176,8 +177,21 @@ export function createApp(deps: {
 	// CCR-46: one KYC document or selfie, sent as the raw request body (not JSON) and
 	// streamed to BlindPay. Customer auth (session cookie needs a trusted Origin), rate
 	// limited like every /v1 route, never stored by FlexiPay. Not in openapi.json (binary).
+	const uploadLimiter = rateLimit({
+		windowMs: 10 * 60_000,
+		limit: deps.apiRateLimit === false ? 10_000 : 20,
+		standardHeaders: "draft-8",
+		legacyHeaders: false,
+		// Per credential (API key or session cookie), falling back to the client address.
+		keyGenerator: (req) =>
+			sha256Hex(req.header("authorization") ?? req.header("cookie") ?? req.ip ?? "unknown"),
+		handler: (_req, res) => {
+			res.status(429).json({ code: "rate_limited", message: "Too many uploads, try again later" });
+		},
+	});
 	app.post(
 		"/v1/blindpay/onboarding/upload",
+		uploadLimiter,
 		express.raw({
 			type: () => true,
 			limit: KYC_FILE_MAX_BYTES,
@@ -189,7 +203,7 @@ export function createApp(deps: {
 				const out = await uploadSenderDocument(
 					{ db: deps.db, config: deps.config, runtime: deps.runtime, org },
 					org.id,
-					{ bytes, contentType: req.header("content-type") ?? "" },
+					{ bytes, contentType: String(req.headers["content-type"] ?? "") },
 				);
 				res.status(200).json(out);
 			} catch (err) {

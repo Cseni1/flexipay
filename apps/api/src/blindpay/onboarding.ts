@@ -75,6 +75,9 @@ export async function uploadSenderDocument(
 ): Promise<{ fileUrl: string }> {
 	const org = await loadOrg(ctx.db, orgId);
 	assertIndividualSender(org);
+	if (typeof file.contentType !== "string") {
+		throw new ApiError(415, "unsupported_file_type", "Upload a JPEG, PNG, WEBP, HEIC or PDF file");
+	}
 	const contentType = file.contentType.split(";")[0]!.trim().toLowerCase();
 	if (!KYC_FILE_TYPES.has(contentType)) {
 		throw new ApiError(
