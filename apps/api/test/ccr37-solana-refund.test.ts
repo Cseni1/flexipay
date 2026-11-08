@@ -4,6 +4,11 @@ import { Keypair, Transaction } from "@solana/web3.js";
 import type { ProviderAdapter } from "@flexipay/domain";
 import { auth, startTestServer } from "./helpers.ts";
 import type { OrchestratorAdapters } from "../src/orchestrator/index.ts";
+import {
+	refundSolanaSettleIfOwed,
+	resumeSolanaRefund,
+	reverseAndCompleteSolanaRefund,
+} from "../src/orchestrator/solana-refund.ts";
 import { pollProvidersOnce } from "../src/ops/provider-poller.ts";
 import { resetSolanaRuntimeConfigCache } from "../src/solana/runtime-config.ts";
 import {
@@ -311,7 +316,7 @@ describe("CCR-37 Solana treasury refund", { timeout: 120_000 }, () => {
 		try {
 			stubTazapay(api);
 			const { key } = await api.newOrg("CCR37 Refund Success");
-			const { payment } = await fundedDirectKe(api, key);
+			const { payment, settle } = await fundedDirectKe(api, key);
 			const signature = Keypair.generate().publicKey.toBase58();
 
 			const confirm = await confirmFundedPayment(
@@ -355,6 +360,62 @@ describe("CCR-37 Solana treasury refund", { timeout: 120_000 }, () => {
 			assert.equal(
 				tx.feePayer?.toBase58(),
 				treasury.publicKey.toBase58(),
+			);
+
+			// A payment that already reached refunded must not create or resend anything.
+			assert.deepEqual(await refundSolanaSettleIfOwed(api.db, payment.id), {
+				required: false,
+			});
+			assert.equal(
+				(
+					await reverseAndCompleteSolanaRefund(
+						api.db,
+						payment.id,
+						adaptersOf(api),
+					)
+				).status,
+				"refunded",
+			);
+			assert.equal(
+				(await resumeSolanaRefund(api.db, payment.id, adaptersOf(api)))
+					.status,
+				"refunded",
+			);
+
+			// Inconsistent settled rows must fail closed instead of using the legacy refund path.
+			await api.db.payment.update({
+				where: { id: payment.id },
+				data: {
+					status: "refunding",
+					solanaSettleDestination: Keypair.generate().publicKey.toBase58(),
+				},
+			});
+			await assert.rejects(
+				refundSolanaSettleIfOwed(api.db, payment.id),
+				/does not match FP_SOLANA_SETTLE_TREASURY/,
+			);
+			await api.db.payment.update({
+				where: { id: payment.id },
+				data: {
+					solanaSettleDestination: treasury.publicKey.toBase58(),
+					solanaPayer: null,
+				},
+			});
+			await assert.rejects(
+				refundSolanaSettleIfOwed(api.db, payment.id),
+				/data is incomplete/,
+			);
+			await api.db.payment.update({
+				where: { id: payment.id },
+				data: { solanaPayer: payer },
+			});
+			await api.db.leg.update({
+				where: { id: settle.id },
+				data: { releaseTxRef: null },
+			});
+			await assert.rejects(
+				refundSolanaSettleIfOwed(api.db, payment.id),
+				/no release transaction evidence/,
 			);
 		} finally {
 			await stopApi(api);
