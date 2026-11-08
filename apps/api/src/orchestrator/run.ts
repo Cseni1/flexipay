@@ -40,7 +40,7 @@ function moneyOf(value: string, currency: string): Money {
 	return { amount: value, currency };
 }
 
-function recipientAddressOf(
+export function recipientAddressOf(
 	recipient: {
 		country: string;
 		addressLine1: string | null;

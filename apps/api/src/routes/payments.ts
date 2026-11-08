@@ -15,6 +15,7 @@ import {
 	FeeDriftError,
 	fundAndRun,
 } from "../orchestrator/index.ts";
+import { missingPayoutFieldsForPayment } from "../orchestrator/payout-check.ts";
 import { defineRoute, type RouteDef } from "../routes.ts";
 import { loadPaymentApi, loadPaymentDetail } from "../serialize.ts";
 
@@ -67,6 +68,23 @@ export const paymentRoutes: RouteDef<any, any>[] = [
 					sendAmountOfStoredQuote(quoted),
 					ctx.runtime?.now(),
 				);
+			}
+			// CCR-48: a direct payout whose saved recipient misses partner-required fields
+			// (address, branch code, ...) is refused before the sender pays.
+			if (quoted && body.delivery === "direct" && body.endpointId && ctx.runtime) {
+				const gap = await missingPayoutFieldsForPayment(ctx.db, ctx.runtime.getProvider, {
+					organizationId: org.id,
+					quoteRoute: quoted.route,
+					endpointId: body.endpointId,
+				});
+				if (gap) {
+					throw new ApiError(
+						422,
+						"recipient_incomplete",
+						`Recipient details are incomplete for this payout: ${gap.missing.join(", ")}`,
+						{ providerId: gap.providerId, missing: gap.missing },
+					);
+				}
 			}
 			let created: { paymentId: string; claimToken?: string };
 			try {
