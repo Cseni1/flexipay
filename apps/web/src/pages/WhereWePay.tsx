@@ -9,6 +9,7 @@ import {
 import { ProviderBadge } from "../components/payments/ProviderBadge"
 import { Notice, Page, PageHeader, Panel } from "../components/ui"
 import coverage from "../data/coverage.json"
+import { useLiveMoney } from "../live/LiveMoney"
 
 type CoverageStatus = "local_bank" | "swift_only" | "not_covered"
 
@@ -116,47 +117,61 @@ export default function WhereWePay() {
 		() => (corridors ? sandboxPayoutsWorld(corridors) : null),
 		[corridors],
 	)
+	const live = useLiveMoney()
 
 	return (
 		<Page>
 			<PageHeader
 				eyebrow="Coverage"
 				title="Where we pay"
-				description="Paper coverage from partner docs and sandbox metadata — not live payments."
+				description={
+					live
+						? "Live money. Simulated partners and sandbox coverage are hidden."
+						: "Paper coverage from partner docs and sandbox metadata — not live payments."
+				}
 			/>
 			<Notice data-testid="coverage-disclaimer">
 				As of 6 Nov 2026 — {coverage.disclaimer}. Source: {coverage.source}.
 			</Notice>
 
-			<Panel
-				title="Priced live in sandbox"
-				description={
-					world && world.length > 0
-						? `Pay from pounds or dollars into ${world.length} countries. Partners compete on each payment; FlexiPay picks the route that delivers the most.`
-						: "Countries a partner sandbox prices today, from GET /v1/corridors."
-				}
-			>
-				{corridorsError ? (
-					<Notice tone="warning" data-testid="sandbox-corridors-unavailable">
-						Corridors unavailable: {corridorsError}
-					</Notice>
-				) : null}
-				{world ? (
-					<div className="sandbox-priced" data-testid="sandbox-priced">
-						{world.length > 0 ? (
-							<WorldList rows={world} />
-						) : (
-							<p className="form-note">
-								No partner sandbox payout corridors were returned.
-							</p>
-						)}
-					</div>
-				) : corridorsError ? null : (
-					<p className="form-note" data-testid="sandbox-priced-loading">
-						Loading sandbox corridors…
-					</p>
-				)}
-			</Panel>
+			{live ? (
+				<Notice data-testid="live-coverage">
+					Simulated and sandbox partners are hidden while this build is on
+					Solana mainnet.
+				</Notice>
+			) : null}
+
+			{live ? null : (
+				<Panel
+					title="Priced live in sandbox"
+					description={
+						world && world.length > 0
+							? `Pay from pounds or dollars into ${world.length} countries. Partners compete on each payment; FlexiPay picks the route that delivers the most.`
+							: "Countries a partner sandbox prices today, from GET /v1/corridors."
+					}
+				>
+					{corridorsError ? (
+						<Notice tone="warning" data-testid="sandbox-corridors-unavailable">
+							Corridors unavailable: {corridorsError}
+						</Notice>
+					) : null}
+					{world ? (
+						<div className="sandbox-priced" data-testid="sandbox-priced">
+							{world.length > 0 ? (
+								<WorldList rows={world} />
+							) : (
+								<p className="form-note">
+									No partner sandbox payout corridors were returned.
+								</p>
+							)}
+						</div>
+					) : corridorsError ? null : (
+						<p className="form-note" data-testid="sandbox-priced-loading">
+							Loading sandbox corridors…
+						</p>
+					)}
+				</Panel>
+			)}
 
 			{REGION_ORDER.filter((region) => byRegion.has(region)).map((region) => (
 				<Panel key={region} title={region}>

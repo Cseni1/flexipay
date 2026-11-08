@@ -23,6 +23,7 @@ import {
 	SimulatedLabel,
 	TextField,
 } from "../components/ui"
+import { useLiveMoney } from "../live/LiveMoney"
 import { displayMoney, isPoundDisplayCurrency } from "../payments/quoteDisplay"
 import { type ConnectedSolanaWallet } from "../solana/walletStandard"
 
@@ -215,6 +216,7 @@ const isAbortError = (cause: unknown): boolean =>
 
 export default function ClaimPage() {
 	const { claimToken } = useParams<{ claimToken: string }>()
+	const live = useLiveMoney()
 	const [claim, setClaim] = useState<ClaimView | null>(null)
 	const [loading, setLoading] = useState(true)
 	const [loadError, setLoadError] = useState<ClaimApiError | null>(null)
@@ -425,8 +427,9 @@ export default function ClaimPage() {
 						<p className="eyebrow">Payment from Demo Platform</p>
 						<h1 className="phone-title">Claim your payment</h1>
 						<p className="muted">
-							Choose how you want to be paid. Bank and e-wallet payouts are
-							simulated; Solana devnet only; no real money moves.
+							{live
+								? "Choose how you want to be paid. This payment uses live money on Solana mainnet."
+								: "Choose how you want to be paid. Bank and e-wallet payouts are simulated; Solana devnet only; no real money moves."}
 						</p>
 					</div>
 

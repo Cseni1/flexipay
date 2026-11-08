@@ -11,6 +11,7 @@ import {
 	SimulatedLabel,
 } from "../components/ui"
 import { usePaymentList } from "../hooks/usePaymentList"
+import { useLiveMoney } from "../live/LiveMoney"
 import {
 	sumSavingsByCurrency,
 	type AggregatorSaving,
@@ -36,6 +37,7 @@ const savingsForLoadedPayments = (
 }
 
 export default function Dashboard() {
+	const live = useLiveMoney()
 	const { payments, error, loading, refresh } = usePaymentList()
 	const inFlight = count(
 		payments,
@@ -127,7 +129,11 @@ export default function Dashboard() {
 
 			<Panel
 				title="What works today, and what is coming"
-				description="Everything here runs on partner sandboxes and Solana devnet. Nothing moves real money yet."
+				description={
+					live
+						? "Live money on Solana mainnet. Simulated partners are hidden."
+						: "Everything here runs on partner sandboxes and Solana devnet. Nothing moves real money yet."
+				}
 				actions={<SimulatedLabel>Roadmap</SimulatedLabel>}
 			>
 				<ul className="roadmap-list" data-testid="dashboard-roadmap">
@@ -136,7 +142,7 @@ export default function Dashboard() {
 							<span className="roadmap-list__title">{item.title}</span>
 							{item.status === "working" ? (
 								<span className="roadmap-list__status roadmap-list__status--working">
-									Working (sandbox)
+									{live ? "Working" : "Working (sandbox)"}
 								</span>
 							) : (
 								<SimulatedLabel>Coming soon</SimulatedLabel>
