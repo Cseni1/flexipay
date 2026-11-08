@@ -6,6 +6,7 @@ import {
 	saveBlindpayTos,
 	startBlindpayOnboarding,
 	submitBlindpayKyc,
+	uploadBlindpayKycFile,
 } from "../src/api/client.ts"
 
 // CCR-45: the browser client for BlindPay sender onboarding and sender-wallet payouts.
@@ -117,6 +118,34 @@ describe("BlindPay sender-wallet payout client", () => {
 		await assert.rejects(
 			confirmBlindpayPayout("pay_1", "5".repeat(88)),
 			(e: { code?: string }) => e.code === "kyc_required",
+		)
+	})
+})
+
+describe("CCR-46 KYC file upload client", () => {
+	test("sends the file as the raw body with its own content type", async () => {
+		stubFetch(200, { fileUrl: "https://files.blindpay.com/1-kyc.png" })
+		const file = new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" })
+		const out = await uploadBlindpayKycFile(file)
+		assert.equal(out.fileUrl, "https://files.blindpay.com/1-kyc.png")
+		assert.equal(calls[0]!.url, "/v1/blindpay/onboarding/upload")
+		assert.equal(calls[0]!.init?.method, "POST")
+		assert.equal(
+			new Headers(calls[0]!.init?.headers).get("content-type"),
+			"image/png",
+		)
+		assert.equal(calls[0]!.init?.body, file)
+	})
+
+	test("rejects a response without an https file URL, and API errors", async () => {
+		stubFetch(200, { fileUrl: "http://insecure.example/x" })
+		await assert.rejects(uploadBlindpayKycFile(new Blob([new Uint8Array([1])])))
+		stubFetch(415, { code: "unsupported_file_type", message: "Upload a JPEG" })
+		await assert.rejects(
+			uploadBlindpayKycFile(
+				new Blob([new Uint8Array([1])], { type: "image/gif" }),
+			),
+			(e: { code?: string }) => e.code === "unsupported_file_type",
 		)
 	})
 })

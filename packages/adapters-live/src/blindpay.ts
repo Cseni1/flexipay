@@ -14,6 +14,16 @@ import {
 } from "@flexipay/domain"
 import { jsonRequest, type FetchLike, type HttpResult } from "./http.ts"
 
+export type UploadFetch = (
+	url: string,
+	init: {
+		method: "POST"
+		headers: Record<string, string>
+		body: FormData
+		signal?: AbortSignal
+	},
+) => Promise<{ status: number; text(): Promise<string> }>
+
 // BlindPay off-ramp adapter (CCR-29, recipient bank accounts CCR-34). BlindPay converts USDC to
 // local currency and pays the bank in one step, so it serves the convert + payout pair (routing
 // keeps both legs on BlindPay):
@@ -74,6 +84,8 @@ export interface BlindPayOptions {
 	liveApproved: boolean
 	baseUrl?: string
 	fetch?: FetchLike
+	/** CCR-46: multipart upload (FormData body); defaults to the global fetch. */
+	uploadFetch?: UploadFetch
 	now?: () => number
 }
 
@@ -560,6 +572,59 @@ export class BlindPayAdapter implements ProviderAdapter {
 			throw new Error("BlindPay terms of service returned no https URL")
 		}
 		return { url }
+	}
+
+	/**
+	 * CCR-46: uploads one KYC document or selfie to BlindPay's encrypted `onboarding`
+	 * bucket and returns its opaque file URL. FlexiPay keeps no copy of the file.
+	 */
+	async uploadKycFile(file: {
+		bytes: Uint8Array
+		contentType: string
+		name: string
+	}): Promise<{ fileUrl: string }> {
+		const form = new FormData()
+		form.append("bucket", "onboarding")
+		form.append(
+			"file",
+			new Blob([new Uint8Array(file.bytes)], { type: file.contentType }),
+			file.name,
+		)
+		const controller = new AbortController()
+		const timer = setTimeout(() => controller.abort(), 60_000)
+		let status: number
+		let json: unknown = null
+		try {
+			const upload: UploadFetch =
+				this.opts.uploadFetch ?? ((url, init) => fetch(url, init))
+			const res = await upload(
+				`${this.opts.baseUrl ?? BASE_URL}/v1/upload?instance_id=${encodeURIComponent(this.opts.instanceId)}`,
+				{
+					method: "POST",
+					headers: {
+						Accept: "application/json",
+						Authorization: `Bearer ${this.opts.apiKey}`,
+					},
+					body: form,
+					signal: controller.signal,
+				},
+			)
+			status = res.status
+			const text = await res.text()
+			try {
+				json = text ? JSON.parse(text) : null
+			} catch {
+				json = null
+			}
+		} finally {
+			clearTimeout(timer)
+		}
+		const body = this.ok({ status, json }, "upload")
+		const fileUrl = typeof body.file_url === "string" ? body.file_url : ""
+		if (!fileUrl.startsWith("https://")) {
+			throw new Error("BlindPay upload returned no https file URL")
+		}
+		return { fileUrl }
 	}
 
 	/**

@@ -114,6 +114,8 @@ export class ApiError extends Error {
 interface RequestOptions<T> {
 	method?: "GET" | "POST"
 	body?: unknown
+	/** CCR-46: a file sent as the raw body, with its own content type. */
+	file?: Blob
 	schema: Parser<T>
 	idempotencyKey?: string
 	signal?: AbortSignal
@@ -127,7 +129,9 @@ async function request<T>(
 	options: RequestOptions<T>,
 ): Promise<T> {
 	const headers = new Headers({ Accept: "application/json" })
-	if (options.body !== undefined)
+	if (options.file !== undefined)
+		headers.set("Content-Type", options.file.type || "application/octet-stream")
+	else if (options.body !== undefined)
 		headers.set("Content-Type", "application/json")
 	// No browser-side auth header. The same-origin proxy owns the Bearer credential.
 	if (options.idempotencyKey)
@@ -149,7 +153,11 @@ async function request<T>(
 			method: options.method ?? "GET",
 			headers,
 			body:
-				options.body === undefined ? undefined : JSON.stringify(options.body),
+				options.file !== undefined
+					? options.file
+					: options.body === undefined
+						? undefined
+						: JSON.stringify(options.body),
 			signal,
 		})
 	} catch (error) {
@@ -713,6 +721,27 @@ export const submitBlindpayKyc = (body: unknown, signal?: AbortSignal) =>
 		body: BlindPayKycBodySchema.parse(body),
 		schema: BlindPayOnboardingResponseSchema,
 		idempotencyKey: newIdempotencyKey("blindpay-kyc"),
+		signal,
+	})
+
+const uploadedFileSchema: Parser<{ fileUrl: string }> = {
+	parse(value) {
+		const url =
+			value && typeof value === "object" && "fileUrl" in value
+				? (value as { fileUrl: unknown }).fileUrl
+				: null
+		if (typeof url !== "string" || !url.startsWith("https://"))
+			throw new Error("upload response invalid")
+		return { fileUrl: url }
+	},
+}
+
+/** CCR-46: one ID document or selfie, streamed to BlindPay; FlexiPay keeps no copy. */
+export const uploadBlindpayKycFile = (file: Blob, signal?: AbortSignal) =>
+	request("/v1/blindpay/onboarding/upload", {
+		method: "POST",
+		file,
+		schema: uploadedFileSchema,
 		signal,
 	})
 

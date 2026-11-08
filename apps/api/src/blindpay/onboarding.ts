@@ -33,6 +33,76 @@ export function blindPayAdapter(ctx: Ctx): BlindPayAdapter {
 	);
 }
 
+/**
+ * CCR-46: where BlindPay's terms page sends the sender back, with `?tos_id=`. Always our own
+ * web origin: a caller-supplied address is used only when it is on that origin (no open
+ * redirect, and no tos id handed to another site).
+ */
+export function termsReturnUrl(
+	candidate?: string,
+	env: Record<string, string | undefined> = process.env,
+): string | undefined {
+	const origins = [env.WEB_ORIGIN, ...(env.WEB_ORIGIN_EXTRA ?? "").split(",")]
+		.map((o) => o?.trim().replace(/\/$/, ""))
+		.filter((o): o is string => !!o);
+	if (origins.length === 0) return undefined;
+	if (candidate) {
+		try {
+			const url = new URL(candidate);
+			if (origins.includes(url.origin)) return url.toString();
+		} catch {
+			// fall through to the default
+		}
+	}
+	return `${origins[0]}/blindpay/terms-done`;
+}
+
+const KYC_FILE_TYPES = new Set([
+	"image/jpeg",
+	"image/png",
+	"image/webp",
+	"image/heic",
+	"image/heif",
+	"application/pdf",
+]);
+export const KYC_FILE_MAX_BYTES = 5 * 1024 * 1024;
+
+/** CCR-46: streams one identity document or selfie to BlindPay; FlexiPay stores nothing. */
+export async function uploadSenderDocument(
+	ctx: Ctx,
+	orgId: string,
+	file: { bytes: Uint8Array; contentType: string },
+): Promise<{ fileUrl: string }> {
+	const org = await loadOrg(ctx.db, orgId);
+	assertIndividualSender(org);
+	const contentType = file.contentType.split(";")[0]!.trim().toLowerCase();
+	if (!KYC_FILE_TYPES.has(contentType)) {
+		throw new ApiError(
+			415,
+			"unsupported_file_type",
+			"Upload a JPEG, PNG, WEBP, HEIC or PDF file",
+		);
+	}
+	if (file.bytes.length === 0 || file.bytes.length > KYC_FILE_MAX_BYTES) {
+		throw new ApiError(413, "file_too_large", "Files must be between 1 byte and 5 MB");
+	}
+	const ext = contentType === "application/pdf" ? "pdf" : contentType.split("/")[1];
+	try {
+		return await blindPayAdapter(ctx).uploadKycFile({
+			bytes: file.bytes,
+			contentType,
+			name: `kyc-${Date.now()}.${ext}`,
+		});
+	} catch (cause) {
+		if (cause instanceof ApiError) throw cause;
+		throw new ApiError(
+			502,
+			"upload_failed",
+			"BlindPay could not store the file. Try again, or use a clearer photo.",
+		);
+	}
+}
+
 export function assertIndividualSender(org: { kind: string }): void {
 	if (org.kind !== "individual") {
 		throw new ApiError(
@@ -168,7 +238,10 @@ async function nextKycStep(
 ): Promise<BlindPayKycStep> {
 	const adapter = blindPayAdapter(ctx);
 	if (!org.blindpayTosId) {
-		const terms = await adapter.startTermsOfService(randomUUID(), redirectUrl);
+		const terms = await adapter.startTermsOfService(
+			randomUUID(),
+			termsReturnUrl(redirectUrl),
+		);
 		return { step: "accept_terms", url: terms.url };
 	}
 	if (!org.blindpayCustomerId) return { step: "submit_kyc" };

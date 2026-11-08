@@ -20,6 +20,11 @@ const { BlindpaySenderPanel } = await load<{
 	}>
 }>("../src/components/solana/BlindpaySenderPanel.tsx")
 
+const { default: BlindpayTermsDone } = await load<{ default: ComponentType }>(
+	"../src/pages/BlindpayTermsDone.tsx",
+)
+const { MemoryRouter } = await import("react-router-dom")
+
 const kyc = (details: unknown) =>
 	renderToString(createElement(SenderKycPanel, { details }))
 
@@ -53,5 +58,43 @@ describe("BlindpaySenderPanel", () => {
 			}),
 		)
 		assert.ok(html.length > 0)
+	})
+})
+
+describe("CCR-46 identity form and terms return page", () => {
+	test("the identity form asks for photo uploads, not links", () => {
+		const html = kyc({ step: "submit_kyc" })
+		assert.ok(html.includes('type="file"'))
+		assert.ok(html.includes("Photo of your ID (front)"))
+		assert.ok(!html.includes("Selfie URL"))
+		assert.ok(!html.includes("ID document URL"))
+	})
+
+	test("a rejected identity can be submitted again", () => {
+		const html = kyc({ step: "wait_for_review", kycStatus: "rejected" })
+		assert.ok(html.includes("could not verify your identity"))
+		assert.ok(html.includes("Submit again"))
+	})
+
+	const page = (path: string) =>
+		renderToString(
+			createElement(
+				MemoryRouter,
+				{ initialEntries: [path] },
+				createElement(BlindpayTermsDone),
+			),
+		)
+
+	test("terms return page: saving state with an id, warning without one", () => {
+		assert.ok(
+			page("/blindpay/terms-done?tos_id=tos_1").includes(
+				"Saving your acceptance",
+			),
+		)
+		assert.ok(
+			page("/blindpay/terms-done").includes(
+				"did not return a terms acceptance",
+			),
+		)
 	})
 })

@@ -27,6 +27,9 @@ const owned: Record<string, string> = {};
 const prevEnv: Record<string, string | undefined> = {};
 const ENV = {
 	FP_SOLANA_CLUSTER: "devnet",
+	// Never the public devnet RPC: its rate limit (429 + retries) made this suite time out.
+	FP_SOLANA_RPC_URL: "http://127.0.0.1:9",
+	FP_SOLANA_PUBLIC_RPC_URL: "http://127.0.0.1:9",
 	FP_SOLANA_USDC_MINT: Keypair.generate().publicKey.toBase58(),
 	FP_SOLANA_USDC_DECIMALS: "6",
 	FP_SOLANA_TGBP_MINT: Keypair.generate().publicKey.toBase58(),
