@@ -7,6 +7,7 @@ export {
 	BlindPayAdapter,
 	type BlindPayOptions,
 	type BlindPaySandboxAccount,
+	type UploadFetch,
 } from "./blindpay.ts"
 export { TazapayAdapter, type TazapayOptions } from "./tazapay.ts"
 export type { FetchLike } from "./http.ts"

@@ -8,6 +8,7 @@ import {
 	RegisterPage,
 	ResetPasswordPage,
 } from "./pages/AuthPages"
+import BlindpayTermsDone from "./pages/BlindpayTermsDone"
 import ClaimPage from "./pages/ClaimPage"
 import Dashboard from "./pages/Dashboard"
 import Developers from "./pages/Developers"
@@ -47,6 +48,7 @@ function App() {
 					<Route path="where-we-pay" element={<WhereWePay />} />
 					<Route path="account" element={<Account />} />
 					<Route path="payments/:paymentId" element={<PaymentDetail />} />
+					<Route path="blindpay/terms-done" element={<BlindpayTermsDone />} />
 				</Route>
 				<Route path="claim/:claimToken" element={<ClaimPage />} />
 				<Route path="*" element={<Navigate to="/" replace />} />

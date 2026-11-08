@@ -279,12 +279,17 @@ describe("BlindPay adapter", () => {
 	it("on a development instance, bank details without a KYC receiver still pay the sandbox account", async () => {
 		const api = fakeApi()
 		const result = await adapter(api).execute(
-			leg("payout", money("5443", "BRL"), { ...BR_ENDPOINT, partnerRefs: undefined }),
+			leg("payout", money("5443", "BRL"), {
+				...BR_ENDPOINT,
+				partnerRefs: undefined,
+			}),
 		)
 		expect(result.externalRef).toBeTruthy()
 		expect(api.calls.some((c) => c.path.endsWith("/bank-accounts"))).toBe(false)
 		const quote = api.calls.find((c) => c.path.endsWith("/quotes"))
-		expect(quote?.body).toMatchObject({ bank_account_id: SANDBOX.bankAccountId })
+		expect(quote?.body).toMatchObject({
+			bank_account_id: SANDBOX.bankAccountId,
+		})
 	})
 
 	it("in production, refuses without a KYC-approved receiver instead of inventing KYC data", async () => {
@@ -518,7 +523,9 @@ describe("BlindPay adapter", () => {
 			request_amount: 10000,
 		})
 		expect(api.calls.some((c) => c.path.endsWith("/payouts/evm"))).toBe(false)
-		expect(api.calls.some((c) => c.path.endsWith("/mint-usdb-solana"))).toBe(false)
+		expect(api.calls.some((c) => c.path.endsWith("/mint-usdb-solana"))).toBe(
+			false,
+		)
 		const again = await a.prepareSenderWalletDelegation({
 			customerId: "re_sender",
 			endpoint: {
@@ -572,5 +579,73 @@ describe("createLiveProviders", () => {
 			BLINDPAY_INSTANCE_ID: "in_1",
 		})
 		expect([...live.providers.keys()]).toEqual(["blindpay_sandbox"])
+	})
+})
+
+describe("CCR-46 uploadKycFile", () => {
+	const make = (reply: { status: number; body: string }) => {
+		const seen: Array<{
+			url: string
+			headers: Record<string, string>
+			form: FormData
+		}> = []
+		const a = new BlindPayAdapter(ROW, {
+			apiKey: "bp_test_key",
+			instanceId: "in_1",
+			sandbox: null,
+			liveApproved: false,
+			fetch: async () => ({ status: 500, text: async () => "{}" }),
+			uploadFetch: async (url, init) => {
+				seen.push({ url, headers: init.headers, form: init.body })
+				return { status: reply.status, text: async () => reply.body }
+			},
+		})
+		return { a, seen }
+	}
+
+	it("posts the file to the onboarding bucket with the instance id and key", async () => {
+		const { a, seen } = make({
+			status: 200,
+			body: JSON.stringify({
+				file_url: "https://files.blindpay.com/1-kyc.png",
+			}),
+		})
+		const out = await a.uploadKycFile({
+			bytes: new Uint8Array([1, 2, 3]),
+			contentType: "image/png",
+			name: "kyc.png",
+		})
+		expect(out).toEqual({ fileUrl: "https://files.blindpay.com/1-kyc.png" })
+		expect(seen[0]!.url).toBe(
+			"https://api.blindpay.com/v1/upload?instance_id=in_1",
+		)
+		expect(seen[0]!.headers.Authorization).toBe("Bearer bp_test_key")
+		expect(seen[0]!.form.get("bucket")).toBe("onboarding")
+		const file = seen[0]!.form.get("file") as Blob
+		expect(file.type).toBe("image/png")
+		expect(file.size).toBe(3)
+	})
+
+	it("fails on a BlindPay error, a non-JSON reply or a non-https URL", async () => {
+		const file = {
+			bytes: new Uint8Array([1]),
+			contentType: "image/jpeg",
+			name: "x.jpg",
+		}
+		await expect(
+			make({
+				status: 400,
+				body: JSON.stringify({ message: "file_type_not_allowed" }),
+			}).a.uploadKycFile(file),
+		).rejects.toThrow(/upload failed \(HTTP 400: file_type_not_allowed\)/)
+		await expect(
+			make({ status: 200, body: "not json" }).a.uploadKycFile(file),
+		).rejects.toThrow()
+		await expect(
+			make({
+				status: 200,
+				body: JSON.stringify({ file_url: "http://x" }),
+			}).a.uploadKycFile(file),
+		).rejects.toThrow(/no https file URL/)
 	})
 })

@@ -896,3 +896,11 @@ generated from the route table.
 - **Web:** Send can choose "Pay from my Solana wallet". The payment page asks the sender to confirm, then **Approve in your wallet**, then shows tracking. A refunded payout says "returned to your wallet". Signing is devnet-only in this build.
 - **Migration:** `20261108130000_ccr45_sender_wallet_blindpay` adds nullable `Organization.blindpayCustomerId`, `blindpayKycStatus`, `blindpayTosId` and `Payment.blindpayQuoteId`, `blindpayQuoteExpiresAt`, `blindpaySenderWallet`.
 - **Tests:** adapter fake API, API against that fake, and e2e-ui with a mocked wallet. Nothing calls mainnet or a production BlindPay instance.
+
+## CCR-46 (integrator, 8 Nov 2026): BlindPay onboarding usable by people
+
+- **Terms return:** the BlindPay terms link always carries `redirect_url=<WEB_ORIGIN>/blindpay/terms-done`. A caller-supplied `redirectUrl` on `POST /v1/blindpay/onboarding` is used only when it is on `WEB_ORIGIN` or `WEB_ORIGIN_EXTRA` (no open redirect; the `tos_id` never goes to another site). The new web page `/blindpay/terms-done?tos_id=…` saves the id through `POST /v1/blindpay/onboarding/tos` and shows the next step. A manual "paste the id" fallback stays, folded away.
+- **Document upload:** `POST /v1/blindpay/onboarding/upload` takes one file as the raw request body (`Content-Type` image/jpeg, png, webp, heic, heif or application/pdf; 1 byte to 5 MB) and streams it to BlindPay's encrypted `onboarding` bucket (`POST /v1/upload?instance_id=`). Returns `{ fileUrl }` to use as `id_doc_front_file` / `selfie_file`. Customer auth (sessions need a trusted Origin), individual senders only, `/v1` rate limit. FlexiPay stores and logs nothing from the file. Errors: 415 `unsupported_file_type`, 413 `file_too_large` / `payload_too_large`, 502 `upload_failed`. Not in `openapi.json` (binary body).
+- **Web:** the identity form uses photo uploads (camera on phones); photos over 1.5 MB are downscaled in the browser (longest side 2400 px, JPEG 0.85) to stay under proxy limits. A rejected identity shows BlindPay's outcome and "Submit again".
+- **API errors:** any body over its limit is now 413 `payload_too_large` instead of 500.
+- No migration.
