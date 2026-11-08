@@ -6,6 +6,7 @@ import {
 	decideOnFailure,
 	isPaid,
 	isSolanaSettleRail,
+	SENDER_WALLET_BLINDPAY_RAIL,
 	nextLegIndex,
 	type EndpointRef,
 	type FeeMode,
@@ -137,7 +138,14 @@ async function loadRuntime(
 	const claimWaitSettle = isClaimWaitRoute(payment.legs);
 	// CCR-32: a claim supplies its accepted endpoint at accept time; a batch stores it at create.
 	const linkedEndpointId = claimEndpointId ?? payment.endpointId;
-	if (payment.legs.some((l) => l.kind === "settle") && feeMode === null) {
+	const senderWalletSettle = payment.legs.some(
+		(l) => l.rail === SENDER_WALLET_BLINDPAY_RAIL,
+	);
+	if (
+		payment.legs.some((l) => l.kind === "settle") &&
+		feeMode === null &&
+		!senderWalletSettle
+	) {
 		throw new Error("quote.feeMode missing for settle route (CCR-13)");
 	}
 	const fees = payment.quote.fees as {
@@ -293,6 +301,10 @@ async function runPendingLegs(
 			const processing = rt.legs.find((l) => l.status === "processing");
 			const failed = rt.legs.find((l) => l.status === "failed");
 			if (processing?.kind === "settle") {
+				// CCR-45: the sender's wallet funds BlindPay. Nothing is locked here.
+				if (processing.rail === SENDER_WALLET_BLINDPAY_RAIL) {
+					return;
+				}
 				// Lane B / F9 / CCR-39: solana_* waits for verified transfer (claim or direct treasury).
 				if (
 					isSolanaSettleRail(processing.rail) ||
@@ -323,6 +335,14 @@ async function runPendingLegs(
 			leg.status === "pending" &&
 			rt.payment.delivery === "claim_link" &&
 			rt.claimStatus !== "accepted"
+		) {
+			return;
+		}
+		// CCR-45: the payout is created by POST .../blindpay/confirm, not by a custodial execute.
+		if (
+			leg.kind === "payout" &&
+			!leg.externalRef &&
+			rt.legs.some((l) => l.rail === SENDER_WALLET_BLINDPAY_RAIL)
 		) {
 			return;
 		}
@@ -493,14 +513,20 @@ async function onProviderLegFailed(
 		where: { paymentId: payment.id },
 		orderBy: { position: "asc" },
 	});
-	const action = decideOnFailure({
-		failedKind: leg.kind as LegKind,
-		legs: legStates(
-			rows.map((l) => (l.id === leg.id ? { ...l, status: "failed" } : l)),
-		),
-		attemptsOnProvider: leg.attempt,
-		untriedProviders: [],
-	});
+	const senderWallet = rows.some((l) => l.rail === SENDER_WALLET_BLINDPAY_RAIL);
+	// A failed sender-wallet payout already returns the stablecoins. Do not retry execute(),
+	// which would pull from a BlindPay-managed wallet.
+	const action =
+		senderWallet && leg.kind === "payout"
+			? ({ action: "refund_vault" } as const)
+			: decideOnFailure({
+					failedKind: leg.kind as LegKind,
+					legs: legStates(
+						rows.map((l) => (l.id === leg.id ? { ...l, status: "failed" } : l)),
+					),
+					attemptsOnProvider: leg.attempt,
+					untriedProviders: [],
+				});
 
 	const attemptBefore = leg.attempt;
 	await emitPaymentEvent(db, payment.organizationId, payment.id, "leg.failed", {
@@ -929,6 +955,16 @@ async function executeSettle(
 ): Promise<void> {
 	const payment = rt.payment;
 	const feeMode = rt.feeMode as FeeMode;
+
+	// CCR-45: no treasury and no vault. Settle stays processing until BlindPay accepts the payout.
+	if (leg.rail === SENDER_WALLET_BLINDPAY_RAIL) {
+		await emitPaymentEvent(db, payment.organizationId, payment.id, "payment.onchain", {
+			phase: "blindpay_sender_wallet_wait",
+			legId: leg.id,
+			detail: "awaiting_sender_wallet_delegation",
+		});
+		return;
+	}
 
 	// Lane B / F9: solana_usdc / solana_tgbp never fund or locks a Stellar/mock vault.
 	// Settle stays processing until POST /v1/payments/{id}/solana/confirm.
@@ -1451,10 +1487,15 @@ async function handleLegFailure(
 		include: { legs: { orderBy: { position: "asc" } } },
 	});
 	const failed = payment.legs.find((l) => l.id === failedLegId)!;
+	const senderWallet = payment.legs.some(
+		(l) => l.rail === SENDER_WALLET_BLINDPAY_RAIL,
+	);
 	// A settle leg that failed after the lock exists (fee drift, CCR-15) must be refunded through
 	// the vault: decideOnFailure only sees `settle` as settled once it succeeded.
+	// CCR-45: a sender-wallet payout failure returns the stablecoins. Do not retry execute().
 	const action =
-		failed.kind === "settle" && failed.externalRef
+		(failed.kind === "settle" && failed.externalRef) ||
+		(senderWallet && failed.kind === "payout")
 			? ({ action: "refund_vault" } as const)
 			: decideOnFailure({
 					failedKind: failed.kind as LegKind,

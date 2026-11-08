@@ -18,6 +18,12 @@ export {
 	QuoteSchema,
 } from "../domain/src/api/quotes.ts"
 export {
+	BlindPayConfirmResponseSchema,
+	BlindPayDelegationResponseSchema,
+	BlindPayKycBodySchema,
+	BlindPayOnboardingResponseSchema,
+} from "../domain/src/api/blindpay.ts"
+export {
 	EventListResponseSchema,
 	EventSchema,
 } from "../domain/src/api/events.ts"

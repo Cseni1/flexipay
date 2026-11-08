@@ -14,6 +14,7 @@ import {
 	type PriceDeps,
 	type PricedRoute,
 } from "./price.ts";
+import { priceSenderWalletBlindpay } from "./sender-wallet.ts";
 
 // Build a Quote from a CreateQuoteRequest (ARCHITECTURE §8). Pure over config + injected adapters.
 
@@ -244,6 +245,26 @@ export async function buildQuote(
 	const eligibility = checkEligibility(req, deps.config);
 	if (!eligibility.ok) {
 		return eligibility satisfies EligibilityFail;
+	}
+
+	// CCR-45: the sender's wallet funds BlindPay. There is no vault fee to resolve.
+	if (req.settleMode === "sender_wallet_blindpay") {
+		const priced = await priceSenderWalletBlindpay(
+			priceDeps(deps, null),
+			req,
+			eligibility.corridor,
+		);
+		if (!priced.ok) return priced;
+		return {
+			ok: true,
+			quote: assembleQuote(
+				req,
+				deps,
+				eligibility.reasons,
+				priced.priced,
+				null,
+			),
+		};
 	}
 
 	let feeMode: FeeMode | null = null;

@@ -48,6 +48,7 @@ import {
 import { AuthBlockedNotice } from "../components/AuthBlockedNotice"
 import { BankDetailsFields } from "../components/payments/BankDetailsFields"
 import { QuotePanel } from "../components/payments/QuotePanel"
+import { SenderKycPanel } from "../components/payments/SenderKycPanel"
 import {
 	Button,
 	Grid,
@@ -302,6 +303,7 @@ export default function SendPayment() {
 	const [createError, setCreateError] = useState<string | null>(null)
 	const [authBlocked, setAuthBlocked] = useState(false)
 	const [delivery, setDelivery] = useState<Delivery>("direct")
+	const [senderWallet, setSenderWallet] = useState(false)
 	const [recipientCountryNote, setRecipientCountryNote] = useState<
 		string | null
 	>(null)
@@ -664,7 +666,7 @@ export default function SendPayment() {
 			setFormError("Choose a destination type.")
 			return
 		}
-		if (!form.feeMode) {
+		if (!senderWallet && !form.feeMode) {
 			setFormError("Choose who pays the vault fee.")
 			return
 		}
@@ -726,7 +728,9 @@ export default function SendPayment() {
 				value: { amount, currency: source.currency },
 			},
 			policy: "cheapest",
-			feeMode: form.feeMode,
+			...(senderWallet
+				? { settleMode: "sender_wallet_blindpay" as const }
+				: { feeMode: form.feeMode as FeeMode }),
 			...(payout ? { payout } : {}),
 		}
 
@@ -834,7 +838,7 @@ export default function SendPayment() {
 				{
 					quoteId: quote.id,
 					recipientId,
-					delivery,
+					delivery: senderWallet ? "direct" : delivery,
 					profile: "one_off",
 					...(endpointId ? { endpointId } : {}),
 				},
@@ -981,19 +985,31 @@ export default function SendPayment() {
 									update({ recipientKind: event.target.value as RecipientKind })
 								}
 							/>
-							<SelectField
-								id="fee-mode"
-								label="Who pays the fee? (Vault fee payer)"
-								value={form.feeMode}
-								options={[
-									{ value: "", label: "Choose who pays the fee" },
-									...FEE_MODE_OPTIONS,
-								]}
-								hint="The 1% vault fee is either added to what you pay or taken from what the recipient gets. You must choose."
-								onChange={(event) =>
-									update({ feeMode: event.target.value as FeeMode | "" })
-								}
-							/>
+							<label className="field">
+								<input
+									type="checkbox"
+									checked={senderWallet}
+									data-testid="sender-wallet-blindpay"
+									onChange={(event) => setSenderWallet(event.target.checked)}
+								/>{" "}
+								Pay from my Solana wallet (BlindPay pulls the stablecoins;
+								FlexiPay does not hold them)
+							</label>
+							{senderWallet ? null : (
+								<SelectField
+									id="fee-mode"
+									label="Who pays the fee? (Vault fee payer)"
+									value={form.feeMode}
+									options={[
+										{ value: "", label: "Choose who pays the fee" },
+										...FEE_MODE_OPTIONS,
+									]}
+									hint="The 1% vault fee is either added to what you pay or taken from what the recipient gets. You must choose."
+									onChange={(event) =>
+										update({ feeMode: event.target.value as FeeMode | "" })
+									}
+								/>
+							)}
 							<TextField
 								id="amount"
 								label={amountCopy.label}
@@ -1142,6 +1158,9 @@ export default function SendPayment() {
 						</div>
 
 						{formError ? <Notice tone="warning">{formError}</Notice> : null}
+						{quoteError?.code === "kyc_required" ? (
+							<SenderKycPanel details={quoteError.details} />
+						) : null}
 						{quoteError ? (
 							<>
 								<Notice tone="warning" data-testid="quote-error">
