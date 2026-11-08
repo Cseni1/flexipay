@@ -7,7 +7,7 @@ const webDir = resolve(
 	dirname(fileURLToPath(import.meta.url)),
 	"../../apps/web",
 )
-const port = 5180
+const port = Number(process.env.E2E_PORT ?? 5180)
 
 export default defineConfig({
 	testDir: "./tests",

@@ -44,7 +44,12 @@ function senderPayment(phase: "approve" | "tracking" | "returned") {
 		kind: "payout" as const,
 		rail: "blindpay_sandbox",
 		providerId: "blindpay_sandbox",
-		status: phase === "returned" ? "failed" : phase === "tracking" ? "processing" : "pending",
+		status:
+			phase === "returned"
+				? "failed"
+				: phase === "tracking"
+					? "processing"
+					: "pending",
 		externalRef: phase === "approve" ? null : "pa_sol",
 		error:
 			phase === "returned"
@@ -54,7 +59,12 @@ function senderPayment(phase: "approve" | "tracking" | "returned") {
 	return {
 		...base,
 		id: "pay_sender",
-		status: phase === "returned" ? "refunded" : phase === "tracking" ? "processing" : "awaiting_funding",
+		status:
+			phase === "returned"
+				? "refunded"
+				: phase === "tracking"
+					? "processing"
+					: "awaiting_funding",
 		legs: [settle, payout],
 		events: base.events.map((event) => ({ ...event, paymentId: "pay_sender" })),
 	}
@@ -74,7 +84,7 @@ async function installWallet(page: Page, chains: string[] = ["solana:devnet"]) {
 			name: "Phantom",
 			icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'/>",
 			chains,
-			accounts: [] as typeof account[],
+			accounts: [] as (typeof account)[],
 			features: {
 				"standard:connect": {
 					version: "1.0.0",
@@ -135,22 +145,32 @@ test("sender wallet: confirm, approve, then track", async ({ page }) => {
 		if (route.request().method() !== "GET") return route.fallback()
 		await route.fulfill({ json: senderPayment(phase) })
 	})
-	await page.route(/\/v1\/payments\/pay_sender\/blindpay\/delegation$/, async (route) => {
-		await route.fulfill({
-			json: {
-				transaction: delegationTx,
-				quoteId: "qu_blind",
-				expiresAt: new Date(Date.now() + 60_000).toISOString(),
-				ownerAddress: "11111111111111111111111111111111",
-			},
-		})
-	})
-	await page.route(/\/v1\/payments\/pay_sender\/blindpay\/confirm$/, async (route) => {
-		phase = "tracking"
-		await route.fulfill({
-			json: { status: "accepted", payoutId: "pa_sol", paymentStatus: "processing" },
-		})
-	})
+	await page.route(
+		/\/v1\/payments\/pay_sender\/blindpay\/delegation$/,
+		async (route) => {
+			await route.fulfill({
+				json: {
+					transaction: delegationTx,
+					quoteId: "qu_blind",
+					expiresAt: new Date(Date.now() + 60_000).toISOString(),
+					ownerAddress: "11111111111111111111111111111111",
+				},
+			})
+		},
+	)
+	await page.route(
+		/\/v1\/payments\/pay_sender\/blindpay\/confirm$/,
+		async (route) => {
+			phase = "tracking"
+			await route.fulfill({
+				json: {
+					status: "accepted",
+					payoutId: "pa_sol",
+					paymentStatus: "processing",
+				},
+			})
+		},
+	)
 	await page.goto("/payments/pay_sender")
 	await page.getByTestId("solana-wallet-connect").click()
 	await page.getByTestId("blindpay-confirm").check()
@@ -159,7 +179,9 @@ test("sender wallet: confirm, approve, then track", async ({ page }) => {
 	await expect(page.getByTestId("blindpay-tracking")).toBeVisible()
 })
 
-test("a refunded sender-wallet payout says returned to your wallet", async ({ page }) => {
+test("a refunded sender-wallet payout says returned to your wallet", async ({
+	page,
+}) => {
 	await page.route(/\/v1\/solana\/config$/, async (route) => {
 		await route.fulfill({
 			json: {
@@ -179,7 +201,9 @@ test("a refunded sender-wallet payout says returned to your wallet", async ({ pa
 	)
 })
 
-test("CCR-49: on mainnet a tGBP sender swaps via Jupiter, then approves the payout", async ({ page }) => {
+test("CCR-49: on mainnet a tGBP sender swaps via Jupiter, then approves the payout", async ({
+	page,
+}) => {
 	let phase: "approve" | "tracking" = "approve"
 	const order: string[] = []
 	let confirms = 0
@@ -200,59 +224,75 @@ test("CCR-49: on mainnet a tGBP sender swaps via Jupiter, then approves the payo
 		if (route.request().method() !== "GET") return route.fallback()
 		await route.fulfill({ json: senderPayment(phase) })
 	})
-	await page.route(/\/v1\/payments\/pay_sender\/solana-swap$/, async (route) => {
-		order.push("swap")
-		await route.fulfill({
-			json: {
-				status: "ready",
-				provider: "jupiter",
-				transaction: delegationTx,
-				inputAsset: "TGBP",
-				inputMint: "2zMqyX4AYCk6mgy5UZ2S7zUaLxwERhK5WjqDzkPPbSpW",
-				inputDecimals: 9,
-				inputAmount: "74700000000",
-				inputMaxAmount: "75073500000",
-				outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-				outputDecimals: 6,
-				outputAmount: "100000000",
-				requiredAmount: "100000000",
-				heldAmount: "0",
-				slippageBps: 50,
-				priceImpact: 0.0001,
-				route: ["Whirlpool"],
-			},
-		})
-	})
-	await page.route(/\/v1\/payments\/pay_sender\/solana-swap\/confirm$/, async (route) => {
-		confirms += 1
-		order.push(`swap-confirm-${confirms}`)
-		await route.fulfill({
-			json: {
-				status: confirms === 1 ? "pending" : "confirmed",
-				signature: "5".repeat(88),
-				heldAmount: confirms === 1 ? "0" : "100000000",
-				requiredAmount: "100000000",
-			},
-		})
-	})
-	await page.route(/\/v1\/payments\/pay_sender\/blindpay\/delegation$/, async (route) => {
-		order.push("delegation")
-		await route.fulfill({
-			json: {
-				transaction: delegationTx,
-				quoteId: "qu_blind",
-				expiresAt: new Date(Date.now() + 60_000).toISOString(),
-				ownerAddress: "11111111111111111111111111111111",
-			},
-		})
-	})
-	await page.route(/\/v1\/payments\/pay_sender\/blindpay\/confirm$/, async (route) => {
-		order.push("confirm")
-		phase = "tracking"
-		await route.fulfill({
-			json: { status: "accepted", payoutId: "pa_sol", paymentStatus: "processing" },
-		})
-	})
+	await page.route(
+		/\/v1\/payments\/pay_sender\/solana-swap$/,
+		async (route) => {
+			order.push("swap")
+			await route.fulfill({
+				json: {
+					status: "ready",
+					provider: "jupiter",
+					transaction: delegationTx,
+					inputAsset: "TGBP",
+					inputMint: "2zMqyX4AYCk6mgy5UZ2S7zUaLxwERhK5WjqDzkPPbSpW",
+					inputDecimals: 9,
+					inputAmount: "74700000000",
+					inputMaxAmount: "75073500000",
+					outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+					outputDecimals: 6,
+					outputAmount: "100000000",
+					requiredAmount: "100000000",
+					heldAmount: "0",
+					slippageBps: 50,
+					priceImpact: 0.0001,
+					route: ["Whirlpool"],
+				},
+			})
+		},
+	)
+	await page.route(
+		/\/v1\/payments\/pay_sender\/solana-swap\/confirm$/,
+		async (route) => {
+			confirms += 1
+			order.push(`swap-confirm-${confirms}`)
+			await route.fulfill({
+				json: {
+					status: confirms === 1 ? "pending" : "confirmed",
+					signature: "5".repeat(88),
+					heldAmount: confirms === 1 ? "0" : "100000000",
+					requiredAmount: "100000000",
+				},
+			})
+		},
+	)
+	await page.route(
+		/\/v1\/payments\/pay_sender\/blindpay\/delegation$/,
+		async (route) => {
+			order.push("delegation")
+			await route.fulfill({
+				json: {
+					transaction: delegationTx,
+					quoteId: "qu_blind",
+					expiresAt: new Date(Date.now() + 60_000).toISOString(),
+					ownerAddress: "11111111111111111111111111111111",
+				},
+			})
+		},
+	)
+	await page.route(
+		/\/v1\/payments\/pay_sender\/blindpay\/confirm$/,
+		async (route) => {
+			order.push("confirm")
+			phase = "tracking"
+			await route.fulfill({
+				json: {
+					status: "accepted",
+					payoutId: "pa_sol",
+					paymentStatus: "processing",
+				},
+			})
+		},
+	)
 	await page.goto("/payments/pay_sender")
 	await page.getByTestId("solana-wallet-connect").click()
 	await page.getByTestId("blindpay-pay-tgbp").check()
@@ -261,14 +301,20 @@ test("CCR-49: on mainnet a tGBP sender swaps via Jupiter, then approves the payo
 	)
 	await page.getByTestId("blindpay-confirm").check()
 	await page.getByTestId("blindpay-approve").click()
-	await expect(page.getByTestId("blindpay-tracking")).toBeVisible({ timeout: 15_000 })
+	await expect(page.getByTestId("blindpay-tracking")).toBeVisible({
+		timeout: 15_000,
+	})
 	expect(order.filter((step) => step !== "swap").slice(0, 4)).toEqual([
 		"swap-confirm-1",
 		"swap-confirm-2",
 		"delegation",
 		"confirm",
 	])
-	expect(await page.evaluate(() => (window as unknown as { __signed: number }).__signed)).toBe(2)
+	expect(
+		await page.evaluate(
+			() => (window as unknown as { __signed: number }).__signed,
+		),
+	).toBe(2)
 })
 
 test("CCR-49: devnet shows no pay-with choice", async ({ page }) => {

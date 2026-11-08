@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { paymentDetailFixture } from "./fixtures"
+import { openTechnicalDetails, paymentDetailFixture } from "./fixtures"
 
 test.describe("CF0 web shell", () => {
 	test("send payment screen uses the shared shell", async ({ page }) => {
@@ -9,7 +9,9 @@ test.describe("CF0 web shell", () => {
 		await expect(
 			page.getByRole("heading", { name: "Send a payment" }),
 		).toBeVisible()
-		await expect(page.getByRole("link", { name: "Payments" })).toBeVisible()
+		await expect(
+			page.getByRole("link", { name: "Activity" }).first(),
+		).toBeVisible()
 		await expect(page.getByText("Simulated").first()).toBeVisible()
 		await expect(page.getByRole("button", { name: "Get quote" })).toBeEnabled()
 	})
@@ -25,12 +27,13 @@ test.describe("CF0 web shell", () => {
 		await expect(
 			page.getByRole("heading", { name: "Payment detail" }),
 		).toBeVisible()
+		await openTechnicalDetails(page)
 		await expect(
 			page.getByRole("heading", { name: "Status key" }),
 		).toBeVisible()
 		await expect(page.getByText("Completed", { exact: true })).toBeVisible()
 		await expect(page.getByText("Expired", { exact: true })).toBeVisible()
-		await expect(page.getByText("Refunded", { exact: true })).toBeVisible()
+		await expect(page.getByText("Money returned", { exact: true })).toBeVisible()
 	})
 
 	test("claim page works at phone width", async ({ page }) => {

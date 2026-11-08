@@ -62,7 +62,7 @@ async function fillQuoteForm(page: Page) {
 	await page.getByLabel("Destination country").selectOption("PH")
 	await page.getByLabel("Destination", { exact: true }).selectOption("ewallet")
 	await page.getByLabel("Recipient kind").selectOption("individual")
-	await page.getByLabel("Vault fee payer").selectOption("PayerPays")
+	await page.getByLabel("Who pays the fee?").selectOption("PayerPays")
 	await page.getByLabel("Amount (USD)").fill("1,250.00")
 	await page.getByLabel("Recipient", { exact: true }).fill("Worker A")
 }
@@ -112,7 +112,10 @@ test.describe("CF13 quote refusals in plain English", () => {
 		page,
 	}) => {
 		await mockApi(page, {
-			quoteReasons: ["sim_ewallet_ph takes at most 1000000 PHP", REMAINDER_NOTE],
+			quoteReasons: [
+				"sim_ewallet_ph takes at most 1000000 PHP",
+				REMAINDER_NOTE,
+			],
 		})
 		await page.goto("/")
 		await fillQuoteForm(page)
@@ -125,8 +128,12 @@ test.describe("CF13 quote refusals in plain English", () => {
 		await expect(notice).not.toContainText("sim_ewallet_ph")
 
 		const details = page.getByTestId("quote-error-details")
-		await expect(details).toContainText("sim_ewallet_ph takes at most 1000000 PHP")
-		await expect(page.getByRole("button", { name: "Create payment" })).toHaveCount(0)
+		await expect(details).toContainText(
+			"sim_ewallet_ph takes at most 1000000 PHP",
+		)
+		await expect(
+			page.getByRole("button", { name: "Create payment" }),
+		).toHaveCount(0)
 	})
 })
 
@@ -182,9 +189,10 @@ test.describe("CF13 claim link is visible and copyable", () => {
 		await expect(other.getByTestId("claim-link-url")).toHaveCount(0)
 
 		for (const target of [page, other]) {
-			const stored = await target.evaluate(() =>
-				JSON.stringify({ ...localStorage }) +
-				JSON.stringify({ ...sessionStorage }),
+			const stored = await target.evaluate(
+				() =>
+					JSON.stringify({ ...localStorage }) +
+					JSON.stringify({ ...sessionStorage }),
 			)
 			expect(stored).not.toContain(CLAIM_TOKEN)
 		}

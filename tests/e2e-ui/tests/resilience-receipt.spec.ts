@@ -80,18 +80,16 @@ test.describe("Resilience: API wake-up", () => {
 		await Promise.all([
 			page.waitForResponse(
 				(response) =>
-					response.url().includes("/v1/payments/pay_asleep") &&
-					response.ok(),
+					response.url().includes("/v1/payments/pay_asleep") && response.ok(),
 			),
 			page.getByTestId("api-wakeup-retry").click(),
 		])
 		await expect(page.getByTestId("api-wakeup")).toHaveCount(0)
-		await expect(
-			page.getByRole("heading", { name: "Payment", exact: true }),
-		).toBeVisible()
-		await expect(
-			page.locator(".field__static").filter({ hasText: "1,250.00 USD" }),
-		).toBeVisible()
+		const summary = page.getByTestId("payment-summary")
+		await expect(summary).toBeVisible()
+		await expect(page.getByTestId("payment-summary-send")).toHaveText(
+			"1,250.00 USD",
+		)
 	})
 
 	test("replaces waking copy after automatic retries are exhausted", async ({
@@ -158,7 +156,10 @@ test.describe("Receipt: paid Solana payment", () => {
 			"href",
 			`https://explorer.solana.com/tx/${signature}?cluster=devnet`,
 		)
-		const copy = page.getByRole("button", { name: "Copy signature", exact: true })
+		const copy = page.getByRole("button", {
+			name: "Copy signature",
+			exact: true,
+		})
 		await expect(copy).toBeVisible()
 		await copy.click()
 		await expect(

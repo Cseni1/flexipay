@@ -86,7 +86,10 @@ test.describe("Web polish: Solana pay messaging", () => {
 			"href",
 			`https://explorer.solana.com/tx/${signature}?cluster=devnet`,
 		)
-		const copy = page.getByRole("button", { name: "Copy signature", exact: true })
+		const copy = page.getByRole("button", {
+			name: "Copy signature",
+			exact: true,
+		})
 		await expect(copy).toBeVisible()
 		await copy.click()
 		await expect(

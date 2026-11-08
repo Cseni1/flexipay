@@ -9,6 +9,7 @@ import {
 	signUp,
 } from "../api/auth"
 import { TextField } from "../components/ui"
+import { Icon } from "../components/ui/Icon"
 import { useSession } from "../providers/SessionProvider"
 
 // TASK 06: sign-in, registration, email verification and password-reset screens.
@@ -16,10 +17,45 @@ import { useSession } from "../providers/SessionProvider"
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
 	return (
-		<main className="app-main" style={{ maxWidth: 420, margin: "10vh auto" }}>
-			<h1>{title}</h1>
-			{children}
-		</main>
+		<div className="auth-shell">
+			<aside className="auth-side">
+				<Link to="/" className="app-brand">
+					<span className="app-brand__mark" aria-hidden="true">
+						<Icon name="bolt" size={18} />
+					</span>
+					<span className="app-brand__text">
+						<span className="app-brand__name">FlexiPay</span>
+						<span className="app-brand__by">by FlexiWork</span>
+					</span>
+				</Link>
+				<div>
+					<p className="auth-side__title">
+						Send money to any country, in a few taps.
+					</p>
+					<ul className="auth-side__points">
+						{[
+							"See the price before you pay",
+							"We compare partners for the best deal",
+							"Your money stays in your own wallet",
+						].map((point) => (
+							<li key={point}>
+								<span className="auth-side__check">
+									<Icon name="check" size={16} />
+								</span>
+								{point}
+							</li>
+						))}
+					</ul>
+				</div>
+				<p className="auth-side__foot">FlexiPay is part of FlexiWork.</p>
+			</aside>
+			<main className="auth-main">
+				<div className="auth-card">
+					<h1 className="auth-card__title">{title}</h1>
+					{children}
+				</div>
+			</main>
+		</div>
 	)
 }
 
@@ -114,7 +150,11 @@ export function LoginPage() {
 					</p>
 				) : null}
 				<div className="form-actions">
-					<button type="submit" disabled={busy}>
+					<button
+						type="submit"
+						className="button button--primary auth-card__submit"
+						disabled={busy}
+					>
 						{busy ? "Signing in..." : "Sign in"}
 					</button>
 				</div>
@@ -188,7 +228,11 @@ export function RegisterPage() {
 					</p>
 				) : null}
 				<div className="form-actions">
-					<button type="submit" disabled={busy}>
+					<button
+						type="submit"
+						className="button button--primary auth-card__submit"
+						disabled={busy}
+					>
 						{busy ? "Creating..." : "Create account"}
 					</button>
 				</div>
@@ -235,7 +279,11 @@ export function ForgotPasswordPage() {
 						</p>
 					) : null}
 					<div className="form-actions">
-						<button type="submit" disabled={busy}>
+						<button
+							type="submit"
+							className="button button--primary auth-card__submit"
+							disabled={busy}
+						>
 							Send reset link
 						</button>
 					</div>
@@ -301,7 +349,11 @@ export function ResetPasswordPage() {
 					</p>
 				) : null}
 				<div className="form-actions">
-					<button type="submit" disabled={busy}>
+					<button
+						type="submit"
+						className="button button--primary auth-card__submit"
+						disabled={busy}
+					>
 						Change password
 					</button>
 				</div>

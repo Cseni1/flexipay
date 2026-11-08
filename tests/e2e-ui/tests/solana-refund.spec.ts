@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { paymentDetailFixture } from "./fixtures"
+import { openTechnicalDetails, paymentDetailFixture } from "./fixtures"
 
 const PAYMENT_ID = "pay_refund"
 const REFUND_SIGNATURE =
@@ -66,6 +66,7 @@ test("refunded Solana payment links the confirmed refund transaction", async ({
 	})
 
 	await page.goto(`/payments/${PAYMENT_ID}`)
+	await openTechnicalDetails(page)
 
 	const link = page.getByTestId("payment-refund-link")
 	await expect(link).toBeVisible()

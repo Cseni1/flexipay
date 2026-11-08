@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
+import { openTechnicalDetails } from "./fixtures"
 
 // TASK 28: Demo Day pounds → abroad (GB→KE / GB→PH). Fixture coverage with
 // response shapes matching the live API (CCR-26 settle on solana_tgbp, Tazapay payout).
@@ -215,8 +216,7 @@ function paymentDetail(
 			providerId: "sim_bank_gb_fps",
 			amountIn: { amount: "10000", currency: "GBP" },
 			amountOut: { amount: "10000", currency: "GBP" },
-			status:
-				phase === "awaiting_funding" ? "pending" : ("succeeded" as const),
+			status: phase === "awaiting_funding" ? "pending" : ("succeeded" as const),
 			attempt: 1,
 			externalRef: phase === "awaiting_funding" ? null : "fps_ref_1",
 			lockTxRef: null,
@@ -233,8 +233,7 @@ function paymentDetail(
 			providerId: "sim_fx_gbp_tgbp",
 			amountIn: { amount: "10000", currency: "GBP" },
 			amountOut: { amount: "1000000000", currency: "TGBP" },
-			status:
-				phase === "awaiting_funding" ? "pending" : ("succeeded" as const),
+			status: phase === "awaiting_funding" ? "pending" : ("succeeded" as const),
 			attempt: 1,
 			externalRef: null,
 			lockTxRef: null,
@@ -272,9 +271,7 @@ function paymentDetail(
 			amountIn: { amount: "990000000", currency: "TGBP" },
 			amountOut: { amount: "990000000", currency: "TGBP" },
 			status:
-				phase === "paid" || phase === "tazapay_wait"
-					? "succeeded"
-					: "pending",
+				phase === "paid" || phase === "tazapay_wait" ? "succeeded" : "pending",
 			attempt: 1,
 			externalRef:
 				phase === "paid" || phase === "tazapay_wait"
@@ -504,7 +501,7 @@ async function fillGbBankForm(page: Page, country: "KE" | "PH") {
 		label: "Bank account",
 	})
 	await page.getByLabel("Recipient kind").selectOption({ label: "Individual" })
-	await page.getByLabel("Who pays the fee? (Vault fee payer)").selectOption({
+	await page.getByLabel("Who pays the fee?").selectOption({
 		label: "I pay the fee (added on top)",
 	})
 	await page.getByLabel("Amount (£)").fill("100.00")
@@ -538,13 +535,11 @@ async function walkToSolanaPanel(page: Page, country: "KE" | "PH") {
 	)
 }
 
-async function confirmAndReachPaid(
-	page: Page,
-	state: { phase: Phase },
-) {
+async function confirmAndReachPaid(page: Page, state: { phase: Phase }) {
 	await page.getByTestId("solana-already-paid").locator("summary").click()
 	await page.getByTestId("solana-manual-signature").fill(SIGNATURE)
 	await page.getByTestId("solana-manual-verify").click()
+	await openTechnicalDetails(page)
 
 	await expect(page.getByTestId("leg-waiting-payout")).toBeVisible()
 	await expect(page.getByTestId("leg-waiting-payout")).toHaveText(

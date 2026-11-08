@@ -46,14 +46,14 @@ export function QuotePanel({
 }: QuotePanelProps) {
 	return (
 		<Panel
-			title="Quote"
-			description="The server chooses the route and returns its fees, FX and validity."
+			title="Your price"
+			description="We compare our partners and show the best way to get the money there."
 			actions={<SimulatedLabel />}
 		>
 			{!quote ? (
 				<EmptyState title="No quote yet">
-					Enter a destination and amount, then request a quote. Nothing is
-					created until you confirm.
+					Fill in the three steps and tap Get quote. Your price shows up here.
+					Nothing is paid until you confirm.
 				</EmptyState>
 			) : (
 				<div className="quote">

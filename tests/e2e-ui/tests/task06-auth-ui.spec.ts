@@ -45,7 +45,9 @@ test.describe("TASK 06 auth screens (mocked HTTP)", () => {
 			await route.fulfill({ json: { redirect: false } })
 		})
 		await page.route(/\/v1\/(corridors|payments)(\?.*)?$/, (route) =>
-			route.fulfill({ json: { corridors: [], payments: [], nextCursor: null } }),
+			route.fulfill({
+				json: { corridors: [], payments: [], nextCursor: null },
+			}),
 		)
 		await page.goto("/login")
 		await page.getByLabel("Email").fill("ana@example.com")
@@ -151,7 +153,9 @@ test.describe("TASK 06 auth screens (mocked HTTP)", () => {
 			return route.fulfill({ json: { success: true } })
 		})
 		await page.route(/\/v1\/(corridors|payments)(\?.*)?$/, (route) =>
-			route.fulfill({ json: { corridors: [], payments: [], nextCursor: null } }),
+			route.fulfill({
+				json: { corridors: [], payments: [], nextCursor: null },
+			}),
 		)
 		await page.goto("/")
 		await page.getByRole("button", { name: "Sign out" }).click()

@@ -83,20 +83,22 @@ test.describe("Take payment (CCR-27 till QR)", () => {
 		const getGets = await mockTillApi(page)
 		await page.goto("/take-payment")
 
-		await expect(page.getByRole("heading", { name: "Take payment" })).toBeVisible()
+		await expect(page.getByRole("heading", { name: "Get paid" })).toBeVisible()
 		await expect(page.getByTestId("till-devnet-note")).toContainText(
 			"devnet tGBP",
 		)
 		await expect(
 			page.getByRole("navigation", { name: "Primary" }).getByRole("link", {
-				name: "Take payment",
+				name: "Get paid",
 			}),
 		).toBeVisible()
 
 		await fillAndCreate(page)
 
 		await expect(page.getByTestId("till-waiting")).toBeVisible()
-		await expect(page.getByTestId("till-qr").getByTestId("receive-qr")).toBeVisible()
+		await expect(
+			page.getByTestId("till-qr").getByTestId("receive-qr"),
+		).toBeVisible()
 		await expect(page.getByText("£10.00").first()).toBeVisible()
 		await expect(page.getByText("Waiting for payment…").first()).toBeVisible()
 

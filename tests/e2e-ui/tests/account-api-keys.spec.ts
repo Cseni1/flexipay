@@ -98,7 +98,9 @@ test.describe("Account: API keys and change password", () => {
 			"fp_test_new1_secret_shown_once_only",
 		)
 		await page.getByTestId("api-key-copy").click()
-		await expect(page.getByRole("status").filter({ hasText: "Copied" })).toBeVisible()
+		await expect(
+			page.getByRole("status").filter({ hasText: "Copied" }),
+		).toBeVisible()
 
 		await page.getByTestId("api-key-revoke-key_active").click()
 		await expect(page.getByTestId("api-key-revoke-confirm")).toBeVisible()
@@ -135,7 +137,9 @@ test.describe("Account: API keys and change password", () => {
 		await page.goto("/account")
 		const form = page.getByTestId("change-password-form")
 		await form.getByLabel("Current password").fill("wrong-password")
-		await form.getByLabel("New password", { exact: true }).fill("new-password-1")
+		await form
+			.getByLabel("New password", { exact: true })
+			.fill("new-password-1")
 		await form.getByLabel("Confirm new password").fill("new-password-1")
 		await page.getByTestId("change-password-submit").click()
 		await expect(page.getByTestId("change-password-error")).toHaveText(
@@ -155,7 +159,9 @@ test.describe("Account: API keys and change password", () => {
 		)
 
 		await form.getByLabel("Current password").fill("old-password-1")
-		await form.getByLabel("New password", { exact: true }).fill("new-password-1")
+		await form
+			.getByLabel("New password", { exact: true })
+			.fill("new-password-1")
 		await form.getByLabel("Confirm new password").fill("different-pass")
 		await page.getByTestId("change-password-submit").click()
 		await expect(page.getByTestId("change-password-error")).toContainText(
@@ -184,7 +190,9 @@ test.describe("Account: API keys and change password", () => {
 			page.getByRole("heading", { name: "API keys and account" }),
 		).toBeVisible()
 		await expect(
-			page.getByTestId("change-password-form").getByText("At least 10 characters."),
+			page
+				.getByTestId("change-password-form")
+				.getByText("At least 10 characters."),
 		).toBeVisible()
 	})
 })

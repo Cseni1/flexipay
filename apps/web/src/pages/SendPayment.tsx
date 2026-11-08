@@ -169,13 +169,13 @@ const amountFieldCopy = (
 		return {
 			label: "Amount (£)",
 			placeholder: "10.00",
-			hint: "Pounds with at most two decimals; the API receives integer minor units.",
+			hint: "For example 25 or 25.50.",
 		}
 	}
 	return {
 		label: "Amount (USD)",
 		placeholder: "1250.00",
-		hint: "Major units with at most two decimals; the API receives integer minor units.",
+		hint: "For example 25 or 25.50.",
 	}
 }
 
@@ -872,9 +872,9 @@ export default function SendPayment() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow="Payments"
+				eyebrow="Send money"
 				title="Send a payment"
-				description="Pay anyone, anywhere. They choose how to get paid, or you decide. Quotes come from the API; funding and progress are on the payment detail screen."
+				description="Three steps: who, where, how much. You see the exact price before anything is paid."
 				actions={
 					<InfoPopover label="Route selection">
 						The router first removes ineligible corridors, then chooses the
@@ -888,273 +888,309 @@ export default function SendPayment() {
 
 			{corridorsUnavailable ? (
 				<Notice tone="warning" data-testid="corridors-unavailable">
-					Corridors unavailable: {corridorsError}. Using the built-in
-					destination list until GET /v1/corridors responds.
+					We could not load the latest country list ({corridorsError}), so we
+					are showing our built-in list.
 				</Notice>
 			) : null}
 
 			{recipientsError ? (
 				<Notice tone="warning" data-testid="recipients-unavailable">
-					Saved recipients unavailable: {recipientsError}
+					We could not load your saved people: {recipientsError}
 				</Notice>
 			) : null}
 
 			<Grid>
 				<Panel
-					title="Payment details"
-					description="When a country can be paid from more than one account, choose Send from. Countries and destinations prefer GET /v1/corridors when available."
+					title="New payment"
+					description="Fill in the three steps, then tap Get quote to see the price."
 				>
 					<form onSubmit={handleQuote}>
-						<div className="form-grid">
-							{showSendFrom ? (
-								<SelectField
-									id="send-from"
-									label="Send from"
-									value={form.sourceKey || sourceKey(source)}
-									disabled={authBlocked}
-									options={sendFromOptions.map((entry) => ({
-										value: sourceKey(entry),
-										label: sendFromLabel(entry),
-									}))}
-									hint="Defaults to GBP when a UK corridor exists"
-									data-testid="send-from"
-									onChange={(event) => changeSendFrom(event.target.value)}
-								/>
-							) : (
-								<StaticField
-									label="Source"
-									value={sourceStaticLabel(source)}
-									hint="Set by destination country"
-								/>
-							)}
-							<SelectField
-								id="saved-recipient"
-								label="Saved recipient"
-								value={form.existingRecipientId}
-								disabled={recipients.length === 0 || authBlocked}
-								options={[
-									{
-										value: "",
-										label:
-											recipients.length === 0
-												? "No saved recipients yet"
-												: "Pay someone new",
-									},
-									...recipients.map((entry) => ({
-										value: entry.id,
-										label: `${entry.name} · ${entry.country}`,
-									})),
-								]}
-								hint="Loaded from GET /v1/recipients. Choosing one reuses that recipient id."
-								onChange={(event) => applySavedRecipient(event.target.value)}
-							/>
-							<SelectField
-								id="destination-country"
-								label="Destination country"
-								value={form.country}
-								disabled={authBlocked}
-								options={countryOptions}
-								onChange={(event) => changeCountry(event.target.value)}
-							/>
-							<SelectField
-								id="destination-type"
-								label="Destination"
-								value={form.destinationType}
-								disabled={!form.country}
-								options={
-									destinationOptions.length > 0
-										? destinationOptions.map(({ value, label }) => ({
-												value,
-												label,
-											}))
-										: [{ value: "", label: "Select a country first" }]
-								}
-								hint={corridorNote ?? undefined}
-								onChange={(event) =>
-									update({
-										destinationType: event.target.value as DestinationType,
-									})
-								}
-							/>
-							<SelectField
-								id="recipient-kind"
-								label="Recipient kind"
-								value={form.recipientKind}
-								options={RECIPIENT_KINDS}
-								onChange={(event) =>
-									update({ recipientKind: event.target.value as RecipientKind })
-								}
-							/>
-							<label className="field">
-								<input
-									type="checkbox"
-									checked={senderWallet}
-									data-testid="sender-wallet-blindpay"
-									onChange={(event) => setSenderWallet(event.target.checked)}
-								/>{" "}
-								Pay from my Solana wallet (BlindPay pulls the stablecoins;
-								FlexiPay does not hold them)
-							</label>
-							{senderWallet ? null : (
-								<SelectField
-									id="fee-mode"
-									label="Who pays the fee? (Vault fee payer)"
-									value={form.feeMode}
-									options={[
-										{ value: "", label: "Choose who pays the fee" },
-										...FEE_MODE_OPTIONS,
-									]}
-									hint="The 1% vault fee is either added to what you pay or taken from what the recipient gets. You must choose."
-									onChange={(event) =>
-										update({ feeMode: event.target.value as FeeMode | "" })
-									}
-								/>
-							)}
-							<TextField
-								id="amount"
-								label={amountCopy.label}
-								placeholder={amountCopy.placeholder}
-								inputMode="decimal"
-								value={form.amount}
-								hint={amountCopy.hint}
-								onChange={(event) => update({ amount: event.target.value })}
-							/>
-							<TextField
-								id="recipient"
-								label="Recipient"
-								placeholder="Worker A"
-								hint="Paying someone new? Type their name here: they are added when you create the payment."
-								autoComplete="off"
-								value={form.recipientName}
-								onChange={(event) => {
-									setRecipientCountryNote(null)
-									update({
-										recipientName: event.target.value,
-										existingRecipientId: "",
-									})
-								}}
-							/>
-							{recipientCountryNote ? (
-								<p className="form-note" data-testid="recipient-country-note">
-									{recipientCountryNote}
-								</p>
-							) : null}
-							{showBankDetails ? (
-								<>
-									{showBankPicker ? (
-										<SelectField
-											id="bank-endpoint"
-											label="Bank account"
-											value={
-												matchingBankEndpoints.length === 0
-													? NEW_BANK_ENDPOINT
-													: bankEndpointChoice
-											}
-											disabled={authBlocked}
-											options={[
-												...matchingBankEndpoints.map((endpoint) => ({
-													value: endpoint.id,
-													label: bankEndpointLabel(endpoint.details),
-												})),
-												{
-													value: NEW_BANK_ENDPOINT,
-													label: "Add a new bank account",
-												},
-											]}
-											hint="Saved accounts are masked. Choosing one sends its endpointId with the payment."
-											data-testid="bank-endpoint"
-											onChange={(event) =>
-												setBankEndpointChoice(event.target.value)
-											}
-										/>
-									) : null}
-									{bankEndpointsError ? (
-										<Notice tone="warning" data-testid="bank-endpoints-error">
-											{bankEndpointsError}
-										</Notice>
-									) : null}
-									{enteringNewBank ? (
-										<BankDetailsFields
-											value={bankDetails}
-											disabled={authBlocked}
-											requiredKeys={requiredBankKeys}
-											onChange={setBankDetails}
-										/>
-									) : null}
-									{addressRequired ? (
-										<fieldset
-											className="bank-details"
-											data-testid="recipient-address"
+						<div className="send-steps">
+							<fieldset className="send-step">
+								<legend className="send-step__title">
+									<span className="send-step__num">1</span>
+									Who are you paying?
+								</legend>
+								<div className="form-grid">
+									<SelectField
+										id="saved-recipient"
+										label="Saved recipient"
+										value={form.existingRecipientId}
+										disabled={recipients.length === 0 || authBlocked}
+										options={[
+											{
+												value: "",
+												label:
+													recipients.length === 0
+														? "No saved recipients yet"
+														: "Pay someone new",
+											},
+											...recipients.map((entry) => ({
+												value: entry.id,
+												label: `${entry.name} · ${entry.country}`,
+											})),
+										]}
+										hint="Someone you paid before? Pick them here. New person? Type their name below."
+										onChange={(event) =>
+											applySavedRecipient(event.target.value)
+										}
+									/>
+									<TextField
+										id="recipient"
+										label="Recipient"
+										placeholder="Their full name"
+										hint="We save new people for next time."
+										autoComplete="off"
+										value={form.recipientName}
+										onChange={(event) => {
+											setRecipientCountryNote(null)
+											update({
+												recipientName: event.target.value,
+												existingRecipientId: "",
+											})
+										}}
+									/>
+									{recipientCountryNote ? (
+										<p
+											className="form-note"
+											data-testid="recipient-country-note"
 										>
-											<legend className="bank-details__legend">
-												Recipient address
-											</legend>
-											<div className="form-grid">
-												<TextField
-													id="recipient-address-line1"
-													label="Address line 1 (required)"
-													value={address.line1}
-													autoComplete="address-line1"
-													onChange={(event) =>
-														setAddress((current) => ({
-															...current,
-															line1: event.target.value,
-														}))
-													}
-												/>
-												<TextField
-													id="recipient-address-line2"
-													label="Address line 2"
-													value={address.line2}
-													autoComplete="address-line2"
-													onChange={(event) =>
-														setAddress((current) => ({
-															...current,
-															line2: event.target.value,
-														}))
-													}
-												/>
-												<TextField
-													id="recipient-address-city"
-													label="City (required)"
-													value={address.city}
-													autoComplete="address-level2"
-													onChange={(event) =>
-														setAddress((current) => ({
-															...current,
-															city: event.target.value,
-														}))
-													}
-												/>
-												<TextField
-													id="recipient-address-state"
-													label="State (required)"
-													value={address.state}
-													autoComplete="address-level1"
-													onChange={(event) =>
-														setAddress((current) => ({
-															...current,
-															state: event.target.value,
-														}))
-													}
-												/>
-												<TextField
-													id="recipient-address-postal-code"
-													label="Postal code (required)"
-													value={address.postalCode}
-													autoComplete="postal-code"
-													onChange={(event) =>
-														setAddress((current) => ({
-															...current,
-															postalCode: event.target.value,
-														}))
-													}
-												/>
-											</div>
-										</fieldset>
+											{recipientCountryNote}
+										</p>
 									) : null}
-								</>
-							) : null}
+									<SelectField
+										id="recipient-kind"
+										label="Recipient kind"
+										value={form.recipientKind}
+										options={RECIPIENT_KINDS}
+										onChange={(event) =>
+											update({
+												recipientKind: event.target.value as RecipientKind,
+											})
+										}
+									/>
+								</div>
+							</fieldset>
+							<fieldset className="send-step">
+								<legend className="send-step__title">
+									<span className="send-step__num">2</span>
+									Where does the money go?
+								</legend>
+								<div className="form-grid">
+									<SelectField
+										id="destination-country"
+										label="Destination country"
+										value={form.country}
+										disabled={authBlocked}
+										options={countryOptions}
+										onChange={(event) => changeCountry(event.target.value)}
+									/>
+									<SelectField
+										id="destination-type"
+										label="Destination"
+										value={form.destinationType}
+										disabled={!form.country}
+										options={
+											destinationOptions.length > 0
+												? destinationOptions.map(({ value, label }) => ({
+														value,
+														label,
+													}))
+												: [{ value: "", label: "Select a country first" }]
+										}
+										hint={corridorNote ?? undefined}
+										onChange={(event) =>
+											update({
+												destinationType: event.target.value as DestinationType,
+											})
+										}
+									/>
+									{showBankDetails ? (
+										<>
+											{showBankPicker ? (
+												<SelectField
+													id="bank-endpoint"
+													label="Bank account"
+													value={
+														matchingBankEndpoints.length === 0
+															? NEW_BANK_ENDPOINT
+															: bankEndpointChoice
+													}
+													disabled={authBlocked}
+													options={[
+														...matchingBankEndpoints.map((endpoint) => ({
+															value: endpoint.id,
+															label: bankEndpointLabel(endpoint.details),
+														})),
+														{
+															value: NEW_BANK_ENDPOINT,
+															label: "Add a new bank account",
+														},
+													]}
+													hint="We hide most of the number to keep it safe."
+													data-testid="bank-endpoint"
+													onChange={(event) =>
+														setBankEndpointChoice(event.target.value)
+													}
+												/>
+											) : null}
+											{bankEndpointsError ? (
+												<Notice
+													tone="warning"
+													data-testid="bank-endpoints-error"
+												>
+													{bankEndpointsError}
+												</Notice>
+											) : null}
+											{enteringNewBank ? (
+												<BankDetailsFields
+													value={bankDetails}
+													disabled={authBlocked}
+													requiredKeys={requiredBankKeys}
+													onChange={setBankDetails}
+												/>
+											) : null}
+											{addressRequired ? (
+												<fieldset
+													className="bank-details"
+													data-testid="recipient-address"
+												>
+													<legend className="bank-details__legend">
+														Recipient address
+													</legend>
+													<div className="form-grid">
+														<TextField
+															id="recipient-address-line1"
+															label="Address line 1 (required)"
+															value={address.line1}
+															autoComplete="address-line1"
+															onChange={(event) =>
+																setAddress((current) => ({
+																	...current,
+																	line1: event.target.value,
+																}))
+															}
+														/>
+														<TextField
+															id="recipient-address-line2"
+															label="Address line 2"
+															value={address.line2}
+															autoComplete="address-line2"
+															onChange={(event) =>
+																setAddress((current) => ({
+																	...current,
+																	line2: event.target.value,
+																}))
+															}
+														/>
+														<TextField
+															id="recipient-address-city"
+															label="City (required)"
+															value={address.city}
+															autoComplete="address-level2"
+															onChange={(event) =>
+																setAddress((current) => ({
+																	...current,
+																	city: event.target.value,
+																}))
+															}
+														/>
+														<TextField
+															id="recipient-address-state"
+															label="State (required)"
+															value={address.state}
+															autoComplete="address-level1"
+															onChange={(event) =>
+																setAddress((current) => ({
+																	...current,
+																	state: event.target.value,
+																}))
+															}
+														/>
+														<TextField
+															id="recipient-address-postal-code"
+															label="Postal code (required)"
+															value={address.postalCode}
+															autoComplete="postal-code"
+															onChange={(event) =>
+																setAddress((current) => ({
+																	...current,
+																	postalCode: event.target.value,
+																}))
+															}
+														/>
+													</div>
+												</fieldset>
+											) : null}
+										</>
+									) : null}
+								</div>
+							</fieldset>
+							<fieldset className="send-step">
+								<legend className="send-step__title">
+									<span className="send-step__num">3</span>
+									How much, and how do you pay?
+								</legend>
+								<div className="form-grid">
+									<TextField
+										id="amount"
+										label={amountCopy.label}
+										placeholder={amountCopy.placeholder}
+										inputMode="decimal"
+										value={form.amount}
+										hint={amountCopy.hint}
+										onChange={(event) => update({ amount: event.target.value })}
+									/>
+									{showSendFrom ? (
+										<SelectField
+											id="send-from"
+											label="Send from"
+											value={form.sourceKey || sourceKey(source)}
+											disabled={authBlocked}
+											options={sendFromOptions.map((entry) => ({
+												value: sourceKey(entry),
+												label: sendFromLabel(entry),
+											}))}
+											hint="We picked the usual one for this country."
+											data-testid="send-from"
+											onChange={(event) => changeSendFrom(event.target.value)}
+										/>
+									) : (
+										<StaticField
+											label="Source"
+											value={sourceStaticLabel(source)}
+											hint="Set by destination country"
+										/>
+									)}
+									{senderWallet ? null : (
+										<SelectField
+											id="fee-mode"
+											label="Who pays the fee?"
+											value={form.feeMode}
+											options={[
+												{ value: "", label: "Choose who pays the fee" },
+												...FEE_MODE_OPTIONS,
+											]}
+											hint="The 1% fee is added to what you pay, or taken from what they get. Pick one."
+											onChange={(event) =>
+												update({ feeMode: event.target.value as FeeMode | "" })
+											}
+										/>
+									)}
+									<label className="field">
+										<input
+											type="checkbox"
+											checked={senderWallet}
+											data-testid="sender-wallet-blindpay"
+											onChange={(event) =>
+												setSenderWallet(event.target.checked)
+											}
+										/>{" "}
+										Pay from my own Solana wallet (the money never sits with
+										FlexiPay)
+									</label>
+								</div>
+							</fieldset>
 						</div>
 
 						{formError ? <Notice tone="warning">{formError}</Notice> : null}
@@ -1196,7 +1232,7 @@ export default function SendPayment() {
 										: "Get quote"}
 							</Button>
 							<span className="form-note">
-								The quote is simulated and expires; no payment is created yet.
+								You see the price first. Nothing is paid yet.
 							</span>
 						</div>
 					</form>

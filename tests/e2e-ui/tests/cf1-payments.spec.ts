@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test"
 import {
+	openTechnicalDetails,
 	paymentDetailFixture,
 	paymentFromDetail,
 	quoteFixture,
@@ -104,7 +105,7 @@ async function fillQuoteForm(page: Page) {
 	await page.getByLabel("Destination country").selectOption("PH")
 	await page.getByLabel("Destination", { exact: true }).selectOption("ewallet")
 	await page.getByLabel("Recipient kind").selectOption("individual")
-	await page.getByLabel("Vault fee payer").selectOption("PayerPays")
+	await page.getByLabel("Who pays the fee?").selectOption("PayerPays")
 	await page.getByLabel("Amount (USD)").fill("1,250.00")
 	await page.getByLabel("Recipient", { exact: true }).fill("Worker A")
 }
@@ -149,14 +150,15 @@ test.describe("CF1 payments", () => {
 		await page.getByRole("button", { name: "Create payment" }).click()
 		await expect(page).toHaveURL(/\/payments\/pay_1$/)
 		await expect(
-			page.getByText("Awaiting funding", { exact: true }).first(),
+			page.getByText("Waiting for payment", { exact: true }).first(),
 		).toBeVisible()
+		await openTechnicalDetails(page)
 		await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible()
 		await expect(page.getByText("Collect", { exact: true })).toBeVisible()
 
 		await page.getByRole("button", { name: "Fund payment" }).click()
 		await expect(
-			page.getByText("Processing", { exact: true }).first(),
+			page.getByText("On its way", { exact: true }).first(),
 		).toBeVisible()
 		await expect(page.getByText(/a1b2c3d4e5f6/).first()).toBeVisible()
 		await expect(page.getByText("payout_1234567890").first()).toBeVisible()
@@ -206,7 +208,7 @@ test.describe("CF1 payments", () => {
 			.getByLabel("Destination", { exact: true })
 			.selectOption("crypto_wallet")
 		await page.getByLabel("Recipient kind").selectOption("individual")
-		await page.getByLabel("Vault fee payer").selectOption("RecipientPays")
+		await page.getByLabel("Who pays the fee?").selectOption("RecipientPays")
 		await page.getByLabel("Amount (USD)").fill("25.00")
 		await page.getByLabel("Recipient", { exact: true }).fill("Worker B")
 		await page.getByRole("button", { name: "Get quote" }).click()
@@ -321,7 +323,7 @@ test.describe("CF1 payments", () => {
 		await page.goto("/payments/pay_1")
 
 		await expect(
-			page.getByText("Awaiting funding", { exact: true }).first(),
+			page.getByText("Waiting for payment", { exact: true }).first(),
 		).toBeVisible()
 		await expect(page.getByText("Release tx")).toHaveCount(0)
 		await expect(page.getByText("Lock tx")).toHaveCount(0)
@@ -330,10 +332,13 @@ test.describe("CF1 payments", () => {
 		).toHaveCount(0)
 		await expect(
 			page
-				.locator(".panel")
-				.filter({ has: page.getByRole("heading", { name: "Payment" }) })
-				.getByText("Paid", { exact: true }),
+				.getByTestId("payment-summary")
+				.locator('.status-badge[data-status="paid"]'),
 		).toHaveCount(0)
+		await expect(page.getByTestId("payment-summary")).not.toHaveAttribute(
+			"data-status",
+			"paid",
+		)
 	})
 
 	test("per-leg simulated labels follow the leg field", async ({ page }) => {
@@ -346,6 +351,7 @@ test.describe("CF1 payments", () => {
 		settle.simulated = false
 		await mockApi(page, { detail })
 		await page.goto("/payments/pay_1")
+		await openTechnicalDetails(page)
 
 		const collect = page.getByTestId("payment-leg-collect")
 		const convert = page.getByTestId("payment-leg-convert").first()
@@ -360,9 +366,9 @@ test.describe("CF1 payments", () => {
 		await expect(payout.getByText("Simulated", { exact: true })).toBeVisible()
 
 		await expect(settleItem).toHaveAttribute("data-leg-simulated", "false")
-		await expect(settleItem.getByText("Simulated", { exact: true })).toHaveCount(
-			0,
-		)
+		await expect(
+			settleItem.getByText("Simulated", { exact: true }),
+		).toHaveCount(0)
 		await expect(settleItem.getByText("Solana USDC")).toBeVisible()
 		await expect(settleItem.getByText("Sandbox", { exact: true })).toBeVisible()
 	})
@@ -370,6 +376,7 @@ test.describe("CF1 payments", () => {
 	test("a failed leg shows its error and retry event", async ({ page }) => {
 		await mockApi(page, { detailStatus: "failed" })
 		await page.goto("/payments/pay_1")
+		await openTechnicalDetails(page)
 
 		await expect(
 			page.getByText("Failed", { exact: true }).first(),
@@ -384,7 +391,7 @@ test.describe("CF1 payments", () => {
 		const counts = await mockApi(page, { startProcessing: true })
 		await page.goto("/payments/pay_1")
 		await expect(
-			page.getByText("Processing", { exact: true }).first(),
+			page.getByText("On its way", { exact: true }).first(),
 		).toBeVisible()
 		// Strict Mode may fetch twice on mount.
 		const afterLoad = counts.details

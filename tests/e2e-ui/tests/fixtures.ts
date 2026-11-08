@@ -1,3 +1,5 @@
+import type { Page } from "@playwright/test"
+
 // A0-shaped HTTP fixtures for the browser tests. The app never falls back to these; Playwright
 // intercepts the requests. This is fixture coverage, not integrated API acceptance.
 
@@ -323,4 +325,14 @@ export function paymentFromDetail(
 ) {
 	const { events: _events, ...payment } = detail
 	return payment
+}
+
+/** Payment detail keeps legs, hashes and the event log in a collapsed section. */
+export async function openTechnicalDetails(page: Page) {
+	const details = page.getByTestId("payment-technical-details")
+	await details.waitFor()
+	const open = await details.evaluate(
+		(element) => (element as HTMLDetailsElement).open,
+	)
+	if (!open) await details.locator("summary").click()
 }

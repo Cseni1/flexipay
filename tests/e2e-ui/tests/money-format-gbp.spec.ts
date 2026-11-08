@@ -1,8 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
-import {
-	paymentDetailFixture,
-	paymentFromDetail,
-} from "./fixtures"
+import { paymentDetailFixture, paymentFromDetail } from "./fixtures"
 
 const now = (offsetMs = 0): string =>
 	new Date(Date.now() + offsetMs).toISOString()

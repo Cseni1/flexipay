@@ -142,7 +142,7 @@ test.describe("Phone layout 390×844", () => {
 			await route.fulfill({ json: list })
 		})
 		await page.goto("/payments")
-		await expect(page.getByRole("heading", { name: "Payments" })).toBeVisible()
+		await expect(page.getByRole("heading", { name: "Activity" })).toBeVisible()
 		await expect(page.getByTestId("payment-history-cards")).toBeVisible()
 		await expect(page.getByTestId("payment-history")).toBeHidden()
 		await noSideways(page)
@@ -151,7 +151,7 @@ test.describe("Phone layout 390×844", () => {
 		).toBeVisible()
 	})
 
-	test("dashboard: no sideways scroll and New payment visible", async ({
+	test("dashboard: no sideways scroll and Send money visible", async ({
 		page,
 	}) => {
 		const detail = paymentDetailFixture("awaiting_funding")
@@ -162,11 +162,14 @@ test.describe("Phone layout 390×844", () => {
 			})
 		})
 		await page.goto("/dashboard")
-		await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible()
+		await expect(
+			page.getByRole("heading", { name: /send money anywhere/ }),
+		).toBeVisible()
 		await noSideways(page)
 		const cta = page
 			.getByRole("main")
-			.getByRole("link", { name: "New payment" })
+			.getByRole("link", { name: "Send money" })
+			.first()
 		await expect(cta).toBeVisible()
 		const box = await cta.boundingBox()
 		expect(box?.height ?? 0).toBeGreaterThanOrEqual(44)
