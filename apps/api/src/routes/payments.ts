@@ -30,7 +30,12 @@ function mapCreateError(e: unknown): never {
 		throw new ApiError(409, "duplicate_external_id", msg);
 	}
 	if (/feeMode/i.test(msg)) throw new ApiError(422, "invalid_quote", msg);
-	if (/^endpoint /i.test(msg)) throw new ApiError(422, "invalid_endpoint", msg);
+	if (/^endpoint /i.test(msg) || /endpoint is required/i.test(msg)) {
+		throw new ApiError(422, "invalid_endpoint", msg);
+	}
+	if (/sender_wallet_blindpay requires delivery/i.test(msg)) {
+		throw new ApiError(422, "invalid_delivery", msg);
+	}
 	throw new ApiError(400, "bad_request", msg);
 }
 

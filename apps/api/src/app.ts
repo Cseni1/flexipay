@@ -16,6 +16,7 @@ import { endpointRoutes } from "./routes/endpoints.ts";
 import { eventRoutes } from "./routes/events.ts";
 import { opsRoutes } from "./routes/ops.ts";
 import { paymentRoutes } from "./routes/payments.ts";
+import { blindpayRoutes } from "./routes/blindpay.ts";
 import { quoteRoutes } from "./routes/quotes.ts";
 import { sandboxRoutes } from "./routes/sandbox.ts";
 import { solanaRoutes } from "./routes/solana.ts";
@@ -36,6 +37,7 @@ export const ROUTES: RouteDef<any, any>[] = [
 	...batchRoutes,
 	...quoteRoutes,
 	...paymentRoutes,
+	...blindpayRoutes,
 	...eventRoutes,
 	...claimRoutes,
 	...passkeyClaimRoutes,
@@ -157,7 +159,14 @@ export function createApp(deps: {
 			});
 		});
 	}
-	app.use(express.json({ limit: "1mb" }));
+	app.use(
+		express.json({
+			limit: "1mb",
+			verify(req, _res, buf) {
+				(req as Request & { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+			},
+		}),
+	);
 	mountApiDocs(app);
 	if (deps.apiRateLimit !== false) {
 		app.use("/v1", createApiRateLimiter(deps.apiRateLimit || undefined));
@@ -184,7 +193,7 @@ export function createApp(deps: {
 						ctx.org = a.org;
 						ctx.actor = a.actor;
 					}
-					if (route.idempotency === "claim") ctx.req = req;
+					ctx.req = req;
 					const run = async () => {
 						const body = route.body ? route.body.parse(req.body ?? {}) : undefined;
 						const query = route.query ? route.query.parse(req.query) : undefined;

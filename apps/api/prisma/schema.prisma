@@ -17,6 +17,12 @@ model Organization {
   name         String
   kind         String // business | individual
   verification String   @default("not_started") // not_started | simulated_verified
+  /// CCR-45: BlindPay customer id for an individual sender. Null until KYC starts.
+  blindpayCustomerId String?
+  /// BlindPay kyc_status for that customer. Null until a customer exists.
+  blindpayKycStatus  String?
+  /// Terms-of-service id captured after the hosted BlindPay page.
+  blindpayTosId      String?
   createdAt    DateTime @default(now())
 
   apiKeys       ApiKey[]
@@ -144,6 +150,11 @@ model Payment {
   solanaPayReference String?
   /// CCR-39: first intent issue time for direct settle-to-treasury age bound.
   solanaIntentAt     DateTime?
+  /// CCR-45: BlindPay payout quote locked for the sender's wallet. Expires in 5 minutes.
+  blindpayQuoteId        String?
+  blindpayQuoteExpiresAt DateTime?
+  /// Solana address that will sign the delegation.
+  blindpaySenderWallet   String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 

@@ -5,6 +5,7 @@ import {
 	type CreateQuoteRequest,
 	type Quote,
 } from "@flexipay/domain";
+import { assertSenderKycApproved } from "../blindpay/onboarding.ts";
 import { ApiError } from "../errors.ts";
 import { livePaymentsPaused } from "../live/kill-switch.ts";
 import { assertIndividualSenderLimit } from "../live/limits.ts";
@@ -32,6 +33,9 @@ export async function createQuoteForOrg(
 			"live_payments_paused",
 			"Live payments are paused. Reads, refunds and status checks still work.",
 		);
+	}
+	if (body.settleMode === "sender_wallet_blindpay") {
+		await assertSenderKycApproved(ctx, orgId);
 	}
 	const vaultFeeBps = await ctx.runtime.settlement.feeBps();
 	const result = await buildQuote(body, {

@@ -531,6 +531,210 @@ export class BlindPayAdapter implements ProviderAdapter {
 		)
 	}
 
+	/**
+	 * CCR-45: hosted terms page. The sender accepts it in the browser; FlexiPay stores
+	 * the tos id they are redirected with and does not invent identity data.
+	 */
+	async startTermsOfService(
+		idempotencyKey: string,
+		redirectUrl?: string,
+	): Promise<{ url: string }> {
+		const body = this.ok(
+			await this.call(
+				"POST",
+				`/v1/e/instances/${this.opts.instanceId}/tos`,
+				{
+					idempotency_key: idempotencyKey,
+					...(redirectUrl ? { redirect_url: redirectUrl } : {}),
+				},
+			),
+			"terms of service",
+		)
+		const url =
+			typeof body.url === "string"
+				? body.url
+				: typeof body.tos_url === "string"
+					? body.tos_url
+					: ""
+		if (!url.startsWith("https://")) {
+			throw new Error("BlindPay terms of service returned no https URL")
+		}
+		return { url }
+	}
+
+	/**
+	 * Forwards a customer the sender submitted. Development instances approve immediately.
+	 * This method does not fill tax id, date of birth, or document URLs.
+	 */
+	async createIndividualCustomer(
+		tosId: string,
+		kyc: Record<string, unknown>,
+	): Promise<{ id: string; kycStatus: string }> {
+		const created = this.ok(
+			await this.call(
+				"POST",
+				`/v1/instances/${this.opts.instanceId}/customers`,
+				{
+					...kyc,
+					tos_id: tosId,
+					type: "individual",
+					kyc_type: "standard",
+				},
+			),
+			"customer",
+		)
+		if (typeof created.id !== "string" || created.id.length === 0) {
+			throw new Error("BlindPay create customer returned no id")
+		}
+		const kycStatus =
+			typeof created.kyc_status === "string" ? created.kyc_status : "verifying"
+		return { id: created.id, kycStatus }
+	}
+
+	async customerKycStatus(customerId: string): Promise<string> {
+		const body = this.ok(
+			await this.call(
+				"GET",
+				`/v1/instances/${this.opts.instanceId}/customers/${encodeURIComponent(customerId)}`,
+			),
+			"customer",
+		)
+		return typeof body.kyc_status === "string" ? body.kyc_status : "verifying"
+	}
+
+	/**
+	 * Locks a Solana payout quote (5 minutes) and returns the delegation transaction
+	 * the sender's wallet must sign. Dev instances use solana_devnet and USDB.
+	 * A production instance is refused unless live payouts are approved.
+	 */
+	async prepareSenderWalletDelegation(input: {
+		customerId: string
+		endpoint: EndpointRef
+		ownerAddress: string
+		requestAmountHundredths: number
+		existingQuoteId?: string | null
+		quoteExpiresAtMs?: number | null
+		nowMs: number
+	}): Promise<{
+		quoteId: string
+		expiresAtMs: number
+		transaction: string
+		partnerRefs: Record<string, string>
+		requoted: boolean
+	}> {
+		const type = await this.instance()
+		if (type === "production" && !this.opts.liveApproved) {
+			throw new ProviderError(
+				"unsupported",
+				"BlindPay production instance is not approved for real money",
+			)
+		}
+		const endpoint: EndpointRef = {
+			...input.endpoint,
+			partnerRefs: {
+				...(input.endpoint.partnerRefs ?? {}),
+				[RECEIVER_REF]: input.customerId,
+			},
+		}
+		const funding = this.opts.sandbox ?? {
+			customerId: input.customerId,
+			bankAccountId: "",
+			walletId: "",
+		}
+		const account = await this.bankAccountFor(endpoint, type, funding)
+		const reusable =
+			input.existingQuoteId &&
+			input.quoteExpiresAtMs !== undefined &&
+			input.quoteExpiresAtMs !== null &&
+			input.quoteExpiresAtMs > input.nowMs
+		let quoteId = reusable ? input.existingQuoteId! : ""
+		let expiresAtMs = reusable ? input.quoteExpiresAtMs! : 0
+		let requoted = !reusable
+		if (!reusable) {
+			const network = type === "development" ? "solana_devnet" : "solana"
+			const token = type === "development" ? "USDB" : SOURCE_ASSET
+			const quote = this.ok(
+				await this.call(
+					"POST",
+					`/v1/instances/${this.opts.instanceId}/quotes`,
+					{
+						bank_account_id: account.bankAccountId,
+						network,
+						token,
+						currency_type: "receiver",
+						request_amount: input.requestAmountHundredths,
+						cover_fees: false,
+					},
+				),
+				"payout quote",
+			)
+			if (typeof quote.id !== "string") {
+				throw new Error("BlindPay payout quote returned no id")
+			}
+			quoteId = quote.id
+			expiresAtMs =
+				typeof quote.expires_at === "number"
+					? quote.expires_at
+					: input.nowMs + 5 * 60 * 1000
+		}
+		const prepared = this.ok(
+			await this.call(
+				"POST",
+				`/v1/instances/${this.opts.instanceId}/prepare-delegate-solana`,
+				{ owner_address: input.ownerAddress, quote_id: quoteId },
+			),
+			"delegation",
+		)
+		if (typeof prepared.transaction !== "string" || prepared.transaction.length === 0) {
+			throw new Error("BlindPay delegation returned no transaction")
+		}
+		return {
+			quoteId,
+			expiresAtMs,
+			transaction: prepared.transaction,
+			partnerRefs: {
+				[RECEIVER_REF]: input.customerId,
+				[BANK_ACCOUNT_REF]: account.bankAccountId,
+				...(account.partnerRefs ?? {}),
+			},
+			requoted,
+		}
+	}
+
+	/** Creates the Solana payout. `signature` is the delegation transaction signature. */
+	async createSenderWalletPayout(input: {
+		quoteId: string
+		senderWalletAddress: string
+		signature: string
+		idempotencyKey: string
+	}): Promise<{ id: string; status: string }> {
+		const type = await this.instance()
+		if (type === "production" && !this.opts.liveApproved) {
+			throw new ProviderError(
+				"unsupported",
+				"BlindPay production instance is not approved for real money",
+			)
+		}
+		const payout = this.ok(
+			await this.call(
+				"POST",
+				`/v1/instances/${this.opts.instanceId}/payouts/solana`,
+				{
+					quote_id: input.quoteId,
+					sender_wallet_address: input.senderWalletAddress,
+					signed_transaction: input.signature,
+				},
+				input.idempotencyKey,
+			),
+			"solana payout",
+		)
+		if (typeof payout.id !== "string") {
+			throw new Error("BlindPay payout returned no id")
+		}
+		const status = typeof payout.status === "string" ? payout.status : "processing"
+		return { id: payout.id, status }
+	}
+
 	async status(externalRef: string): Promise<ProviderLegState> {
 		if (externalRef.startsWith("blindpay-convert:"))
 			return { status: "succeeded", externalRef }
@@ -546,6 +750,16 @@ export class BlindPayAdapter implements ProviderAdapter {
 		const body = this.ok(res, "payout status")
 		const raw = typeof body.status === "string" ? body.status : ""
 		const status = PAYOUT_STATUS[raw] ?? "processing"
+		if (raw === "failed" || raw === "refunded") {
+			return {
+				status: "failed",
+				externalRef,
+				error: {
+					code: "returned_to_wallet",
+					message: "returned to your wallet",
+				},
+			}
+		}
 		if (status === "failed") {
 			return {
 				status,

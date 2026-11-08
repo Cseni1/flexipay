@@ -2,6 +2,10 @@ import {
 	PaymentDetailSchema,
 	PaymentListResponseSchema,
 	type PaymentListResponse,
+	BlindPayConfirmResponseSchema,
+	BlindPayDelegationResponseSchema,
+	BlindPayKycBodySchema,
+	BlindPayOnboardingResponseSchema,
 	PaymentSchema,
 	QuoteSchema,
 	type CreatePaymentRequest,
@@ -682,6 +686,59 @@ export const createApiKey = (
 		body: input.label?.trim() ? { label: input.label.trim() } : {},
 		schema: createdApiKeySchema,
 		idempotencyKey: newIdempotencyKey("api-key"),
+		signal,
+	})
+
+export const startBlindpayOnboarding = (signal?: AbortSignal) =>
+	request("/v1/blindpay/onboarding", {
+		method: "POST",
+		body: {},
+		schema: BlindPayOnboardingResponseSchema,
+		idempotencyKey: newIdempotencyKey("blindpay-onboarding"),
+		signal,
+	})
+
+export const saveBlindpayTos = (tosId: string, signal?: AbortSignal) =>
+	request("/v1/blindpay/onboarding/tos", {
+		method: "POST",
+		body: { tosId },
+		schema: BlindPayOnboardingResponseSchema,
+		idempotencyKey: newIdempotencyKey("blindpay-tos"),
+		signal,
+	})
+
+export const submitBlindpayKyc = (body: unknown, signal?: AbortSignal) =>
+	request("/v1/blindpay/onboarding/kyc", {
+		method: "POST",
+		body: BlindPayKycBodySchema.parse(body),
+		schema: BlindPayOnboardingResponseSchema,
+		idempotencyKey: newIdempotencyKey("blindpay-kyc"),
+		signal,
+	})
+
+export const requestBlindpayDelegation = (
+	paymentId: string,
+	ownerAddress: string,
+	signal?: AbortSignal,
+) =>
+	request(`/v1/payments/${encodeURIComponent(paymentId)}/blindpay/delegation`, {
+		method: "POST",
+		body: { ownerAddress },
+		schema: BlindPayDelegationResponseSchema,
+		idempotencyKey: newIdempotencyKey("blindpay-delegation"),
+		signal,
+	})
+
+export const confirmBlindpayPayout = (
+	paymentId: string,
+	signature: string,
+	signal?: AbortSignal,
+) =>
+	request(`/v1/payments/${encodeURIComponent(paymentId)}/blindpay/confirm`, {
+		method: "POST",
+		body: { signature },
+		schema: BlindPayConfirmResponseSchema,
+		idempotencyKey: newIdempotencyKey("blindpay-confirm"),
 		signal,
 	})
 

@@ -8,6 +8,7 @@ import {
 	Connection,
 	PublicKey,
 	Transaction,
+	VersionedTransaction,
 	type SendOptions,
 } from "@solana/web3.js"
 import { getWallets } from "@wallet-standard/app"
@@ -328,6 +329,53 @@ export async function signAndSendSolanaTransaction(opts: {
 		...opts.options,
 	})
 	return signature
+}
+
+function bytesFromBase64(value: string): Uint8Array {
+	const binary = atob(value)
+	const bytes = new Uint8Array(binary.length)
+	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+	return bytes
+}
+
+/**
+ * CCR-45: sign BlindPay's base64 VersionedTransaction with the connected wallet
+ * and return the signature. Devnet only; this build does not sign on mainnet.
+ */
+export async function signAndSendVersionedSolanaTransaction(opts: {
+	connected: ConnectedSolanaWallet
+	transactionBase64: string
+	cluster?: ClusterLabel
+}): Promise<string> {
+	const cluster: ClusterLabel = opts.cluster ?? "devnet"
+	if (cluster === "mainnet-beta") {
+		throw new Error(
+			"Sender-wallet BlindPay signing stays on devnet in this build.",
+		)
+	}
+	const chain = clusterToChainId(cluster)
+	const bytes = bytesFromBase64(opts.transactionBase64)
+	VersionedTransaction.deserialize(bytes)
+	if (!walletSupportsCluster(opts.connected.wallet, cluster)) {
+		throw new Error(
+			`Wallet does not advertise ${chain}. Switch the wallet to Devnet and reconnect.`,
+		)
+	}
+	const feature = opts.connected.wallet.features[
+		SolanaSignAndSendTransaction
+	] as
+		| SolanaSignAndSendTransactionFeature[typeof SolanaSignAndSendTransaction]
+		| undefined
+	if (!feature) throw new Error("Wallet cannot sign Solana transactions")
+	const [outcome] = await feature.signAndSendTransaction({
+		account: opts.connected.account,
+		chain,
+		transaction: bytes,
+	})
+	if (!outcome?.signature) {
+		throw new Error("Wallet did not return a transaction signature")
+	}
+	return bs58.encode(outcome.signature)
 }
 
 export function shortAddress(address: string): string {
