@@ -7,6 +7,7 @@ import type { OrchestratorAdapters } from "../src/orchestrator/index.ts";
 import { pollProvidersOnce } from "../src/ops/provider-poller.ts";
 import { resetSolanaRuntimeConfigCache } from "../src/solana/runtime-config.ts";
 import {
+	getSolanaRefundRpc,
 	setSolanaRefundRpcForTests,
 	type SolanaRefundRpc,
 } from "../src/solana/treasury-refund.ts";
@@ -293,6 +294,14 @@ async function paymentDetail(api: Api, key: string, paymentId: string) {
 }
 
 describe("CCR-37 Solana treasury refund", { timeout: 120_000 }, () => {
+	test("uses the configured Solana RPC when no test override is installed", () => {
+		setEnv();
+		setSolanaRefundRpcForTests(null);
+		const rpc = getSolanaRefundRpc();
+		assert.equal(typeof rpc.getLatestBlockhash, "function");
+		assert.equal(typeof rpc.sendRawTransaction, "function");
+	});
+
 	test("success: refunds the verified treasury amount and exposes refundTxRef", async () => {
 		setEnv();
 		verifyTransfer();
