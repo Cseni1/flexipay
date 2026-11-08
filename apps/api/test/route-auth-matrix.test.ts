@@ -311,8 +311,11 @@ describe("another organization's resource → 404", () => {
 	)("%s list never shows org A's data to a stranger", async (_name, r) => {
 		const callers: Record<string, string>[] = [{ cookie: cookieS, origin: s.origin }];
 		if (r.auth !== "session") callers.push({ authorization: `Bearer ${B.key}` });
+		// Required query so a lookup route still returns 200 without reading another org's rows.
+		const query =
+			r.path === "/v1/payout-requirements" ? "?country=US&currency=USD" : "";
 		for (const headers of callers) {
-			const res = await call(r, { headers });
+			const res = await call(r, { headers, path: `${r.path}${query}` });
 			expect(res.status).toBe(200);
 			const text = await res.text();
 			for (const id of [A.orgId, owned.payment, owned.recipient, owned.apiKey]) {

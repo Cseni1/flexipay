@@ -1119,3 +1119,114 @@ describe("CCR-26: GBP to tGBP corridor (solana_tgbp)", () => {
 		expect(isSolanaSettleRail("stellar_usdc")).toBe(false);
 	});
 });
+
+describe("CCR-43: exclude a partner when payout fields are missing", () => {
+	const keReqs = {
+		detailKeys: ["accountNumber", "branchCode"],
+		localFields: [
+			"address.line1",
+			"address.city",
+			"address.state",
+			"address.postal_code",
+		],
+	};
+	const row = config.providers.find((p) => p.id === "tazapay_sandbox");
+	if (!row) throw new Error("tazapay_sandbox missing");
+
+	function tazapay(): ProviderAdapter {
+		return {
+			id: "tazapay_sandbox",
+			capabilities(): ProviderCapabilities {
+				return {
+					providerId: "tazapay_sandbox",
+					countries: [...row!.countries],
+					currencies: [...row!.currencies],
+					endpointTypes: [...row!.endpointTypes],
+					legKinds: [...row!.legKinds],
+					limits: null,
+					simulated: true,
+				};
+			},
+			payoutRequirements: async () => keReqs,
+			async quote(req: LegQuoteRequest) {
+				return {
+					providerId: "tazapay_sandbox",
+					fee: { amount: "0", currency: req.amountIn.currency },
+					fxRate: req.amountIn.currency === req.outCurrency ? null : "1",
+					amountOut: { amount: req.amountIn.amount, currency: req.outCurrency },
+					estimatedTimeSeconds: 60,
+					simulated: true,
+				};
+			},
+			async execute() {
+				throw new Error("not used");
+			},
+			async status() {
+				throw new Error("not used");
+			},
+			async reverse() {
+				throw new Error("not used");
+			},
+			async health() {
+				return "up" as const;
+			},
+		};
+	}
+
+	function keDeps() {
+		const base = deps();
+		const partner = tazapay();
+		return {
+			...base,
+			getProvider: (id: string) =>
+				id === "tazapay_sandbox" ? partner : base.getProvider(id),
+		};
+	}
+
+	const keReq = (payout?: CreateQuoteRequest["payout"]): CreateQuoteRequest => ({
+		source: { type: "bank_account", currency: "GBP", country: "GB" },
+		destination: {
+			type: "bank_account",
+			currency: "KES",
+			country: "KE",
+			recipientKind: "individual",
+		},
+		amount: { side: "send", value: money("10000", "GBP") },
+		policy: "cheapest",
+		feeMode: "PayerPays",
+		...(payout ? { payout } : {}),
+	});
+
+	it("drops Tazapay and names the missing address and branch code", async () => {
+		const result = await buildQuote(keReq(), keDeps());
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		const text = result.reasons.join(" ");
+		expect(text).toContain("tazapay_sandbox excluded");
+		expect(text).toContain("branchCode");
+		expect(text).toContain("address.line1");
+		expect(text).toContain("address.postal_code");
+	});
+
+	it("quotes Tazapay once the address and branch code are on the payout profile", async () => {
+		const result = await buildQuote(
+			keReq({
+				details: { accountNumber: "1234567890", branchCode: "01" },
+				address: {
+					line1: "1 Market Street",
+					city: "Nairobi",
+					state: "Nairobi",
+					postalCode: "00100",
+					country: "KE",
+				},
+			}),
+			keDeps(),
+		);
+		expect(result.ok, result.ok ? "" : result.reasons.join(" | ")).toBe(true);
+		if (!result.ok) return;
+		expect(result.quote.route.find((l) => l.kind === "payout")?.providerId).toBe(
+			"tazapay_sandbox",
+		);
+		expect(result.quote.expectedReceive.currency).toBe("KES");
+	});
+});

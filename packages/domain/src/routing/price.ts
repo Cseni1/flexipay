@@ -17,9 +17,14 @@ import type {
 	EndpointRef,
 	LegQuote,
 	ProviderAdapter,
+	RecipientAddress,
 } from "../adapters.ts";
 import type { FeeBreakdown, PlannedLeg } from "../api/common.ts";
 import type { RouteTemplate } from "./templates.ts";
+import {
+	missingPartnerPayoutFields,
+	partnerPayoutExclusionReason,
+} from "./payout-fields.ts";
 
 // Leg pricing through ProviderAdapter.quote and vault feeBps (ARCHITECTURE §8 step 4, CCR-4).
 
@@ -269,6 +274,17 @@ async function bestQuote(
 	const results: Array<{ adapter: ProviderAdapter; quoted: LegQuote }> = [];
 	let firstError: string | null = null;
 	for (const adapter of candidates) {
+		if (kind === "payout") {
+			const blocked = await excludeForPayoutFields(
+				adapter,
+				request.endpoint,
+				exclusionReasons,
+			);
+			if (blocked) {
+				firstError ??= blocked;
+				continue;
+			}
+		}
 		try {
 			results.push({ adapter, quoted: await adapter.quote(request) });
 		} catch (e) {
@@ -497,7 +513,38 @@ function pricedLeg(
 	};
 }
 
-type Destination = { type: EndpointType; currency: string; country: string };
+type Destination = {
+	type: EndpointType;
+	currency: string;
+	country: string;
+	/** CCR-43: present only when the quote carried a payout profile. */
+	details?: Record<string, string>;
+	recipientAddress?: RecipientAddress;
+};
+
+/** Drop a partner whose country requirements are not on the quote endpoint (CCR-43). */
+async function excludeForPayoutFields(
+	adapter: ProviderAdapter,
+	endpoint: EndpointRef | undefined,
+	exclusionReasons: string[],
+): Promise<string | null> {
+	if (!endpoint || !adapter.payoutRequirements) return null;
+	let requirements;
+	try {
+		requirements = await adapter.payoutRequirements(endpoint.country, endpoint.currency);
+	} catch (e) {
+		const msg = e instanceof Error ? e.message : "payout requirements failed";
+		const reason = `Provider ${adapter.id} excluded: could not read payout requirements for ${endpoint.country} (${msg})`;
+		exclusionReasons.push(reason);
+		return reason;
+	}
+	if (!requirements) return null;
+	const missing = missingPartnerPayoutFields(endpoint, requirements);
+	if (missing.length === 0) return null;
+	const reason = partnerPayoutExclusionReason(adapter.id, endpoint.country, missing);
+	exclusionReasons.push(reason);
+	return reason;
+}
 
 /** Healthy candidates for one non-settle leg, plus the payout endpoint to quote against. */
 async function legCandidates(
@@ -561,6 +608,10 @@ async function legCandidates(
 					type: destination.type,
 					country: endpointCountry,
 					currency: destination.currency,
+					...(destination.details ? { details: destination.details } : {}),
+					...(destination.recipientAddress
+						? { recipientAddress: destination.recipientAddress }
+						: {}),
 				}
 			: undefined;
 	return { ok: true, candidates, endpoint };
@@ -625,6 +676,11 @@ async function pricePayoutPair(
 
 	const payIds = new Set(pay.candidates.map((a) => a.id));
 	for (const partner of conv.candidates.filter((a) => isOfframp(a) && payIds.has(a.id))) {
+		const blocked = await excludeForPayoutFields(partner, pay.endpoint, exclusionReasons);
+		if (blocked) {
+			firstError ??= blocked;
+			continue;
+		}
 		try {
 			// The off-ramp prices the whole pair, so it also needs the payout endpoint (country).
 			const cq = await partner.quote({
@@ -681,11 +737,7 @@ export async function priceRoute(
 	corridor: Corridor,
 	template: RouteTemplate,
 	sendAmount: Money,
-	destination: {
-		type: EndpointType;
-		currency: string;
-		country: string;
-	},
+	destination: Destination,
 ): Promise<PriceResult> {
 	const exclusionReasons: string[] = [];
 	const settleAsset = settlementAsset(corridor, deps.config);

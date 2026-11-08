@@ -46,6 +46,7 @@ function fakeApi(
 		beneficiaryId?: string
 		requiredBankFields?: string[]
 		requiredBankCodes?: string[]
+		localFields?: string[]
 		available?: Array<{ currency: string; amount: number | string }>
 		balanceFails?: boolean
 	} = {},
@@ -108,15 +109,17 @@ function fakeApi(
 		if (path === "/v3/metadata/payout/bank") {
 			if (opts.metadataFails)
 				return reply(500, { status: "error", message: "unavailable" })
+			const params = parsed.searchParams
 			return ok({
 				payout_methods: [
 					{
-						country: "PH",
-						currency: "PHP",
+						country: params.get("country") ?? "PH",
+						currency: params.get("currency") ?? "PHP",
 						payout_type: "local",
 						fund_transfer_networks: [{ name: "instapay" }, { name: "pesonet" }],
 						required_bank_fields: opts.requiredBankFields ?? ["account_number"],
 						required_bank_codes: opts.requiredBankCodes ?? [],
+						local_fields: opts.localFields ?? [],
 					},
 				],
 			})
@@ -171,6 +174,14 @@ type TestEndpoint = {
 	details?: Record<string, string>
 	recipientName?: string
 	recipientKind?: "individual" | "company"
+	recipientAddress?: {
+		line1: string
+		line2?: string
+		city: string
+		state: string
+		postalCode: string
+		country: string
+	}
 	partnerRefs?: Record<string, string>
 }
 
@@ -487,6 +498,82 @@ describe("Tazapay adapter", () => {
 		expect(error).toBeInstanceOf(ProviderError)
 		expect(error.message).toContain("no digits")
 		expect(api.calls.some((c) => c.path === "/v3/beneficiary")).toBe(false)
+	})
+
+	it("caches payout requirements per country and maps KE local fields and branch code", async () => {
+		const api = fakeApi({
+			requiredBankFields: ["account_number"],
+			requiredBankCodes: ["branch_code"],
+			localFields: [
+				"address.line1",
+				"address.city",
+				"address.state",
+				"address.postal_code",
+			],
+		})
+		const a = adapter(api)
+		const first = await a.payoutRequirements("KE", "KES")
+		const second = await a.payoutRequirements("KE", "KES")
+		expect(first).toEqual({
+			detailKeys: ["accountNumber", "branchCode"],
+			localFields: [
+				"address.line1",
+				"address.city",
+				"address.state",
+				"address.postal_code",
+			],
+		})
+		expect(second).toEqual(first)
+		expect(
+			api.calls.filter((c) => c.path === "/v3/metadata/payout/bank"),
+		).toHaveLength(1)
+	})
+
+	it("sends the recipient address on the Tazapay beneficiary", async () => {
+		const api = fakeApi({
+			requiredBankFields: ["account_number"],
+			requiredBankCodes: ["branch_code"],
+			localFields: [
+				"address.line1",
+				"address.city",
+				"address.state",
+				"address.postal_code",
+			],
+		})
+		const ke: TestEndpoint = {
+			endpointId: "ep_ke",
+			type: "bank_account",
+			country: "PH",
+			currency: "PHP",
+			details: {
+				accountNumber: "1234567890",
+				branchCode: "01",
+			},
+			recipientName: "Worker KE",
+			recipientKind: "individual",
+			recipientAddress: {
+				line1: "1 Market Street",
+				city: "Nairobi",
+				state: "Nairobi",
+				postalCode: "00100",
+				country: "KE",
+			},
+		}
+		await adapter(api, { beneficiary: null }).execute(
+			leg("payout", money("785381", "PHP"), "pay_ke", ke, "leg_ke"),
+		)
+		expect(api.calls.find((c) => c.path === "/v3/beneficiary")!.body).toMatchObject({
+			address: {
+				line1: "1 Market Street",
+				city: "Nairobi",
+				state: "Nairobi",
+				postal_code: "00100",
+				country: "KE",
+			},
+			destination_details: {
+				bank: { bank_codes: { branch_code: "01" } },
+			},
+		})
 	})
 
 	it("refuses beneficiary creation when metadata-required fields are missing", async () => {

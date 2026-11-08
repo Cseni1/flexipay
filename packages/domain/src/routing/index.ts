@@ -22,3 +22,7 @@ export {
 	type BuildQuoteDeps,
 	type BuildQuoteResult,
 } from "./quote.ts";
+export {
+	missingPartnerPayoutFields,
+	partnerPayoutExclusionReason,
+} from "./payout-fields.ts";

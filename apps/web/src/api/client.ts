@@ -239,10 +239,20 @@ export const getQuote = (id: string, signal?: AbortSignal): Promise<Quote> =>
 		signal,
 	})
 
+export interface RecipientAddressInput {
+	line1: string
+	line2?: string
+	city: string
+	state: string
+	postalCode: string
+	country: string
+}
+
 interface CreateRecipientInput {
 	name: string
 	kind: RecipientKind
 	country: string
+	address?: RecipientAddressInput
 }
 
 /** The create response is id-only in existing browser fixtures; list returns the full row. */
@@ -264,7 +274,30 @@ export interface RecipientSummary {
 	name: string
 	kind: RecipientKind
 	country: string
+	address: RecipientAddressInput | null
 	createdAt: string
+}
+
+const parseAddress = (value: unknown): RecipientAddressInput | null => {
+	if (value == null) return null
+	if (
+		!isRecord(value) ||
+		typeof value.line1 !== "string" ||
+		typeof value.city !== "string" ||
+		typeof value.state !== "string" ||
+		typeof value.postalCode !== "string" ||
+		typeof value.country !== "string"
+	) {
+		throw new Error("recipient address invalid")
+	}
+	return {
+		line1: value.line1,
+		...(typeof value.line2 === "string" ? { line2: value.line2 } : {}),
+		city: value.city,
+		state: value.state,
+		postalCode: value.postalCode,
+		country: value.country,
+	}
 }
 
 const parseRecipient = (item: unknown): RecipientSummary => {
@@ -283,8 +316,58 @@ const parseRecipient = (item: unknown): RecipientSummary => {
 		name: item.name,
 		kind: item.kind as RecipientKind,
 		country: item.country,
+		address: parseAddress(item.address),
 		createdAt: item.createdAt,
 	}
+}
+
+export interface PayoutRequirements {
+	country: string
+	currency: string
+	providerId: string | null
+	detailKeys: string[]
+	localFields: string[]
+	addressRequired: boolean
+}
+
+const payoutRequirementsSchema: Parser<PayoutRequirements> = {
+	parse: (value) => {
+		if (
+			!isRecord(value) ||
+			typeof value.country !== "string" ||
+			typeof value.currency !== "string" ||
+			!Array.isArray(value.detailKeys) ||
+			!Array.isArray(value.localFields) ||
+			typeof value.addressRequired !== "boolean"
+		) {
+			throw new Error("payout requirements invalid")
+		}
+		return {
+			country: value.country,
+			currency: value.currency,
+			providerId:
+				typeof value.providerId === "string" ? value.providerId : null,
+			detailKeys: value.detailKeys.filter(
+				(key): key is string => typeof key === "string",
+			),
+			localFields: value.localFields.filter(
+				(key): key is string => typeof key === "string",
+			),
+			addressRequired: value.addressRequired,
+		}
+	},
+}
+
+export const getPayoutRequirements = (
+	country: string,
+	currency: string,
+	signal?: AbortSignal,
+): Promise<PayoutRequirements> => {
+	const query = new URLSearchParams({ country, currency })
+	return request(`/v1/payout-requirements?${query.toString()}`, {
+		schema: payoutRequirementsSchema,
+		signal,
+	})
 }
 
 const recipientListSchema: Parser<{ recipients: RecipientSummary[] }> = {
