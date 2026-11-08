@@ -26,6 +26,15 @@ const PATHS = {
 	logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
 	shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10",
 	bolt: "M13 2 3 14h9l-1 8 10-12h-9z",
+	bank: "M3 21h18M4 18h16M6 18v-7M10 18v-7M14 18v-7M18 18v-7M12 3l9 5H3z",
+	phone:
+		"M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2M11 18h2",
+	search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16M21 21l-4.35-4.35",
+	refresh: "M21 12a9 9 0 1 1-2.64-6.36L21 8M21 3v5h-5",
+	building:
+		"M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M16 9h2a2 2 0 0 1 2 2v10M2 21h20M8 7h4M8 11h4M8 15h4",
+	chevron: "m9 18 6-6-6-6",
+	coin: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M9 9.5a3 3 0 0 1 3-2 2.5 2.5 0 0 1 0 5 2.5 2.5 0 0 0 0 5 3 3 0 0 0 3-2M12 5.5v2M12 16.5v2",
 } as const
 
 export type IconName = keyof typeof PATHS

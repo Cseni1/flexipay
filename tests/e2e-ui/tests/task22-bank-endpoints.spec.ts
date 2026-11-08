@@ -312,7 +312,7 @@ test.describe("TASK 22 bank endpoints", () => {
 			.selectOption("PH")
 		await bankForm.getByLabel("Account number").fill("998877665544")
 		await bankForm.getByLabel("Bank name").fill("BDO")
-		await page.getByRole("button", { name: "Add endpoint" }).click()
+		await page.getByRole("button", { name: "Save way to get paid" }).click()
 		// API masks short bank names fully ("BDO" → "****") so the label falls back to Bank.
 		await expect(page.getByTestId("endpoints-table")).toContainText(
 			"Bank ••5544",

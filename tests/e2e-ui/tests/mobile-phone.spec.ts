@@ -142,7 +142,7 @@ test.describe("Phone layout 390×844", () => {
 			await route.fulfill({ json: list })
 		})
 		await page.goto("/payments")
-		await expect(page.getByRole("heading", { name: "Payments" })).toBeVisible()
+		await expect(page.getByRole("heading", { name: "Activity" })).toBeVisible()
 		await expect(page.getByTestId("payment-history-cards")).toBeVisible()
 		await expect(page.getByTestId("payment-history")).toBeHidden()
 		await noSideways(page)

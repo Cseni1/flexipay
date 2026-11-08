@@ -45,6 +45,8 @@ test.describe("CF14 dashboard and history", () => {
 		await page.getByRole("button", { name: "All" }).click()
 		await page.getByLabel("Search payments").fill("moving")
 		await expect(page.locator("tbody tr")).toHaveCount(1)
+		await page.getByLabel("Search payments").fill("nothing-like-this")
+		await expect(page.getByText("No payments match")).toBeVisible()
 	})
 
 	test("an empty history and an API failure are explained", async ({
@@ -52,7 +54,7 @@ test.describe("CF14 dashboard and history", () => {
 	}) => {
 		await mock(page, { payments: [] })
 		await page.goto("/payments")
-		await expect(page.getByText("No payments match")).toBeVisible()
+		await expect(page.getByText("No payments yet")).toBeVisible()
 
 		const failing = await page.context().newPage()
 		await mock(failing, { code: "internal_error", message: "boom" }, 500)

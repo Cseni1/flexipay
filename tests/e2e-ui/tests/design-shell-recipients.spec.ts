@@ -130,9 +130,7 @@ async function mockDirectory(
 }
 
 test.describe("Design shell recipients", () => {
-	test("sidebar reaches Recipients and theme toggle cycles", async ({
-		page,
-	}) => {
+	test("sidebar reaches People and theme toggle cycles", async ({ page }) => {
 		await mockDirectory(page)
 		await page.goto("/")
 		const nav = page.getByRole("navigation", { name: "Primary" })
@@ -140,7 +138,7 @@ test.describe("Design shell recipients", () => {
 		await nav.getByRole("link", { name: "People" }).click()
 		await expect(page).toHaveURL(/\/recipients$/)
 		await expect(
-			page.getByRole("heading", { name: "Recipients", exact: true }),
+			page.getByRole("heading", { name: "People", exact: true }),
 		).toBeVisible()
 
 		const toggle = page.getByTestId("theme-toggle")
@@ -156,11 +154,20 @@ test.describe("Design shell recipients", () => {
 	test("lists recipients and endpoints from the API", async ({ page }) => {
 		await mockDirectory(page)
 		await page.goto("/recipients")
-		await expect(page.getByTestId("recipients-table")).toContainText("Worker A")
-		await expect(page.getByTestId("recipients-table")).toContainText("rcp_demo")
-		await expect(page.getByTestId("endpoints-table")).toContainText("E-wallet")
+		await expect(
+			page
+				.getByTestId("recipients-table")
+				.locator('[data-recipient-id="rcp_demo"]'),
+		).toContainText("Worker A")
+		await expect(page.getByTestId("recipients-table")).toContainText(
+			"Philippines",
+		)
+		await expect(page.getByTestId("recipient-detail")).toContainText("rcp_demo")
 		await expect(page.getByTestId("endpoints-table")).toContainText(
-			"phoneNumber: ••••1234",
+			"Mobile wallet",
+		)
+		await expect(page.getByTestId("endpoints-table")).toContainText(
+			"Phone ••••1234",
 		)
 		await expect(
 			page.getByTestId("endpoints-table").getByText("Simulated"),
@@ -177,17 +184,23 @@ test.describe("Design shell recipients", () => {
 			.getByRole("textbox", { name: "Name", exact: true })
 			.fill("Worker B")
 		await page.getByLabel("Country").first().selectOption("PH")
-		await page.getByRole("button", { name: "Add recipient" }).click()
-		await expect(page.getByTestId("recipients-table")).toContainText("Worker B")
-		await expect(page.getByTestId("recipients-table")).toContainText("rcp_new")
+		await page.getByRole("button", { name: "Add person", exact: true }).click()
+		await expect(
+			page
+				.getByTestId("recipients-table")
+				.locator('[data-recipient-id="rcp_new"]'),
+		).toContainText("Worker B")
+		await expect(page.getByTestId("recipient-detail")).toContainText("rcp_new")
 
 		const endpointForm = page.getByTestId("endpoint-form")
-		await endpointForm.getByLabel("Type").selectOption("bank_account")
+		await endpointForm
+			.getByLabel("How they get paid")
+			.selectOption("bank_account")
 		await endpointForm.getByLabel("Country").selectOption("PH")
 		await expect(endpointForm.getByLabel("Currency")).toHaveValue("PHP")
 		await endpointForm.getByLabel("Account number").fill("PH-DEMO-ACCOUNT-9")
 		await endpointForm.getByLabel("Bank name").fill("BDO")
-		await page.getByRole("button", { name: "Add endpoint" }).click()
+		await page.getByRole("button", { name: "Save way to get paid" }).click()
 		await expect(page.getByTestId("endpoints-table")).toContainText(
 			"Bank account",
 		)
@@ -208,5 +221,26 @@ test.describe("Design shell recipients", () => {
 		)
 		await expect(page.getByTestId("recipients-error")).not.toContainText("{")
 		await expect(page.getByTestId("recipients-error")).not.toContainText("boom")
+	})
+
+	test("390px: people are cards with a big Pay button and no sideways scroll", async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 390, height: 844 })
+		await mockDirectory(page)
+		await page.goto("/recipients")
+		const pay = page
+			.getByTestId("recipients-table")
+			.getByRole("link", { name: "Pay Worker A" })
+		await expect(pay).toBeVisible()
+		const box = await pay.boundingBox()
+		expect(box?.height ?? 0).toBeGreaterThanOrEqual(44)
+		expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(390)
+		const metrics = await page.evaluate(() => ({
+			scrollWidth: document.documentElement.scrollWidth,
+			innerWidth: window.innerWidth,
+		}))
+		expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.innerWidth)
+		await expect(pay).toHaveAttribute("href", "/?recipientId=rcp_demo")
 	})
 })
