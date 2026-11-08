@@ -130,7 +130,10 @@ function localFieldNames(value: unknown): string[] {
 	return names
 }
 
-const ADDRESS_LOCAL: Record<string, "line1" | "line2" | "city" | "state" | "postalCode" | "country"> = {
+const ADDRESS_LOCAL: Record<
+	string,
+	"line1" | "line2" | "city" | "state" | "postalCode" | "country"
+> = {
 	"address.line1": "line1",
 	"address.line2": "line2",
 	"address.city": "city",
@@ -140,7 +143,16 @@ const ADDRESS_LOCAL: Record<string, "line1" | "line2" | "city" | "state" | "post
 }
 
 function localFieldPresent(
-	endpoint: { recipientAddress?: { line1: string; line2?: string; city: string; state: string; postalCode: string; country: string } },
+	endpoint: {
+		recipientAddress?: {
+			line1: string
+			line2?: string
+			city: string
+			state: string
+			postalCode: string
+			country: string
+		}
+	},
 	local: string,
 ): boolean {
 	const key = ADDRESS_LOCAL[local]
@@ -160,7 +172,12 @@ function beneficiaryAddress(endpoint: {
 	}
 }): Record<string, string> | null {
 	const address = endpoint.recipientAddress
-	if (!address?.line1 || !address.city || !address.state || !address.postalCode) {
+	if (
+		!address?.line1 ||
+		!address.city ||
+		!address.state ||
+		!address.postalCode
+	) {
 		return null
 	}
 	return {
@@ -568,7 +585,8 @@ export class TazapayAdapter implements ProviderAdapter {
 			currency: endpoint.currency,
 		}
 		// The holder name defaults to the recipient's name when the details leave it out.
-		bank.account_holder_name = details.accountHolderName ?? endpoint.recipientName
+		bank.account_holder_name =
+			details.accountHolderName ?? endpoint.recipientName
 		if (details.bankName) bank.bank_name = details.bankName
 		if (details.iban) bank.iban = details.iban
 		const codes: Record<string, string> = {}
@@ -576,7 +594,8 @@ export class TazapayAdapter implements ProviderAdapter {
 			const value = details[BANK_CODE_KEYS[code]!]
 			if (value) codes[code] = value
 		}
-		if (details.swiftCode && !codes.swift_code) codes.swift_code = details.swiftCode
+		if (details.swiftCode && !codes.swift_code)
+			codes.swift_code = details.swiftCode
 		if (details.bankCode && !codes.bank_code) codes.bank_code = details.bankCode
 		if (details.branchCode && !codes.branch_code)
 			codes.branch_code = details.branchCode
@@ -586,8 +605,7 @@ export class TazapayAdapter implements ProviderAdapter {
 		const data = this.ok(
 			await this.call("POST", "/v3/beneficiary", {
 				name: endpoint.recipientName,
-				type:
-					endpoint.recipientKind === "company" ? "business" : "individual",
+				type: endpoint.recipientKind === "company" ? "business" : "individual",
 				email: this.opts.beneficiaryEmail ?? DEFAULT_BENEFICIARY_EMAIL,
 				...(address ? { address } : {}),
 				destination_details: { type: "bank", bank },
@@ -644,7 +662,14 @@ export class TazapayAdapter implements ProviderAdapter {
 		const parsed = {
 			fields: stringList(method.required_bank_fields),
 			codes: stringList(method.required_bank_codes),
-			localFields: localFieldNames(method.local_fields),
+			// The live API lists address needs under required_beneficiary_fields
+			// (e.g. KE: address.line1, address.city, address.state, address.postal_code).
+			localFields: [
+				...new Set([
+					...localFieldNames(method.local_fields),
+					...stringList(method.required_beneficiary_fields),
+				]),
+			],
 		}
 		this.requirementsCache.set(key, parsed)
 		return parsed
