@@ -104,7 +104,9 @@ test.describe("Send form polish", () => {
 		)
 		await expect(page.getByLabel("Destination country")).toHaveValue("PH")
 
-		await page.getByLabel("Destination", { exact: true }).selectOption("ewallet")
+		await page
+			.getByLabel("Destination", { exact: true })
+			.selectOption("ewallet")
 		await page.getByLabel("Recipient kind").selectOption("individual")
 		await page.getByLabel("Who pays the fee?").selectOption("PayerPays")
 		await page.getByLabel("Amount (USD)").fill("10.00")

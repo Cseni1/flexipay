@@ -360,9 +360,9 @@ test.describe("CF1 payments", () => {
 		await expect(payout.getByText("Simulated", { exact: true })).toBeVisible()
 
 		await expect(settleItem).toHaveAttribute("data-leg-simulated", "false")
-		await expect(settleItem.getByText("Simulated", { exact: true })).toHaveCount(
-			0,
-		)
+		await expect(
+			settleItem.getByText("Simulated", { exact: true }),
+		).toHaveCount(0)
 		await expect(settleItem.getByText("Solana USDC")).toBeVisible()
 		await expect(settleItem.getByText("Sandbox", { exact: true })).toBeVisible()
 	})

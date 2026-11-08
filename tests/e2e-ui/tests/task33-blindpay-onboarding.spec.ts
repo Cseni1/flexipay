@@ -37,7 +37,9 @@ test("terms return saves the id, then ID and selfie uploads enable submit", asyn
 	await page
 		.getByTestId("blindpay-id_doc_front_file")
 		.setInputFiles({ name: "id.png", mimeType: "image/png", buffer: png })
-	await expect(page.getByText(/Photo of your ID \(front\) ✓ uploaded/)).toBeVisible()
+	await expect(
+		page.getByText(/Photo of your ID \(front\) ✓ uploaded/),
+	).toBeVisible()
 	await page
 		.getByTestId("blindpay-selfie_file")
 		.setInputFiles({ name: "selfie.png", mimeType: "image/png", buffer: png })

@@ -1,8 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
-import {
-	paymentDetailFixture,
-	paymentFromDetail,
-} from "./fixtures"
+import { paymentDetailFixture, paymentFromDetail } from "./fixtures"
 
 // CCR-26: UK GBP → tGBP crypto wallet on the send form. Fixture coverage only.
 
@@ -173,7 +170,9 @@ test.describe("UK GBP send (CCR-26)", () => {
 		await page.goto("/")
 
 		await page.getByLabel("Destination country").selectOption("GB")
-		await expect(page.getByText("GBP bank account", { exact: true })).toBeVisible()
+		await expect(
+			page.getByText("GBP bank account", { exact: true }),
+		).toBeVisible()
 		await expect(page.getByLabel("Destination", { exact: true })).toHaveValue(
 			"crypto_wallet",
 		)
@@ -189,9 +188,13 @@ test.describe("UK GBP send (CCR-26)", () => {
 		await page.getByLabel("Recipient", { exact: true }).fill("UK Worker")
 		await page.getByRole("button", { name: "Get quote" }).click()
 
-		await expect(page.getByRole("heading", { name: "Chosen route" })).toBeVisible()
+		await expect(
+			page.getByRole("heading", { name: "Chosen route" }),
+		).toBeVisible()
 		await expect(page.getByText("£10.00").first()).toBeVisible()
-		await expect(page.getByText("solana_tgbp", { exact: true }).first()).toBeVisible()
+		await expect(
+			page.getByText("solana_tgbp", { exact: true }).first(),
+		).toBeVisible()
 		await expect(page.getByText("PayerPays", { exact: true })).toBeVisible()
 
 		expect(counts.quoteBody).toMatchObject({

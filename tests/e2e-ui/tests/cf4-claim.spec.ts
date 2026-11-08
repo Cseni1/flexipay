@@ -280,7 +280,9 @@ test.describe("CF4 claim page", () => {
 	test("shows claim expiry as a date and about N days left", async ({
 		page,
 	}) => {
-		const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+		const expiresAt = new Date(
+			Date.now() + 7 * 24 * 60 * 60 * 1000,
+		).toISOString()
 		await mockClaimApi(page, {
 			claim: claimFixture({ expiresAt }),
 		})
@@ -311,12 +313,14 @@ test.describe("CF4 claim page", () => {
 		await expect(help).toBeVisible()
 		await expect(help.locator("summary")).toHaveText("No wallet yet?")
 		await help.locator("summary").click()
-		await expect(
-			page.getByRole("link", { name: "Phantom" }),
-		).toHaveAttribute("href", "https://phantom.com/download")
-		await expect(
-			page.getByRole("link", { name: "Solflare" }),
-		).toHaveAttribute("href", "https://solflare.com")
+		await expect(page.getByRole("link", { name: "Phantom" })).toHaveAttribute(
+			"href",
+			"https://phantom.com/download",
+		)
+		await expect(page.getByRole("link", { name: "Solflare" })).toHaveAttribute(
+			"href",
+			"https://solflare.com",
+		)
 		await expect(help).toContainText(/switch the wallet to Devnet/i)
 		await expect(help).toContainText(/paste it above/i)
 	})

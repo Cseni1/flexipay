@@ -80,8 +80,7 @@ test.describe("Resilience: API wake-up", () => {
 		await Promise.all([
 			page.waitForResponse(
 				(response) =>
-					response.url().includes("/v1/payments/pay_asleep") &&
-					response.ok(),
+					response.url().includes("/v1/payments/pay_asleep") && response.ok(),
 			),
 			page.getByTestId("api-wakeup-retry").click(),
 		])
@@ -158,7 +157,10 @@ test.describe("Receipt: paid Solana payment", () => {
 			"href",
 			`https://explorer.solana.com/tx/${signature}?cluster=devnet`,
 		)
-		const copy = page.getByRole("button", { name: "Copy signature", exact: true })
+		const copy = page.getByRole("button", {
+			name: "Copy signature",
+			exact: true,
+		})
 		await expect(copy).toBeVisible()
 		await copy.click()
 		await expect(

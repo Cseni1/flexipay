@@ -215,8 +215,7 @@ function paymentDetail(
 			providerId: "sim_bank_gb_fps",
 			amountIn: { amount: "10000", currency: "GBP" },
 			amountOut: { amount: "10000", currency: "GBP" },
-			status:
-				phase === "awaiting_funding" ? "pending" : ("succeeded" as const),
+			status: phase === "awaiting_funding" ? "pending" : ("succeeded" as const),
 			attempt: 1,
 			externalRef: phase === "awaiting_funding" ? null : "fps_ref_1",
 			lockTxRef: null,
@@ -233,8 +232,7 @@ function paymentDetail(
 			providerId: "sim_fx_gbp_tgbp",
 			amountIn: { amount: "10000", currency: "GBP" },
 			amountOut: { amount: "1000000000", currency: "TGBP" },
-			status:
-				phase === "awaiting_funding" ? "pending" : ("succeeded" as const),
+			status: phase === "awaiting_funding" ? "pending" : ("succeeded" as const),
 			attempt: 1,
 			externalRef: null,
 			lockTxRef: null,
@@ -272,9 +270,7 @@ function paymentDetail(
 			amountIn: { amount: "990000000", currency: "TGBP" },
 			amountOut: { amount: "990000000", currency: "TGBP" },
 			status:
-				phase === "paid" || phase === "tazapay_wait"
-					? "succeeded"
-					: "pending",
+				phase === "paid" || phase === "tazapay_wait" ? "succeeded" : "pending",
 			attempt: 1,
 			externalRef:
 				phase === "paid" || phase === "tazapay_wait"
@@ -538,10 +534,7 @@ async function walkToSolanaPanel(page: Page, country: "KE" | "PH") {
 	)
 }
 
-async function confirmAndReachPaid(
-	page: Page,
-	state: { phase: Phase },
-) {
+async function confirmAndReachPaid(page: Page, state: { phase: Phase }) {
 	await page.getByTestId("solana-already-paid").locator("summary").click()
 	await page.getByTestId("solana-manual-signature").fill(SIGNATURE)
 	await page.getByTestId("solana-manual-verify").click()

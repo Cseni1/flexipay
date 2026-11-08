@@ -63,14 +63,13 @@ export default function Dashboard() {
 	const name = firstName(user?.name ?? null)
 	return (
 		<Page>
-			<h2 className="visually-hidden">Dashboard</h2>
 			<section className="hero" aria-label="Send money">
 				<div>
 					<p className="hero__eyebrow">FlexiPay by FlexiWork</p>
-					<p className="hero__title">
+					<h2 className="hero__title">
 						{name ? `Hi ${name}, ` : "Hi, "}
 						<em>send money anywhere</em> in a few taps.
-					</p>
+					</h2>
 					<p className="hero__text">
 						Pick a person, see the price, pay. We compare our partners and pick
 						the best way to get the money there.

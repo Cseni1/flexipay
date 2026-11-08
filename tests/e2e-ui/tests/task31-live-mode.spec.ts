@@ -99,8 +99,7 @@ test.describe("TASK 31 live mode", () => {
 						reference: "Reference11111111111111111111111111111",
 						intentIssuedAt: new Date().toISOString(),
 						label: "Send USDC on Solana",
-						explorerTxUrlTemplate:
-							"https://explorer.solana.com/tx/{signature}",
+						explorerTxUrlTemplate: "https://explorer.solana.com/tx/{signature}",
 					},
 				})
 			},

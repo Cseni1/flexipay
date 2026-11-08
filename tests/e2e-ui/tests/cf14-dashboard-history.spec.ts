@@ -29,7 +29,7 @@ test.describe("CF14 dashboard and history", () => {
 		await page.goto("/dashboard")
 		const stats = page.getByTestId("dashboard-stats")
 		await expect(stats).toContainText("4")
-		await expect(stats).toContainText("In flight")
+		await expect(stats).toContainText("On its way")
 		await expect(page.getByTestId("payment-history")).toContainText("pay_done")
 		await page.getByRole("link", { name: "pay_done" }).click()
 		await expect(page).toHaveURL(/\/payments\/pay_done$/)
@@ -47,7 +47,9 @@ test.describe("CF14 dashboard and history", () => {
 		await expect(page.locator("tbody tr")).toHaveCount(1)
 	})
 
-	test("an empty history and an API failure are explained", async ({ page }) => {
+	test("an empty history and an API failure are explained", async ({
+		page,
+	}) => {
 		await mock(page, { payments: [] })
 		await page.goto("/payments")
 		await expect(page.getByText("No payments match")).toBeVisible()
@@ -70,10 +72,11 @@ test.describe("CF14 dashboard and history", () => {
 		await page.goto("/")
 		const nav = page.getByRole("navigation", { name: "Primary" })
 		for (const name of [
-			"Dashboard",
-			"Payments",
-			"New payment",
-			"Recipients",
+			"Home",
+			"Activity",
+			"Send money",
+			"People",
+			"Get paid",
 			"Pay from",
 			"Connected wallet",
 			"Developers",

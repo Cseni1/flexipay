@@ -114,7 +114,10 @@ test.describe("TASK 19 BlindPay payout polling", () => {
 			}),
 		).toBeVisible()
 		await expect(
-			page.locator(".status-badge").filter({ hasText: /^Paid$/i }).first(),
+			page
+				.locator(".status-badge")
+				.filter({ hasText: /^Paid$/i })
+				.first(),
 		).toBeVisible()
 	})
 

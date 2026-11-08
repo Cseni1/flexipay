@@ -9,7 +9,9 @@ test.describe("CF0 web shell", () => {
 		await expect(
 			page.getByRole("heading", { name: "Send a payment" }),
 		).toBeVisible()
-		await expect(page.getByRole("link", { name: "Payments" })).toBeVisible()
+		await expect(
+			page.getByRole("link", { name: "Activity" }).first(),
+		).toBeVisible()
 		await expect(page.getByText("Simulated").first()).toBeVisible()
 		await expect(page.getByRole("button", { name: "Get quote" })).toBeEnabled()
 	})

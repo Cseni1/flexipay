@@ -235,9 +235,7 @@ test.describe("TASK 22 bank endpoints", () => {
 		await page.getByRole("button", { name: "Create payment" }).click()
 		await expect(page).toHaveURL(/\/payments\/pay_bank_1$/)
 
-		await expect
-			.poll(() => state.endpointBodies.length)
-			.toBe(1)
+		await expect.poll(() => state.endpointBodies.length).toBe(1)
 		expect(state.endpointBodies[0]).toMatchObject({
 			recipientId: "rcp_new",
 			type: "bank_account",
@@ -251,9 +249,7 @@ test.describe("TASK 22 bank endpoints", () => {
 				swiftCode: "BNORPHMM",
 			},
 		})
-		await expect
-			.poll(() => state.paymentBodies.length)
-			.toBe(1)
+		await expect.poll(() => state.paymentBodies.length).toBe(1)
 		expect(state.paymentBodies[0]).toMatchObject({
 			quoteId: "quo_bank_1",
 			recipientId: "rcp_new",
@@ -287,9 +283,7 @@ test.describe("TASK 22 bank endpoints", () => {
 		await expect(page).toHaveURL(/\/payments\/pay_bank_1$/)
 
 		expect(state.endpointBodies).toHaveLength(0)
-		await expect
-			.poll(() => state.paymentBodies.length)
-			.toBe(1)
+		await expect.poll(() => state.paymentBodies.length).toBe(1)
 		expect(state.paymentBodies[0]).toMatchObject({
 			recipientId: "rcp_saved",
 			endpointId: "end_bank_b",

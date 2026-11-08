@@ -152,11 +152,14 @@ test.describe("FlexiPay wallet pays Solana settle", () => {
 		await page.route(/\/v1\/solana\/config$/, async (route) => {
 			await route.fulfill({ json: solanaConfig })
 		})
-		await page.route(new RegExp(`/v1/payments/${PAYMENT_ID}$`), async (route) => {
-			await route.fulfill({
-				json: paid ? paidPayment() : processingPayment(),
-			})
-		})
+		await page.route(
+			new RegExp(`/v1/payments/${PAYMENT_ID}$`),
+			async (route) => {
+				await route.fulfill({
+					json: paid ? paidPayment() : processingPayment(),
+				})
+			},
+		)
 		await page.route(
 			new RegExp(`/v1/payments/${PAYMENT_ID}/solana/intent$`),
 			async (route) => {

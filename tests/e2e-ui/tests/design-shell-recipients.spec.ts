@@ -136,8 +136,8 @@ test.describe("Design shell recipients", () => {
 		await mockDirectory(page)
 		await page.goto("/")
 		const nav = page.getByRole("navigation", { name: "Primary" })
-		await expect(nav.getByRole("link", { name: "Recipients" })).toBeVisible()
-		await nav.getByRole("link", { name: "Recipients" }).click()
+		await expect(nav.getByRole("link", { name: "People" })).toBeVisible()
+		await nav.getByRole("link", { name: "People" }).click()
 		await expect(page).toHaveURL(/\/recipients$/)
 		await expect(
 			page.getByRole("heading", { name: "Recipients", exact: true }),
@@ -173,7 +173,9 @@ test.describe("Design shell recipients", () => {
 		await mockDirectory(page, { endpoints: [] })
 		await page.goto("/recipients")
 
-		await page.getByRole("textbox", { name: "Name", exact: true }).fill("Worker B")
+		await page
+			.getByRole("textbox", { name: "Name", exact: true })
+			.fill("Worker B")
 		await page.getByLabel("Country").first().selectOption("PH")
 		await page.getByRole("button", { name: "Add recipient" }).click()
 		await expect(page.getByTestId("recipients-table")).toContainText("Worker B")
@@ -205,8 +207,6 @@ test.describe("Design shell recipients", () => {
 			"Waking up the server",
 		)
 		await expect(page.getByTestId("recipients-error")).not.toContainText("{")
-		await expect(page.getByTestId("recipients-error")).not.toContainText(
-			"boom",
-		)
+		await expect(page.getByTestId("recipients-error")).not.toContainText("boom")
 	})
 })
