@@ -1,7 +1,8 @@
-import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { fileURLToPath } from "node:url"
+import { describe, expect, it } from "vitest"
 import {
 	ProviderError,
+	SENDER_WALLET_BLINDPAY_RAIL,
 	QuoteSchema,
 	addMoney,
 	applyBps,
@@ -24,37 +25,37 @@ import {
 	type Provider,
 	type ProviderAdapter,
 	type ProviderCapabilities,
-} from "../src/index.ts";
+} from "../src/index.ts"
 
-const CONFIG_DIR = fileURLToPath(new URL("../../../config", import.meta.url));
+const CONFIG_DIR = fileURLToPath(new URL("../../../config", import.meta.url))
 
 const config: FlexiPayConfig = await (async () => {
-	const result = await loadConfig(CONFIG_DIR);
-	if (!result.ok) throw new Error(JSON.stringify(result.issues));
-	return result.config;
-})();
+	const result = await loadConfig(CONFIG_DIR)
+	if (!result.ok) throw new Error(JSON.stringify(result.issues))
+	return result.config
+})()
 
-const T0 = new Date("2026-10-23T12:00:00.000Z");
-const VAULT_FEE_BPS = 100; // 1%, from SettlementAdapter.feeBps() — not fees.json
+const T0 = new Date("2026-10-23T12:00:00.000Z")
+const VAULT_FEE_BPS = 100 // 1%, from SettlementAdapter.feeBps() — not fees.json
 
 function feeFor(row: Provider, amountIn: Money): Money {
-	const proportional = applyBps(amountIn, row.fee.bps);
-	if (row.fee.fixed.amount === "0") return proportional;
+	const proportional = applyBps(amountIn, row.fee.bps)
+	if (row.fee.fixed.amount === "0") return proportional
 	if (row.fee.fixed.currency !== amountIn.currency) {
 		throw new ProviderError(
 			"currency_mismatch",
 			`${row.id} fixed fee currency mismatch`,
-		);
+		)
 	}
-	return addMoney(row.fee.fixed, proportional);
+	return addMoney(row.fee.fixed, proportional)
 }
 
 function rateFor(rates: FxRate[], from: string, to: string): FxRate {
-	const rate = rates.find((r) => r.from === from && r.to === to);
+	const rate = rates.find((r) => r.from === from && r.to === to)
 	if (!rate) {
-		throw new ProviderError("no_fx_rate", `no rate ${from}>${to}`);
+		throw new ProviderError("no_fx_rate", `no rate ${from}>${to}`)
 	}
-	return rate;
+	return rate
 }
 
 /** Hand-rolled ProviderAdapter: same CCR-4 maths as adapters-sim, no package import. */
@@ -76,33 +77,33 @@ function mockAdapter(
 					? { min: { ...row.limits.min }, max: { ...row.limits.max } }
 					: null,
 				simulated: row.simulated,
-			};
+			}
 		},
 		async quote(req: LegQuoteRequest) {
 			if (!row.legKinds.includes(req.kind)) {
-				throw new ProviderError("unsupported", `${row.id} no ${req.kind}`);
+				throw new ProviderError("unsupported", `${row.id} no ${req.kind}`)
 			}
-			const amountIn = req.amountIn;
+			const amountIn = req.amountIn
 			if (row.limits) {
 				if (amountIn.currency !== row.limits.min.currency) {
-					throw new ProviderError("currency_mismatch", "limit currency");
+					throw new ProviderError("currency_mismatch", "limit currency")
 				}
 				if (BigInt(amountIn.amount) < BigInt(row.limits.min.amount)) {
-					throw new ProviderError("below_min", "below min");
+					throw new ProviderError("below_min", "below min")
 				}
 				if (BigInt(amountIn.amount) > BigInt(row.limits.max.amount)) {
-					throw new ProviderError("above_max", "above max");
+					throw new ProviderError("above_max", "above max")
 				}
 			}
 			if (req.kind === "convert") {
-				const rate = rateFor(rates, amountIn.currency, req.outCurrency);
-				const fee = feeFor(row, amountIn);
+				const rate = rateFor(rates, amountIn.currency, req.outCurrency)
+				const fee = feeFor(row, amountIn)
 				if (BigInt(fee.amount) >= BigInt(amountIn.amount)) {
-					throw new ProviderError("fee_exceeds_amount", "fee too high");
+					throw new ProviderError("fee_exceeds_amount", "fee too high")
 				}
-				const net = subtractMoney(amountIn, fee);
-				const converted = convertMoney(net, rate.rate, rate.to);
-				const amountOut = applyBps(converted, 10_000 - row.fxSpreadBps);
+				const net = subtractMoney(amountIn, fee)
+				const converted = convertMoney(net, rate.rate, rate.to)
+				const amountOut = applyBps(converted, 10_000 - row.fxSpreadBps)
 				return {
 					providerId: row.id,
 					fee,
@@ -110,22 +111,22 @@ function mockAdapter(
 					amountOut,
 					estimatedTimeSeconds: row.estimatedTimeSeconds,
 					simulated: true as const,
-				};
+				}
 			}
 			if (req.outCurrency !== amountIn.currency) {
-				throw new ProviderError("currency_mismatch", "out mismatch");
+				throw new ProviderError("currency_mismatch", "out mismatch")
 			}
 			if (req.kind === "payout") {
 				if (!req.endpoint) {
-					throw new ProviderError("unsupported", "payout needs endpoint");
+					throw new ProviderError("unsupported", "payout needs endpoint")
 				}
 				if (!row.endpointTypes.includes(req.endpoint.type)) {
-					throw new ProviderError("unsupported", "bad endpoint type");
+					throw new ProviderError("unsupported", "bad endpoint type")
 				}
 			}
-			const fee = feeFor(row, amountIn);
+			const fee = feeFor(row, amountIn)
 			if (BigInt(fee.amount) >= BigInt(amountIn.amount)) {
-				throw new ProviderError("fee_exceeds_amount", "fee too high");
+				throw new ProviderError("fee_exceeds_amount", "fee too high")
 			}
 			return {
 				providerId: row.id,
@@ -134,40 +135,40 @@ function mockAdapter(
 				amountOut: subtractMoney(amountIn, fee),
 				estimatedTimeSeconds: row.estimatedTimeSeconds,
 				simulated: true as const,
-			};
+			}
 		},
 		async execute() {
-			throw new Error("not used in CC1");
+			throw new Error("not used in CC1")
 		},
 		async status() {
-			throw new Error("not used in CC1");
+			throw new Error("not used in CC1")
 		},
 		async reverse() {
-			throw new Error("not used in CC1");
+			throw new Error("not used in CC1")
 		},
 		async health() {
-			return health;
+			return health
 		},
-	};
+	}
 }
 
 function registry(
 	over: Record<string, "up" | "down"> = {},
 ): Map<string, ProviderAdapter> {
-	const map = new Map<string, ProviderAdapter>();
+	const map = new Map<string, ProviderAdapter>()
 	for (const row of config.providers) {
 		// CCR-29: partner rows are served by @flexipay/adapters-live, not by a simulated mock.
-		if (row.implementation && row.implementation !== "sim") continue;
-		map.set(row.id, mockAdapter(row, config.fxRates, over[row.id] ?? "up"));
+		if (row.implementation && row.implementation !== "sim") continue
+		map.set(row.id, mockAdapter(row, config.fxRates, over[row.id] ?? "up"))
 	}
-	return map;
+	return map
 }
 
 function deps(
 	over: Record<string, "up" | "down"> = {},
 	settlementSimulated = true,
 ) {
-	const providers = registry(over);
+	const providers = registry(over)
 	return {
 		config,
 		getProvider: (id: string) => providers.get(id),
@@ -176,23 +177,26 @@ function deps(
 		settlementSimulated,
 		now: () => T0,
 		quoteId: () => "quo_test_1",
-	};
+	}
 }
 
 /** Zero foreign payout fee (legacy helper; CCR-7 option A rates cover PHP/BRL/ZAR totals). */
 function depsZeroPayoutFee(payoutId: string) {
-	const providers = registry();
-	const row = config.providers.find((p) => p.id === payoutId)!;
+	const providers = registry()
+	const row = config.providers.find((p) => p.id === payoutId)!
 	providers.set(
 		payoutId,
 		mockAdapter(
 			{
 				...row,
-				fee: { fixed: { amount: "0", currency: row.fee.fixed.currency }, bps: 0 },
+				fee: {
+					fixed: { amount: "0", currency: row.fee.fixed.currency },
+					bps: 0,
+				},
 			},
 			config.fxRates,
 		),
-	);
+	)
 	return {
 		config,
 		getProvider: (id: string) => providers.get(id),
@@ -200,19 +204,19 @@ function depsZeroPayoutFee(payoutId: string) {
 		settlementSimulated: true,
 		now: () => T0,
 		quoteId: () => "quo_test_1",
-	};
+	}
 }
 
 const sourceUs = {
 	type: "bank_account" as const,
 	currency: "USD",
 	country: "US",
-};
+}
 
 function sendReq(
 	partial: Omit<CreateQuoteRequest, "source" | "amount" | "policy"> & {
-		amount?: CreateQuoteRequest["amount"];
-		feeMode?: FeeMode;
+		amount?: CreateQuoteRequest["amount"]
+		feeMode?: FeeMode
 	},
 ): CreateQuoteRequest {
 	return {
@@ -224,7 +228,7 @@ function sendReq(
 		},
 		destination: partial.destination,
 		...(partial.feeMode !== undefined ? { feeMode: partial.feeMode } : {}),
-	};
+	}
 }
 
 /** Settle-route request with explicit CCR-8 feeMode (no silent default). */
@@ -232,37 +236,37 @@ function settleSendReq(
 	partial: Parameters<typeof sendReq>[0],
 	feeMode: FeeMode = "RecipientPays",
 ): CreateQuoteRequest {
-	return sendReq({ ...partial, feeMode });
+	return sendReq({ ...partial, feeMode })
 }
 
 describe("routeTemplate", () => {
 	it("maps the four corridor shapes", () => {
-		const us = config.corridors.find((c) => c.to.country === "US")!;
-		const ph = config.corridors.find((c) => c.to.country === "PH")!;
-		const za = config.corridors.find((c) => c.to.country === "ZA")!;
+		const us = config.corridors.find((c) => c.to.country === "US")!
+		const ph = config.corridors.find((c) => c.to.country === "PH")!
+		const za = config.corridors.find((c) => c.to.country === "ZA")!
 
-		expect(routeTemplate(us, "bank_account")).toEqual(["collect", "payout"]);
-		expect(routeTemplate(us, "crypto_wallet")).toBeNull();
+		expect(routeTemplate(us, "bank_account")).toEqual(["collect", "payout"])
+		expect(routeTemplate(us, "crypto_wallet")).toBeNull()
 		expect(routeTemplate(ph, "bank_account")).toEqual([
 			"collect",
 			"convert",
 			"settle",
 			"convert",
 			"payout",
-		]);
+		])
 		expect(routeTemplate(ph, "crypto_wallet")).toEqual([
 			"collect",
 			"convert",
 			"settle",
-		]);
+		])
 		expect(routeTemplate(za, "bank_account")).toEqual([
 			"collect",
 			"convert",
 			"payout",
-		]);
-		expect(routeTemplate(za, "crypto_wallet")).toBeNull();
-	});
-});
+		])
+		expect(routeTemplate(za, "crypto_wallet")).toBeNull()
+	})
+})
 
 describe("checkEligibility exclusions", () => {
 	it("rejects unknown corridor, bad destination type, and ZA crypto", () => {
@@ -278,7 +282,7 @@ describe("checkEligibility exclusions", () => {
 				}),
 				config,
 			).ok,
-		).toBe(false);
+		).toBe(false)
 
 		const zaCrypto = checkEligibility(
 			sendReq({
@@ -290,14 +294,14 @@ describe("checkEligibility exclusions", () => {
 				},
 			}),
 			config,
-		);
-		expect(zaCrypto.ok).toBe(false);
+		)
+		expect(zaCrypto.ok).toBe(false)
 		if (!zaCrypto.ok) {
-			expect(zaCrypto.reasons.some((r) => /not allowed|Crypto leg/i.test(r))).toBe(
-				true,
-			);
+			expect(
+				zaCrypto.reasons.some((r) => /not allowed|Crypto leg/i.test(r)),
+			).toBe(true)
 		}
-	});
+	})
 
 	it("rejects send amounts outside corridor limits", () => {
 		const below = checkEligibility(
@@ -311,9 +315,9 @@ describe("checkEligibility exclusions", () => {
 				amount: { side: "send", value: money("1", "USD") },
 			}),
 			config,
-		);
-		expect(below.ok).toBe(false);
-		if (!below.ok) expect(below.reasons.join(" ")).toMatch(/below the minimum/);
+		)
+		expect(below.ok).toBe(false)
+		if (!below.ok) expect(below.reasons.join(" ")).toMatch(/below the minimum/)
 
 		const above = checkEligibility(
 			sendReq({
@@ -326,10 +330,10 @@ describe("checkEligibility exclusions", () => {
 				amount: { side: "send", value: money("500001", "USD") },
 			}),
 			config,
-		);
-		expect(above.ok).toBe(false);
-		if (!above.ok) expect(above.reasons.join(" ")).toMatch(/above the maximum/);
-	});
+		)
+		expect(above.ok).toBe(false)
+		if (!above.ok) expect(above.reasons.join(" ")).toMatch(/above the maximum/)
+	})
 
 	it("rejects BR e-wallet (not in allowedDestinationTypes)", () => {
 		const r = checkEligibility(
@@ -342,9 +346,9 @@ describe("checkEligibility exclusions", () => {
 				},
 			}),
 			config,
-		);
-		expect(r.ok).toBe(false);
-	});
+		)
+		expect(r.ok).toBe(false)
+	})
 
 	it("rejects ambiguous crypto when destination.country is empty (PH and BR both match)", () => {
 		const r = checkEligibility(
@@ -357,14 +361,14 @@ describe("checkEligibility exclusions", () => {
 				},
 			}),
 			config,
-		);
-		expect(r.ok).toBe(false);
+		)
+		expect(r.ok).toBe(false)
 		if (!r.ok) {
-			expect(r.reasons.join(" ")).toMatch(/Ambiguous crypto corridor/);
-			expect(r.reasons.join(" ")).toMatch(/US-PH/);
-			expect(r.reasons.join(" ")).toMatch(/US-BR/);
+			expect(r.reasons.join(" ")).toMatch(/Ambiguous crypto corridor/)
+			expect(r.reasons.join(" ")).toMatch(/US-PH/)
+			expect(r.reasons.join(" ")).toMatch(/US-BR/)
 		}
-	});
+	})
 
 	it("accepts crypto when destination.country selects a unique corridor", () => {
 		const r = checkEligibility(
@@ -377,11 +381,11 @@ describe("checkEligibility exclusions", () => {
 				},
 			}),
 			config,
-		);
-		expect(r.ok).toBe(true);
-		if (r.ok) expect(r.corridor.to.country).toBe("PH");
-	});
-});
+		)
+		expect(r.ok).toBe(true)
+		if (r.ok) expect(r.corridor.to.country).toBe("PH")
+	})
+})
 
 describe("buildQuote corridors", () => {
 	it("US domestic: collect → payout on domestic rail", async () => {
@@ -395,43 +399,43 @@ describe("buildQuote corridors", () => {
 				},
 			}),
 			deps(),
-		);
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-		const q = QuoteSchema.parse(result.quote);
-		expect(q.route.map((l) => l.kind)).toEqual(["collect", "payout"]);
-		expect(q.route.every((l) => l.providerId === "sim_bank_us_ach")).toBe(true);
-		expect(q.fxRate).toBeNull();
-		expect(q.fees.flexiPayFee).toEqual(money("0", "USD"));
-		expect(q.reasons.some((r) => /domestic rail sim_bank_us_ach/i.test(r))).toBe(
-			true,
-		);
-		expect(q.simulated).toBe(true);
-		expect(q.validUntil).toBe("2026-10-23T12:02:00.000Z");
-	});
+		)
+		expect(result.ok).toBe(true)
+		if (!result.ok) return
+		const q = QuoteSchema.parse(result.quote)
+		expect(q.route.map((l) => l.kind)).toEqual(["collect", "payout"])
+		expect(q.route.every((l) => l.providerId === "sim_bank_us_ach")).toBe(true)
+		expect(q.fxRate).toBeNull()
+		expect(q.fees.flexiPayFee).toEqual(money("0", "USD"))
+		expect(
+			q.reasons.some((r) => /domestic rail sim_bank_us_ach/i.test(r)),
+		).toBe(true)
+		expect(q.simulated).toBe(true)
+		expect(q.validUntil).toBe("2026-10-23T12:02:00.000Z")
+	})
 
 	it("PH bank with real config fees: fees.total includes PHP payout via CCR-7 rates", async () => {
 		// Concrete send 500.00 USD — leg chain under real providers.json (evidence for review).
-		const providers = registry();
-		const send = money("50000", "USD");
+		const providers = registry()
+		const send = money("50000", "USD")
 		const collect = await providers.get("sim_bank_us_ach")!.quote({
 			kind: "collect",
 			amountIn: send,
 			outCurrency: "USD",
-		});
+		})
 		const convert1 = await providers.get("sim_fx")!.quote({
 			kind: "convert",
 			amountIn: collect.amountOut,
 			outCurrency: "USDC",
-		});
-		const settleIn = convert1.amountOut;
-		const vaultFee = applyBps(settleIn, VAULT_FEE_BPS);
-		const settleOut = subtractMoney(settleIn, vaultFee);
+		})
+		const settleIn = convert1.amountOut
+		const vaultFee = applyBps(settleIn, VAULT_FEE_BPS)
+		const settleOut = subtractMoney(settleIn, vaultFee)
 		const convert2 = await providers.get("sim_fx")!.quote({
 			kind: "convert",
 			amountIn: settleOut,
 			outCurrency: "PHP",
-		});
+		})
 		const payout = await providers.get("sim_bank_ph_instapay")!.quote({
 			kind: "payout",
 			amountIn: convert2.amountOut,
@@ -442,7 +446,7 @@ describe("buildQuote corridors", () => {
 				country: "PH",
 				currency: "PHP",
 			},
-		});
+		})
 		// amountIn/out and fee per leg (minor units):
 		expect({
 			collect: { in: send, out: collect.amountOut, fee: collect.fee },
@@ -489,7 +493,7 @@ describe("buildQuote corridors", () => {
 				// fixed 1500 PHP + 50 bps of input, rounded down
 				fee: money("15153", "PHP"),
 			},
-		});
+		})
 		// CCR-7 option A: PHP>USD placeholder folds the payout fee into fees.total.
 		const result = await buildQuote(
 			settleSendReq({
@@ -502,15 +506,17 @@ describe("buildQuote corridors", () => {
 				amount: { side: "send", value: send },
 			}),
 			deps(),
-		);
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-		expect(result.quote.fees.total.currency).toBe("USD");
-		expect(BigInt(result.quote.fees.total.amount)).toBeGreaterThan(0n);
-		const payoutFee = result.quote.fees.legs.find((l) => l.kind === "payout")!.fee;
-		expect(payoutFee.currency).toBe("PHP");
-		expect(BigInt(payoutFee.amount)).toBeGreaterThan(0n);
-	});
+		)
+		expect(result.ok).toBe(true)
+		if (!result.ok) return
+		expect(result.quote.fees.total.currency).toBe("USD")
+		expect(BigInt(result.quote.fees.total.amount)).toBeGreaterThan(0n)
+		const payoutFee = result.quote.fees.legs.find(
+			(l) => l.kind === "payout",
+		)!.fee
+		expect(payoutFee.currency).toBe("PHP")
+		expect(BigInt(payoutFee.amount)).toBeGreaterThan(0n)
+	})
 
 	it("PH bank with zero payout fee: five legs, two converts, complete total", async () => {
 		const result = await buildQuote(
@@ -524,33 +530,29 @@ describe("buildQuote corridors", () => {
 				amount: { side: "send", value: money("50000", "USD") },
 			}),
 			depsZeroPayoutFee("sim_bank_ph_instapay"),
-		);
+		)
 		if (!result.ok) {
-			expect.fail(`PH bank quote failed: ${result.reasons.join(" | ")}`);
+			expect.fail(`PH bank quote failed: ${result.reasons.join(" | ")}`)
 		}
-		const kinds = result.quote.route.map((l) => l.kind);
-		expect(kinds).toEqual([
-			"collect",
-			"convert",
-			"settle",
-			"convert",
-			"payout",
-		]);
-		expect(kinds.filter((k) => k === "convert")).toHaveLength(2);
+		const kinds = result.quote.route.map((l) => l.kind)
+		expect(kinds).toEqual(["collect", "convert", "settle", "convert", "payout"])
+		expect(kinds.filter((k) => k === "convert")).toHaveLength(2)
 		expect(result.quote.route[2]).toMatchObject({
 			kind: "settle",
 			rail: "stellar_usdc",
 			providerId: "stellar_usdc",
-		});
-		expect(result.quote.route[4]?.providerId).toBe("sim_bank_ph_instapay");
-		expect(result.quote.expectedReceive.currency).toBe("PHP");
-		expect(result.quote.fees.flexiPayFee.currency).toBe("USDC");
-		const settleFee = result.quote.fees.legs.find((l) => l.kind === "settle")!.fee;
-		expect(result.quote.fees.flexiPayFee).toEqual(settleFee);
-		expect(result.quote.fees.total.currency).toBe("USD");
+		})
+		expect(result.quote.route[4]?.providerId).toBe("sim_bank_ph_instapay")
+		expect(result.quote.expectedReceive.currency).toBe("PHP")
+		expect(result.quote.fees.flexiPayFee.currency).toBe("USDC")
+		const settleFee = result.quote.fees.legs.find(
+			(l) => l.kind === "settle",
+		)!.fee
+		expect(result.quote.fees.flexiPayFee).toEqual(settleFee)
+		expect(result.quote.fees.total.currency).toBe("USD")
 		// Every non-settle leg fee + vault fee is folded into total (payout fee is 0).
-		expect(BigInt(result.quote.fees.total.amount)).toBeGreaterThan(0n);
-	});
+		expect(BigInt(result.quote.fees.total.amount)).toBeGreaterThan(0n)
+	})
 
 	it("PH e-wallet uses sim_ewallet_ph when payout fee is zeroed for total", async () => {
 		const result = await buildQuote(
@@ -564,11 +566,11 @@ describe("buildQuote corridors", () => {
 				amount: { side: "send", value: money("10000", "USD") },
 			}),
 			depsZeroPayoutFee("sim_ewallet_ph"),
-		);
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-		expect(result.quote.route.at(-1)?.providerId).toBe("sim_ewallet_ph");
-	});
+		)
+		expect(result.ok).toBe(true)
+		if (!result.ok) return
+		expect(result.quote.route.at(-1)?.providerId).toBe("sim_ewallet_ph")
+	})
 
 	it("BR bank: five-leg Stellar route when payout fee is zeroed for total", async () => {
 		const result = await buildQuote(
@@ -582,18 +584,18 @@ describe("buildQuote corridors", () => {
 				amount: { side: "send", value: money("100000", "USD") },
 			}),
 			depsZeroPayoutFee("sim_bank_br_pix"),
-		);
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
+		)
+		expect(result.ok).toBe(true)
+		if (!result.ok) return
 		expect(result.quote.route.map((l) => l.kind)).toEqual([
 			"collect",
 			"convert",
 			"settle",
 			"convert",
 			"payout",
-		]);
-		expect(result.quote.route.at(-1)?.providerId).toBe("sim_bank_br_pix");
-	});
+		])
+		expect(result.quote.route.at(-1)?.providerId).toBe("sim_bank_br_pix")
+	})
 
 	it("crypto destination ends at settle with no payout", async () => {
 		const result = await buildQuote(
@@ -607,20 +609,20 @@ describe("buildQuote corridors", () => {
 				amount: { side: "send", value: money("100000", "USD") },
 			}),
 			deps(),
-		);
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
+		)
+		expect(result.ok).toBe(true)
+		if (!result.ok) return
 		expect(result.quote.route.map((l) => l.kind)).toEqual([
 			"collect",
 			"convert",
 			"settle",
-		]);
-		expect(result.quote.route.some((l) => l.kind === "payout")).toBe(false);
-		expect(result.quote.expectedReceive.currency).toBe("USDC");
-		expect(
-			result.quote.reasons.some((r) => /ends at settle/i.test(r)),
-		).toBe(true);
-	});
+		])
+		expect(result.quote.route.some((l) => l.kind === "payout")).toBe(false)
+		expect(result.quote.expectedReceive.currency).toBe("USDC")
+		expect(result.quote.reasons.some((r) => /ends at settle/i.test(r))).toBe(
+			true,
+		)
+	})
 
 	it("ZA bank: collect → convert → payout, no settle; company crypto reason", async () => {
 		// Real ZA payout fee is ZAR with no ZAR>USD rate — zero it so total can close.
@@ -635,22 +637,22 @@ describe("buildQuote corridors", () => {
 				amount: { side: "send", value: money("100000", "USD") },
 			}),
 			depsZeroPayoutFee("sim_bank_za_eft"),
-		);
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
+		)
+		expect(result.ok).toBe(true)
+		if (!result.ok) return
 		expect(result.quote.route.map((l) => l.kind)).toEqual([
 			"collect",
 			"convert",
 			"payout",
-		]);
-		expect(result.quote.route.some((l) => l.kind === "settle")).toBe(false);
-		expect(result.quote.fees.flexiPayFee).toEqual(money("0", "USD"));
+		])
+		expect(result.quote.route.some((l) => l.kind === "settle")).toBe(false)
+		expect(result.quote.fees.flexiPayFee).toEqual(money("0", "USD"))
 		expect(
 			result.quote.reasons.some((r) =>
 				/Crypto leg not allowed for company/i.test(r),
 			),
-		).toBe(true);
-	});
+		).toBe(true)
+	})
 
 	it("ZA bank with real payout fee: fees.total includes ZAR via CCR-7 rates", async () => {
 		const result = await buildQuote(
@@ -664,15 +666,15 @@ describe("buildQuote corridors", () => {
 				amount: { side: "send", value: money("100000", "USD") },
 			}),
 			deps(),
-		);
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-		expect(result.quote.fees.total.currency).toBe("USD");
-		expect(BigInt(result.quote.fees.total.amount)).toBeGreaterThan(0n);
-		expect(result.quote.fees.legs.find((l) => l.kind === "payout")!.fee.currency).toBe(
-			"ZAR",
-		);
-	});
+		)
+		expect(result.ok).toBe(true)
+		if (!result.ok) return
+		expect(result.quote.fees.total.currency).toBe("USD")
+		expect(BigInt(result.quote.fees.total.amount)).toBeGreaterThan(0n)
+		expect(
+			result.quote.fees.legs.find((l) => l.kind === "payout")!.fee.currency,
+		).toBe("ZAR")
+	})
 
 	it("excludes a down provider and fails when no healthy alternative", async () => {
 		const result = await buildQuote(
@@ -685,11 +687,11 @@ describe("buildQuote corridors", () => {
 				},
 			}),
 			deps({ sim_bank_us_ach: "down" }),
-		);
-		expect(result.ok).toBe(false);
-		if (result.ok) return;
-		expect(result.reasons.join(" ")).toMatch(/down|No healthy/i);
-	});
+		)
+		expect(result.ok).toBe(false)
+		if (result.ok) return
+		expect(result.reasons.join(" ")).toMatch(/down|No healthy/i)
+	})
 
 	it("vault fee scales with settle input (not a hardcoded 1% of send)", async () => {
 		const small = await buildQuote(
@@ -703,7 +705,7 @@ describe("buildQuote corridors", () => {
 				amount: { side: "send", value: money("10000", "USD") },
 			}),
 			deps(),
-		);
+		)
 		const large = await buildQuote(
 			settleSendReq({
 				destination: {
@@ -715,16 +717,16 @@ describe("buildQuote corridors", () => {
 				amount: { side: "send", value: money("200000", "USD") },
 			}),
 			deps(),
-		);
-		expect(small.ok && large.ok).toBe(true);
-		if (!small.ok || !large.ok) return;
-		const feeSmall = BigInt(small.quote.fees.flexiPayFee.amount);
-		const feeLarge = BigInt(large.quote.fees.flexiPayFee.amount);
-		expect(feeLarge).toBeGreaterThan(feeSmall);
+		)
+		expect(small.ok && large.ok).toBe(true)
+		if (!small.ok || !large.ok) return
+		const feeSmall = BigInt(small.quote.fees.flexiPayFee.amount)
+		const feeLarge = BigInt(large.quote.fees.flexiPayFee.amount)
+		expect(feeLarge).toBeGreaterThan(feeSmall)
 		// Exactly vaultFeeBps of settle amountIn, not of send.
-		const settleIn = small.quote.fees.legs.find((l) => l.kind === "settle");
-		expect(settleIn).toBeDefined();
-	});
+		const settleIn = small.quote.fees.legs.find((l) => l.kind === "settle")
+		expect(settleIn).toBeDefined()
+	})
 
 	it("uses integer FX rounding (CCR-4) on convert legs", async () => {
 		const result = await buildQuote(
@@ -738,17 +740,18 @@ describe("buildQuote corridors", () => {
 				amount: { side: "send", value: money("50000", "USD") },
 			}),
 			depsZeroPayoutFee("sim_bank_ph_instapay"),
-		);
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
+		)
+		expect(result.ok).toBe(true)
+		if (!result.ok) return
 		for (const leg of result.quote.fees.legs) {
-			expect(leg.fee.amount).toMatch(/^(0|[1-9][0-9]*)$/);
+			expect(leg.fee.amount).toMatch(/^(0|[1-9][0-9]*)$/)
 		}
-		expect(result.quote.expectedReceive.amount).toMatch(/^(0|[1-9][0-9]*)$/);
-		expect(result.quote.fxRate === null || /^\d+(\.\d{1,7})?$/.test(result.quote.fxRate)).toBe(
-			true,
-		);
-	});
+		expect(result.quote.expectedReceive.amount).toMatch(/^(0|[1-9][0-9]*)$/)
+		expect(
+			result.quote.fxRate === null ||
+				/^\d+(\.\d{1,7})?$/.test(result.quote.fxRate),
+		).toBe(true)
+	})
 
 	it("produces an A0-valid QuoteSchema payload", async () => {
 		const result = await buildQuote(
@@ -762,29 +765,29 @@ describe("buildQuote corridors", () => {
 				amount: { side: "send", value: money("50000", "USD") },
 			}),
 			deps(),
-		);
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-		expect(() => QuoteSchema.parse(result.quote)).not.toThrow();
-		expect(result.quote.policy).toBe("cheapest");
-		expect(result.quote.priceRiskBearer).toBe(config.fees.priceRiskBearer);
-		expect(result.quote.alternatives).toEqual([]);
-	});
+		)
+		expect(result.ok).toBe(true)
+		if (!result.ok) return
+		expect(() => QuoteSchema.parse(result.quote)).not.toThrow()
+		expect(result.quote.policy).toBe("cheapest")
+		expect(result.quote.priceRiskBearer).toBe(config.fees.priceRiskBearer)
+		expect(result.quote.alternatives).toEqual([])
+	})
 
 	it("does not call ProviderAdapter for settle (rail priced via vaultFeeBps)", async () => {
-		const providers = registry();
-		const settleCalls: LegKind[] = [];
+		const providers = registry()
+		const settleCalls: LegKind[] = []
 		const wrappedGet = (id: string) => {
-			const inner = providers.get(id);
-			if (!inner) return undefined;
+			const inner = providers.get(id)
+			if (!inner) return undefined
 			return {
 				...inner,
 				async quote(req: LegQuoteRequest) {
-					settleCalls.push(req.kind);
-					return inner.quote(req);
+					settleCalls.push(req.kind)
+					return inner.quote(req)
 				},
-			} as ProviderAdapter;
-		};
+			} as ProviderAdapter
+		}
 		const result = await buildQuote(
 			settleSendReq(
 				{
@@ -806,15 +809,15 @@ describe("buildQuote corridors", () => {
 				now: () => T0,
 				quoteId: () => "quo_vault",
 			},
-		);
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-		expect(settleCalls).not.toContain("settle");
+		)
+		expect(result.ok).toBe(true)
+		if (!result.ok) return
+		expect(settleCalls).not.toContain("settle")
 		expect(result.quote.fees.flexiPayFee).toEqual(
 			result.quote.fees.legs.find((l) => l.kind === "settle")!.fee,
-		);
-		expect(BigInt(result.quote.fees.flexiPayFee.amount)).toBeGreaterThan(0n);
-	});
+		)
+		expect(BigInt(result.quote.fees.flexiPayFee.amount)).toBeGreaterThan(0n)
+	})
 
 	it("CCR-8: rejects settle quote without CreateQuoteRequest.feeMode (no silent default)", async () => {
 		const result = await buildQuote(
@@ -828,12 +831,12 @@ describe("buildQuote corridors", () => {
 				amount: { side: "send", value: money("100000", "USD") },
 			}),
 			deps(),
-		);
-		expect(result.ok).toBe(false);
-		if (result.ok) return;
-		expect(result.reasons.join(" ")).toMatch(/feeMode/);
-		expect(result.reasons.join(" ")).toMatch(/no silent/i);
-	});
+		)
+		expect(result.ok).toBe(false)
+		if (result.ok) return
+		expect(result.reasons.join(" ")).toMatch(/feeMode/)
+		expect(result.reasons.join(" ")).toMatch(/no silent/i)
+	})
 
 	it("CCR-8: Quote.feeMode echoes request for both modes; null on domestic", async () => {
 		const domestic = await buildQuote(
@@ -846,11 +849,11 @@ describe("buildQuote corridors", () => {
 				},
 			}),
 			deps(),
-		);
-		expect(domestic.ok).toBe(true);
+		)
+		expect(domestic.ok).toBe(true)
 		if (domestic.ok) {
-			expect(domestic.quote.feeMode).toBeNull();
-			expect(() => QuoteSchema.parse(domestic.quote)).not.toThrow();
+			expect(domestic.quote.feeMode).toBeNull()
+			expect(() => QuoteSchema.parse(domestic.quote)).not.toThrow()
 		}
 
 		for (const mode of ["RecipientPays", "PayerPays"] as const) {
@@ -868,31 +871,31 @@ describe("buildQuote corridors", () => {
 					mode,
 				),
 				deps(),
-			);
-			expect(result.ok).toBe(true);
-			if (!result.ok) return;
-			expect(result.quote.feeMode).toBe(mode);
-			expect(() => QuoteSchema.parse(result.quote)).not.toThrow();
+			)
+			expect(result.ok).toBe(true)
+			if (!result.ok) return
+			expect(result.quote.feeMode).toBe(mode)
+			expect(() => QuoteSchema.parse(result.quote)).not.toThrow()
 		}
-	});
+	})
 
 	it("CCR-8 PayerPays: P=floor(A*10000/(10000+bps)), P+f(P)≤A; remainder not a fee", async () => {
-		const A = money("9925125000", "USDC");
-		const bps = 100;
-		const { principal, fee, remainder } = sizePayerPaysPrincipal(A, bps);
+		const A = money("9925125000", "USDC")
+		const bps = 100
+		const { principal, fee, remainder } = sizePayerPaysPrincipal(A, bps)
 		expect(toMinor(principal)).toBe(
 			(toMinor(A) * 10_000n) / (10_000n + BigInt(bps)),
-		);
-		expect(toMinor(fee)).toBe((toMinor(principal) * BigInt(bps)) / 10_000n);
-		expect(toMinor(principal) + toMinor(fee)).toBeLessThanOrEqual(toMinor(A));
+		)
+		expect(toMinor(fee)).toBe((toMinor(principal) * BigInt(bps)) / 10_000n)
+		expect(toMinor(principal) + toMinor(fee)).toBeLessThanOrEqual(toMinor(A))
 		expect(toMinor(remainder)).toBe(
 			toMinor(A) - toMinor(principal) - toMinor(fee),
-		);
+		)
 		// Rounding boundary: A=10001, bps=100 → P=9901, f=99, P+f=10000 ≤ 10001, rem=1
-		const edge = sizePayerPaysPrincipal(money("10001", "USDC"), 100);
-		expect(edge.principal.amount).toBe("9901");
-		expect(edge.fee.amount).toBe("99");
-		expect(edge.remainder.amount).toBe("1");
+		const edge = sizePayerPaysPrincipal(money("10001", "USDC"), 100)
+		expect(edge.principal.amount).toBe("9901")
+		expect(edge.fee.amount).toBe("99")
+		expect(edge.remainder.amount).toBe("1")
 
 		const payer = await buildQuote(
 			settleSendReq(
@@ -908,7 +911,7 @@ describe("buildQuote corridors", () => {
 				"PayerPays",
 			),
 			deps(),
-		);
+		)
 		const recipient = await buildQuote(
 			settleSendReq(
 				{
@@ -923,28 +926,28 @@ describe("buildQuote corridors", () => {
 				"RecipientPays",
 			),
 			deps(),
-		);
-		expect(payer.ok && recipient.ok).toBe(true);
-		if (!payer.ok || !recipient.ok) return;
+		)
+		expect(payer.ok && recipient.ok).toBe(true)
+		if (!payer.ok || !recipient.ok) return
 
-		const settleP = payer.quote.fees.legs.find((l) => l.kind === "settle")!;
-		expect(payer.quote.fees.flexiPayFee).toEqual(settleP.fee);
-		expect(payer.quote.feeMode).toBe("PayerPays");
-		expect(recipient.quote.feeMode).toBe("RecipientPays");
-		expect(
-			payer.quote.reasons.some((r) => /remainder|unlocked/i.test(r)),
-		).toBe(true);
+		const settleP = payer.quote.fees.legs.find((l) => l.kind === "settle")!
+		expect(payer.quote.fees.flexiPayFee).toEqual(settleP.fee)
+		expect(payer.quote.feeMode).toBe("PayerPays")
+		expect(recipient.quote.feeMode).toBe("RecipientPays")
+		expect(payer.quote.reasons.some((r) => /remainder|unlocked/i.test(r))).toBe(
+			true,
+		)
 		// f(P) vs f(A) — fees differ; remainder must not be booked as fee.
 		expect(payer.quote.fees.flexiPayFee).not.toEqual(
 			recipient.quote.fees.flexiPayFee,
-		);
+		)
 		// CCR-13: PlannedLeg freezes settle principal; remainder is Money accounting.
-		const settleRoute = payer.quote.route.find((l) => l.kind === "settle")!;
-		expect(settleRoute.amountIn).toEqual(settleRoute.amountOut);
-		expect(payer.quote.fees.settleUnlockedRemainder).not.toBeNull();
-		expect(recipient.quote.fees.settleUnlockedRemainder).toBeNull();
-		expect(Object.keys(settleP).sort().join(",")).toBe("fee,kind,rail");
-	});
+		const settleRoute = payer.quote.route.find((l) => l.kind === "settle")!
+		expect(settleRoute.amountIn).toEqual(settleRoute.amountOut)
+		expect(payer.quote.fees.settleUnlockedRemainder).not.toBeNull()
+		expect(recipient.quote.fees.settleUnlockedRemainder).toBeNull()
+		expect(Object.keys(settleP).sort().join(",")).toBe("fee,kind,rail")
+	})
 
 	it("CCR-10: settle simulated follows settlementSimulated, not rail id alone", async () => {
 		const req = settleSendReq(
@@ -958,30 +961,34 @@ describe("buildQuote corridors", () => {
 				amount: { side: "send", value: money("100000", "USD") },
 			},
 			"RecipientPays",
-		);
-		const mockMode = await buildQuote(req, deps({}, true));
-		const stellarMode = await buildQuote(req, deps({}, false));
-		expect(mockMode.ok && stellarMode.ok).toBe(true);
-		if (!mockMode.ok || !stellarMode.ok) return;
-		const mockSettle = mockMode.quote.route.find((l) => l.kind === "settle")!;
-		const stellarSettle = stellarMode.quote.route.find((l) => l.kind === "settle")!;
-		expect(mockSettle.rail).toBe("stellar_usdc");
-		expect(stellarSettle.rail).toBe("stellar_usdc");
-		expect(mockSettle.simulated).toBe(true);
-		expect(stellarSettle.simulated).toBe(false);
-		expect(mockMode.quote.simulated).toBe(true);
-		expect(stellarMode.quote.simulated).toBe(true);
+		)
+		const mockMode = await buildQuote(req, deps({}, true))
+		const stellarMode = await buildQuote(req, deps({}, false))
+		expect(mockMode.ok && stellarMode.ok).toBe(true)
+		if (!mockMode.ok || !stellarMode.ok) return
+		const mockSettle = mockMode.quote.route.find((l) => l.kind === "settle")!
+		const stellarSettle = stellarMode.quote.route.find(
+			(l) => l.kind === "settle",
+		)!
+		expect(mockSettle.rail).toBe("stellar_usdc")
+		expect(stellarSettle.rail).toBe("stellar_usdc")
+		expect(mockSettle.simulated).toBe(true)
+		expect(stellarSettle.simulated).toBe(false)
+		expect(mockMode.quote.simulated).toBe(true)
+		expect(stellarMode.quote.simulated).toBe(true)
 		expect(
-			mockMode.quote.route.filter((l) => l.kind !== "settle").every((l) => l.simulated),
-		).toBe(true);
-	});
-});
+			mockMode.quote.route
+				.filter((l) => l.kind !== "settle")
+				.every((l) => l.simulated),
+		).toBe(true)
+	})
+})
 
 describe("solana_usdc quote-time mint floor (6 vs 7 decimals)", () => {
 	it("floors 9851485-class settle amounts down to a multiple of 10; 9950000 unchanged", async () => {
-		const { floorUsdcMinorForSolanaMint } = await import("../src/money.ts");
-		expect(floorUsdcMinorForSolanaMint(9851485n).toString()).toBe("9851480");
-		expect(floorUsdcMinorForSolanaMint(9950000n).toString()).toBe("9950000");
+		const { floorUsdcMinorForSolanaMint } = await import("../src/money.ts")
+		expect(floorUsdcMinorForSolanaMint(9851485n).toString()).toBe("9851480")
+		expect(floorUsdcMinorForSolanaMint(9950000n).toString()).toBe("9950000")
 
 		// Live reproduction uses send major $1.00 / $1.01 → USD minor "100" / "101".
 		const failCase = await buildQuote(
@@ -998,17 +1005,19 @@ describe("solana_usdc quote-time mint floor (6 vs 7 decimals)", () => {
 				"PayerPays",
 			),
 			deps(),
-		);
-		expect(failCase.ok).toBe(true);
-		if (!failCase.ok) return;
-		const settleFail = failCase.quote.route.find((l) => l.kind === "settle")!;
+		)
+		expect(failCase.ok).toBe(true)
+		if (!failCase.ok) return
+		const settleFail = failCase.quote.route.find((l) => l.kind === "settle")!
 		// Corridor still quotes stellar_usdc; crypto amounts are floored for Solana mint.
-		expect(settleFail.rail).toBe("stellar_usdc");
-		const recvFail = BigInt(failCase.quote.expectedReceive.amount);
-		expect(recvFail % 10n).toBe(0n);
-		expect(settleFail.amountOut.amount).toBe(failCase.quote.expectedReceive.amount);
+		expect(settleFail.rail).toBe("stellar_usdc")
+		const recvFail = BigInt(failCase.quote.expectedReceive.amount)
+		expect(recvFail % 10n).toBe(0n)
+		expect(settleFail.amountOut.amount).toBe(
+			failCase.quote.expectedReceive.amount,
+		)
 		// Unfloored principal was 9851485; quote must floor to 9851480.
-		expect(recvFail.toString()).toBe("9851480");
+		expect(recvFail.toString()).toBe("9851480")
 
 		const passCase = await buildQuote(
 			settleSendReq(
@@ -1024,30 +1033,34 @@ describe("solana_usdc quote-time mint floor (6 vs 7 decimals)", () => {
 				"PayerPays",
 			),
 			deps(),
-		);
-		expect(passCase.ok).toBe(true);
-		if (!passCase.ok) return;
-		const settlePass = passCase.quote.route.find((l) => l.kind === "settle")!;
-		expect(settlePass.rail).toBe("stellar_usdc");
-		const recvPass = BigInt(passCase.quote.expectedReceive.amount);
-		expect(recvPass % 10n).toBe(0n);
-		expect(recvPass.toString()).toBe("9950000");
-		expect(settlePass.amountOut.amount).toBe(passCase.quote.expectedReceive.amount);
-	});
-});
+		)
+		expect(passCase.ok).toBe(true)
+		if (!passCase.ok) return
+		const settlePass = passCase.quote.route.find((l) => l.kind === "settle")!
+		expect(settlePass.rail).toBe("stellar_usdc")
+		const recvPass = BigInt(passCase.quote.expectedReceive.amount)
+		expect(recvPass % 10n).toBe(0n)
+		expect(recvPass.toString()).toBe("9950000")
+		expect(settlePass.amountOut.amount).toBe(
+			passCase.quote.expectedReceive.amount,
+		)
+	})
+})
 
 describe("domain package boundaries", () => {
 	it("routing sources do not import adapters-sim or adapter-stellar", async () => {
-		const { readFileSync, readdirSync } = await import("node:fs");
-		const { join } = await import("node:path");
-		const dir = fileURLToPath(new URL("../src/routing", import.meta.url));
+		const { readFileSync, readdirSync } = await import("node:fs")
+		const { join } = await import("node:path")
+		const dir = fileURLToPath(new URL("../src/routing", import.meta.url))
 		for (const name of readdirSync(dir)) {
-			if (!name.endsWith(".ts")) continue;
-			const text = readFileSync(join(dir, name), "utf8");
-			expect(text).not.toMatch(/adapters-sim|adapter-stellar|@flexipay\/adapters/);
+			if (!name.endsWith(".ts")) continue
+			const text = readFileSync(join(dir, name), "utf8")
+			expect(text).not.toMatch(
+				/adapters-sim|adapter-stellar|@flexipay\/adapters/,
+			)
 		}
-	});
-});
+	})
+})
 
 describe("CCR-26: GBP to tGBP corridor (solana_tgbp)", () => {
 	const gbReq = (value: string, feeMode: FeeMode): CreateQuoteRequest => ({
@@ -1061,64 +1074,97 @@ describe("CCR-26: GBP to tGBP corridor (solana_tgbp)", () => {
 		amount: { side: "send", value: money(value, "GBP") },
 		policy: "cheapest",
 		feeMode,
-	});
+	})
 
 	it("routes collect -> convert -> settle on solana_tgbp with expectedReceive in TGBP", async () => {
-		const result = await buildQuote(gbReq("10000", "RecipientPays"), deps());
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-		const { quote } = result;
-		expect(quote.route.map((l) => l.kind)).toEqual(["collect", "convert", "settle"]);
-		expect(quote.route.find((l) => l.kind === "settle")!.rail).toBe("solana_tgbp");
-		expect(quote.expectedReceive.currency).toBe("TGBP");
+		const result = await buildQuote(gbReq("10000", "RecipientPays"), deps())
+		expect(result.ok).toBe(true)
+		if (!result.ok) return
+		const { quote } = result
+		expect(quote.route.map((l) => l.kind)).toEqual([
+			"collect",
+			"convert",
+			"settle",
+		])
+		expect(quote.route.find((l) => l.kind === "settle")!.rail).toBe(
+			"solana_tgbp",
+		)
+		expect(quote.expectedReceive.currency).toBe("TGBP")
 		// No FX spread: GBP>TGBP is 1.0000000 and the convert provider has 0 bps spread and fee.
-		const convert = quote.route.find((l) => l.kind === "convert")!;
-		expect(quote.fees.legs.find((l) => l.kind === "convert")!.fee.amount).toBe("0");
+		const convert = quote.route.find((l) => l.kind === "convert")!
+		expect(quote.fees.legs.find((l) => l.kind === "convert")!.fee.amount).toBe(
+			"0",
+		)
 		expect(convert.amountOut.amount).toBe(
 			convertMoney(money("10000", "GBP"), "1.0000000", "TGBP").amount,
-		);
+		)
 		// GBP has 2 decimals, TGBP 7: £100.00 -> 100.0000000 before the 1% vault fee.
-		const gross = convertMoney(money("10000", "GBP"), "1.0000000", "TGBP");
-		expect(gross.amount).toBe("1000000000");
-	});
+		const gross = convertMoney(money("10000", "GBP"), "1.0000000", "TGBP")
+		expect(gross.amount).toBe("1000000000")
+	})
 
 	it("floors the TGBP settle amount to the 6-decimal mint step in both fee modes", async () => {
 		for (const mode of ["PayerPays", "RecipientPays"] as const) {
-			const result = await buildQuote(gbReq("10001", mode), deps());
-			expect(result.ok).toBe(true);
-			if (!result.ok) return;
-			expect(result.quote.expectedReceive.currency).toBe("TGBP");
-			expect(BigInt(result.quote.expectedReceive.amount) % 10n).toBe(0n);
+			const result = await buildQuote(gbReq("10001", mode), deps())
+			expect(result.ok).toBe(true)
+			if (!result.ok) return
+			expect(result.quote.expectedReceive.currency).toBe("TGBP")
+			expect(BigInt(result.quote.expectedReceive.amount) % 10n).toBe(0n)
 		}
-	});
+	})
 
 	it("keeps GB crypto-only: bank_account destinations and US->crypto are unchanged", async () => {
-		const gb = config.corridors.find((c) => c.from.country === "GB" && c.to.country === "GB")!;
-		expect(routeTemplate(gb, "crypto_wallet")).toEqual(["collect", "convert", "settle"]);
-		expect(routeTemplate(gb, "bank_account")).toEqual(["collect", "payout"]);
+		const gb = config.corridors.find(
+			(c) => c.from.country === "GB" && c.to.country === "GB",
+		)!
+		expect(routeTemplate(gb, "crypto_wallet")).toEqual([
+			"collect",
+			"convert",
+			"settle",
+		])
+		expect(routeTemplate(gb, "bank_account")).toEqual(["collect", "payout"])
 		const bank = checkEligibility(
-			{ ...gbReq("10000", "RecipientPays"), destination: { type: "bank_account", currency: "GBP", country: "GB", recipientKind: "individual" } },
+			{
+				...gbReq("10000", "RecipientPays"),
+				destination: {
+					type: "bank_account",
+					currency: "GBP",
+					country: "GB",
+					recipientKind: "individual",
+				},
+			},
 			config,
-		);
-		expect(bank.ok).toBe(false);
-		const us = config.corridors.find((c) => c.to.country === "US")!;
-		expect(routeTemplate(us, "crypto_wallet")).toBeNull();
+		)
+		expect(bank.ok).toBe(false)
+		const us = config.corridors.find((c) => c.to.country === "US")!
+		expect(routeTemplate(us, "crypto_wallet")).toBeNull()
 		// GB-PH (CCR-30) is fiat only: wallets stay on GB-GB, so a country-less tGBP wallet is not ambiguous.
-		const gbph = config.corridors.find((c) => c.from.country === "GB" && c.to.country === "PH")!;
-		expect(gbph.allowedDestinationTypes).not.toContain("crypto_wallet");
-		expect(routeTemplate(gbph, "bank_account")).toEqual(["collect", "convert", "settle", "convert", "payout"]);
-	});
+		const gbph = config.corridors.find(
+			(c) => c.from.country === "GB" && c.to.country === "PH",
+		)!
+		expect(gbph.allowedDestinationTypes).not.toContain("crypto_wallet")
+		expect(routeTemplate(gbph, "bank_account")).toEqual([
+			"collect",
+			"convert",
+			"settle",
+			"convert",
+			"payout",
+		])
+	})
 
 	it("floorMinorForSolanaMint handles USDC and TGBP the same way", async () => {
-		const { floorMinorForSolanaMint, isSolanaSettleRail, solanaRailForAsset } = await import("../src/index.ts");
-		expect(floorMinorForSolanaMint(9851485n, "TGBP").toString()).toBe("9851480");
-		expect(floorMinorForSolanaMint(9851485n, "USDC").toString()).toBe("9851480");
-		expect(solanaRailForAsset("TGBP")).toBe("solana_tgbp");
-		expect(solanaRailForAsset("PHP")).toBeUndefined();
-		expect(isSolanaSettleRail("solana_usdc") && isSolanaSettleRail("solana_tgbp")).toBe(true);
-		expect(isSolanaSettleRail("stellar_usdc")).toBe(false);
-	});
-});
+		const { floorMinorForSolanaMint, isSolanaSettleRail, solanaRailForAsset } =
+			await import("../src/index.ts")
+		expect(floorMinorForSolanaMint(9851485n, "TGBP").toString()).toBe("9851480")
+		expect(floorMinorForSolanaMint(9851485n, "USDC").toString()).toBe("9851480")
+		expect(solanaRailForAsset("TGBP")).toBe("solana_tgbp")
+		expect(solanaRailForAsset("PHP")).toBeUndefined()
+		expect(
+			isSolanaSettleRail("solana_usdc") && isSolanaSettleRail("solana_tgbp"),
+		).toBe(true)
+		expect(isSolanaSettleRail("stellar_usdc")).toBe(false)
+	})
+})
 
 describe("CCR-43: exclude a partner when payout fields are missing", () => {
 	const keReqs = {
@@ -1129,9 +1175,9 @@ describe("CCR-43: exclude a partner when payout fields are missing", () => {
 			"address.state",
 			"address.postal_code",
 		],
-	};
-	const row = config.providers.find((p) => p.id === "tazapay_sandbox");
-	if (!row) throw new Error("tazapay_sandbox missing");
+	}
+	const row = config.providers.find((p) => p.id === "tazapay_sandbox")
+	if (!row) throw new Error("tazapay_sandbox missing")
 
 	function tazapay(): ProviderAdapter {
 		return {
@@ -1145,7 +1191,7 @@ describe("CCR-43: exclude a partner when payout fields are missing", () => {
 					legKinds: [...row!.legKinds],
 					limits: null,
 					simulated: true,
-				};
+				}
 			},
 			payoutRequirements: async () => keReqs,
 			async quote(req: LegQuoteRequest) {
@@ -1156,34 +1202,36 @@ describe("CCR-43: exclude a partner when payout fields are missing", () => {
 					amountOut: { amount: req.amountIn.amount, currency: req.outCurrency },
 					estimatedTimeSeconds: 60,
 					simulated: true,
-				};
+				}
 			},
 			async execute() {
-				throw new Error("not used");
+				throw new Error("not used")
 			},
 			async status() {
-				throw new Error("not used");
+				throw new Error("not used")
 			},
 			async reverse() {
-				throw new Error("not used");
+				throw new Error("not used")
 			},
 			async health() {
-				return "up" as const;
+				return "up" as const
 			},
-		};
+		}
 	}
 
 	function keDeps() {
-		const base = deps();
-		const partner = tazapay();
+		const base = deps()
+		const partner = tazapay()
 		return {
 			...base,
 			getProvider: (id: string) =>
 				id === "tazapay_sandbox" ? partner : base.getProvider(id),
-		};
+		}
 	}
 
-	const keReq = (payout?: CreateQuoteRequest["payout"]): CreateQuoteRequest => ({
+	const keReq = (
+		payout?: CreateQuoteRequest["payout"],
+	): CreateQuoteRequest => ({
 		source: { type: "bank_account", currency: "GBP", country: "GB" },
 		destination: {
 			type: "bank_account",
@@ -1195,30 +1243,30 @@ describe("CCR-43: exclude a partner when payout fields are missing", () => {
 		policy: "cheapest",
 		feeMode: "PayerPays",
 		...(payout ? { payout } : {}),
-	});
+	})
 
 	it("drops Tazapay and names the missing address and branch code", async () => {
 		const result = await buildQuote(
 			keReq({ details: { accountNumber: "1234567890" } }),
 			keDeps(),
-		);
-		expect(result.ok).toBe(false);
-		if (result.ok) return;
-		const text = result.reasons.join(" ");
-		expect(text).toContain("tazapay_sandbox excluded");
-		expect(text).toContain("branchCode");
-		expect(text).toContain("address.line1");
-		expect(text).toContain("address.postal_code");
-	});
+		)
+		expect(result.ok).toBe(false)
+		if (result.ok) return
+		const text = result.reasons.join(" ")
+		expect(text).toContain("tazapay_sandbox excluded")
+		expect(text).toContain("branchCode")
+		expect(text).toContain("address.line1")
+		expect(text).toContain("address.postal_code")
+	})
 
 	it("a quote without a payout profile keeps Tazapay (API clients, claim links)", async () => {
-		const result = await buildQuote(keReq(), keDeps());
-		expect(result.ok, result.ok ? "" : result.reasons.join(" | ")).toBe(true);
-		if (!result.ok) return;
-		expect(result.quote.route.find((l) => l.kind === "payout")?.providerId).toBe(
-			"tazapay_sandbox",
-		);
-	});
+		const result = await buildQuote(keReq(), keDeps())
+		expect(result.ok, result.ok ? "" : result.reasons.join(" | ")).toBe(true)
+		if (!result.ok) return
+		expect(
+			result.quote.route.find((l) => l.kind === "payout")?.providerId,
+		).toBe("tazapay_sandbox")
+	})
 
 	it("quotes Tazapay once the address and branch code are on the payout profile", async () => {
 		const result = await buildQuote(
@@ -1233,12 +1281,146 @@ describe("CCR-43: exclude a partner when payout fields are missing", () => {
 				},
 			}),
 			keDeps(),
-		);
-		expect(result.ok, result.ok ? "" : result.reasons.join(" | ")).toBe(true);
-		if (!result.ok) return;
-		expect(result.quote.route.find((l) => l.kind === "payout")?.providerId).toBe(
-			"tazapay_sandbox",
-		);
-		expect(result.quote.expectedReceive.currency).toBe("KES");
-	});
-});
+		)
+		expect(result.ok, result.ok ? "" : result.reasons.join(" | ")).toBe(true)
+		if (!result.ok) return
+		expect(
+			result.quote.route.find((l) => l.kind === "payout")?.providerId,
+		).toBe("tazapay_sandbox")
+		expect(result.quote.expectedReceive.currency).toBe("KES")
+	})
+})
+
+describe("CCR-45: sender-wallet BlindPay quotes (no custody)", () => {
+	function blindpay(over: Partial<ProviderAdapter> = {}): ProviderAdapter {
+		return {
+			id: "blindpay_sandbox",
+			capabilities: () => ({
+				providerId: "blindpay_sandbox",
+				countries: ["BR"],
+				currencies: ["USDC", "BRL"],
+				endpointTypes: ["bank_account"],
+				legKinds: ["convert", "payout"],
+				limits: null,
+				simulated: true,
+			}),
+			async quote(_req: LegQuoteRequest) {
+				return {
+					providerId: "blindpay_sandbox",
+					fee: money("15000000", "USDC"), // 1.50 USDC
+					fxRate: "5.4",
+					amountOut: money("54000", "BRL"),
+					estimatedTimeSeconds: 600,
+					simulated: true,
+				}
+			},
+			async execute() {
+				throw new Error("not used")
+			},
+			async status() {
+				throw new Error("not used")
+			},
+			async reverse() {
+				throw new Error("not used")
+			},
+			async health() {
+				return "up" as const
+			},
+			...over,
+		}
+	}
+	const withBlindpay = (adapter: ProviderAdapter | undefined) => {
+		const base = deps()
+		return {
+			...base,
+			getProvider: (id: string) =>
+				id === "blindpay_sandbox" ? adapter : base.getProvider(id),
+		}
+	}
+	const req = (
+		over: Partial<CreateQuoteRequest> = {},
+		currency = "USD",
+		country = "US",
+	): CreateQuoteRequest => ({
+		source: { type: "bank_account", currency, country },
+		destination: {
+			type: "bank_account",
+			currency: "BRL",
+			country: "BR",
+			recipientKind: "individual",
+		},
+		amount: { side: "send", value: money("10000", currency) },
+		policy: "cheapest",
+		settleMode: "sender_wallet_blindpay",
+		...over,
+	})
+
+	it("prices settle (sender's wallet, no fee) then the BlindPay payout, fee in dollars", async () => {
+		const result = await buildQuote(req(), withBlindpay(blindpay()))
+		expect(result.ok, result.ok ? "" : result.reasons.join(" | ")).toBe(true)
+		if (!result.ok) return
+		const [settle, payout] = result.quote.route
+		expect(settle?.rail).toBe(SENDER_WALLET_BLINDPAY_RAIL)
+		expect(settle?.amountIn).toEqual(money("1000000000", "USDC"))
+		expect(payout?.providerId).toBe("blindpay_sandbox")
+		expect(result.quote.expectedReceive).toEqual(money("54000", "BRL"))
+		expect(result.quote.fees.total).toEqual(money("150", "USD"))
+		expect(result.quote.fees.flexiPayFee.amount).toBe("0")
+	})
+
+	it("refuses pounds: the sender's wallet pays USDC", async () => {
+		const result = await buildQuote(
+			req({}, "GBP", "GB"),
+			withBlindpay(blindpay()),
+		)
+		expect(result.ok).toBe(false)
+		if (result.ok) return
+		expect(result.reasons.join(" ")).toMatch(/USD or USDC/)
+	})
+
+	it("refuses receive-side amounts", async () => {
+		const result = await buildQuote(
+			req({ amount: { side: "receive", value: money("54000", "BRL") } }),
+			withBlindpay(blindpay()),
+		)
+		expect(result.ok).toBe(false)
+	})
+
+	it("refuses a non-bank destination", async () => {
+		const result = await buildQuote(
+			req({
+				destination: {
+					type: "crypto_wallet",
+					currency: "BRL",
+					country: "BR",
+					recipientKind: "individual",
+				} as CreateQuoteRequest["destination"],
+			}),
+			withBlindpay(blindpay()),
+		)
+		expect(result.ok).toBe(false)
+	})
+
+	it("names the partner error when BlindPay refuses the quote", async () => {
+		const result = await buildQuote(
+			req(),
+			withBlindpay(
+				blindpay({
+					quote: async () => {
+						throw new ProviderError("unsupported", "BlindPay minimum not met")
+					},
+				}),
+			),
+		)
+		expect(result.ok).toBe(false)
+		if (result.ok) return
+		expect(result.reasons.join(" ")).toContain("BlindPay minimum not met")
+	})
+
+	it("refuses when the BlindPay adapter is not registered", async () => {
+		const result = await buildQuote(req(), withBlindpay(undefined))
+		expect(result.ok).toBe(false)
+		if (result.ok) return
+		expect(result.reasons.join(" ")).toMatch(/not registered/)
+	})
+})
