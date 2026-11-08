@@ -1198,7 +1198,10 @@ describe("CCR-43: exclude a partner when payout fields are missing", () => {
 	});
 
 	it("drops Tazapay and names the missing address and branch code", async () => {
-		const result = await buildQuote(keReq(), keDeps());
+		const result = await buildQuote(
+			keReq({ details: { accountNumber: "1234567890" } }),
+			keDeps(),
+		);
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		const text = result.reasons.join(" ");
@@ -1206,6 +1209,15 @@ describe("CCR-43: exclude a partner when payout fields are missing", () => {
 		expect(text).toContain("branchCode");
 		expect(text).toContain("address.line1");
 		expect(text).toContain("address.postal_code");
+	});
+
+	it("a quote without a payout profile keeps Tazapay (API clients, claim links)", async () => {
+		const result = await buildQuote(keReq(), keDeps());
+		expect(result.ok, result.ok ? "" : result.reasons.join(" | ")).toBe(true);
+		if (!result.ok) return;
+		expect(result.quote.route.find((l) => l.kind === "payout")?.providerId).toBe(
+			"tazapay_sandbox",
+		);
 	});
 
 	it("quotes Tazapay once the address and branch code are on the payout profile", async () => {

@@ -529,6 +529,12 @@ async function excludeForPayoutFields(
 	exclusionReasons: string[],
 ): Promise<string | null> {
 	if (!endpoint || !adapter.payoutRequirements) return null;
+	// Only when the quote carried a payout profile: API quotes without one, and claim-link
+	// payments (the recipient chooses the bank later), keep every partner; the payout leg
+	// still checks the real endpoint before it pays.
+	if (endpoint.details === undefined && endpoint.recipientAddress === undefined) {
+		return null;
+	}
 	let requirements;
 	try {
 		requirements = await adapter.payoutRequirements(endpoint.country, endpoint.currency);

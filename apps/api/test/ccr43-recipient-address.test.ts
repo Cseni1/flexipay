@@ -160,6 +160,7 @@ describe("CCR-43 recipient address", { timeout: 60_000 }, () => {
 						amount: { side: "send", value: { amount: "10000", currency: "GBP" } },
 						policy: "cheapest",
 						feeMode: "PayerPays",
+						payout: { details: { accountNumber: "1234567890" } },
 					}),
 				}),
 			);
