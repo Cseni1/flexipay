@@ -107,12 +107,12 @@ const cases: Array<{
 	{
 		name: "Payments history",
 		module: "../src/pages/PaymentsHistory.tsx",
-		expect: /Search by payment id/,
+		expect: /Search by name or reference/,
 	},
 	{
 		name: "Recipients",
 		module: "../src/pages/Recipients.tsx",
-		expect: /Recipients/,
+		expect: /People/,
 	},
 	{
 		name: "Pay from",
