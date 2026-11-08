@@ -1,3 +1,4 @@
+import { useLiveMoney } from "../../live/LiveMoney"
 import {
 	providerBadge,
 	type ProviderBadgeKind,
@@ -14,6 +15,12 @@ export function ProviderBadge({
 	providerId,
 	"data-testid": testId = "provider-badge",
 }: Props) {
+	const live = useLiveMoney()
+	const simulatedPartner =
+		simulated ||
+		providerId.endsWith("_sandbox") ||
+		providerId.startsWith("sim_")
+	if (live && simulatedPartner) return null
 	const kind: ProviderBadgeKind = providerBadge(simulated, providerId)
 	return (
 		<span

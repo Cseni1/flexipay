@@ -7,6 +7,8 @@ import {
 	PaymentSchema,
 } from "@flexipay/domain";
 import { ApiError } from "../errors.ts";
+import { livePaymentsPaused } from "../live/kill-switch.ts";
+import { assertIndividualSenderLimit, sendAmountOfStoredQuote } from "../live/limits.ts";
 import {
 	cancelPayment,
 	createPaymentFromQuote,
@@ -42,6 +44,25 @@ export const paymentRoutes: RouteDef<any, any>[] = [
 		success: { status: 201, schema: PaymentSchema },
 		handler: async (ctx, { body }) => {
 			const org = orgOf(ctx);
+			if (livePaymentsPaused()) {
+				throw new ApiError(
+					503,
+					"live_payments_paused",
+					"Live payments are paused. Reads, refunds and status checks still work.",
+				);
+			}
+			const quoted = await ctx.db.quote.findFirst({
+				where: { id: body.quoteId, organizationId: org.id },
+			});
+			if (quoted) {
+				await assertIndividualSenderLimit(
+					ctx.db,
+					ctx.config,
+					org.id,
+					sendAmountOfStoredQuote(quoted),
+					ctx.runtime?.now(),
+				);
+			}
 			let created: { paymentId: string; claimToken?: string };
 			try {
 				created = await createPaymentFromQuote(ctx.db, {

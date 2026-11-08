@@ -9,7 +9,10 @@ import { createDb } from "./db.ts";
 import { sandboxEnabledFromEnv } from "./sandbox-gate.ts";
 import { createApiRuntime } from "./runtime.ts";
 import { startProviderPoller } from "./ops/provider-poller.ts";
+import { assertLiveMoneyStartup } from "./live/startup.ts";
 import { initMonitoring } from "./monitoring.ts";
+
+assertLiveMoneyStartup(process.env);
 
 if (await initMonitoring()) console.log("error monitoring: Sentry on");
 

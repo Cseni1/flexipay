@@ -878,3 +878,10 @@ generated from the route table.
 - **Tazapay:** the beneficiary body includes `address.line1`, `address.city`, `address.state`, `address.postal_code` (and `country`, `line2` when set) when the recipient has an address. `GET /v1/payout-requirements?country=&currency=` returns `detailKeys`, `localFields` and `addressRequired` for the Send form.
 - **Web:** the Send form shows the address and marks Branch code required when that endpoint says the country needs them.
 - **OpenAPI:** `apps/api/openapi.json` regenerated.
+
+## CCR-44 (builder, 8 Nov 2026): live-mode readiness for individual senders
+
+- **Network:** `FP_SOLANA_CLUSTER=mainnet-beta` starts only with `FP_LIVE_MONEY=1`. Without it the API throws before it listens. Mainnet USDC defaults to Circle's mint `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`. Devnet still defaults to the test mint. This replaces `FP_SOLANA_MAINNET_APPROVED` as the startup gate. Live mode also requires `FP_INDIVIDUAL_MAX_PAYMENT_USD`, `FP_INDIVIDUAL_MAX_24H_USD` and `FP_INDIVIDUAL_MAX_30D_USD`.
+- **Kill switch:** in live mode, `FP_LIVE_PAYMENTS_ENABLED=0` makes `POST /v1/quotes` and `POST /v1/payments` answer **503 `live_payments_paused`**. Reads, cancel/refund and status polling keep working. The switch does nothing when the cluster is not `mainnet-beta`.
+- **Limits:** those three amounts are USD (up to 2 decimal places) and apply per organization whose kind is `individual`. A quote or payment above the per-payment cap, or above the remaining rolling 24 hour or 30 day total, is **422 `limit_exceeded`**. `details.remaining` is USD cents still allowed: `payment`, `rolling24h`, `rolling30d`. `details.amount` is this payment in USD cents. Business organizations are not capped. Cancelled, failed, refunded and expired payments do not count. The send amount is converted with a direct config FX rate to USD; USD is already cents.
+- **Web:** a banner says **Live money** or **Test mode**. On mainnet, simulated and sandbox partner labels and the sandbox coverage list are hidden. Before a mainnet signature, the payer confirms amount, fees, what the recipient gets, and the partner. Tests never call mainnet.
