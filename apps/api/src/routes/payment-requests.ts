@@ -348,6 +348,9 @@ export const paymentRequestRoutes: RouteDef<any, any>[] = [
 						signature,
 						destination: destination.address,
 						payer: verified.payer,
+						mint: asset.mint,
+						amountMinor: verified.amountMinor,
+						decimals: asset.decimals,
 					});
 					if (result.status !== "paid") continue;
 				} catch (cause) {

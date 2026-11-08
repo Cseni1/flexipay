@@ -265,6 +265,7 @@ const basePayment = (status: string, legs: ReturnType<typeof leg>[]) => ({
 	batchId: null,
 	legs,
 	claimLink: null,
+	refundTxRef: null,
 	createdAt: now(-30_000),
 	updatedAt: now(),
 })

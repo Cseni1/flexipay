@@ -31,8 +31,19 @@ export async function paymentsWaitingOnProviders(db: Db): Promise<string[]> {
 		select: { id: true },
 		take: 50,
 	})
+	// CCR-37: a Solana refund that failed, restarted or is awaiting confirmation stays in
+	// `refunding`; the poller retries it through the same durable signed transaction.
+	const refunding = await db.payment.findMany({
+		where: { status: "refunding" },
+		select: { id: true },
+		take: 50,
+	})
 	return [
-		...new Set([...rows.map((r) => r.paymentId), ...finished.map((p) => p.id)]),
+		...new Set([
+			...rows.map((r) => r.paymentId),
+			...finished.map((p) => p.id),
+			...refunding.map((p) => p.id),
+		]),
 	]
 }
 

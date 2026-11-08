@@ -73,6 +73,7 @@ export function toApiPayment(
 		updatedAt: Date;
 		legs: DbLeg[];
 		claimLink: { expiresAt: Date } | null;
+		solanaRefund: { status: string; signature: string | null } | null;
 	},
 	claimHandle: { url: string; expiresAt: string } | null,
 ): Payment {
@@ -89,6 +90,11 @@ export function toApiPayment(
 		batchId: row.batchId,
 		legs: row.legs.map(toApiLeg),
 		claimLink: claimHandle,
+		// CCR-37: only a confirmed refund has a transaction to link to.
+		refundTxRef:
+			row.solanaRefund?.status === "confirmed"
+				? row.solanaRefund.signature
+				: null,
 		createdAt: row.createdAt.toISOString(),
 		updatedAt: row.updatedAt.toISOString(),
 	});
@@ -102,7 +108,11 @@ export async function loadPaymentApi(
 ): Promise<Payment> {
 	const row = await db.payment.findFirst({
 		where: { id: paymentId, organizationId },
-		include: { legs: { orderBy: { position: "asc" } }, claimLink: true },
+		include: {
+			legs: { orderBy: { position: "asc" } },
+			claimLink: true,
+			solanaRefund: true,
+		},
 	});
 	if (!row) throw new Error("payment not found");
 	let claimHandle: { url: string; expiresAt: string } | null = null;

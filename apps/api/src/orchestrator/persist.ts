@@ -12,13 +12,21 @@ import { newId } from "../ids.ts";
 export async function paymentSnapshot(db: Db, paymentId: string) {
 	const payment = await db.payment.findUniqueOrThrow({
 		where: { id: paymentId },
-		include: { legs: { orderBy: { position: "asc" } }, claimLink: true },
+		include: {
+			legs: { orderBy: { position: "asc" } },
+			claimLink: true,
+			solanaRefund: true,
+		},
 	});
 	return {
 		id: payment.id,
 		status: payment.status,
 		lockAttempt: payment.lockAttempt,
 		delivery: payment.delivery,
+		refundTxRef:
+			payment.solanaRefund?.status === "confirmed"
+				? payment.solanaRefund.signature
+				: null,
 		legs: payment.legs.map((l) => ({
 			id: l.id,
 			position: l.position,

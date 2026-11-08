@@ -28,6 +28,12 @@ import {
 	transitionLeg,
 	transitionPayment,
 } from "./persist.ts";
+import {
+	refundSolanaSettleIfOwed,
+	resumeSolanaRefund,
+	reverseAndCompleteSolanaRefund,
+	type SolanaRefundResult,
+} from "./solana-refund.ts";
 import type { OrchestratorAdapters } from "./types.ts";
 
 function moneyOf(value: string, currency: string): Money {
@@ -218,6 +224,12 @@ export async function fundAndRun(
 	});
 	if (payment.status === "paid" || payment.status === "refunded") {
 		return { paymentId, status: payment.status as PaymentStatus };
+	}
+	// CCR-37: the provider poller resumes a Solana refund left in `refunding` (RPC failure,
+	// restart or confirmation still in flight). This never transitions through `failed`.
+	if (payment.status === "refunding") {
+		const resumed = await resumeSolanaRefund(db, paymentId, adapters);
+		return { paymentId, status: resumed.status };
 	}
 	if (
 		payment.status !== "awaiting_funding" &&
@@ -1567,6 +1579,45 @@ async function handleLegFailure(
 				return;
 			}
 		}
+	}
+
+	// CCR-37: a direct Solana settle landed in the treasury. Return the exact mint/amount to the
+	// original payer; only a confirmed refund may continue to `refunded`.
+	let solanaRefund: SolanaRefundResult;
+	try {
+		solanaRefund = await refundSolanaSettleIfOwed(db, paymentId);
+	} catch (cause) {
+		const reason =
+			cause instanceof Error ? cause.message : "Solana refund failed";
+		const settle = payment.legs.find((leg) => leg.kind === "settle");
+		if (settle) {
+			await db.leg.update({
+				where: { id: settle.id },
+				data: {
+					errorCode: settle.errorCode ?? "refund_failed",
+					errorMessage: [settle.errorMessage, `refund failed: ${reason}`]
+						.filter(Boolean)
+						.join("; "),
+				},
+			});
+		}
+		await emitPaymentEvent(
+			db,
+			payment.organizationId,
+			paymentId,
+			"payment.onchain",
+			{
+				phase: "refund_pending",
+				detail: reason,
+				legId: settle?.id,
+			},
+		).catch(() => undefined);
+		return;
+	}
+	if (solanaRefund.required) {
+		if (solanaRefund.status !== "confirmed") return;
+		await reverseAndCompleteSolanaRefund(db, paymentId, adapters);
+		return;
 	}
 
 	const reversible = [...payment.legs]

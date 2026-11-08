@@ -56,6 +56,8 @@ export const PaymentSchema = z
     batchId: z.string().min(1).nullable(),
     legs: z.array(LegSchema),
     claimLink: ClaimLinkHandleSchema.nullable(),
+    /** CCR-37: confirmed Solana refund transaction, or null when no refund exists yet. */
+    refundTxRef: z.string().min(1).nullable(),
     createdAt: IsoTimestamp,
     updatedAt: IsoTimestamp,
   })
