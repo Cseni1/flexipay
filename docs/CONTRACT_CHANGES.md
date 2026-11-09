@@ -952,3 +952,11 @@ generated from the route table.
 - **Env:** `DUE_SANDBOX_API_KEY` + `DUE_SANDBOX_ACCOUNT_ID` register the row on the sandbox; `DUE_API_KEY` + `DUE_ACCOUNT_ID` take precedence and point at production, refused unless `FP_DUE_LIVE_APPROVED=1`. Optional `DUE_BASE_URL`, `DUE_SENDER_WALLET`, `DUE_SOLANA_RAIL`, `DUE_PURPOSE_CODE`. Every call sends `Authorization: Bearer` and `Due-Account-Id`.
 - **Sandbox (9 Nov):** health, quotes USDC → BRL/MXN/INR/COP/NGN/PHP and GBP → BRL, schema requirements and recipient creation work. Creating a transfer returns `400 err_kyc_not_passed`: the FlexiPay sandbox business account's KYB is still `pending` (the `/dev/sumsub/.../approve` helper marks the applicant GREEN but does not pass KYB). No end-to-end Due payout has run yet.
 - No migration. No API route or OpenAPI change.
+
+## CCR-52 (integrator, 9 Nov 2026): public proof of Solana activity
+
+- **Endpoint:** `GET /v1/stats/solana` (auth none, aggregates only). It counts payments with an on-chain verified payer (`Payment.solanaPayer`: direct settle and till QR) plus sender-wallet BlindPay payments that reached `processing`/`paid`. Returns `cluster`, `since`, `settledPayments`, `deliveredPayments`, `volume` (per asset, whole units, from `solanaSettleAmount`/`solanaSettleDecimals`, assets mapped by configured mint, else `OTHER`), `uniqueWallets`, `repeatWallets` (wallets with 2+ payments), `generatedAt`. Never returns wallet addresses, names, ids or per-payment amounts.
+- **Window:** `FP_PROOF_SINCE` (ISO date) limits counting to payments created from that moment; set it when switching to mainnet so devnet tests are not counted. Invalid values are ignored.
+- **Web:** public page `/proof` (no sign-in) shows the numbers for the incubator.
+- **Also:** payment tracker steps read "We got your money → Converting → Sent to their account → Delivered".
+- No migration. Route added to the public allowlist in `route-auth-matrix.test.ts` on purpose.

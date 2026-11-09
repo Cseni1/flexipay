@@ -156,6 +156,8 @@ describe("route table invariants", () => {
 				expect(
 					r.path === "/healthz" ||
 						r.path === "/v1/solana/config" ||
+						// CCR-52: aggregate counts only, no identifiers.
+						r.path === "/v1/stats/solana" ||
 						r.path === "/v1/webhooks/blindpay" ||
 					r.path === "/v1/webhooks/tazapay" ||
 						r.path.startsWith("/v1/claims/{token}"),
