@@ -1217,3 +1217,90 @@
 	border-radius: 999px;
 	font-weight: 700;
 }
+
+/* ---------- Send: wide form, sticky price, no cut-off fields ---------- */
+.send-layout {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+	gap: 20px;
+	align-items: start;
+}
+
+.send-layout > .panel:last-child {
+	position: sticky;
+	top: 20px;
+}
+
+.send-step {
+	container-type: inline-size;
+}
+
+.send-step .form-grid {
+	grid-template-columns: minmax(0, 1fr);
+	gap: 14px;
+}
+
+@container (min-width: 560px) {
+	.send-step .form-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+.send-step select,
+.send-step .field__control {
+	min-width: 0;
+	width: 100%;
+	text-overflow: ellipsis;
+}
+
+.send-step .field__hint {
+	font-size: 13px;
+	line-height: 1.4;
+}
+
+.send-delivery {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 10px;
+	margin: 16px 0 6px;
+	padding: 0;
+	border: 0;
+}
+
+.send-delivery legend {
+	margin-bottom: 8px;
+	padding: 0;
+}
+
+.send-delivery .option-card {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 14px;
+	cursor: pointer;
+}
+
+.send-delivery .option-card:has(input:checked) {
+	border-color: var(--brand);
+	background: var(--brand-soft);
+}
+
+.send-delivery input[type="radio"] {
+	margin-top: 3px;
+	accent-color: var(--brand);
+}
+
+.quote-delivery-summary {
+	margin: 4px 0 0;
+	font-weight: 600;
+}
+
+@media (max-width: 1100px) {
+	.send-layout {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.send-layout > .panel:last-child {
+		position: static;
+	}
+}

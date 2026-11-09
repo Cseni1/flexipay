@@ -17,7 +17,6 @@ import { WhyThisRoutePanel } from "./WhyThisRoutePanel"
 interface QuotePanelProps {
 	quote: Quote | null
 	delivery: Delivery
-	onDeliveryChange: (delivery: Delivery) => void
 	onCreate: () => void
 	creating: boolean
 	authBlocked: boolean
@@ -36,7 +35,6 @@ const KIND_LABELS = {
 export function QuotePanel({
 	quote,
 	delivery,
-	onDeliveryChange,
 	onCreate,
 	creating,
 	authBlocked,
@@ -210,39 +208,14 @@ export function QuotePanel({
 						)}
 					</section>
 
-					<fieldset className="option-list quote-delivery">
-						<legend className="field__label">Delivery</legend>
-						<label className="option-card">
-							<input
-								type="radio"
-								name="delivery"
-								value="direct"
-								checked={delivery === "direct"}
-								onChange={() => onDeliveryChange("direct")}
-							/>
-							<span className="option-card__body">
-								<span className="option-card__title">Direct to recipient</span>
-								<span className="option-card__detail">
-									Send to the recipient's chosen endpoint.
-								</span>
-							</span>
-						</label>
-						<label className="option-card" data-testid="delivery-claim-link">
-							<input
-								type="radio"
-								name="delivery"
-								value="claim_link"
-								checked={delivery === "claim_link"}
-								onChange={() => onDeliveryChange("claim_link")}
-							/>
-							<span className="option-card__body">
-								<span className="option-card__title">Claim link</span>
-								<span className="option-card__detail">
-									Share a link so the recipient chooses how to receive it.
-								</span>
-							</span>
-						</label>
-					</fieldset>
+					<p
+						className="form-note quote-delivery-summary"
+						data-testid="quote-delivery"
+					>
+						{delivery === "claim_link"
+							? "They get a claim link and choose how to be paid."
+							: "Paid straight to their bank."}
+					</p>
 
 					{createError ? <Notice tone="warning">{createError}</Notice> : null}
 

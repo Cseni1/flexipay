@@ -51,7 +51,6 @@ import { QuotePanel } from "../components/payments/QuotePanel"
 import { SenderKycPanel } from "../components/payments/SenderKycPanel"
 import {
 	Button,
-	Grid,
 	InfoPopover,
 	Notice,
 	Page,
@@ -437,7 +436,25 @@ export default function SendPayment() {
 		})
 	}, [corridors])
 
-	const showBankDetails = form.destinationType === "bank_account"
+	// One entry per person and country (the newest), named in full: "Maria Santos · Philippines".
+	const savedRecipientOptions = useMemo(() => {
+		const seen = new Set<string>()
+		const options: { value: string; label: string }[] = []
+		for (const entry of recipients) {
+			const key = `${entry.name.trim().toLowerCase()}|${entry.country}`
+			if (seen.has(key)) continue
+			seen.add(key)
+			options.push({
+				value: entry.id,
+				label: `${entry.name} · ${countryLabel(entry.country)}`,
+			})
+		}
+		return options
+	}, [recipients])
+
+	// A claim link lets the recipient choose their bank later, so no bank details are asked for.
+	const showBankDetails =
+		form.destinationType === "bank_account" && delivery === "direct"
 
 	const matchingBankEndpoints = useMemo(() => {
 		if (form.destinationType !== "bank_account") return []
@@ -671,7 +688,7 @@ export default function SendPayment() {
 			return
 		}
 		const postedAddress = addressPayload(address, form.country)
-		if (addressRequired && !postedAddress) {
+		if (addressRequired && delivery === "direct" && !postedAddress) {
 			setFormError(
 				"Enter the recipient's address: line 1, city, state and postal code.",
 			)
@@ -899,7 +916,7 @@ export default function SendPayment() {
 				</Notice>
 			) : null}
 
-			<Grid>
+			<div className="send-layout">
 				<Panel
 					title="New payment"
 					description="Fill in the three steps, then tap Get quote to see the price."
@@ -925,12 +942,9 @@ export default function SendPayment() {
 														? "No saved recipients yet"
 														: "Pay someone new",
 											},
-											...recipients.map((entry) => ({
-												value: entry.id,
-												label: `${entry.name} · ${entry.country}`,
-											})),
+											...savedRecipientOptions,
 										]}
-										hint="Someone you paid before? Pick them here. New person? Type their name below."
+										hint="Paid them before? Pick them here."
 										onChange={(event) =>
 											applySavedRecipient(event.target.value)
 										}
@@ -939,7 +953,7 @@ export default function SendPayment() {
 										id="recipient"
 										label="Recipient"
 										placeholder="Their full name"
-										hint="We save new people for next time."
+										hint="New person? Type their name."
 										autoComplete="off"
 										value={form.recipientName}
 										onChange={(event) => {
@@ -970,6 +984,51 @@ export default function SendPayment() {
 										}
 									/>
 								</div>
+								<fieldset
+									className="option-list send-delivery"
+									data-testid="send-delivery"
+								>
+									<legend className="field__label">
+										How will they get the money?
+									</legend>
+									<label className="option-card">
+										<input
+											type="radio"
+											name="delivery"
+											value="direct"
+											checked={delivery === "direct"}
+											onChange={() => setDelivery("direct")}
+										/>
+										<span className="option-card__body">
+											<span className="option-card__title">
+												Straight to their bank
+											</span>
+											<span className="option-card__detail">
+												You enter their bank details below.
+											</span>
+										</span>
+									</label>
+									<label
+										className="option-card"
+										data-testid="delivery-claim-link"
+									>
+										<input
+											type="radio"
+											name="delivery"
+											value="claim_link"
+											checked={delivery === "claim_link"}
+											onChange={() => setDelivery("claim_link")}
+										/>
+										<span className="option-card__body">
+											<span className="option-card__title">
+												Send them a claim link
+											</span>
+											<span className="option-card__detail">
+												They choose how to get paid. No bank details needed.
+											</span>
+										</span>
+									</label>
+								</fieldset>
 							</fieldset>
 							<fieldset className="send-step">
 								<legend className="send-step__title">
@@ -1132,15 +1191,6 @@ export default function SendPayment() {
 									How much, and how do you pay?
 								</legend>
 								<div className="form-grid">
-									<TextField
-										id="amount"
-										label={amountCopy.label}
-										placeholder={amountCopy.placeholder}
-										inputMode="decimal"
-										value={form.amount}
-										hint={amountCopy.hint}
-										onChange={(event) => update({ amount: event.target.value })}
-									/>
 									{showSendFrom ? (
 										<SelectField
 											id="send-from"
@@ -1151,7 +1201,7 @@ export default function SendPayment() {
 												value: sourceKey(entry),
 												label: sendFromLabel(entry),
 											}))}
-											hint="We picked the usual one for this country."
+											hint="Where your money comes from."
 											data-testid="send-from"
 											onChange={(event) => changeSendFrom(event.target.value)}
 										/>
@@ -1162,6 +1212,15 @@ export default function SendPayment() {
 											hint="Set by destination country"
 										/>
 									)}
+									<TextField
+										id="amount"
+										label={amountCopy.label}
+										placeholder={amountCopy.placeholder}
+										inputMode="decimal"
+										value={form.amount}
+										hint={amountCopy.hint}
+										onChange={(event) => update({ amount: event.target.value })}
+									/>
 									{senderWallet ? null : (
 										<SelectField
 											id="fee-mode"
@@ -1171,7 +1230,7 @@ export default function SendPayment() {
 												{ value: "", label: "Choose who pays the fee" },
 												...FEE_MODE_OPTIONS,
 											]}
-											hint="The 1% fee is added to what you pay, or taken from what they get. Pick one."
+											hint="1% fee: added to what you pay, or taken from what they get."
 											onChange={(event) =>
 												update({ feeMode: event.target.value as FeeMode | "" })
 											}
@@ -1186,8 +1245,7 @@ export default function SendPayment() {
 												setSenderWallet(event.target.checked)
 											}
 										/>{" "}
-										Pay from my own Solana wallet (the money never sits with
-										FlexiPay)
+										Pay from my own Solana wallet
 									</label>
 								</div>
 							</fieldset>
@@ -1241,7 +1299,6 @@ export default function SendPayment() {
 				<QuotePanel
 					quote={quote}
 					delivery={delivery}
-					onDeliveryChange={setDelivery}
 					onCreate={() => void handleCreate()}
 					creating={creating}
 					authBlocked={authBlocked}
@@ -1249,7 +1306,7 @@ export default function SendPayment() {
 					validityLabel={countdown.label}
 					createError={createError}
 				/>
-			</Grid>
+			</div>
 		</Page>
 	)
 }
