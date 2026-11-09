@@ -128,8 +128,8 @@ test.describe("TASK 20 Send from and sandbox coverage", () => {
 		const sendFrom = page.getByLabel("Send from")
 		await expect(sendFrom).toHaveValue("GB:GBP")
 		await expect(sendFrom.locator("option")).toHaveText([
-			"Pounds: GBP bank account, moves as tGBP (UK)",
-			"Dollars: USD operating account (US)",
+			"Pounds from a UK bank",
+			"Dollars from a US bank",
 		])
 		await sendFrom.selectOption("US:USD")
 		await page.getByLabel("Destination country").selectOption("PH")

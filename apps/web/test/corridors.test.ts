@@ -145,11 +145,11 @@ describe("corridor destination mapping", () => {
 		})
 		assert.equal(
 			sendFromLabel({ type: "bank_account", currency: "GBP", country: "GB" }),
-			"Pounds: GBP bank account, moves as tGBP (UK)",
+			"Pounds from a UK bank",
 		)
 		assert.equal(
 			sendFromLabel({ type: "bank_account", currency: "USD", country: "US" }),
-			"Dollars: USD operating account (US)",
+			"Dollars from a US bank",
 		)
 	})
 

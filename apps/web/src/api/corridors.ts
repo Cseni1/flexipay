@@ -190,10 +190,10 @@ export const defaultSourceForCountry = (
 /** Label for the multi-source "Send from" select. */
 export const sendFromLabel = (source: SourceEndpoint): string => {
 	if (source.currency === "GBP" && source.country === "GB") {
-		return "Pounds: GBP bank account, moves as tGBP (UK)"
+		return "Pounds from a UK bank"
 	}
 	if (source.currency === "USD" && source.country === "US") {
-		return "Dollars: USD operating account (US)"
+		return "Dollars from a US bank"
 	}
 	return `${source.currency} bank account (${source.country})`
 }
