@@ -379,7 +379,8 @@
 }
 
 .detail-action__panel .panel + .panel,
-.detail-action__panel [data-testid="blindpay-sender-panel"] {
+.detail-action__panel [data-testid="blindpay-sender-panel"],
+.detail-action__panel [data-testid="due-sender-panel"] {
 	display: grid;
 	gap: 14px;
 }

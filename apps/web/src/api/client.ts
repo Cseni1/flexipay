@@ -6,7 +6,10 @@ import {
 	BlindPayDelegationResponseSchema,
 	BlindPayKycBodySchema,
 	BlindPayOnboardingResponseSchema,
+	DueConfirmResponseSchema,
+	DueFundingResponseSchema,
 	PaymentSchema,
+	SolanaConfirmPendingResponseSchema,
 	QuoteSchema,
 	SolanaSwapConfirmResponseSchema,
 	SolanaSwapResponseSchema,
@@ -770,6 +773,55 @@ export const confirmBlindpayPayout = (
 		body: { signature },
 		schema: BlindPayConfirmResponseSchema,
 		idempotencyKey: newIdempotencyKey("blindpay-confirm"),
+		signal,
+	})
+
+/** CCR-51: Due's funding address and exact USDC amount, once the wallet is set up. */
+export const getDueFunding = (paymentId: string, signal?: AbortSignal) =>
+	request(`/v1/payments/${encodeURIComponent(paymentId)}/due/funding`, {
+		schema: DueFundingResponseSchema,
+		signal,
+	})
+
+/** CCR-51: create the Due transfer for this wallet (once) and return where to pay. */
+export const prepareDueFunding = (
+	paymentId: string,
+	walletAddress: string,
+	signal?: AbortSignal,
+) =>
+	request(`/v1/payments/${encodeURIComponent(paymentId)}/due/funding`, {
+		method: "POST",
+		body: { walletAddress },
+		schema: DueFundingResponseSchema,
+		idempotencyKey: newIdempotencyKey("due-funding"),
+		signal,
+	})
+
+export type DueConfirmResult =
+	| (ReturnType<typeof DueConfirmResponseSchema.parse> & { status: "verified" })
+	| ReturnType<typeof SolanaConfirmPendingResponseSchema.parse>
+
+const dueConfirmParser: Parser<DueConfirmResult> = {
+	parse: (value) =>
+		isRecord(value) && value.status === "pending"
+			? SolanaConfirmPendingResponseSchema.parse(value)
+			: {
+					...DueConfirmResponseSchema.parse(value),
+					status: "verified" as const,
+				},
+}
+
+/** CCR-51: verify the sender's USDC transfer to Due. `pending` means Solana has not confirmed it yet. */
+export const confirmDueFunding = (
+	paymentId: string,
+	signature: string,
+	signal?: AbortSignal,
+) =>
+	request(`/v1/payments/${encodeURIComponent(paymentId)}/due/confirm`, {
+		method: "POST",
+		body: { signature },
+		schema: dueConfirmParser,
+		idempotencyKey: newIdempotencyKey("due-confirm"),
 		signal,
 	})
 

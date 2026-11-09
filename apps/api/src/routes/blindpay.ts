@@ -35,7 +35,7 @@ const orgOf = (ctx: Ctx) => {
 
 type RawRequest = Request & { rawBody?: Buffer };
 
-function adaptersOf(ctx: Ctx): OrchestratorAdapters {
+export function adaptersOf(ctx: Ctx): OrchestratorAdapters {
 	if (!ctx.runtime) throw new ApiError(500, "internal_error", "runtime not configured");
 	return {
 		getProvider: ctx.runtime.getProvider,
@@ -77,7 +77,7 @@ export async function loadSenderPayment(ctx: Ctx, paymentId: string, orgId: stri
 	return { payment, settle, payout };
 }
 
-async function payoutEndpoint(ctx: Ctx, payment: {
+export async function payoutEndpoint(ctx: Ctx, payment: {
 	organizationId: string;
 	endpointId: string | null;
 }): Promise<EndpointRef> {

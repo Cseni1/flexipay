@@ -34,7 +34,7 @@ function mapCreateError(e: unknown): never {
 	if (/^endpoint /i.test(msg) || /endpoint is required/i.test(msg)) {
 		throw new ApiError(422, "invalid_endpoint", msg);
 	}
-	if (/sender_wallet_blindpay requires delivery/i.test(msg)) {
+	if (/sender_wallet_(blindpay|due) requires delivery/i.test(msg)) {
 		throw new ApiError(422, "invalid_delivery", msg);
 	}
 	throw new ApiError(400, "bad_request", msg);

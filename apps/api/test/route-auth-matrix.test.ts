@@ -276,6 +276,15 @@ const CROSS_ORG: Record<string, { path: () => string; body?: unknown }> = {
 		path: () => `/v1/payments/${owned.payment}/blindpay/confirm`,
 		body: { signature: SIG },
 	},
+	"GET /v1/payments/{id}/due/funding": { path: () => `/v1/payments/${owned.payment}/due/funding` },
+	"POST /v1/payments/{id}/due/funding": {
+		path: () => `/v1/payments/${owned.payment}/due/funding`,
+		body: { walletAddress: "1".repeat(32) },
+	},
+	"POST /v1/payments/{id}/due/confirm": {
+		path: () => `/v1/payments/${owned.payment}/due/confirm`,
+		body: { signature: SIG },
+	},
 	"POST /v1/payments/{id}/solana-swap": {
 		path: () => `/v1/payments/${owned.payment}/solana-swap`,
 		body: { walletAddress: "1".repeat(32), inputAsset: "TGBP" },

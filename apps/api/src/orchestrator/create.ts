@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import {
 	FeeBreakdownSchema,
 	PlannedLegSchema,
-	SENDER_WALLET_BLINDPAY_RAIL,
+	isSenderWalletRail,
 	type FeeMode,
 	type PlannedLeg,
 } from "@flexipay/domain";
@@ -42,7 +42,7 @@ export async function createPaymentFromQuote(
 	const route = RouteSchema.parse(quote.route);
 	const fees = FeeBreakdownSchema.parse(quote.fees);
 	const feeMode = (quote.feeMode as FeeMode | null) ?? null;
-	const senderWallet = route.some((l) => l.rail === SENDER_WALLET_BLINDPAY_RAIL);
+	const senderWallet = route.some((l) => isSenderWalletRail(l.rail));
 	if (route.some((l) => l.kind === "settle") && feeMode === null && !senderWallet) {
 		throw new Error(
 			"quote.feeMode is required when the route includes settle (CCR-8/CCR-13)",
@@ -50,11 +50,11 @@ export async function createPaymentFromQuote(
 	}
 	if (senderWallet && input.delivery !== "direct") {
 		throw new Error(
-			"sender_wallet_blindpay requires delivery direct",
+			`${route.find((l) => isSenderWalletRail(l.rail))!.rail} requires delivery direct`,
 		);
 	}
 	if (senderWallet && !input.endpointId) {
-		throw new Error("endpoint is required for a sender-wallet BlindPay payout");
+		throw new Error("endpoint is required for a sender-wallet payout");
 	}
 	void fees;
 

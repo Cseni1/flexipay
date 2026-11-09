@@ -5,8 +5,9 @@ import {
 	ProviderError,
 	decideOnFailure,
 	isPaid,
+	isSenderWalletRail,
 	isSolanaSettleRail,
-	SENDER_WALLET_BLINDPAY_RAIL,
+	SENDER_WALLET_DUE_RAIL,
 	nextLegIndex,
 	type EndpointRef,
 	type FeeMode,
@@ -144,9 +145,7 @@ async function loadRuntime(
 	const claimWaitSettle = isClaimWaitRoute(payment.legs);
 	// CCR-32: a claim supplies its accepted endpoint at accept time; a batch stores it at create.
 	const linkedEndpointId = claimEndpointId ?? payment.endpointId;
-	const senderWalletSettle = payment.legs.some(
-		(l) => l.rail === SENDER_WALLET_BLINDPAY_RAIL,
-	);
+	const senderWalletSettle = payment.legs.some((l) => isSenderWalletRail(l.rail));
 	if (
 		payment.legs.some((l) => l.kind === "settle") &&
 		feeMode === null &&
@@ -313,8 +312,8 @@ async function runPendingLegs(
 			const processing = rt.legs.find((l) => l.status === "processing");
 			const failed = rt.legs.find((l) => l.status === "failed");
 			if (processing?.kind === "settle") {
-				// CCR-45: the sender's wallet funds BlindPay. Nothing is locked here.
-				if (processing.rail === SENDER_WALLET_BLINDPAY_RAIL) {
+				// CCR-45 / CCR-51: the sender's wallet funds BlindPay or Due. Nothing is locked here.
+				if (isSenderWalletRail(processing.rail)) {
 					return;
 				}
 				// Lane B / F9 / CCR-39: solana_* waits for verified transfer (claim or direct treasury).
@@ -350,11 +349,12 @@ async function runPendingLegs(
 		) {
 			return;
 		}
-		// CCR-45: the payout is created by POST .../blindpay/confirm, not by a custodial execute.
+		// CCR-45 / CCR-51: the payout is created by POST .../blindpay/confirm or
+		// .../due/funding, not by a custodial execute.
 		if (
 			leg.kind === "payout" &&
 			!leg.externalRef &&
-			rt.legs.some((l) => l.rail === SENDER_WALLET_BLINDPAY_RAIL)
+			rt.legs.some((l) => isSenderWalletRail(l.rail))
 		) {
 			return;
 		}
@@ -525,9 +525,10 @@ async function onProviderLegFailed(
 		where: { paymentId: payment.id },
 		orderBy: { position: "asc" },
 	});
-	const senderWallet = rows.some((l) => l.rail === SENDER_WALLET_BLINDPAY_RAIL);
-	// A failed sender-wallet payout already returns the stablecoins. Do not retry execute(),
-	// which would pull from a BlindPay-managed wallet.
+	const senderWallet = rows.some((l) => isSenderWalletRail(l.rail));
+	// A failed sender-wallet payout already returns the stablecoins (or the partner holds them).
+	// Do not retry execute(), which would pull from a partner-managed wallet or ask the sender
+	// to fund a second transfer.
 	const action =
 		senderWallet && leg.kind === "payout"
 			? ({ action: "refund_vault" } as const)
@@ -969,11 +970,15 @@ async function executeSettle(
 	const feeMode = rt.feeMode as FeeMode;
 
 	// CCR-45: no treasury and no vault. Settle stays processing until BlindPay accepts the payout.
-	if (leg.rail === SENDER_WALLET_BLINDPAY_RAIL) {
+	// CCR-51: likewise until the sender's USDC transfer to Due's funding address is verified.
+	if (isSenderWalletRail(leg.rail)) {
+		const due = leg.rail === SENDER_WALLET_DUE_RAIL;
 		await emitPaymentEvent(db, payment.organizationId, payment.id, "payment.onchain", {
-			phase: "blindpay_sender_wallet_wait",
+			phase: due ? "due_sender_wallet_wait" : "blindpay_sender_wallet_wait",
 			legId: leg.id,
-			detail: "awaiting_sender_wallet_delegation",
+			detail: due
+				? "awaiting_sender_wallet_transfer"
+				: "awaiting_sender_wallet_delegation",
 		});
 		return;
 	}
@@ -1499,9 +1504,26 @@ async function handleLegFailure(
 		include: { legs: { orderBy: { position: "asc" } } },
 	});
 	const failed = payment.legs.find((l) => l.id === failedLegId)!;
-	const senderWallet = payment.legs.some(
-		(l) => l.rail === SENDER_WALLET_BLINDPAY_RAIL,
-	);
+	const senderWallet = payment.legs.some((l) => isSenderWalletRail(l.rail));
+	// CCR-51: a Due payout that failed without Due returning the USDC (failed, canceled, or a
+	// deposit Due never credited) cannot be called refunded: FlexiPay never held the money and Due
+	// does. The payment fails with Due's reason; support takes it up with Due.
+	if (
+		failed.kind === "payout" &&
+		payment.legs.some((l) => l.rail === SENDER_WALLET_DUE_RAIL) &&
+		failed.errorCode !== "returned_to_wallet" &&
+		failed.errorCode !== "returning_to_wallet"
+	) {
+		await transitionPayment(
+			db,
+			paymentId,
+			payment.organizationId,
+			"processing",
+			"failed",
+			failed.errorMessage ?? "Due could not complete the payout",
+		);
+		return;
+	}
 	// A settle leg that failed after the lock exists (fee drift, CCR-15) must be refunded through
 	// the vault: decideOnFailure only sees `settle` as settled once it succeeded.
 	// CCR-45: a sender-wallet payout failure returns the stablecoins. Do not retry execute().

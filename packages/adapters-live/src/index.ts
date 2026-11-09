@@ -17,6 +17,8 @@ export {
 export { TazapayAdapter, type TazapayOptions } from "./tazapay.ts"
 export {
 	DueAdapter,
+	DUE_FUNDING_GRACE_MS,
+	decimalToMinor,
 	DUE_PRODUCTION_BASE_URL,
 	DUE_SANDBOX_BASE_URL,
 	type DueOptions,

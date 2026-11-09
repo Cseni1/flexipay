@@ -14,7 +14,10 @@ import {
 	type PriceDeps,
 	type PricedRoute,
 } from "./price.ts";
-import { priceSenderWalletBlindpay } from "./sender-wallet.ts";
+import {
+	priceSenderWalletBlindpay,
+	priceSenderWalletDue,
+} from "./sender-wallet.ts";
 
 // Build a Quote from a CreateQuoteRequest (ARCHITECTURE §8). Pure over config + injected adapters.
 
@@ -247,9 +250,16 @@ export async function buildQuote(
 		return eligibility satisfies EligibilityFail;
 	}
 
-	// CCR-45: the sender's wallet funds BlindPay. There is no vault fee to resolve.
-	if (req.settleMode === "sender_wallet_blindpay") {
-		const priced = await priceSenderWalletBlindpay(
+	// CCR-45 / CCR-51: the sender's wallet funds BlindPay or Due. There is no vault fee to resolve.
+	if (
+		req.settleMode === "sender_wallet_blindpay" ||
+		req.settleMode === "sender_wallet_due"
+	) {
+		const price =
+			req.settleMode === "sender_wallet_due"
+				? priceSenderWalletDue
+				: priceSenderWalletBlindpay;
+		const priced = await price(
 			priceDeps(deps, null),
 			req,
 			eligibility.corridor,

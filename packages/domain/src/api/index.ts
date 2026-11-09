@@ -170,6 +170,16 @@ export {
 } from "./blindpay.ts";
 
 export {
+	DueConfirmRequestSchema,
+	DueConfirmResponseSchema,
+	DueFundingRequestSchema,
+	DueFundingResponseSchema,
+	DueFundingStateSchema,
+	type DueConfirmResponse,
+	type DueFundingResponse,
+} from "./due.ts";
+
+export {
 	SolanaConfigResponseSchema,
 	SolanaConfirmPendingResponseSchema,
 	SolanaConfirmRequestSchema,

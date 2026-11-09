@@ -19,6 +19,7 @@ import { PaymentFromToCard } from "../components/payments/PaymentFromToCard"
 import { PaymentReceipt } from "../components/payments/PaymentReceipt"
 import { PaymentTimestamp } from "../components/payments/PaymentTimestamp"
 import { BlindpaySenderPanel } from "../components/solana/BlindpaySenderPanel"
+import { DueSenderPanel } from "../components/solana/DueSenderPanel"
 import { SolanaPayPanel } from "../components/solana/SolanaPayPanel"
 import {
 	Button,
@@ -289,11 +290,20 @@ export default function PaymentDetail() {
 		: { created: null, funded: null, paid: null }
 	const createdAtIso = milestones.created ?? payment?.createdAt ?? null
 	const senderWalletSettle = settleLeg?.rail === "sender_wallet_blindpay"
+	// CCR-51: the sender's own wallet funds Due directly.
+	const dueWalletSettle = settleLeg?.rail === "sender_wallet_due"
 	const payoutLeg = payment?.legs.find((leg) => leg.kind === "payout")
 	const canFund =
 		(status === "awaiting_funding" || status === "quoted") &&
 		!authBlocked &&
-		!senderWalletSettle
+		!senderWalletSettle &&
+		!dueWalletSettle
+	const showDue =
+		dueWalletSettle &&
+		settleLeg?.status !== "succeeded" &&
+		(status === "awaiting_funding" ||
+			status === "processing" ||
+			status === "funded")
 	const showBlindpay =
 		senderWalletSettle &&
 		!payoutLeg?.externalRef &&
@@ -319,7 +329,7 @@ export default function PaymentDetail() {
 		? primaryEndpoint(endpointsByRecipient, payment.recipientId)
 		: null
 
-	const senderActionNeeded = showSolanaPay || !!showBlindpay
+	const senderActionNeeded = showSolanaPay || !!showBlindpay || showDue
 	const steps = payment
 		? paymentProgress({
 				status: payment.status,
@@ -364,19 +374,25 @@ export default function PaymentDetail() {
 							title: "Pay from your wallet",
 							text: "Send the amount below from your wallet. We take it from there.",
 						}
-					: showBlindpay
+					: showDue
 						? {
-								icon: "shield",
-								title: "Approve in your wallet",
-								text: "Connect your wallet and approve the payment. We send it to their bank.",
+								icon: "wallet",
+								title: "Pay from your wallet",
+								text: "Send USDC from your own wallet straight to Due. Due pays their bank.",
 							}
-						: claimLink
+						: showBlindpay
 							? {
-									icon: "link",
-									title: "Send them the claim link",
-									text: "They open the link and choose how to get the money.",
+									icon: "shield",
+									title: "Approve in your wallet",
+									text: "Connect your wallet and approve the payment. We send it to their bank.",
 								}
-							: null
+							: claimLink
+								? {
+										icon: "link",
+										title: "Send them the claim link",
+										text: "They open the link and choose how to get the money.",
+									}
+								: null
 
 	return (
 		<Page>
@@ -523,7 +539,8 @@ export default function PaymentDetail() {
 						{problemText &&
 						(payment.status === "failed" ||
 							payment.status === "refunding" ||
-							payment.status === "refunded") ? (
+							payment.status === "refunded" ||
+							(dueWalletSettle && payment.status === "expired")) ? (
 							<Notice tone="warning" data-testid="payment-problem">
 								What went wrong: {problemText}
 							</Notice>
@@ -532,6 +549,28 @@ export default function PaymentDetail() {
 						{senderWalletSettle && payment.status === "refunded" ? (
 							<Notice data-testid="blindpay-returned">
 								returned to your wallet
+							</Notice>
+						) : null}
+
+						{dueWalletSettle && payment.status === "refunded" ? (
+							<Notice data-testid="due-returned">
+								Due returned the USDC to the wallet you paid from.
+							</Notice>
+						) : null}
+
+						{dueWalletSettle && payment.status === "failed" ? (
+							<Notice data-testid="due-failed">
+								FlexiPay never held your USDC: it went straight to Due. Contact
+								support and we will take it up with Due.
+							</Notice>
+						) : null}
+
+						{dueWalletSettle &&
+						settleLeg?.status === "succeeded" &&
+						payment.status === "processing" ? (
+							<Notice data-testid="due-tracking">
+								Due has your USDC and is paying their bank. This page updates by
+								itself.
 							</Notice>
 						) : null}
 
@@ -586,6 +625,15 @@ export default function PaymentDetail() {
 								{showBlindpay ? (
 									<div className="detail-action__panel">
 										<BlindpaySenderPanel
+											paymentId={payment.id}
+											onChanged={() => refresh()}
+										/>
+									</div>
+								) : null}
+
+								{showDue ? (
+									<div className="detail-action__panel">
+										<DueSenderPanel
 											paymentId={payment.id}
 											onChanged={() => refresh()}
 										/>

@@ -2695,7 +2695,10 @@
                   },
                   "settleMode": {
                     "type": "string",
-                    "const": "sender_wallet_blindpay"
+                    "enum": [
+                      "sender_wallet_blindpay",
+                      "sender_wallet_due"
+                    ]
                   }
                 },
                 "required": [
@@ -7349,6 +7352,662 @@
           },
           "400": {
             "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency or state conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/payments/{id}/due/funding": {
+      "get": {
+        "summary": "Due funding address and exact USDC amount for the sender's wallet",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "paymentId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "paymentStatus": {
+                      "type": "string",
+                      "enum": [
+                        "quoted",
+                        "awaiting_funding",
+                        "funded",
+                        "processing",
+                        "paid",
+                        "cancelled",
+                        "failed",
+                        "refunding",
+                        "refunded",
+                        "expired"
+                      ]
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "awaiting_transfer",
+                        "funded",
+                        "expired"
+                      ]
+                    },
+                    "transferId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "cluster": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "asset": {
+                      "type": "string",
+                      "const": "USDC"
+                    },
+                    "mint": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "decimals": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 18
+                    },
+                    "amount": {
+                      "type": "string",
+                      "pattern": "^\\d+$"
+                    },
+                    "recipient": {
+                      "type": "string",
+                      "minLength": 32,
+                      "maxLength": 44
+                    },
+                    "reference": {
+                      "type": "string",
+                      "minLength": 32,
+                      "maxLength": 44
+                    },
+                    "senderWallet": {
+                      "type": "string",
+                      "minLength": 32,
+                      "maxLength": 44
+                    },
+                    "expiresAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signature": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "explorerTxUrlTemplate": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "paymentId",
+                    "paymentStatus",
+                    "state",
+                    "transferId",
+                    "cluster",
+                    "asset",
+                    "mint",
+                    "decimals",
+                    "amount",
+                    "recipient",
+                    "reference",
+                    "senderWallet",
+                    "expiresAt",
+                    "signature",
+                    "explorerTxUrlTemplate"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create the Due transfer for the sender's Solana wallet and return where to pay",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "walletAddress": {
+                    "type": "string",
+                    "minLength": 32,
+                    "maxLength": 44
+                  }
+                },
+                "required": [
+                  "walletAddress"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "paymentId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "paymentStatus": {
+                      "type": "string",
+                      "enum": [
+                        "quoted",
+                        "awaiting_funding",
+                        "funded",
+                        "processing",
+                        "paid",
+                        "cancelled",
+                        "failed",
+                        "refunding",
+                        "refunded",
+                        "expired"
+                      ]
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "awaiting_transfer",
+                        "funded",
+                        "expired"
+                      ]
+                    },
+                    "transferId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "cluster": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "asset": {
+                      "type": "string",
+                      "const": "USDC"
+                    },
+                    "mint": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "decimals": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 18
+                    },
+                    "amount": {
+                      "type": "string",
+                      "pattern": "^\\d+$"
+                    },
+                    "recipient": {
+                      "type": "string",
+                      "minLength": 32,
+                      "maxLength": 44
+                    },
+                    "reference": {
+                      "type": "string",
+                      "minLength": 32,
+                      "maxLength": 44
+                    },
+                    "senderWallet": {
+                      "type": "string",
+                      "minLength": 32,
+                      "maxLength": 44
+                    },
+                    "expiresAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signature": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "explorerTxUrlTemplate": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "paymentId",
+                    "paymentStatus",
+                    "state",
+                    "transferId",
+                    "cluster",
+                    "asset",
+                    "mint",
+                    "decimals",
+                    "amount",
+                    "recipient",
+                    "reference",
+                    "senderWallet",
+                    "expiresAt",
+                    "signature",
+                    "explorerTxUrlTemplate"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency or state conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/payments/{id}/due/confirm": {
+      "post": {
+        "summary": "Verify the sender's USDC transfer to Due on Solana, then track Due's payout",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "signature": {
+                    "type": "string",
+                    "minLength": 32,
+                    "maxLength": 128
+                  }
+                },
+                "required": [
+                  "signature"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "paymentId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "paymentStatus": {
+                      "type": "string",
+                      "enum": [
+                        "quoted",
+                        "awaiting_funding",
+                        "funded",
+                        "processing",
+                        "paid",
+                        "cancelled",
+                        "failed",
+                        "refunding",
+                        "refunded",
+                        "expired"
+                      ]
+                    },
+                    "transferId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "signature": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "explorerUrl": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "paymentId",
+                    "paymentStatus",
+                    "transferId",
+                    "signature",
+                    "explorerUrl"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Transaction not yet confirmed; retry without sending again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "pending"
+                    },
+                    "paymentId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "signature": {
+                      "type": "string",
+                      "minLength": 32,
+                      "maxLength": 88
+                    },
+                    "message": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "paymentId",
+                    "signature",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key",
             "content": {
               "application/json": {
                 "schema": {

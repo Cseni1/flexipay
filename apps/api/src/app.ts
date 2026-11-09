@@ -17,6 +17,7 @@ import { eventRoutes } from "./routes/events.ts";
 import { opsRoutes } from "./routes/ops.ts";
 import { paymentRoutes } from "./routes/payments.ts";
 import { blindpayRoutes } from "./routes/blindpay.ts";
+import { dueRoutes } from "./routes/due.ts";
 import { tazapayRoutes } from "./routes/tazapay.ts";
 import { swapRoutes } from "./routes/swap.ts";
 import { quoteRoutes } from "./routes/quotes.ts";
@@ -42,6 +43,7 @@ export const ROUTES: RouteDef<any, any>[] = [
 	...quoteRoutes,
 	...paymentRoutes,
 	...blindpayRoutes,
+	...dueRoutes,
 	...tazapayRoutes,
 	...swapRoutes,
 	...eventRoutes,

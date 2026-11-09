@@ -42,9 +42,10 @@ export const CreateQuoteRequestSchema = z
       .optional(),
     /**
      * CCR-45: pay the bank from the sender's own Solana wallet via BlindPay.
+     * CCR-51: `sender_wallet_due` does the same via Due (USDC sent to Due's funding address).
      * Omitted quotes keep the vault route. No FlexiPay treasury and no vault fee.
      */
-    settleMode: z.literal("sender_wallet_blindpay").optional(),
+    settleMode: z.enum(["sender_wallet_blindpay", "sender_wallet_due"]).optional(),
   })
   .strict()
   .superRefine((req, ctx) => {

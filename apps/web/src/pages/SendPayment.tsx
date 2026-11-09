@@ -303,6 +303,10 @@ export default function SendPayment() {
 	const [authBlocked, setAuthBlocked] = useState(false)
 	const [delivery, setDelivery] = useState<Delivery>("direct")
 	const [senderWallet, setSenderWallet] = useState(false)
+	// CCR-51: which partner the sender's wallet pays (BlindPay pulls it; Due receives a transfer).
+	const [walletPartner, setWalletPartner] = useState<"blindpay" | "due">(
+		"blindpay",
+	)
 	const [recipientCountryNote, setRecipientCountryNote] = useState<
 		string | null
 	>(null)
@@ -746,7 +750,12 @@ export default function SendPayment() {
 			},
 			policy: "cheapest",
 			...(senderWallet
-				? { settleMode: "sender_wallet_blindpay" as const }
+				? {
+						settleMode:
+							walletPartner === "due"
+								? ("sender_wallet_due" as const)
+								: ("sender_wallet_blindpay" as const),
+					}
 				: { feeMode: form.feeMode as FeeMode }),
 			...(payout ? { payout } : {}),
 		}
@@ -1248,6 +1257,40 @@ export default function SendPayment() {
 										/>{" "}
 										Pay from my own Solana wallet
 									</label>
+									{senderWallet ? (
+										<fieldset
+											className="pay-with"
+											data-testid="sender-wallet-partner"
+										>
+											<legend>Who pays their bank</legend>
+											<label>
+												<input
+													type="radio"
+													name="sender-wallet-partner"
+													checked={walletPartner === "blindpay"}
+													onChange={() => {
+														setWalletPartner("blindpay")
+														setQuote(null)
+													}}
+													data-testid="sender-wallet-partner-blindpay"
+												/>{" "}
+												BlindPay (asks you to verify your identity)
+											</label>{" "}
+											<label>
+												<input
+													type="radio"
+													name="sender-wallet-partner"
+													checked={walletPartner === "due"}
+													onChange={() => {
+														setWalletPartner("due")
+														setQuote(null)
+													}}
+													data-testid="sender-wallet-partner-due"
+												/>{" "}
+												Due (you send USDC to Due)
+											</label>
+										</fieldset>
+									) : null}
 								</div>
 							</fieldset>
 						</div>

@@ -27,6 +27,8 @@ import { jsonRequest, type FetchLike, type HttpResult } from "./http.ts"
 // production); GBP and tGBP map to a GBP Faster Payments pay-in ("fp"), as Tazapay maps them to its
 // GBP holding balance. Funding the transfer (sending the USDC to Due's funding address, or paying
 // the GBP deposit details) is outside this adapter: `fundingInstructions()` returns where to pay.
+// CCR-51: `linkSolanaWallet()` + `createSenderWalletTransfer()` set the sender's own wallet as Due's
+// `sender`, so the sender pays Due directly and FlexiPay never holds the USDC.
 // An unfunded transfer stays `awaiting_funds` (leg processing) and Due expires it after 2 hours.
 // The production base URL is refused unless FP_DUE_LIVE_APPROVED=1 (written approval only).
 
@@ -53,6 +55,39 @@ const TRANSFER_STATUS: Record<string, ProviderLegState["status"]> = {
 	refund_submitted: "failed",
 	refund_processed: "failed",
 }
+
+/**
+ * Failed Due statuses -> leg error. Wording follows Due's transfer-flow guide: `refund_submitted`
+ * "funds will go back to the sender", `refund_processed` "funds have been returned to the sender",
+ * `canceled` "typically when funds must go back to the sender manually", `failed` "handled
+ * according to internal procedures". The raw status stays in the message for support.
+ */
+const FAILURE: Record<string, { code: string; message: string }> = {
+	failed: {
+		code: "provider_down",
+		message: "Due could not complete the payout",
+	},
+	canceled: {
+		code: "partner_canceled",
+		message: "Due cancelled the transfer and returns the funds to the sender manually",
+	},
+	refund_submitted: {
+		code: "returning_to_wallet",
+		message: "Due is sending the USDC back to the wallet it came from",
+	},
+	refund_processed: {
+		code: "returned_to_wallet",
+		message: "Due returned the USDC to the wallet it came from",
+	},
+}
+
+/**
+ * Due expires an unfunded transfer 2 hours after creation, and a deposit sent after `expiresAt`
+ * "remain[s] in awaiting_funds and [is] not credited" (sandbox configuration guide). Due does not
+ * move such a transfer to a final status, so FlexiPay treats `awaiting_funds` this long after
+ * `expiresAt` as expired. The grace covers a deposit confirmed just before the deadline.
+ */
+export const DUE_FUNDING_GRACE_MS = 30 * 60_000
 
 /** Withdrawal rail per payout currency when Due offers more than one (bank rails, no SWIFT). */
 const PREFERRED_RAIL: Record<string, string> = {
@@ -233,6 +268,38 @@ function parseFields(value: unknown): SchemaField[] {
 	return fields
 }
 
+const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+function base58(bytes: number[]): string {
+	let n = 0n
+	for (const b of bytes) n = n * 256n + BigInt(b)
+	let out = ""
+	while (n > 0n) {
+		out = BASE58[Number(n % 58n)] + out
+		n /= 58n
+	}
+	for (const b of bytes) {
+		if (b !== 0) break
+		out = "1" + out
+	}
+	return out
+}
+
+/**
+ * Due's funding address. EVM and the guides use a string; Due's OpenAPI types a Solana
+ * account's `address` as a byte array, which is encoded to base58 here.
+ */
+export function addressText(value: unknown): string | null {
+	if (typeof value === "string" && value.length > 0) return value
+	if (
+		Array.isArray(value) &&
+		value.length === 32 &&
+		value.every((b) => Number.isInteger(b) && b >= 0 && b <= 255)
+	)
+		return base58(value as number[])
+	return null
+}
+
 export class DueAdapter implements ProviderAdapter {
 	readonly id: string
 	private readonly row: Provider
@@ -242,6 +309,8 @@ export class DueAdapter implements ProviderAdapter {
 	private readonly baseUrl: string
 	private readonly solanaRail: string
 	private readonly issued = new Map<string, string>()
+	/** "solana:<address>" -> Due wallet id. */
+	private readonly wallets = new Map<string, string>()
 	/** endpointId -> Due recipient id, so a second leg does not create another. */
 	private readonly recipients = new Map<string, string>()
 	/** paymentId -> Due source, set when the convert step runs. */
@@ -401,14 +470,50 @@ export class DueAdapter implements ProviderAdapter {
 				"Due payout must be in the local currency; the convert leg runs first",
 			)
 		}
+		return this.createTransfer(leg, this.opts.senderWallet)
+	}
+
+	/**
+	 * CCR-51: create the payout transfer with the sender's own linked wallet as Due's `sender`.
+	 * Due matches the deposit by sender address and exact amount, so only that wallet can fund it.
+	 * Nothing moves until the sender pays the funding address (`fundingInstructions`).
+	 */
+	async createSenderWalletTransfer(
+		leg: LegExecution,
+		senderWalletId: string,
+	): Promise<{ externalRef: string; partnerRefs?: Record<string, string> }> {
+		this.assertEnvironment()
+		this.assertServes("payout")
+		if (leg.kind !== "payout") {
+			throw new ProviderError(
+				"unsupported",
+				"A sender-wallet Due transfer is a payout",
+			)
+		}
+		if (leg.amountIn.currency !== leg.outCurrency) {
+			throw new ProviderError(
+				"currency_mismatch",
+				"Due payout must be in the local currency; the convert leg runs first",
+			)
+		}
+		return this.createTransfer(leg, senderWalletId, "USDC")
+	}
+
+	private async createTransfer(
+		leg: LegExecution,
+		sender: string | undefined,
+		sourceCurrency?: string,
+	): Promise<{ externalRef: string; partnerRefs?: Record<string, string> }> {
+		const key = `${leg.legId}:${leg.attempt}`
 		this.assertPayoutCurrency(leg.amountIn.currency)
 		const known = this.issued.get(key)
 		if (known) return { externalRef: known }
 
 		const channel = await this.channelFor(leg.amountIn.currency)
 		const recipient = await this.recipientFor(leg.endpoint, channel)
-		const source =
-			this.sourceByPayment.get(leg.paymentId) ?? this.sourceFor("USDC")
+		const source = sourceCurrency
+			? this.sourceFor(sourceCurrency)
+			: (this.sourceByPayment.get(leg.paymentId) ?? this.sourceFor("USDC"))
 		// Receive-amount quote: the recipient gets exactly the quoted local amount.
 		const quote = this.ok(
 			await this.call("POST", "/v1/transfers/quote", {
@@ -434,9 +539,7 @@ export class DueAdapter implements ProviderAdapter {
 			await this.call("POST", "/v1/transfers", {
 				quote: quote.token,
 				recipient: recipient.id,
-				...(source.currency === "USDC" && this.opts.senderWallet
-					? { sender: this.opts.senderWallet }
-					: {}),
+				...(source.currency === "USDC" && sender ? { sender } : {}),
 				...(memo ? { memo } : {}),
 				...(purpose ? { purposeCode: purpose } : {}),
 			}),
@@ -454,6 +557,39 @@ export class DueAdapter implements ProviderAdapter {
 	}
 
 	/**
+	 * CCR-51: Due id of the sender's own Solana wallet, linking it to the FlexiPay Due account
+	 * (POST /v1/wallets, address "solana:<base58>") when it is not linked yet. Linking lets Due
+	 * monitor and screen the wallet; it gives Due no control over it.
+	 */
+	async linkSolanaWallet(address: string): Promise<string> {
+		this.assertEnvironment()
+		const wanted = `solana:${address}`
+		const cached = this.wallets.get(wanted)
+		if (cached) return cached
+		const list = await this.call("GET", "/v1/wallets")
+		const items = Array.isArray(list.json)
+			? list.json
+			: objectOf(list.json)?.items
+		if (list.status === 200 && Array.isArray(items)) {
+			for (const item of items) {
+				const w = objectOf(item)
+				if (w && typeof w.id === "string" && w.address === wanted) {
+					this.wallets.set(wanted, w.id)
+					return w.id
+				}
+			}
+		}
+		const created = this.ok(
+			await this.call("POST", "/v1/wallets", { address: wanted }),
+			"link wallet",
+		)
+		if (typeof created.id !== "string" || created.id.length === 0)
+			throw new Error("Due link wallet returned no id")
+		this.wallets.set(wanted, created.id)
+		return created.id
+	}
+
+	/**
 	 * Where to pay a transfer's source funds: Due's funding address for a USDC transfer
 	 * (POST /v1/transfers/{id}/funding_address), else the deposit details on the transfer.
 	 * The amount must be sent exactly, in one transaction, before `expiresAt`.
@@ -463,6 +599,9 @@ export class DueAdapter implements ProviderAdapter {
 		currency: string
 		rail: string
 		details: Record<string, unknown> | null
+		/** Funding address as text: Due's `details.address`, base58 when Due sends Solana bytes. */
+		address: string | null
+		status: string
 		expiresAt: string | null
 	}> {
 		this.assertEnvironment()
@@ -486,6 +625,8 @@ export class DueAdapter implements ProviderAdapter {
 			currency,
 			rail,
 			details,
+			address: addressText(details?.address),
+			status: typeof transfer.status === "string" ? transfer.status : "",
 			expiresAt:
 				typeof transfer.expiresAt === "string" ? transfer.expiresAt : null,
 		}
@@ -658,10 +799,31 @@ export class DueAdapter implements ProviderAdapter {
 		const raw = typeof data.status === "string" ? data.status : ""
 		const status = TRANSFER_STATUS[raw] ?? "processing"
 		if (status === "failed") {
+			const failure = FAILURE[raw] ?? FAILURE.failed!
 			return {
 				status,
 				externalRef,
-				error: { code: "provider_down", message: `Due transfer ${raw}` },
+				error: {
+					code: failure.code,
+					message: `${failure.message} (Due transfer ${raw})`,
+				},
+			}
+		}
+		const expiresAt =
+			typeof data.expiresAt === "string" ? Date.parse(data.expiresAt) : NaN
+		if (
+			raw === "awaiting_funds" &&
+			Number.isFinite(expiresAt) &&
+			this.now() > expiresAt + DUE_FUNDING_GRACE_MS
+		) {
+			return {
+				status: "failed",
+				externalRef,
+				error: {
+					code: "funding_expired",
+					message:
+						"Due did not receive the exact USDC from the sender wallet before the transfer expired (Due transfer awaiting_funds after expiresAt)",
+				},
 			}
 		}
 		return { status, externalRef }

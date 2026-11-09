@@ -24,6 +24,13 @@ export {
 	BlindPayOnboardingResponseSchema,
 } from "../domain/src/api/blindpay.ts"
 export {
+	DueConfirmResponseSchema,
+	DueFundingResponseSchema,
+	type DueConfirmResponse,
+	type DueFundingResponse,
+} from "../domain/src/api/due.ts"
+export {
+	SolanaConfirmPendingResponseSchema,
 	SolanaSwapConfirmResponseSchema,
 	SolanaSwapResponseSchema,
 	type SolanaSwapConfirmResponse,
@@ -48,14 +55,8 @@ export type {
 	PaymentDetail,
 	PaymentListResponse,
 } from "../domain/src/api/payments.ts"
-export type {
-	CreateQuoteRequest,
-	Quote,
-} from "../domain/src/api/quotes.ts"
-export type {
-	Event,
-	EventType,
-} from "../domain/src/api/events.ts"
+export type { CreateQuoteRequest, Quote } from "../domain/src/api/quotes.ts"
+export type { Event, EventType } from "../domain/src/api/events.ts"
 export type {
 	AlternativeRoute,
 	FeeBreakdown,

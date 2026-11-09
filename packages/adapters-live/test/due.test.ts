@@ -12,7 +12,12 @@ import {
 	createLiveProviders,
 	type FetchLike,
 } from "../src/index.ts"
-import { decimalToMinor, minorToDecimal } from "../src/due.ts"
+import {
+	DUE_FUNDING_GRACE_MS,
+	addressText,
+	decimalToMinor,
+	minorToDecimal,
+} from "../src/due.ts"
 
 // Due adapter against a fake of the documented Due API (no network, no keys). Response shapes are
 // copied from the Due sandbox on 9 Nov 2026 (GET /v1/channels, GET /v1/schemas, quotes, errors).
@@ -258,6 +263,11 @@ function fakeApi(
 		transferMissing?: boolean
 		recipientsListFails?: boolean
 		channelsObject?: boolean
+		wallets?: unknown
+		walletsFail?: boolean
+		walletNoId?: boolean
+		fundingBytes?: number[]
+		expiresAt?: string
 	} = {},
 ) {
 	const calls: Call[] = []
@@ -402,14 +412,34 @@ function fakeApi(
 							},
 						}
 					: { kind: "TransferIntent" },
-				expiresAt: "2026-11-09T14:00:00Z",
+				expiresAt: opts.expiresAt ?? "2026-11-09T14:00:00Z",
 			})
 		}
 		const funding = /^\/v1\/transfers\/([^/]+)\/funding_address$/.exec(path)
 		if (funding && init.method === "POST") {
 			return reply(200, {
-				details: { schema: "solana", address: "FundingAddr111" },
+				details: {
+					schema: "solana",
+					address: opts.fundingBytes ?? "FundingAddr111",
+				},
 			})
+		}
+		if (path === "/v1/wallets" && init.method === "GET") {
+			if (opts.walletsFail) return fail(500, "err_internal", "boom")
+			return reply(
+				200,
+				opts.wallets ?? [
+					{ id: "wlt_evm", address: "evm:0xabc" },
+					"junk",
+					{ id: "wlt_known", address: "solana:KnownWallet111" },
+				],
+			)
+		}
+		if (path === "/v1/wallets" && init.method === "POST") {
+			if (opts.walletNoId) return reply(200, { address: body.address })
+			if (!String(body.address).startsWith("solana:"))
+				return fail(400, "err_invalid_address", "bad address")
+			return reply(200, { id: "wlt_new", address: body.address })
 		}
 		return fail(404, "err_not_found", "Not found")
 	}
@@ -1018,6 +1048,8 @@ describe("DueAdapter execute", () => {
 			currency: "USDC",
 			rail: "solana-local",
 			details: { schema: "solana", address: "FundingAddr111" },
+			address: "FundingAddr111",
+			status: "awaiting_funds",
 			expiresAt: "2026-11-09T14:00:00Z",
 		})
 		expect(await due.fundingInstructions("tfr_gbp")).toMatchObject({
@@ -1052,12 +1084,17 @@ describe("DueAdapter status, reverse, health, requirements", () => {
 				"tfr_1",
 			)
 			expect(state.status).toBe(status)
-			if (status === "failed")
-				expect(state.error).toEqual({
-					code: "provider_down",
-					message: `Due transfer ${raw}`,
-				})
-			else expect(state.error).toBeUndefined()
+			if (status === "failed") {
+				expect(state.error?.code).toBe(
+					{
+						failed: "provider_down",
+						canceled: "partner_canceled",
+						refund_submitted: "returning_to_wallet",
+						refund_processed: "returned_to_wallet",
+					}[raw],
+				)
+				expect(state.error?.message).toContain(`(Due transfer ${raw})`)
+			} else expect(state.error).toBeUndefined()
 		}
 		expect(await adapter(fakeApi()).status("due-convert:USDC:leg:1")).toEqual({
 			status: "succeeded",
@@ -1196,5 +1233,101 @@ describe("Due helpers and registration", () => {
 		const call = api.calls.find((c) => c.path === "/v1/transfers/quote")!
 		expect(call.headers["Due-Account-Id"]).toBe("acct_live")
 		expect(call.body.source.rail).toBe("solana")
+	})
+})
+
+describe("DueAdapter sender wallet (CCR-51)", () => {
+	const payoutLeg = {
+		...legBase,
+		kind: "payout" as const,
+		amountIn: money("50000", "BRL"),
+		outCurrency: "BRL",
+		endpoint: PIX,
+	}
+
+	it("links the sender's Solana wallet once: reuses a linked one, else creates it", async () => {
+		const api = fakeApi()
+		const due = adapter(api)
+		expect(await due.linkSolanaWallet("KnownWallet111")).toBe("wlt_known")
+		expect(await due.linkSolanaWallet("NewWallet222")).toBe("wlt_new")
+		expect(await due.linkSolanaWallet("NewWallet222")).toBe("wlt_new")
+		const posts = api.calls.filter(
+			(c) => c.path === "/v1/wallets" && c.method === "POST",
+		)
+		expect(posts).toHaveLength(1)
+		expect(posts[0]!.body).toEqual({ address: "solana:NewWallet222" })
+		expect(
+			await adapter(fakeApi({ wallets: { items: [] } })).linkSolanaWallet("X1"),
+		).toBe("wlt_new")
+		expect(
+			await adapter(fakeApi({ walletsFail: true })).linkSolanaWallet("X2"),
+		).toBe("wlt_new")
+		await expect(
+			adapter(fakeApi({ walletNoId: true })).linkSolanaWallet("X3"),
+		).rejects.toThrow(/no id/)
+	})
+
+	it("creates the transfer with the sender's wallet as Due sender and the USDC source", async () => {
+		const api = fakeApi()
+		const due = adapter(api, { senderWallet: "wlt_platform" })
+		const out = await due.createSenderWalletTransfer(payoutLeg, "wlt_known")
+		expect(out.externalRef).toBe("tfr_1")
+		const transfer = api.calls.find(
+			(c) => c.path === "/v1/transfers" && c.method === "POST",
+		)!
+		expect(transfer.body.sender).toBe("wlt_known")
+		const quote = api.calls.filter((c) => c.path === "/v1/transfers/quote").at(-1)!
+		expect(quote.body.source).toEqual({
+			rail: "solana-local",
+			currency: "USDC",
+			amount: "0",
+		})
+		// Same leg attempt: no second transfer.
+		expect(
+			(await due.createSenderWalletTransfer(payoutLeg, "wlt_known")).externalRef,
+		).toBe("tfr_1")
+		await expect(
+			due.createSenderWalletTransfer(
+				{ ...payoutLeg, kind: "convert" },
+				"wlt_known",
+			),
+		).rejects.toMatchObject({ code: "unsupported" })
+		await expect(
+			due.createSenderWalletTransfer(
+				{ ...payoutLeg, outCurrency: "MXN" },
+				"wlt_known",
+			),
+		).rejects.toMatchObject({ code: "currency_mismatch" })
+	})
+
+	it("encodes a Solana funding address that Due sends as bytes", async () => {
+		const bytes = Array.from({ length: 32 }, (_, i) => (i === 0 ? 0 : i))
+		const info = await adapter(fakeApi({ fundingBytes: bytes })).fundingInstructions(
+			"tfr_1",
+		)
+		expect(info.address).toMatch(/^1[1-9A-HJ-NP-Za-km-z]{30,44}$/)
+		expect(addressText([1, 2, 3])).toBeNull()
+		expect(addressText("")).toBeNull()
+		expect(addressText(new Array(32).fill(0))).toBe("1".repeat(32))
+	})
+
+	it("treats awaiting_funds well past expiresAt as expired, not processing", async () => {
+		const expiresAt = "2026-11-09T14:00:00Z"
+		const at = Date.parse(expiresAt)
+		const within = await adapter(fakeApi({ expiresAt }), {
+			now: () => at + DUE_FUNDING_GRACE_MS - 1,
+		}).status("tfr_1")
+		expect(within.status).toBe("processing")
+		const after = await adapter(fakeApi({ expiresAt }), {
+			now: () => at + DUE_FUNDING_GRACE_MS + 1,
+		}).status("tfr_1")
+		expect(after).toMatchObject({
+			status: "failed",
+			error: { code: "funding_expired" },
+		})
+		const noExpiry = await adapter(fakeApi({ expiresAt: "not a date" }), {
+			now: () => at * 2,
+		}).status("tfr_1")
+		expect(noExpiry.status).toBe("processing")
 	})
 })

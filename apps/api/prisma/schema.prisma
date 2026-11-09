@@ -161,6 +161,13 @@ model Payment {
   blindpayQuoteExpiresAt DateTime?
   /// Solana address that will sign the delegation.
   blindpaySenderWallet   String?
+  /// CCR-51: the sender's own Solana wallet, set as Due's transfer sender. Due only credits it.
+  dueSenderWallet     String?
+  /// CCR-51: Due's funding address for the transfer, and the exact USDC amount (mint minor units).
+  dueFundingAddress   String?
+  dueFundingAmount    String?
+  /// CCR-51: Due's funding deadline (2 hours after the transfer is created).
+  dueFundingExpiresAt DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 

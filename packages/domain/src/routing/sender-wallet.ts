@@ -6,6 +6,35 @@ import type { PriceDeps, PriceResult, PricedLeg } from "./price.ts";
 
 /** Settle rail for a BlindPay payout funded by the sender's own Solana wallet (CCR-45). */
 export const SENDER_WALLET_BLINDPAY_RAIL = "sender_wallet_blindpay";
+/** Settle rail for a Due payout funded by the sender's own Solana wallet (CCR-51). */
+export const SENDER_WALLET_DUE_RAIL = "sender_wallet_due";
+
+/** True for any settle rail where the sender's own wallet funds the partner (no treasury, no vault). */
+export function isSenderWalletRail(rail: string | null | undefined): boolean {
+	return rail === SENDER_WALLET_BLINDPAY_RAIL || rail === SENDER_WALLET_DUE_RAIL;
+}
+
+interface SenderWalletPartner {
+	/** Settle mode / rail name used in refusal reasons. */
+	mode: string;
+	rail: string;
+	implementation: string;
+	label: string;
+}
+
+const BLINDPAY_PARTNER: SenderWalletPartner = {
+	mode: "sender_wallet_blindpay",
+	rail: SENDER_WALLET_BLINDPAY_RAIL,
+	implementation: "blindpay",
+	label: "BlindPay",
+};
+
+const DUE_PARTNER: SenderWalletPartner = {
+	mode: "sender_wallet_due",
+	rail: SENDER_WALLET_DUE_RAIL,
+	implementation: "due",
+	label: "Due",
+};
 
 const USDC_PER_USD_MINOR = 100_000n;
 
@@ -15,7 +44,7 @@ function toUsdc(send: Money): Money | null {
 	return null;
 }
 
-/** BlindPay's USDC fee shown in the send currency. USD and USDC are the same dollar. */
+/** The partner's USDC fee shown in the send currency. USD and USDC are the same dollar. */
 function feeInSendCurrency(fee: Money, sendCurrency: string): Money {
 	if (fee.currency === sendCurrency || toMinor(fee) === 0n) {
 		return toMinor(fee) === 0n ? money(0n, sendCurrency) : fee;
@@ -30,22 +59,43 @@ function feeInSendCurrency(fee: Money, sendCurrency: string): Money {
  * CCR-45: settle (no vault) then a BlindPay payout. The sender pays USDC from their
  * own wallet. One US dollar is one USDC. BlindPay's FX quote prices the bank leg.
  */
-export async function priceSenderWalletBlindpay(
+export function priceSenderWalletBlindpay(
 	deps: PriceDeps,
 	req: CreateQuoteRequest,
 	corridor: Corridor,
 ): Promise<PriceResult> {
+	return priceSenderWallet(deps, req, corridor, BLINDPAY_PARTNER);
+}
+
+/**
+ * CCR-51: settle (no vault) then a Due payout. The sender sends USDC from their own wallet
+ * straight to Due's funding address for the transfer. Due's quote prices the bank leg.
+ */
+export function priceSenderWalletDue(
+	deps: PriceDeps,
+	req: CreateQuoteRequest,
+	corridor: Corridor,
+): Promise<PriceResult> {
+	return priceSenderWallet(deps, req, corridor, DUE_PARTNER);
+}
+
+async function priceSenderWallet(
+	deps: PriceDeps,
+	req: CreateQuoteRequest,
+	corridor: Corridor,
+	p: SenderWalletPartner,
+): Promise<PriceResult> {
 	if (req.destination.type !== "bank_account") {
 		return {
 			ok: false,
-			reasons: ["sender_wallet_blindpay pays a bank account"],
+			reasons: [`${p.mode} pays a bank account`],
 		};
 	}
 	if (req.amount.side !== "send") {
 		return {
 			ok: false,
 			reasons: [
-				"sender_wallet_blindpay quotes are priced from the amount you send",
+				`${p.mode} quotes are priced from the amount you send`,
 			],
 		};
 	}
@@ -63,13 +113,13 @@ export async function priceSenderWalletBlindpay(
 		return {
 			ok: false,
 			reasons: [
-				"sender_wallet_blindpay pays USDC from a Solana wallet; the send currency must be USD or USDC",
+				`${p.mode} pays USDC from a Solana wallet; the send currency must be USD or USDC`,
 			],
 		};
 	}
 	const partner = deps.config.providers.find(
 		(row) =>
-			row.implementation === "blindpay" &&
+			row.implementation === p.implementation &&
 			!row.placeholder &&
 			row.countries.includes(req.destination.country) &&
 			row.currencies.includes(req.destination.currency) &&
@@ -79,7 +129,7 @@ export async function priceSenderWalletBlindpay(
 		return {
 			ok: false,
 			reasons: [
-				`No BlindPay payout for ${req.destination.country} ${req.destination.currency}`,
+				`No ${p.label} payout for ${req.destination.country} ${req.destination.currency}`,
 			],
 		};
 	}
@@ -101,14 +151,14 @@ export async function priceSenderWalletBlindpay(
 		const message =
 			e instanceof ProviderError || e instanceof Error
 				? e.message
-				: "BlindPay quote failed";
+				: `${p.label} quote failed`;
 		return { ok: false, reasons: [message] };
 	}
 	const payoutFee = feeInSendCurrency(quoted.fee, send.currency);
 	const zero = money(0n, send.currency);
 	const settle: PricedLeg = {
 		kind: "settle",
-		rail: SENDER_WALLET_BLINDPAY_RAIL,
+		rail: p.rail,
 		providerId: partner.id,
 		simulated: partner.simulated,
 		fee: zero,
@@ -145,7 +195,7 @@ export async function priceSenderWalletBlindpay(
 			fxRate: quoted.fxRate,
 			estimatedTimeSeconds: quoted.estimatedTimeSeconds,
 			exclusionReasons: [
-				"sender_wallet_blindpay: the sender pays from their own Solana wallet. FlexiPay does not hold the funds.",
+				`${p.mode}: the sender pays from their own Solana wallet. FlexiPay does not hold the funds.`,
 			],
 			alternatives: [],
 		},
