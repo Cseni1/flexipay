@@ -213,8 +213,8 @@ export function QuotePanel({
 						data-testid="quote-delivery"
 					>
 						{delivery === "claim_link"
-							? "They get a claim link and choose how to be paid."
-							: "Paid straight to their bank."}
+							? "They get a link and type in their own account details."
+							: "Paid straight to the account you entered."}
 					</p>
 
 					{createError ? <Notice tone="warning">{createError}</Notice> : null}

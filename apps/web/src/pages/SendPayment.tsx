@@ -989,7 +989,7 @@ export default function SendPayment() {
 									data-testid="send-delivery"
 								>
 									<legend className="field__label">
-										How will they get the money?
+										Who types in their account details?
 									</legend>
 									<label className="option-card">
 										<input
@@ -1001,10 +1001,10 @@ export default function SendPayment() {
 										/>
 										<span className="option-card__body">
 											<span className="option-card__title">
-												Straight to their bank
+												I’ll type in their account details
 											</span>
 											<span className="option-card__detail">
-												You enter their bank details below.
+												Their bank, e-wallet or wallet details go in step 2.
 											</span>
 										</span>
 									</label>
@@ -1024,7 +1024,8 @@ export default function SendPayment() {
 												Send them a claim link
 											</span>
 											<span className="option-card__detail">
-												They choose how to get paid. No bank details needed.
+												They type in their own account details. You don’t need
+												them.
 											</span>
 										</span>
 									</label>
