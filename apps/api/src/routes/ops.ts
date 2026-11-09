@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Provider } from "@flexipay/domain";
-import { BlindPayAdapter, TazapayAdapter } from "@flexipay/adapters-live";
+import { BlindPayAdapter, DueAdapter, TazapayAdapter } from "@flexipay/adapters-live";
 import { ApiError } from "../errors.ts";
 import { defineRoute, type RouteDef } from "../routes.ts";
 
@@ -29,6 +29,7 @@ const PartnerList = z.object({ partners: z.array(PartnerStatus) }).strict();
 const PARTNER_LABELS: Readonly<Record<string, string>> = {
   blindpay_sandbox: "BlindPay",
   tazapay_sandbox: "Tazapay",
+  due_sandbox: "Due",
 };
 
 function labelFor(row: Provider | undefined, id: string): string {
@@ -36,6 +37,7 @@ function labelFor(row: Provider | undefined, id: string): string {
   if (known) return known;
   if (row?.implementation === "blindpay") return "BlindPay";
   if (row?.implementation === "tazapay") return "Tazapay";
+  if (row?.implementation === "due") return "Due";
   return id;
 }
 
@@ -89,6 +91,8 @@ export const opsRoutes: RouteDef<any, any>[] = [
             health,
             instanceType,
           });
+        } else if (adapter instanceof DueAdapter) {
+          partners.push({ id, label: labelFor(row, id), mode: adapter.mode(), health });
         }
       }
       return { partners };

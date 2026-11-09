@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig, type ProviderAdapter } from "@flexipay/domain";
 import {
 	BlindPayAdapter,
+	DueAdapter,
 	TazapayAdapter,
 	type FetchLike,
 } from "@flexipay/adapters-live";
@@ -48,6 +49,16 @@ const fakePartnerApi: FetchLike = async (url) => {
 				],
 			},
 		});
+	// CCR-50: Due channels (one BRL withdrawal channel is enough for health).
+	if (path === "/v1/channels")
+		return reply(200, [
+			{
+				rail: "brl_pix",
+				currencyCode: "BRL",
+				type: "withdrawal",
+				railSettings: { schemas: ["bank_br_pix"] },
+			},
+		]);
 	if (path.startsWith("/v1/instances/"))
 		return reply(200, { type: "development" });
 	return reply(500, { message: "unexpected partner call" });
@@ -68,7 +79,9 @@ beforeAll(async () => {
 	const blindpayRow = loaded.config.providers.find(
 		(p) => p.id === "blindpay_sandbox",
 	);
-	if (!tazapayRow || !blindpayRow) throw new Error("partner rows missing");
+	const dueRow = loaded.config.providers.find((p) => p.id === "due_sandbox");
+	if (!tazapayRow || !blindpayRow || !dueRow)
+		throw new Error("partner rows missing");
 	const tazapay = new TazapayAdapter(tazapayRow, {
 		apiKey: "tz_key_not_for_responses",
 		apiSecret: "tz_secret_not_for_responses",
@@ -84,13 +97,24 @@ beforeAll(async () => {
 		liveApproved: false,
 		fetch: fakePartnerApi,
 	});
+	const due = new DueAdapter(dueRow, {
+		apiKey: "due_key_not_for_responses",
+		accountId: "acct_not_for_responses",
+		liveApproved: false,
+		fetch: fakePartnerApi,
+	});
 	const adapters = new Map<string, ProviderAdapter>([
 		["tazapay_sandbox", tazapay],
 		["blindpay_sandbox", blindpay],
+		["due_sandbox", due],
 	]);
 	const original = s.runtime.getProvider;
 	s.runtime.getProvider = (id) => adapters.get(id) ?? original(id);
-	s.runtime.liveProviderIds = ["tazapay_sandbox", "blindpay_sandbox"];
+	s.runtime.liveProviderIds = [
+		"tazapay_sandbox",
+		"blindpay_sandbox",
+		"due_sandbox",
+	];
 }, 120_000);
 
 afterAll(async () => {
@@ -117,7 +141,7 @@ describe("GET /v1/ops/partners", () => {
 		expect(await r.text()).not.toContain("balances");
 	});
 
-	it("returns partner mode, health, Tazapay balances and BlindPay instance type", async () => {
+	it("returns partner mode, health, Tazapay balances, BlindPay instance type and Due", async () => {
 		const r = await fetch(`${s.base}/v1/ops/partners`, {
 			headers: auth(key),
 		});
@@ -125,7 +149,7 @@ describe("GET /v1/ops/partners", () => {
 		const body = (await r.json()) as {
 			partners: Array<Record<string, unknown>>;
 		};
-		expect(body.partners).toHaveLength(2);
+		expect(body.partners).toHaveLength(3);
 		const tazapay = body.partners.find((p) => p.id === "tazapay_sandbox");
 		const blindpay = body.partners.find((p) => p.id === "blindpay_sandbox");
 		expect(tazapay).toEqual({
@@ -145,12 +169,20 @@ describe("GET /v1/ops/partners", () => {
 			health: "up",
 			instanceType: "development",
 		});
+		expect(body.partners.find((p) => p.id === "due_sandbox")).toEqual({
+			id: "due_sandbox",
+			label: "Due",
+			mode: "sandbox",
+			health: "up",
+		});
 		const text = JSON.stringify(body);
 		for (const secret of [
 			"tz_key_not_for_responses",
 			"tz_secret_not_for_responses",
 			"bnf_sandbox_not_for_responses",
 			"bp_key_not_for_responses",
+			"due_key_not_for_responses",
+			"acct_not_for_responses",
 			"account_number",
 		])
 			expect(text).not.toContain(secret);

@@ -1,6 +1,11 @@
 import type { FlexiPayConfig, ProviderAdapter } from "@flexipay/domain"
 import { BlindPayAdapter } from "./blindpay.ts"
 import { TazapayAdapter } from "./tazapay.ts"
+import {
+	DUE_PRODUCTION_BASE_URL,
+	DUE_SANDBOX_BASE_URL,
+	DueAdapter,
+} from "./due.ts"
 import type { FetchLike } from "./http.ts"
 
 export {
@@ -10,6 +15,12 @@ export {
 	type UploadFetch,
 } from "./blindpay.ts"
 export { TazapayAdapter, type TazapayOptions } from "./tazapay.ts"
+export {
+	DueAdapter,
+	DUE_PRODUCTION_BASE_URL,
+	DUE_SANDBOX_BASE_URL,
+	type DueOptions,
+} from "./due.ts"
 export {
 	JupiterClient,
 	JupiterError,
@@ -94,6 +105,35 @@ export function createLiveProviders(
 							? BigInt(lowBalance)
 							: undefined,
 					liveApproved: env.FP_TAZAPAY_LIVE_APPROVED === "1",
+					fetch: opts.fetch,
+				}),
+			)
+		} else if (row.implementation === "due") {
+			// CCR-50: production keys win over sandbox keys; production is still refused at call
+			// time unless FP_DUE_LIVE_APPROVED=1.
+			const liveKey = value(env, "DUE_API_KEY")
+			const liveAccount = value(env, "DUE_ACCOUNT_ID")
+			const sandboxKey = value(env, "DUE_SANDBOX_API_KEY")
+			const sandboxAccount = value(env, "DUE_SANDBOX_ACCOUNT_ID")
+			const live = liveKey && liveAccount
+			const apiKey = live ? liveKey : sandboxKey
+			const accountId = live ? liveAccount : sandboxAccount
+			if (!apiKey || !accountId) {
+				skipped.push(row.id)
+				continue
+			}
+			providers.set(
+				row.id,
+				new DueAdapter(row, {
+					apiKey,
+					accountId,
+					baseUrl:
+						value(env, "DUE_BASE_URL") ??
+						(live ? DUE_PRODUCTION_BASE_URL : DUE_SANDBOX_BASE_URL),
+					senderWallet: value(env, "DUE_SENDER_WALLET"),
+					solanaRail: value(env, "DUE_SOLANA_RAIL"),
+					purposeCode: value(env, "DUE_PURPOSE_CODE"),
+					liveApproved: env.FP_DUE_LIVE_APPROVED === "1",
 					fetch: opts.fetch,
 				}),
 			)
