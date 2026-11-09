@@ -31,8 +31,8 @@ describe("paymentProgress", () => {
 			),
 			[
 				"You pay:current",
-				"Changing currency:todo",
-				"On its way:todo",
+				"Converting:todo",
+				"Sent to their account:todo",
 				"Delivered:todo",
 			],
 		)
@@ -47,9 +47,9 @@ describe("paymentProgress", () => {
 				}),
 			),
 			[
-				"You paid:done",
-				"Changing currency:done",
-				"On its way:current",
+				"We got your money:done",
+				"Converting:done",
+				"Sent to their account:current",
 				"Delivered:todo",
 			],
 		)
@@ -75,8 +75,8 @@ describe("paymentProgress", () => {
 			],
 		})
 		assert.deepEqual(shape(steps), [
-			"You paid:done",
-			"On its way:done",
+			"We got your money:done",
+			"Sent to their account:done",
 			"Delivered:done",
 		])
 	})
@@ -88,8 +88,8 @@ describe("paymentProgress", () => {
 			funded: true,
 		})
 		assert.deepEqual(shape(steps), [
-			"You paid:done",
-			"Changing currency:done",
+			"We got your money:done",
+			"Converting:done",
 			"Money returned to you:stopped",
 		])
 	})

@@ -16,6 +16,7 @@ import FlexiPayWallet from "./pages/FlexiPayWallet"
 import PayFrom from "./pages/PayFrom"
 import PaymentDetail from "./pages/PaymentDetail"
 import PaymentsHistory from "./pages/PaymentsHistory"
+import ProofPage from "./pages/ProofPage"
 import Recipients from "./pages/Recipients"
 import SendPayment from "./pages/SendPayment"
 import TakePayment from "./pages/TakePayment"
@@ -51,6 +52,7 @@ function App() {
 					<Route path="blindpay/terms-done" element={<BlindpayTermsDone />} />
 				</Route>
 				<Route path="claim/:claimToken" element={<ClaimPage />} />
+				<Route path="proof" element={<ProofPage />} />
 				<Route path="*" element={<Navigate to="/" replace />} />
 			</Routes>
 		</LiveMoneyProvider>

@@ -68,12 +68,12 @@ export function paymentProgress({
 	const converted = delivered || allSucceeded("convert")
 
 	const plan: { key: ProgressStep["key"]; label: string; done: boolean }[] = [
-		{ key: "pay", label: paidIn ? "You paid" : "You pay", done: paidIn },
+		{ key: "pay", label: paidIn ? "We got your money" : "You pay", done: paidIn },
 	]
 	if (converts) {
-		plan.push({ key: "convert", label: "Changing currency", done: converted })
+		plan.push({ key: "convert", label: "Converting", done: converted })
 	}
-	plan.push({ key: "move", label: "On its way", done: delivered })
+	plan.push({ key: "move", label: "Sent to their account", done: delivered })
 	plan.push({ key: "deliver", label: "Delivered", done: delivered })
 
 	const stoppedLabel = STOPPED_LABELS[status]
