@@ -372,4 +372,65 @@ describe("aggregator: off-ramp partner on the convert + payout pair", () => {
 		const q = await brQuote(null);
 		expect(legOf(q, "payout")[0]!.providerId).toBe("sim_bank_br_pix");
 	});
+
+	it("CCR-50: compares BlindPay, Tazapay and Due on one corridor and keeps the best", async () => {
+		const corridor = baseConfig.corridors.find(
+			(c) => c.from.country === "US" && c.to.country === "BR",
+		)!;
+		for (const id of ["blindpay_sandbox", "tazapay_sandbox", "due_sandbox"]) {
+			expect(corridor.legsAvailable.convert).toContain(id);
+			expect(corridor.legsAvailable.payout).toContain(id);
+		}
+		/** Off-ramp mock for any partner row: USDC at `rate`, no fee. */
+		const partner = (id: string, rate: string): ProviderAdapter => {
+			const row = baseConfig.providers.find((p) => p.id === id)!;
+			const base = mockAdapter(row, baseConfig.fxRates);
+			return {
+				...base,
+				async quote(req: LegQuoteRequest) {
+					if (req.kind === "convert") {
+						return {
+							providerId: id,
+							fee: money("0", req.amountIn.currency),
+							fxRate: rate,
+							amountOut: convertMoney(req.amountIn, rate, req.outCurrency),
+							estimatedTimeSeconds: 0,
+							simulated: true as const,
+						};
+					}
+					return {
+						providerId: id,
+						fee: money("0", req.outCurrency),
+						fxRate: null,
+						amountOut: req.amountIn,
+						estimatedTimeSeconds: 300,
+						simulated: true as const,
+					};
+				},
+			};
+		};
+		const partners = new Map<string, ProviderAdapter>([
+			["blindpay_sandbox", partner("blindpay_sandbox", "6.0000000")],
+			["tazapay_sandbox", partner("tazapay_sandbox", "6.1000000")],
+			["due_sandbox", partner("due_sandbox", "6.2000000")],
+		]);
+		const deps = depsFor(baseConfig);
+		const result = await buildQuote(brBankReq, {
+			...deps,
+			getProvider: (id: string) => partners.get(id) ?? deps.getProvider(id),
+		});
+		if (!result.ok) throw new Error(result.reasons.join("; "));
+		const q = result.quote;
+		expect(legOf(q, "payout")[0]!.providerId).toBe("due_sandbox");
+		expect(legOf(q, "convert").at(-1)!.providerId).toBe("due_sandbox");
+		const reasons = q.reasons.join(" ");
+		expect(reasons).toMatch(/Best payout route: due_sandbox delivers/);
+		expect(reasons).toContain("tazapay_sandbox");
+		expect(reasons).toContain("blindpay_sandbox");
+		// The two other partners and the plain route come back as alternatives.
+		const altPayouts = q.alternatives.map((a) => a.route.find((l) => l.kind === "payout")!.providerId);
+		expect(altPayouts).toEqual(
+			expect.arrayContaining(["blindpay_sandbox", "tazapay_sandbox", "sim_bank_br_pix"]),
+		);
+	});
 });

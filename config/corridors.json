@@ -45,9 +45,14 @@
 			},
 			"legsAvailable": {
 				"collect": ["sim_bank_us_ach"],
-				"convert": ["sim_fx", "tazapay_sandbox"],
+				"convert": ["sim_fx", "tazapay_sandbox", "due_sandbox"],
 				"settle": ["stellar_usdc"],
-				"payout": ["sim_bank_ph_instapay", "sim_ewallet_ph", "tazapay_sandbox"]
+				"payout": [
+					"sim_bank_ph_instapay",
+					"sim_ewallet_ph",
+					"tazapay_sandbox",
+					"due_sandbox"
+				]
 			},
 			"domesticRail": null,
 			"regulationNote": "Cross-border USD to PHP. Bank account, e-wallet and crypto-wallet destinations; simulated rails only.",
@@ -72,9 +77,19 @@
 			},
 			"legsAvailable": {
 				"collect": ["sim_bank_gb_fps"],
-				"convert": ["sim_fx_gbp_tgbp", "sim_fx", "tazapay_sandbox"],
+				"convert": [
+					"sim_fx_gbp_tgbp",
+					"sim_fx",
+					"tazapay_sandbox",
+					"due_sandbox"
+				],
 				"settle": ["solana_tgbp"],
-				"payout": ["sim_bank_ph_instapay", "sim_ewallet_ph", "tazapay_sandbox"]
+				"payout": [
+					"sim_bank_ph_instapay",
+					"sim_ewallet_ph",
+					"tazapay_sandbox",
+					"due_sandbox"
+				]
 			},
 			"domesticRail": null,
 			"regulationNote": "Cross-border GBP to PHP over tGBP on Solana. Tazapay sandbox pays bank accounts from a GBP balance; other rails simulated.",
@@ -99,9 +114,19 @@
 			},
 			"legsAvailable": {
 				"collect": ["sim_bank_us_ach"],
-				"convert": ["sim_fx", "blindpay_sandbox", "tazapay_sandbox"],
+				"convert": [
+					"sim_fx",
+					"blindpay_sandbox",
+					"tazapay_sandbox",
+					"due_sandbox"
+				],
 				"settle": ["stellar_usdc"],
-				"payout": ["sim_bank_br_pix", "blindpay_sandbox", "tazapay_sandbox"]
+				"payout": [
+					"sim_bank_br_pix",
+					"blindpay_sandbox",
+					"tazapay_sandbox",
+					"due_sandbox"
+				]
 			},
 			"domesticRail": null,
 			"regulationNote": "Cross-border USD to BRL. Bank account and crypto-wallet destinations. Brazil is the baseline Latin American country; Mexico is added after the event.",
@@ -396,9 +421,9 @@
 			},
 			"legsAvailable": {
 				"collect": ["sim_bank_gb_fps"],
-				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox", "due_sandbox"],
 				"settle": ["solana_tgbp"],
-				"payout": ["tazapay_sandbox"]
+				"payout": ["tazapay_sandbox", "due_sandbox"]
 			},
 			"domesticRail": null,
 			"regulationNote": "Cross-border GBP to BRL over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
@@ -963,9 +988,9 @@
 			},
 			"legsAvailable": {
 				"collect": ["sim_bank_gb_fps"],
-				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox", "due_sandbox"],
 				"settle": ["solana_tgbp"],
-				"payout": ["tazapay_sandbox"]
+				"payout": ["tazapay_sandbox", "due_sandbox"]
 			},
 			"domesticRail": null,
 			"regulationNote": "Cross-border GBP to INR over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
@@ -1287,9 +1312,9 @@
 			},
 			"legsAvailable": {
 				"collect": ["sim_bank_gb_fps"],
-				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox", "due_sandbox"],
 				"settle": ["solana_tgbp"],
-				"payout": ["tazapay_sandbox"]
+				"payout": ["tazapay_sandbox", "due_sandbox"]
 			},
 			"domesticRail": null,
 			"regulationNote": "Cross-border GBP to MXN over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
@@ -1341,9 +1366,9 @@
 			},
 			"legsAvailable": {
 				"collect": ["sim_bank_gb_fps"],
-				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox"],
+				"convert": ["sim_fx_gbp_tgbp", "tazapay_sandbox", "due_sandbox"],
 				"settle": ["solana_tgbp"],
-				"payout": ["tazapay_sandbox"]
+				"payout": ["tazapay_sandbox", "due_sandbox"]
 			},
 			"domesticRail": null,
 			"regulationNote": "Cross-border GBP to NGN over tGBP on Solana. Tazapay sandbox prices and pays local bank accounts from a GBP balance; sandbox only.",
@@ -2637,9 +2662,9 @@
 			},
 			"legsAvailable": {
 				"collect": ["sim_bank_us_ach"],
-				"convert": ["sim_fx", "tazapay_sandbox"],
+				"convert": ["sim_fx", "tazapay_sandbox", "due_sandbox"],
 				"settle": ["stellar_usdc"],
-				"payout": ["tazapay_sandbox"]
+				"payout": ["tazapay_sandbox", "due_sandbox"]
 			},
 			"domesticRail": null,
 			"regulationNote": "Cross-border USD to INR over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
@@ -2961,9 +2986,14 @@
 			},
 			"legsAvailable": {
 				"collect": ["sim_bank_us_ach"],
-				"convert": ["sim_fx", "blindpay_sandbox", "tazapay_sandbox"],
+				"convert": [
+					"sim_fx",
+					"blindpay_sandbox",
+					"tazapay_sandbox",
+					"due_sandbox"
+				],
 				"settle": ["stellar_usdc"],
-				"payout": ["blindpay_sandbox", "tazapay_sandbox"]
+				"payout": ["blindpay_sandbox", "tazapay_sandbox", "due_sandbox"]
 			},
 			"domesticRail": null,
 			"regulationNote": "Cross-border USD to MXN over USDC on Stellar. BlindPay and Tazapay sandboxes compete; sandbox only.",
@@ -3015,9 +3045,9 @@
 			},
 			"legsAvailable": {
 				"collect": ["sim_bank_us_ach"],
-				"convert": ["sim_fx", "tazapay_sandbox"],
+				"convert": ["sim_fx", "tazapay_sandbox", "due_sandbox"],
 				"settle": ["stellar_usdc"],
-				"payout": ["tazapay_sandbox"]
+				"payout": ["tazapay_sandbox", "due_sandbox"]
 			},
 			"domesticRail": null,
 			"regulationNote": "Cross-border USD to NGN over USDC on Stellar. Tazapay sandbox pays local bank accounts from a USD balance; sandbox only.",
@@ -3501,9 +3531,9 @@
 			},
 			"legsAvailable": {
 				"collect": ["sim_bank_us_ach"],
-				"convert": ["sim_fx", "blindpay_sandbox"],
+				"convert": ["sim_fx", "blindpay_sandbox", "due_sandbox"],
 				"settle": ["stellar_usdc"],
-				"payout": ["blindpay_sandbox"]
+				"payout": ["blindpay_sandbox", "due_sandbox"]
 			},
 			"domesticRail": null,
 			"regulationNote": "Cross-border USD to COP over USDC on Stellar. BlindPay sandbox pays local bank accounts; sandbox only.",

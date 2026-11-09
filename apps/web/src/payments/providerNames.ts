@@ -7,6 +7,7 @@ export type ProviderBadgeKind = "Simulated" | "Sandbox" | "Live"
 const PROVIDER_LABELS: Readonly<Record<string, string>> = {
 	blindpay_sandbox: "BlindPay",
 	tazapay_sandbox: "Tazapay",
+	due_sandbox: "Due",
 	sim_bank_br_pix: "Pix (simulated)",
 	sim_fx: "FX (simulated)",
 	solana_usdc: "Solana USDC",

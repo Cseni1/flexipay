@@ -457,6 +457,48 @@
       "simulated": true,
       "placeholder": false,
       "implementation": "tazapay"
+    },
+    {
+      "id": "due_sandbox",
+      "kind": "bank",
+      "countries": [
+        "BR",
+        "MX",
+        "CO",
+        "IN",
+        "NG",
+        "PH"
+      ],
+      "currencies": [
+        "USDC",
+        "TGBP",
+        "BRL",
+        "MXN",
+        "COP",
+        "INR",
+        "NGN",
+        "PHP"
+      ],
+      "endpointTypes": [
+        "bank_account"
+      ],
+      "legKinds": [
+        "convert",
+        "payout"
+      ],
+      "fee": {
+        "fixed": {
+          "amount": "0",
+          "currency": "USDC"
+        },
+        "bps": 0
+      },
+      "fxSpreadBps": 0,
+      "estimatedTimeSeconds": 300,
+      "limits": null,
+      "simulated": true,
+      "placeholder": false,
+      "implementation": "due"
     }
   ],
   "settlementRails": [

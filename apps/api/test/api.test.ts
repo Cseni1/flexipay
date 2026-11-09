@@ -38,8 +38,16 @@ describe("API skeleton", () => {
     const ids = corridors.map((c: any) => `${c.from.country}-${c.to.country}`);
     expect(ids.slice(0, 6)).toEqual(["US-US", "US-PH", "GB-PH", "US-BR", "US-ZA", "GB-GB"]);
     // CCR-31: GBP to 62 more countries through Tazapay's sandbox (bank accounts, tGBP settle); CCR-40 adds GB-US.
-    const tazapay = corridors.filter((c: any) => c.from.country === "GB" && c.legsAvailable.payout.join() === "tazapay_sandbox");
+    // CCR-50: Due joins some of them, so count partner-only payouts that include Tazapay.
+    const tazapay = corridors.filter(
+      (c: any) =>
+        c.from.country === "GB" &&
+        c.legsAvailable.payout.includes("tazapay_sandbox") &&
+        c.legsAvailable.payout.every((id: string) => id === "tazapay_sandbox" || id === "due_sandbox"),
+    );
     expect(tazapay).toHaveLength(63);
+    const withDue = tazapay.filter((c: any) => c.legsAvailable.payout.includes("due_sandbox"));
+    expect(withDue.map((c: any) => c.to.country).sort()).toEqual(["BR", "IN", "MX", "NG"]);
     // CCR-40: dollars reach every Tazapay country too, plus BlindPay's Latin America.
     const fromUsd = new Set(corridors.filter((c: any) => c.from.country === "US").map((c: any) => c.to.country));
     for (const cc of ["KE", "GB", "FR", "IN", "MX", "CO", "AR", "BR", "PH", "ZA"]) expect(fromUsd.has(cc)).toBe(true);
