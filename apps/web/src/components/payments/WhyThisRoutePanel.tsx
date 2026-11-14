@@ -1,8 +1,4 @@
 import { type Quote } from "@flexipay/web-lib/contract"
-import {
-	computeAggregatorSaving,
-	formatQuoteSavingLine,
-} from "../../payments/aggregatorSaving"
 import { formatQuoteReason } from "../../payments/quoteDisplay"
 import { buildWhyThisRoute } from "../../payments/whyThisRoute"
 
@@ -16,7 +12,6 @@ type Props = {
  */
 export function WhyThisRoutePanel({ quote }: Props) {
 	const lines = buildWhyThisRoute(quote)
-	const saving = computeAggregatorSaving(quote)
 	return (
 		<section
 			className="quote-section why-route"
@@ -51,11 +46,6 @@ export function WhyThisRoutePanel({ quote }: Props) {
 					</li>
 				))}
 			</ul>
-			{saving ? (
-				<p className="why-route__saving" data-testid="aggregator-saving">
-					{formatQuoteSavingLine(saving)}
-				</p>
-			) : null}
 			{quote.reasons.length > 0 ? (
 				<ul className="reason-list reason-list--text why-route__reasons">
 					{quote.reasons.map((reason) => (

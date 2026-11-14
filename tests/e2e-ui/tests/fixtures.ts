@@ -336,3 +336,13 @@ export async function openTechnicalDetails(page: Page) {
 	)
 	if (!open) await details.locator("summary").click()
 }
+
+/** Send page price panel keeps legs, fees and routes in a collapsed section. */
+export async function openQuoteDetails(page: Page) {
+	const details = page.getByTestId("quote-technical-details")
+	await details.waitFor()
+	const open = await details.evaluate(
+		(element) => (element as HTMLDetailsElement).open,
+	)
+	if (!open) await details.locator("summary").click()
+}

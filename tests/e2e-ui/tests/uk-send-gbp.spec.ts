@@ -1,5 +1,9 @@
 import { expect, test, type Page } from "@playwright/test"
-import { paymentDetailFixture, paymentFromDetail } from "./fixtures"
+import {
+	paymentDetailFixture,
+	paymentFromDetail,
+	openQuoteDetails,
+} from "./fixtures"
 
 // CCR-26: UK GBP → tGBP crypto wallet on the send form. Fixture coverage only.
 
@@ -188,6 +192,7 @@ test.describe("UK GBP send (CCR-26)", () => {
 		await page.getByLabel("Recipient", { exact: true }).fill("UK Worker")
 		await page.getByRole("button", { name: "Get quote" }).click()
 
+		await openQuoteDetails(page)
 		await expect(
 			page.getByRole("heading", { name: "Chosen route" }),
 		).toBeVisible()

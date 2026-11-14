@@ -3,6 +3,7 @@ import {
 	paymentDetailFixture,
 	paymentFromDetail,
 	quoteFixture,
+	openQuoteDetails,
 } from "./fixtures"
 
 // TASK 26: Demo Day aggregator saving on quote, detail, list, and dashboard.
@@ -129,6 +130,7 @@ test.describe("TASK 26 aggregator saving", () => {
 		await page.goto("/")
 		await fillQuoteForm(page)
 		await page.getByRole("button", { name: "Get quote" }).click()
+		await openQuoteDetails(page)
 		await expect(page.getByTestId("why-this-route")).toBeVisible()
 		await expect(page.getByTestId("aggregator-saving")).toHaveCount(0)
 	})

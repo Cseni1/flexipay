@@ -349,6 +349,14 @@ export default function PaymentDetail() {
 		: null
 	const simulated = payment?.legs.some((leg) => leg.simulated) ?? false
 
+	// Once the money has landed (or gone back), there is nothing left to share.
+	const claimLinkToShare =
+		claimLink &&
+		payment &&
+		(payment.status === "awaiting_funding" || payment.status === "processing")
+			? claimLink
+			: null
+
 	const action: { icon: IconName; title: string; text: string } | null =
 		!payment
 			? null
@@ -370,7 +378,7 @@ export default function PaymentDetail() {
 								title: "Approve in your wallet",
 								text: "Connect your wallet and approve the payment. We send it to their bank.",
 							}
-						: claimLink
+						: claimLinkToShare
 							? {
 									icon: "link",
 									title: "Send them the claim link",
@@ -609,7 +617,9 @@ export default function PaymentDetail() {
 									</div>
 								) : null}
 
-								{claimLink ? <ClaimLinkShare link={claimLink} /> : null}
+								{claimLinkToShare ? (
+									<ClaimLinkShare link={claimLinkToShare} />
+								) : null}
 							</section>
 						) : null}
 
