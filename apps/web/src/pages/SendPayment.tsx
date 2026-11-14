@@ -1306,6 +1306,7 @@ export default function SendPayment() {
 					expired={countdown.expired}
 					validityLabel={countdown.label}
 					createError={createError}
+					recipientName={form.recipientName}
 				/>
 			</div>
 		</Page>

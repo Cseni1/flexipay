@@ -57,7 +57,7 @@ export function computeAggregatorSaving(
 }
 
 export const formatQuoteSavingLine = (saving: AggregatorSaving): string =>
-	`You get ${displayMoney(saving.amount, saving.currency)} more than the next best route (${saving.nextBestLabel})`
+	`They get ${displayMoney(saving.amount, saving.currency)} more than the next best route (${saving.nextBestLabel})`
 
 export const formatPaymentSavingLine = (saving: AggregatorSaving): string =>
 	`Saved ${displayMoney(saving.amount, saving.currency)} vs next best`

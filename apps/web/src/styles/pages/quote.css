@@ -1,0 +1,171 @@
+/* Send page price panel: plain summary first, technical details collapsed. */
+.quote-hero {
+	padding: 22px 22px 18px;
+	border-radius: var(--r-lg, 18px);
+	background:
+		radial-gradient(
+			120% 140% at 100% 0%,
+			color-mix(in srgb, var(--brand) 22%, transparent),
+			transparent 60%
+		),
+		var(--brand-soft);
+	border: 1px solid color-mix(in srgb, var(--brand) 25%, transparent);
+}
+
+.quote-hero__label {
+	margin: 0;
+	color: var(--muted);
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.quote-hero__amount {
+	margin: 4px 0 14px;
+	font-family: var(--display);
+	font-size: clamp(30px, 5cqi, 40px);
+	font-weight: 800;
+	letter-spacing: -0.04em;
+	line-height: 1.05;
+	color: var(--ink);
+	overflow-wrap: anywhere;
+}
+
+.quote-hero__facts {
+	display: grid;
+	gap: 6px;
+	margin: 0;
+	padding-top: 12px;
+	border-top: 1px dashed color-mix(in srgb, var(--brand) 30%, transparent);
+}
+
+.quote-hero__facts > div {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	font-size: 14.5px;
+}
+
+.quote-hero__facts dt {
+	color: var(--muted);
+}
+
+.quote-hero__facts dd {
+	margin: 0;
+	font-weight: 700;
+	text-align: right;
+	overflow-wrap: anywhere;
+}
+
+.quote-win {
+	display: flex;
+	gap: 12px;
+	align-items: flex-start;
+	padding: 14px 16px;
+	border-radius: 14px;
+	background: var(--ok-soft);
+	color: var(--ink);
+}
+
+.quote-win__icon {
+	display: inline-grid;
+	flex: none;
+	place-items: center;
+	width: 30px;
+	height: 30px;
+	border-radius: 50%;
+	background: var(--ok);
+	color: #fff;
+}
+
+.quote-win p {
+	display: grid;
+	gap: 2px;
+	margin: 0;
+	font-size: 14.5px;
+	line-height: 1.4;
+	overflow-wrap: anywhere;
+}
+
+.quote-win strong {
+	font-family: var(--display);
+	font-size: 15.5px;
+}
+
+.quote-steps ol {
+	display: grid;
+	gap: 10px;
+	margin: 10px 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.quote-steps li {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+	font-size: 14.5px;
+	line-height: 1.35;
+}
+
+.quote-steps__dot {
+	display: inline-grid;
+	flex: none;
+	place-items: center;
+	width: 26px;
+	height: 26px;
+	border-radius: 50%;
+	background: var(--surface2);
+	color: var(--brand);
+	font-size: 12.5px;
+	font-weight: 800;
+}
+
+.quote-tech {
+	border: 1px solid var(--line);
+	border-radius: 14px;
+	overflow: hidden;
+}
+
+.quote-tech__summary {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 12px 14px;
+	cursor: pointer;
+	list-style: none;
+	font-size: 14px;
+}
+
+.quote-tech__summary::-webkit-details-marker {
+	display: none;
+}
+
+.quote-tech__summary:hover {
+	background: var(--surface2);
+}
+
+.quote-tech__icon {
+	display: inline-grid;
+	place-items: center;
+	width: 28px;
+	height: 28px;
+	border-radius: 9px;
+	background: var(--surface2);
+	color: var(--muted);
+}
+
+.quote-tech__title {
+	font-weight: 700;
+}
+
+.quote-tech__hint {
+	margin-left: auto;
+	color: var(--muted);
+	font-size: 12.5px;
+}
+
+.quote-tech__body {
+	display: grid;
+	gap: 1rem;
+	padding: 4px 14px 16px;
+}

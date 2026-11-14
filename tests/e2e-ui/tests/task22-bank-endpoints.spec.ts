@@ -3,6 +3,7 @@ import {
 	paymentDetailFixture,
 	paymentFromDetail,
 	quoteFixture,
+	openQuoteDetails,
 } from "./fixtures"
 
 const CORRIDORS = {
@@ -229,6 +230,7 @@ test.describe("TASK 22 bank endpoints", () => {
 		await page.getByLabel("SWIFT/BIC").fill("BNORPHMM")
 
 		await page.getByRole("button", { name: "Get quote" }).click()
+		await openQuoteDetails(page)
 		await expect(
 			page.getByRole("heading", { name: "Chosen route" }),
 		).toBeVisible()
@@ -276,6 +278,7 @@ test.describe("TASK 22 bank endpoints", () => {
 		await expect(page.getByTestId("bank-details")).toHaveCount(0)
 
 		await page.getByRole("button", { name: "Get quote" }).click()
+		await openQuoteDetails(page)
 		await expect(
 			page.getByRole("heading", { name: "Chosen route" }),
 		).toBeVisible()

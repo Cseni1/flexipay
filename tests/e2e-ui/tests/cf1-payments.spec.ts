@@ -4,6 +4,7 @@ import {
 	paymentDetailFixture,
 	paymentFromDetail,
 	quoteFixture,
+	openQuoteDetails,
 } from "./fixtures"
 
 interface MockOptions {
@@ -125,8 +126,9 @@ test.describe("CF1 payments", () => {
 		// The "Why this route" panel (PR #150) repeats amounts; the summary shows them first.
 		await expect(page.getByText("66,250.00 PHP").first()).toBeVisible()
 		// The "Why this route" panel (PR #150) repeats amounts; the summary shows them first.
+		await openQuoteDetails(page)
 		await expect(page.getByText("55.50").first()).toBeVisible()
-		await expect(page.getByText(/Quote is valid for/)).toBeVisible()
+		await expect(page.getByText(/This price is held for/)).toBeVisible()
 		await expect(
 			page.getByText(
 				"E-wallet payout is available for individuals in this corridor.",
@@ -135,6 +137,7 @@ test.describe("CF1 payments", () => {
 		await expect(
 			page.getByText("Bank payout is available for this recipient kind."),
 		).toBeVisible()
+		await openQuoteDetails(page)
 		await expect(
 			page.getByRole("heading", { name: "Chosen route" }),
 		).toBeVisible()
@@ -186,6 +189,7 @@ test.describe("CF1 payments", () => {
 		await page.goto("/")
 		await fillQuoteForm(page)
 		await page.getByRole("button", { name: "Get quote" }).click()
+		await openQuoteDetails(page)
 		await expect(
 			page.getByRole("heading", { name: "Chosen route" }),
 		).toBeVisible()
@@ -213,6 +217,7 @@ test.describe("CF1 payments", () => {
 		await page.getByLabel("Recipient", { exact: true }).fill("Worker B")
 		await page.getByRole("button", { name: "Get quote" }).click()
 
+		await openQuoteDetails(page)
 		await expect(
 			page.getByRole("heading", { name: "Chosen route" }),
 		).toBeVisible()
@@ -295,6 +300,7 @@ test.describe("CF1 payments", () => {
 		await expect(
 			page.getByRole("button", { name: "Getting quote…" }),
 		).toBeDisabled()
+		await openQuoteDetails(page)
 		await expect(
 			page.getByRole("heading", { name: "Chosen route" }),
 		).toBeVisible()
@@ -306,6 +312,7 @@ test.describe("CF1 payments", () => {
 		await page.goto("/")
 		await fillQuoteForm(page)
 		await page.getByRole("button", { name: "Get quote" }).click()
+		await openQuoteDetails(page)
 		await expect(
 			page.getByRole("heading", { name: "Chosen route" }),
 		).toBeVisible()

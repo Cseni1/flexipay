@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
-import { quoteFixture } from "./fixtures"
+import { quoteFixture, openQuoteDetails } from "./fixtures"
 
 const corridorsWithGb = {
 	corridors: [
@@ -112,6 +112,7 @@ test.describe("Send form polish", () => {
 		await page.getByLabel("Amount (USD)").fill("10.00")
 		await page.getByRole("button", { name: "Get quote" }).click()
 
+		await openQuoteDetails(page)
 		await expect(page.getByText("All fees")).toBeVisible()
 		// The settle fee and FlexiPay fee are the same £0.10 listed twice: the total
 		// must count it once (£0.10), never double (£0.20) or the floored API £0.09.
