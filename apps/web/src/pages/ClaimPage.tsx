@@ -544,7 +544,7 @@ export default function ClaimPage() {
 								{selectedType === "crypto_wallet" &&
 								cryptoNetwork === "solana" &&
 								!solanaConnected ? (
-									<NoWalletYetHelp />
+									<NoWalletYetHelp live={live} />
 								) : null}
 							</section>
 						) : null}
